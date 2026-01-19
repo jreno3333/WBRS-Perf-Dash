@@ -1,7 +1,7 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales } from "./scraper/7shifts-api";
 import { db } from "./db";
 import { dailySales, hourlySales } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { sql, lt } from "drizzle-orm";
 
 // Set to true to pause scheduled syncs (for historical data loading)
 let schedulerPaused = false; // Historical data loaded - scheduler active
@@ -101,24 +101,24 @@ async function checkAndSeedHistoricalData() {
     // Get date from 7 days ago to check for historical data
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const historyDateStr = sevenDaysAgo.toISOString().split('T')[0];
+    sevenDaysAgo.setHours(23, 59, 59, 999); // End of that day
     
     // Check if we have historical daily data (from 7+ days ago)
     const dailyHistoricalResult = await db.select({ count: sql<number>`count(*)` })
       .from(dailySales)
-      .where(sql`${dailySales.salesDate} <= ${historyDateStr}`);
+      .where(lt(dailySales.salesDate, sevenDaysAgo));
     const dailyHistoricalCount = Number(dailyHistoricalResult[0]?.count || 0);
     
     // Check if we have historical hourly data (from 7+ days ago)
     const hourlyHistoricalResult = await db.select({ count: sql<number>`count(*)` })
       .from(hourlySales)
-      .where(sql`${hourlySales.salesDate} <= ${historyDateStr}`);
+      .where(lt(hourlySales.salesDate, sevenDaysAgo));
     const hourlyHistoricalCount = Number(hourlyHistoricalResult[0]?.count || 0);
     
     const needsDailySeeding = dailyHistoricalCount === 0;
     const needsHourlySeeding = hourlyHistoricalCount === 0;
     
-    log(`Database check: ${dailyHistoricalCount} historical daily, ${hourlyHistoricalCount} historical hourly records (before ${historyDateStr})`);
+    log(`Database check: ${dailyHistoricalCount} historical daily, ${hourlyHistoricalCount} historical hourly records (before ${sevenDaysAgo.toISOString().split('T')[0]})`);
     
     if (needsDailySeeding || needsHourlySeeding) {
       // Pause scheduler during historical sync
