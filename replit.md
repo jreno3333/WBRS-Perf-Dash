@@ -1,4 +1,4 @@
-# Sales Leaderboard - Restaurant Performance Dashboard
+# MWB Sales Leaderboard - Restaurant Performance Dashboard
 
 ## Overview
 

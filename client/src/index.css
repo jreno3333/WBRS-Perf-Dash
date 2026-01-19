@@ -25,17 +25,17 @@
   --sidebar: 222 47% 11%;
   --sidebar-foreground: 210 20% 98%;
   --sidebar-border: 222 40% 18%;
-  --sidebar-primary: 142 71% 45%;
+  --sidebar-primary: 24 91% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 222 40% 18%;
   --sidebar-accent-foreground: 210 20% 98%;
-  --sidebar-ring: 142 71% 45%;
+  --sidebar-ring: 24 91% 53%;
 
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --popover-border: 214 20% 89%;
 
-  --primary: 142 71% 45%;
+  --primary: 24 91% 53%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 210 20% 96%;
@@ -51,7 +51,7 @@
   --destructive-foreground: 0 0% 100%;
 
   --input: 214 20% 89%;
-  --ring: 142 71% 45%;
+  --ring: 24 91% 53%;
   
   /* Chart colors for pace visualization */
   --chart-1: 142 71% 45%;
@@ -113,17 +113,17 @@
   --sidebar: 222 47% 4%;
   --sidebar-foreground: 210 20% 98%;
   --sidebar-border: 222 40% 12%;
-  --sidebar-primary: 142 71% 45%;
+  --sidebar-primary: 24 91% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 222 40% 12%;
   --sidebar-accent-foreground: 210 20% 98%;
-  --sidebar-ring: 142 71% 45%;
+  --sidebar-ring: 24 91% 53%;
 
   --popover: 222 47% 9%;
   --popover-foreground: 210 20% 98%;
   --popover-border: 222 40% 18%;
 
-  --primary: 142 71% 45%;
+  --primary: 24 91% 53%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 222 40% 15%;
@@ -139,7 +139,7 @@
   --destructive-foreground: 0 0% 100%;
 
   --input: 222 40% 20%;
-  --ring: 142 71% 45%;
+  --ring: 24 91% 53%;
   
   --chart-1: 142 71% 45%;
   --chart-2: 221 83% 53%;
