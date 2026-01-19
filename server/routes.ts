@@ -6,11 +6,39 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // Get leaderboard data
+  app.get("/api/leaderboard", async (req, res) => {
+    try {
+      const leaderboard = await storage.getLeaderboard();
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      res.status(500).json({ error: "Failed to fetch leaderboard data" });
+    }
+  });
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Get pace data for a specific restaurant or all restaurants
+  app.get("/api/pace/:restaurantId", async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const paceData = await storage.getPaceData(restaurantId);
+      res.json(paceData);
+    } catch (error) {
+      console.error("Error fetching pace data:", error);
+      res.status(500).json({ error: "Failed to fetch pace data" });
+    }
+  });
+
+  // Get all restaurants
+  app.get("/api/restaurants", async (req, res) => {
+    try {
+      const restaurants = await storage.getRestaurants();
+      res.json(restaurants);
+    } catch (error) {
+      console.error("Error fetching restaurants:", error);
+      res.status(500).json({ error: "Failed to fetch restaurants" });
+    }
+  });
 
   return httpServer;
 }
