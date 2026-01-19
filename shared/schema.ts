@@ -38,6 +38,26 @@ export const insertDailySalesSchema = createInsertSchema(dailySales).omit({
 export type InsertDailySales = z.infer<typeof insertDailySalesSchema>;
 export type DailySales = typeof dailySales.$inferSelect;
 
+// Hourly sales data for timezone-normalized comparisons
+export const hourlySales = pgTable("hourly_sales", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  salesDate: timestamp("sales_date").notNull(),
+  hour: integer("hour").notNull(), // 0-23
+  actualSales: decimal("actual_sales", { precision: 10, scale: 2 }).notNull(),
+  projectedSales: decimal("projected_sales", { precision: 10, scale: 2 }),
+  pastActualSales: decimal("past_actual_sales", { precision: 10, scale: 2 }), // Last week same hour
+  scrapedAt: timestamp("scraped_at").defaultNow(),
+});
+
+export const insertHourlySalesSchema = createInsertSchema(hourlySales).omit({
+  id: true,
+  scrapedAt: true,
+});
+
+export type InsertHourlySales = z.infer<typeof insertHourlySalesSchema>;
+export type HourlySales = typeof hourlySales.$inferSelect;
+
 // Scraper run log for tracking automation
 export const scraperRuns = pgTable("scraper_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

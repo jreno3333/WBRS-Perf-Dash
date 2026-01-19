@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { restaurants, dailySales, scraperRuns } from '@shared/schema';
+import { restaurants, dailySales, hourlySales, scraperRuns } from '@shared/schema';
 import { eq, and, gte, lt } from 'drizzle-orm';
 
 interface SevenShiftsLocation {
@@ -18,6 +18,30 @@ interface SevenShiftsSalesData {
   projected_labor_cost: number;
   sales_per_labor_hour: number;
   labor_percent: number;
+}
+
+interface HourlyInterval {
+  day: string;
+  start: string;
+  end: string;
+  actual_sales: number;
+  projected_sales: number;
+  past_actual_sales: number;
+  past_projected_sales: number;
+  actual_labor: number;
+  projected_labor: number;
+}
+
+interface DailyStatsResponse {
+  data: {
+    summary: {
+      current_actual_sales: number;
+      current_projected_sales: number;
+      past_actual_sales: number;
+      past_projected_sales: number;
+    };
+    intervals: HourlyInterval[];
+  };
 }
 
 interface ApiConfig {
@@ -96,6 +120,22 @@ export class SevenShiftsAPI {
       return response.data || [];
     } catch (error) {
       console.error(`Error fetching sales for location ${locationId}:`, error);
+      return [];
+    }
+  }
+
+  async getHourlySales(locationId: number, date: string): Promise<HourlyInterval[]> {
+    if (!this.companyId) {
+      await this.getCompany();
+    }
+
+    try {
+      const response = await this.request<DailyStatsResponse>(
+        `/v2/company/${this.companyId}/location/${locationId}/daily_stats?date=${date}`
+      );
+      return response.data?.intervals || [];
+    } catch (error) {
+      console.error(`Error fetching hourly sales for location ${locationId}:`, error);
       return [];
     }
   }
@@ -269,4 +309,80 @@ export async function fetchHistoricalSales(days: number = 7): Promise<void> {
   }
   
   console.log('Historical data fetch complete');
+}
+
+export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: boolean; recordsScraped: number; error?: string }> {
+  const accessToken = process.env.SEVENSHIFTS_API_TOKEN;
+  
+  if (!accessToken) {
+    return {
+      success: false,
+      recordsScraped: 0,
+      error: 'SEVENSHIFTS_API_TOKEN not configured',
+    };
+  }
+
+  try {
+    const api = new SevenShiftsAPI({ accessToken });
+    await api.getCompany();
+    
+    const locations = await api.getLocations();
+    const targetDate = date || new Date();
+    const dateStr = targetDate.toISOString().split('T')[0];
+    
+    let recordsScraped = 0;
+    
+    for (const location of locations) {
+      const restaurant = await db.query.restaurants.findFirst({
+        where: eq(restaurants.name, location.name),
+      });
+      
+      if (!restaurant) {
+        console.log(`Restaurant not found for location: ${location.name}`);
+        continue;
+      }
+      
+      const intervals = await api.getHourlySales(location.id, dateStr);
+      
+      if (intervals.length > 0) {
+        const startOfDay = new Date(targetDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(targetDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        await db.delete(hourlySales)
+          .where(and(
+            eq(hourlySales.restaurantId, restaurant.id),
+            gte(hourlySales.salesDate, startOfDay),
+            lt(hourlySales.salesDate, endOfDay)
+          ));
+        
+        for (const interval of intervals) {
+          const hourMatch = interval.start.match(/T(\d{2}):/);
+          const hour = hourMatch ? parseInt(hourMatch[1]) : 0;
+          
+          await db.insert(hourlySales).values({
+            restaurantId: restaurant.id,
+            salesDate: targetDate,
+            hour,
+            actualSales: (interval.actual_sales / 100).toFixed(2),
+            projectedSales: (interval.projected_sales / 100).toFixed(2),
+            pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
+          });
+          
+          recordsScraped++;
+        }
+        
+        console.log(`Saved ${intervals.length} hourly records for ${location.name}`);
+      }
+    }
+    
+    console.log(`Hourly sync completed. ${recordsScraped} records saved.`);
+    return { success: true, recordsScraped };
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Hourly sync failed:', errorMessage);
+    return { success: false, recordsScraped: 0, error: errorMessage };
+  }
 }
