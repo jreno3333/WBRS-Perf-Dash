@@ -30,7 +30,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    refetchInterval: isToday ? 15 * 60 * 1000 : false, // Only auto-refresh for today
+    refetchInterval: isToday ? 15 * 60 * 1000 : false,
   });
 
   const { data: paceData } = useQuery<HourlySalesData[]>({
@@ -41,6 +41,15 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: !!selectedRestaurant,
+  });
+
+  const { data: hourlyByRestaurant } = useQuery<Record<string, HourlySalesData[]>>({
+    queryKey: ["/api/hourly-by-restaurant", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/hourly-by-restaurant?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
   });
 
   useEffect(() => {
@@ -224,7 +233,8 @@ export default function Dashboard() {
                   {leaderboardData.restaurants.map((restaurant) => (
                     <LeaderboardCard 
                       key={restaurant.restaurantId} 
-                      restaurant={restaurant} 
+                      restaurant={restaurant}
+                      hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
                     />
                   ))}
                 </div>

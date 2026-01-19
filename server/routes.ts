@@ -48,6 +48,19 @@ export async function registerRoutes(
     }
   });
 
+  // Get hourly data for all restaurants (for bar charts)
+  app.get("/api/hourly-by-restaurant", async (req, res) => {
+    try {
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const hourlyData = await storage.getHourlyDataByRestaurant(targetDate);
+      res.json(hourlyData);
+    } catch (error) {
+      console.error("Error fetching hourly data by restaurant:", error);
+      res.status(500).json({ error: "Failed to fetch hourly data" });
+    }
+  });
+
   // Trigger manual API sync
   app.post("/api/scraper/run", async (req, res) => {
     try {

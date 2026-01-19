@@ -247,6 +247,71 @@ export class DatabaseStorage implements IStorage {
     
     return hourlyData;
   }
+
+  async getHourlyDataByRestaurant(targetDate: Date = new Date()): Promise<Record<string, HourlySalesData[]>> {
+    const now = new Date();
+    const selectedDate = new Date(targetDate);
+    const lastWeek = new Date(selectedDate);
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    
+    const selectedDateStr = selectedDate.toISOString().split('T')[0];
+    const lastWeekStr = lastWeek.toISOString().split('T')[0];
+    const todayStr = now.toISOString().split('T')[0];
+    
+    const isToday = selectedDateStr === todayStr;
+    
+    const restaurantList = await this.getRestaurants();
+    const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
+    
+    const allHourlySales = await db.select().from(hourlySales);
+    
+    const selectedDateHourly = allHourlySales.filter(s => {
+      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      return saleDate === selectedDateStr;
+    });
+    
+    const lastWeekHourly = allHourlySales.filter(s => {
+      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      return saleDate === lastWeekStr;
+    });
+    
+    const result: Record<string, HourlySalesData[]> = {};
+    
+    for (const restaurant of restaurantList) {
+      const hourlyData: HourlySalesData[] = [];
+      
+      const restaurantSelectedHourly = selectedDateHourly.filter(s => s.restaurantId === restaurant.id);
+      const restaurantLastWeekHourly = lastWeekHourly.filter(s => s.restaurantId === restaurant.id);
+      
+      const selectedByHour: Map<number, number> = new Map();
+      const lastWeekByHour: Map<number, number> = new Map();
+      
+      restaurantSelectedHourly.forEach(s => {
+        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      });
+      restaurantLastWeekHourly.forEach(s => {
+        lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      });
+      
+      for (let hour = 0; hour <= normalizedHourCutoff; hour++) {
+        const todaySales = Math.round(selectedByHour.get(hour) || 0);
+        const lastWeekSales = Math.round(lastWeekByHour.get(hour) || 0);
+        
+        if (todaySales > 0 || lastWeekSales > 0) {
+          hourlyData.push({
+            hour,
+            todaySales,
+            lastWeekSales,
+            label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
+          });
+        }
+      }
+      
+      result[restaurant.id] = hourlyData;
+    }
+    
+    return result;
+  }
 }
 
 export const storage = new DatabaseStorage();
