@@ -98,20 +98,29 @@ async function runScheduledSync() {
 
 async function checkAndSeedHistoricalData() {
   try {
-    // Check if database has any daily sales data
-    const dailyResult = await db.select({ count: sql<number>`count(*)` }).from(dailySales);
-    const dailyCount = Number(dailyResult[0]?.count || 0);
+    // Get date from 7 days ago to check for historical data
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const historyDateStr = sevenDaysAgo.toISOString().split('T')[0];
     
-    // Check if database has any hourly sales data
-    const hourlyResult = await db.select({ count: sql<number>`count(*)` }).from(hourlySales);
-    const hourlyCount = Number(hourlyResult[0]?.count || 0);
+    // Check if we have historical daily data (from 7+ days ago)
+    const dailyHistoricalResult = await db.select({ count: sql<number>`count(*)` })
+      .from(dailySales)
+      .where(sql`${dailySales.salesDate} <= ${historyDateStr}`);
+    const dailyHistoricalCount = Number(dailyHistoricalResult[0]?.count || 0);
     
-    const needsDailySeeding = dailyCount === 0;
-    const needsHourlySeeding = hourlyCount === 0;
+    // Check if we have historical hourly data (from 7+ days ago)
+    const hourlyHistoricalResult = await db.select({ count: sql<number>`count(*)` })
+      .from(hourlySales)
+      .where(sql`${hourlySales.salesDate} <= ${historyDateStr}`);
+    const hourlyHistoricalCount = Number(hourlyHistoricalResult[0]?.count || 0);
+    
+    const needsDailySeeding = dailyHistoricalCount === 0;
+    const needsHourlySeeding = hourlyHistoricalCount === 0;
+    
+    log(`Database check: ${dailyHistoricalCount} historical daily, ${hourlyHistoricalCount} historical hourly records (before ${historyDateStr})`);
     
     if (needsDailySeeding || needsHourlySeeding) {
-      log(`Database check: ${dailyCount} daily records, ${hourlyCount} hourly records`);
-      
       // Pause scheduler during historical sync
       pauseScheduler();
       
@@ -135,7 +144,7 @@ async function checkAndSeedHistoricalData() {
         resumeScheduler();
       }
     } else {
-      log(`Database has ${dailyCount} daily and ${hourlyCount} hourly records - skipping historical seed`);
+      log("Historical data already present - skipping seed");
     }
   } catch (error) {
     log(`Error checking database: ${error instanceof Error ? error.message : 'Unknown error'}`);
