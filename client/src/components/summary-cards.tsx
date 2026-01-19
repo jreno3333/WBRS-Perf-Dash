@@ -24,8 +24,9 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
     ? restaurants.reduce((sum, r) => sum + r.pacePercentage, 0) / restaurants.length 
     : 0;
   
+  // Calculate how much ahead/behind vs last week (lastWeekSales is already normalized to same hour)
   const overallVariance = totalLastWeekSales > 0 
-    ? ((totalTodaySales / (totalLastWeekSales * (avgPacePercentage / 100))) - 1) * 100 
+    ? ((totalTodaySales / totalLastWeekSales) - 1) * 100 
     : 0;
 
   const cards = [

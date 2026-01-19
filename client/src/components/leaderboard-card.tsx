@@ -28,7 +28,10 @@ export function LeaderboardCard({ restaurant }: LeaderboardCardProps) {
     return tz.split("/").pop()?.substring(0, 2) || "??";
   };
 
-  const paceVariance = ((restaurant.todaySales / Math.max(restaurant.lastWeekSales * (restaurant.pacePercentage / 100), 1)) - 1) * 100;
+  // Calculate how much ahead/behind vs last week at same hour (lastWeekSales is already normalized)
+  const paceVariance = restaurant.lastWeekSales > 0 
+    ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
+    : 0;
 
   return (
     <Card 
