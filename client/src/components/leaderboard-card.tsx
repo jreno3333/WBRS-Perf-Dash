@@ -33,7 +33,33 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
     : 0;
 
-  const activeHours = hourlyData?.filter(h => h.todaySales > 0 || h.lastWeekSales > 0 || h.forecastSales > 0) || [];
+  // Combine 5am and 6am into "Early Bird" and filter out hours 0-4
+  const processedHours = (hourlyData || []).reduce((acc: HourlySalesData[], item) => {
+    // Skip hours 0-4 (no sales)
+    if (item.hour < 5) return acc;
+    
+    // Combine 5am and 6am into "Early Bird"
+    if (item.hour === 5) {
+      const hour6 = hourlyData?.find(d => d.hour === 6);
+      acc.push({
+        hour: 5,
+        label: "Early Bird",
+        todaySales: item.todaySales + (hour6?.todaySales || 0),
+        lastWeekSales: item.lastWeekSales + (hour6?.lastWeekSales || 0),
+        forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
+      });
+      return acc;
+    }
+    
+    // Skip 6am since it's combined with 5am
+    if (item.hour === 6) return acc;
+    
+    // Keep all other hours as-is
+    acc.push(item);
+    return acc;
+  }, []);
+
+  const activeHours = processedHours.filter(h => h.todaySales > 0 || h.lastWeekSales > 0 || h.forecastSales > 0);
   const maxSales = Math.max(
     ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
     1
