@@ -1,6 +1,6 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales } from "./scraper/7shifts-api";
 import { db } from "./db";
-import { dailySales } from "@shared/schema";
+import { dailySales, hourlySales } from "@shared/schema";
 import { sql } from "drizzle-orm";
 
 // Set to true to pause scheduled syncs (for historical data loading)
@@ -98,26 +98,35 @@ async function runScheduledSync() {
 
 async function checkAndSeedHistoricalData() {
   try {
-    // Check if database has any sales data
-    const result = await db.select({ count: sql<number>`count(*)` }).from(dailySales);
-    const recordCount = Number(result[0]?.count || 0);
+    // Check if database has any daily sales data
+    const dailyResult = await db.select({ count: sql<number>`count(*)` }).from(dailySales);
+    const dailyCount = Number(dailyResult[0]?.count || 0);
     
-    if (recordCount === 0) {
-      log("Database is empty - seeding historical data (8 days)...");
+    // Check if database has any hourly sales data
+    const hourlyResult = await db.select({ count: sql<number>`count(*)` }).from(hourlySales);
+    const hourlyCount = Number(hourlyResult[0]?.count || 0);
+    
+    const needsDailySeeding = dailyCount === 0;
+    const needsHourlySeeding = hourlyCount === 0;
+    
+    if (needsDailySeeding || needsHourlySeeding) {
+      log(`Database check: ${dailyCount} daily records, ${hourlyCount} hourly records`);
       
       // Pause scheduler during historical sync
       pauseScheduler();
       
       try {
-        // Fetch 8 days of historical daily sales
-        log("Fetching historical daily sales...");
-        await fetchHistoricalSales(8);
-        log("Historical daily sales loaded");
+        if (needsDailySeeding) {
+          log("Fetching historical daily sales (8 days)...");
+          await fetchHistoricalSales(8);
+          log("Historical daily sales loaded");
+        }
         
-        // Fetch 8 days of historical hourly data
-        log("Fetching historical hourly sales...");
-        await fetchHistoricalHourlySales(8);
-        log("Historical hourly sales loaded");
+        if (needsHourlySeeding) {
+          log("Fetching historical hourly sales (8 days)...");
+          await fetchHistoricalHourlySales(8);
+          log("Historical hourly sales loaded");
+        }
         
         log("Historical data seeding complete!");
       } catch (seedError) {
@@ -126,7 +135,7 @@ async function checkAndSeedHistoricalData() {
         resumeScheduler();
       }
     } else {
-      log(`Database has ${recordCount} existing records - skipping historical seed`);
+      log(`Database has ${dailyCount} daily and ${hourlyCount} hourly records - skipping historical seed`);
     }
   } catch (error) {
     log(`Error checking database: ${error instanceof Error ? error.message : 'Unknown error'}`);
