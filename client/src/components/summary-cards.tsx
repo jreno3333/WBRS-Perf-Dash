@@ -34,76 +34,83 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
     : 0;
   const fcDollarDiff = totalTodaySales - totalForecastSales;
 
-  const cards = [
-    {
-      title: "vs Last Week",
-      value: `${lwVariance >= 0 ? "+" : ""}${lwVariance.toFixed(1)}%`,
-      subValue: `${lwDollarDiff >= 0 ? "+" : ""}${formatCurrency(lwDollarDiff)}`,
-      description: `Today ${formatCurrency(totalTodaySales)} vs LW ${formatCurrency(totalLastWeekSales)}`,
-      icon: TrendingUp,
-      iconColor: lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
-      bgColor: lwVariance >= 0 ? "bg-green-100 dark:bg-green-900/30" : "bg-red-100 dark:bg-red-900/30",
-    },
-    {
-      title: "vs Forecast",
-      value: `${fcVariance >= 0 ? "+" : ""}${fcVariance.toFixed(1)}%`,
-      subValue: `${fcDollarDiff >= 0 ? "+" : ""}${formatCurrency(fcDollarDiff)}`,
-      description: `Today ${formatCurrency(totalTodaySales)} vs FC ${formatCurrency(totalForecastSales)}`,
-      icon: TrendingUp,
-      iconColor: fcVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
-      bgColor: fcVariance >= 0 ? "bg-green-100 dark:bg-green-900/30" : "bg-red-100 dark:bg-red-900/30",
-    },
-    {
-      title: "Restaurants Ahead",
-      value: `${aheadOfPaceCount}/${restaurants.length}`,
-      subValue: null,
-      description: `${restaurants.length - aheadOfPaceCount} behind pace`,
-      icon: Store,
-      iconColor: "text-blue-600 dark:text-blue-400",
-      bgColor: "bg-blue-100 dark:bg-blue-900/30",
-    },
-    {
-      title: "Last Updated",
-      value: lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--",
-      subValue: null,
-      description: "Refreshes every 5 min",
-      icon: Clock,
-      iconColor: "text-purple-600 dark:text-purple-400",
-      bgColor: "bg-purple-100 dark:bg-purple-900/30",
-    },
-  ];
+  // Count stores ahead of last week (vs forecast comparison)
+  const aheadOfForecastCount = restaurants.filter((r) => r.todaySales >= r.forecastSales).length;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map((card, index) => (
-        <Card key={index} data-testid={`card-summary-${index}`}>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-lg ${card.bgColor}`}>
-                <card.icon className={`w-5 h-5 ${card.iconColor}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-muted-foreground truncate">
-                  {card.title}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Total Sales with vs LW and vs FC */}
+      <Card data-testid="card-summary-sales">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg bg-orange-100 dark:bg-orange-900/30">
+              <DollarSign className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-muted-foreground">Total Sales Today</p>
+              <p className="text-xl font-bold" data-testid="text-total-sales">
+                {formatCurrency(totalTodaySales)}
+              </p>
+              <div className="mt-1 space-y-0.5">
+                <p className={`text-xs font-medium ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                  vs LW: {lwVariance >= 0 ? "+" : ""}{lwVariance.toFixed(1)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
                 </p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-xl font-bold truncate" data-testid={`text-summary-value-${index}`}>
-                    {card.value}
-                  </p>
-                  {card.subValue && (
-                    <p className="text-sm font-medium text-muted-foreground truncate">
-                      ({card.subValue})
-                    </p>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground truncate">
-                  {card.description}
+                <p className={`text-xs font-medium ${fcVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                  vs FC: {fcVariance >= 0 ? "+" : ""}{fcVariance.toFixed(1)}% ({fcDollarDiff >= 0 ? "+" : ""}{formatCurrency(fcDollarDiff)})
                 </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Restaurants Ahead */}
+      <Card data-testid="card-summary-ahead">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+              <Store className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-muted-foreground">Stores Performance</p>
+              <div className="mt-1 space-y-0.5">
+                <p className="text-sm">
+                  <span className="font-bold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
+                  <span className="text-muted-foreground"> ahead of last week</span>
+                </p>
+                <p className="text-sm">
+                  <span className="font-bold text-red-600 dark:text-red-400">{restaurants.length - aheadOfPaceCount}</span>
+                  <span className="text-muted-foreground"> behind last week</span>
+                </p>
+                <p className="text-sm">
+                  <span className="font-bold text-green-600 dark:text-green-400">{aheadOfForecastCount}</span>
+                  <span className="text-muted-foreground"> ahead of forecast</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Last Updated */}
+      <Card data-testid="card-summary-updated">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+              <Clock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-muted-foreground">Last Updated</p>
+              <p className="text-xl font-bold" data-testid="text-last-updated">
+                {lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Refreshes every 5 min
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
