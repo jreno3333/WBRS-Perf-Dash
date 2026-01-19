@@ -57,7 +57,7 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
     {
       title: "Last Updated",
       value: lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--",
-      description: "Refreshes every 15 min",
+      description: "Refreshes every 5 min",
       icon: Clock,
       iconColor: "text-purple-600 dark:text-purple-400",
       bgColor: "bg-purple-100 dark:bg-purple-900/30",

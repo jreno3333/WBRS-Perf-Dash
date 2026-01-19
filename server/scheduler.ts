@@ -31,7 +31,7 @@ function getNextSyncTime(): Date {
   const now = new Date();
   const currentMinute = now.getMinutes();
   
-  const syncMinutes = [2, 10, 18, 26, 34, 42, 50, 58];
+  const syncMinutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
   
   let nextMinute = syncMinutes.find(m => m > currentMinute);
   
@@ -94,7 +94,7 @@ async function runScheduledSync() {
 }
 
 export function startScheduler() {
-  log("Sales sync scheduler started - syncing every 8 minutes at :02, :10, :18, :26, :34, :42, :50, :58");
+  log("Sales sync scheduler started - syncing every 5 minutes");
   
   scheduleNextSync();
   
