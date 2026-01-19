@@ -98,42 +98,38 @@ async function runScheduledSync() {
 
 async function checkAndSeedHistoricalData() {
   try {
-    // Check total data counts to detect incomplete seeding
-    const dailyTotalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(dailySales);
-    const dailyTotalCount = Number(dailyTotalResult[0]?.count || 0);
+    // Check if we have data for exactly 7 days ago (critical for week-over-week comparisons)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStart = new Date(sevenDaysAgo);
+    sevenDaysAgoStart.setHours(0, 0, 0, 0);
+    const sevenDaysAgoEnd = new Date(sevenDaysAgo);
+    sevenDaysAgoEnd.setHours(23, 59, 59, 999);
     
-    const hourlyTotalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(hourlySales);
-    const hourlyTotalCount = Number(hourlyTotalResult[0]?.count || 0);
+    // Check hourly data for 7 days ago specifically
+    const lastWeekHourlyResult = await db.select({ count: sql<number>`count(*)` })
+      .from(hourlySales)
+      .where(sql`${hourlySales.salesDate} >= ${sevenDaysAgoStart} AND ${hourlySales.salesDate} <= ${sevenDaysAgoEnd}`);
+    const lastWeekHourlyCount = Number(lastWeekHourlyResult[0]?.count || 0);
     
-    // Expected minimums for 8 days of historical data:
-    // Daily: 8 days × 22 restaurants = 176 rows
-    // Hourly: 8 days × 22 restaurants × ~17 hours = ~3000 rows (use 2800 as threshold)
-    const expectedDailyMin = 150; // Allow some buffer for missing data
-    const expectedHourlyMin = 2800; // 8 days × 22 restaurants × ~16 hours minimum
+    // We need at least some data for 7 days ago (22 restaurants × ~17 hours = ~374 rows expected)
+    const expectedLastWeekMin = 300;
+    const needsHourlySeeding = lastWeekHourlyCount < expectedLastWeekMin;
     
-    const needsDailySeeding = dailyTotalCount < expectedDailyMin;
-    const needsHourlySeeding = hourlyTotalCount < expectedHourlyMin;
+    log(`Database check: ${lastWeekHourlyCount} hourly records for ${sevenDaysAgoStart.toISOString().split('T')[0]} (need ${expectedLastWeekMin}+ for week-over-week)`);
     
-    log(`Database check: ${dailyTotalCount} total daily, ${hourlyTotalCount} total hourly records (need: ${expectedDailyMin}+ daily, ${expectedHourlyMin}+ hourly)`);
-    
-    if (needsDailySeeding || needsHourlySeeding) {
+    if (needsHourlySeeding) {
       // Pause scheduler during historical sync
       pauseScheduler();
       
       try {
-        if (needsDailySeeding) {
-          log("Fetching historical daily sales (8 days)...");
-          await fetchHistoricalSales(8);
-          log("Historical daily sales loaded");
-        }
+        log("Fetching historical daily sales (8 days)...");
+        await fetchHistoricalSales(8);
+        log("Historical daily sales loaded");
         
-        if (needsHourlySeeding) {
-          log("Fetching historical hourly sales (8 days)...");
-          await fetchHistoricalHourlySales(8);
-          log("Historical hourly sales loaded");
-        }
+        log("Fetching historical hourly sales (8 days)...");
+        await fetchHistoricalHourlySales(8);
+        log("Historical hourly sales loaded");
         
         log("Historical data seeding complete!");
       } catch (seedError) {
