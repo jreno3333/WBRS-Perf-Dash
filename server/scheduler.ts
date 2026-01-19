@@ -1,7 +1,7 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales } from "./scraper/7shifts-api";
 import { db } from "./db";
 import { dailySales, hourlySales } from "@shared/schema";
-import { sql, lt } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 // Set to true to pause scheduled syncs (for historical data loading)
 let schedulerPaused = false; // Historical data loaded - scheduler active
@@ -98,27 +98,25 @@ async function runScheduledSync() {
 
 async function checkAndSeedHistoricalData() {
   try {
-    // Get date from 7 days ago to check for historical data
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    sevenDaysAgo.setHours(23, 59, 59, 999); // End of that day
+    // Check total data counts to detect incomplete seeding
+    const dailyTotalResult = await db.select({ count: sql<number>`count(*)` })
+      .from(dailySales);
+    const dailyTotalCount = Number(dailyTotalResult[0]?.count || 0);
     
-    // Check if we have historical daily data (from 7+ days ago)
-    const dailyHistoricalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(dailySales)
-      .where(lt(dailySales.salesDate, sevenDaysAgo));
-    const dailyHistoricalCount = Number(dailyHistoricalResult[0]?.count || 0);
+    const hourlyTotalResult = await db.select({ count: sql<number>`count(*)` })
+      .from(hourlySales);
+    const hourlyTotalCount = Number(hourlyTotalResult[0]?.count || 0);
     
-    // Check if we have historical hourly data (from 7+ days ago)
-    const hourlyHistoricalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(hourlySales)
-      .where(lt(hourlySales.salesDate, sevenDaysAgo));
-    const hourlyHistoricalCount = Number(hourlyHistoricalResult[0]?.count || 0);
+    // Expected minimums for 8 days of historical data:
+    // Daily: 8 days × 22 restaurants = 176 rows
+    // Hourly: 8 days × 22 restaurants × ~17 hours = ~3000 rows (use 2800 as threshold)
+    const expectedDailyMin = 150; // Allow some buffer for missing data
+    const expectedHourlyMin = 2800; // 8 days × 22 restaurants × ~16 hours minimum
     
-    const needsDailySeeding = dailyHistoricalCount === 0;
-    const needsHourlySeeding = hourlyHistoricalCount === 0;
+    const needsDailySeeding = dailyTotalCount < expectedDailyMin;
+    const needsHourlySeeding = hourlyTotalCount < expectedHourlyMin;
     
-    log(`Database check: ${dailyHistoricalCount} historical daily, ${hourlyHistoricalCount} historical hourly records (before ${sevenDaysAgo.toISOString().split('T')[0]})`);
+    log(`Database check: ${dailyTotalCount} total daily, ${hourlyTotalCount} total hourly records (need: ${expectedDailyMin}+ daily, ${expectedHourlyMin}+ hourly)`);
     
     if (needsDailySeeding || needsHourlySeeding) {
       // Pause scheduler during historical sync
