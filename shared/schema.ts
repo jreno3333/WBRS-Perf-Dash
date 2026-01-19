@@ -82,6 +82,7 @@ export interface RestaurantSales {
   timezone: string;
   todaySales: number;
   lastWeekSales: number;
+  forecastSales: number;
   pacePercentage: number; // How far through the day they are vs last week
   isAheadOfPace: boolean;
   rank: number;
@@ -92,6 +93,7 @@ export interface HourlySalesData {
   hour: number;
   todaySales: number;
   lastWeekSales: number;
+  forecastSales: number;
   label: string;
 }
 

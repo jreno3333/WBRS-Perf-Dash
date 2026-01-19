@@ -130,6 +130,9 @@ export class DatabaseStorage implements IStorage {
       const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
+      const forecastSalesAmount = selectedDateRestaurantHours.reduce(
+        (sum, s) => sum + parseFloat(s.projectedSales || '0'), 0
+      );
       
       // Handle -1 case: when no hours are completed, pace is 0%
       const completedHours = Math.max(0, normalizedHourCutoff + 1);
@@ -142,6 +145,7 @@ export class DatabaseStorage implements IStorage {
         timezone: restaurant.timezone,
         todaySales: selectedDateSalesAmount,
         lastWeekSales: lastWeekSalesAmount,
+        forecastSales: forecastSalesAmount,
         pacePercentage,
         isAheadOfPace,
         rank: 0,
@@ -191,16 +195,20 @@ export class DatabaseStorage implements IStorage {
     
     const selectedByHour: Map<number, number> = new Map();
     const lastWeekByHour: Map<number, number> = new Map();
+    const forecastByHour: Map<number, number> = new Map();
     
     for (let h = 0; h < 24; h++) {
       selectedByHour.set(h, 0);
       lastWeekByHour.set(h, 0);
+      forecastByHour.set(h, 0);
     }
     
     if (restaurantId === "all") {
       selectedDateHourly.forEach(s => {
         const current = selectedByHour.get(s.hour) || 0;
         selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+        const currentForecast = forecastByHour.get(s.hour) || 0;
+        forecastByHour.set(s.hour, currentForecast + parseFloat(s.projectedSales || '0'));
       });
       lastWeekHourly.forEach(s => {
         const current = lastWeekByHour.get(s.hour) || 0;
@@ -209,6 +217,7 @@ export class DatabaseStorage implements IStorage {
     } else {
       selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+        forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
       });
       lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
@@ -217,6 +226,7 @@ export class DatabaseStorage implements IStorage {
     
     let cumulativeSelected = 0;
     let cumulativeLastWeek = 0;
+    let cumulativeForecast = 0;
     
     for (let hour = 0; hour < 24; hour++) {
       // Only accumulate if this hour is completed (hour <= cutoff)
@@ -224,23 +234,29 @@ export class DatabaseStorage implements IStorage {
       if (hour <= normalizedHourCutoff) {
         cumulativeSelected += selectedByHour.get(hour) || 0;
         cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
+        cumulativeForecast += forecastByHour.get(hour) || 0;
       }
       
-      // Show cumulative up to the cutoff, then full last week for reference
+      // Show cumulative up to the cutoff, then full last week/forecast for reference
       const showCumulativeSelected = hour <= normalizedHourCutoff ? Math.round(cumulativeSelected) : 0;
       const showCumulativeLastWeek = hour <= normalizedHourCutoff 
         ? Math.round(cumulativeLastWeek) 
         : Math.round(cumulativeLastWeek + (lastWeekByHour.get(hour) || 0));
+      const showCumulativeForecast = hour <= normalizedHourCutoff 
+        ? Math.round(cumulativeForecast) 
+        : Math.round(cumulativeForecast + (forecastByHour.get(hour) || 0));
       
-      // Keep accumulating last week for future hours (reference line)
+      // Keep accumulating last week and forecast for future hours (reference line)
       if (hour > normalizedHourCutoff) {
         cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
+        cumulativeForecast += forecastByHour.get(hour) || 0;
       }
       
       hourlyData.push({
         hour,
         todaySales: showCumulativeSelected,
         lastWeekSales: showCumulativeLastWeek,
+        forecastSales: showCumulativeForecast,
         label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
       });
     }
@@ -285,9 +301,11 @@ export class DatabaseStorage implements IStorage {
       
       const selectedByHour: Map<number, number> = new Map();
       const lastWeekByHour: Map<number, number> = new Map();
+      const forecastByHour: Map<number, number> = new Map();
       
       restaurantSelectedHourly.forEach(s => {
         selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+        forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
       });
       restaurantLastWeekHourly.forEach(s => {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
@@ -296,12 +314,14 @@ export class DatabaseStorage implements IStorage {
       for (let hour = 0; hour <= normalizedHourCutoff; hour++) {
         const todaySales = Math.round(selectedByHour.get(hour) || 0);
         const lastWeekSales = Math.round(lastWeekByHour.get(hour) || 0);
+        const forecastSales = Math.round(forecastByHour.get(hour) || 0);
         
-        if (todaySales > 0 || lastWeekSales > 0) {
+        if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0) {
           hourlyData.push({
             hour,
             todaySales,
             lastWeekSales,
+            forecastSales,
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
           });
         }

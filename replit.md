@@ -57,7 +57,7 @@ API Routes:
 Database Tables:
 - `restaurants` - 22 store locations with name, timezone (America/Chicago or America/New_York), and active status
 - `daily_sales` - Daily sales snapshots with total sales, vs projected, and labor percent
-- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales)
+- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales, projectedSales)
 - `scraper_runs` - Sync job tracking with status and record counts
 
 ### Timezone-Fair Comparison
@@ -72,7 +72,7 @@ The leaderboard uses a normalized hour cutoff to ensure fair comparisons between
 The `shared/` directory contains TypeScript types and schemas used by both frontend and backend:
 - Database table definitions (Drizzle schemas)
 - Insert/select types derived from schemas
-- API response interfaces (RestaurantSales, HourlySalesData, LeaderboardData)
+- API response interfaces (RestaurantSales with forecastSales, HourlySalesData with forecastSales, LeaderboardData)
 
 ### Build System
 - **Development**: `tsx` for TypeScript execution, Vite dev server with HMR

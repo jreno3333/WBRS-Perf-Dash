@@ -33,9 +33,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
     : 0;
 
-  const activeHours = hourlyData?.filter(h => h.todaySales > 0 || h.lastWeekSales > 0) || [];
+  const activeHours = hourlyData?.filter(h => h.todaySales > 0 || h.lastWeekSales > 0 || h.forecastSales > 0) || [];
   const maxSales = Math.max(
-    ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales)),
+    ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
     1
   );
 
@@ -76,13 +76,16 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 {getTimezoneLabel(restaurant.timezone)}
               </Badge>
             </div>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" />
                 Hour {restaurant.normalizedHour}
               </span>
               <span className="text-xs">
-                Last week: {formatCurrency(restaurant.lastWeekSales)}
+                Last wk: {formatCurrency(restaurant.lastWeekSales)}
+              </span>
+              <span className="text-xs">
+                Forecast: {formatCurrency(restaurant.forecastSales)}
               </span>
             </div>
           </div>
@@ -154,10 +157,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                       <div className="font-medium">{hour.label}</div>
-                      <div className="text-green-600 dark:text-green-400">Today: ${hour.todaySales.toLocaleString()}</div>
-                      <div className="text-muted-foreground">Last wk: ${hour.lastWeekSales.toLocaleString()}</div>
+                      <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
+                      <div className="text-blue-600 dark:text-blue-400">Last wk: ${hour.lastWeekSales.toLocaleString()}</div>
+                      <div className="text-green-600 dark:text-green-400">Forecast: ${hour.forecastSales.toLocaleString()}</div>
                     </div>
                   </div>
                 );

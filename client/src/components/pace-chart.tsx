@@ -68,12 +68,16 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
             >
               <defs>
                 <linearGradient id="todayGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0} />
+                  <stop offset="5%" stopColor="hsl(24, 91%, 53%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(24, 91%, 53%)" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="lastWeekGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0.2} />
                   <stop offset="95%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="forecastGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid 
@@ -107,6 +111,15 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
               />
               <Area
                 type="monotone"
+                dataKey="forecastSales"
+                name="Forecast"
+                stroke="hsl(142, 71%, 45%)"
+                strokeWidth={2}
+                fill="url(#forecastGradient)"
+                strokeDasharray="3 3"
+              />
+              <Area
+                type="monotone"
                 dataKey="lastWeekSales"
                 name="Last Week"
                 stroke="hsl(221, 83%, 53%)"
@@ -118,7 +131,7 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
                 type="monotone"
                 dataKey="todaySales"
                 name="Today"
-                stroke="hsl(142, 71%, 45%)"
+                stroke="hsl(24, 91%, 53%)"
                 strokeWidth={2.5}
                 fill="url(#todayGradient)"
               />
