@@ -38,7 +38,10 @@ function getCurrentHourInTimezone(timezone: string): number {
 function getNormalizedHourCutoff(restaurantList: Restaurant[]): number {
   const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
   const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
-  return Math.min(...currentHours);
+  const minCurrentHour = Math.min(...currentHours);
+  // Use the last COMPLETED hour, not the current hour
+  // If Central is at 1pm (hour 13), they've only completed through hour 12
+  return Math.max(0, minCurrentHour - 1);
 }
 
 function getDateRangeForDay(date: Date): { start: Date; end: Date } {
