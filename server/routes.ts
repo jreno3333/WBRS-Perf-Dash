@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { fetchSalesFromAPI, fetchHistoricalSales, syncLocationsFromAPI } from "./scraper/7shifts-api";
+import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db } from "./db";
 import { scraperRuns } from "@shared/schema";
 import { desc } from "drizzle-orm";
@@ -107,6 +107,24 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error starting historical fetch:", error);
       res.status(500).json({ error: "Failed to start historical fetch" });
+    }
+  });
+
+  // Fetch historical hourly data (last N days)
+  app.post("/api/scraper/historical-hourly", async (req, res) => {
+    try {
+      const { days = 8 } = req.body;
+      
+      res.json({ message: `Starting historical hourly fetch for ${days} days`, status: "running" });
+      
+      fetchHistoricalHourlySales(days).then(() => {
+        console.log("Historical hourly fetch completed");
+      }).catch(err => {
+        console.error("Historical hourly fetch error:", err);
+      });
+    } catch (error) {
+      console.error("Error starting historical hourly fetch:", error);
+      res.status(500).json({ error: "Failed to start historical hourly fetch" });
     }
   });
 

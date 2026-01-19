@@ -311,6 +311,26 @@ export async function fetchHistoricalSales(days: number = 7): Promise<void> {
   console.log('Historical data fetch complete');
 }
 
+export async function fetchHistoricalHourlySales(days: number = 8): Promise<void> {
+  console.log(`Fetching ${days} days of historical hourly sales data...`);
+  
+  for (let i = 0; i < days; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    
+    console.log(`Fetching hourly data for ${date.toISOString().split('T')[0]}...`);
+    const result = await fetchHourlySalesFromAPI(date);
+    
+    if (!result.success) {
+      console.error(`Failed to fetch hourly ${date.toISOString().split('T')[0]}: ${result.error}`);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+  
+  console.log('Historical hourly data fetch complete');
+}
+
 export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: boolean; recordsScraped: number; error?: string }> {
   const accessToken = process.env.SEVENSHIFTS_API_TOKEN;
   

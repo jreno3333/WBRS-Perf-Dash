@@ -1,4 +1,4 @@
-import { fetchSalesFromAPI } from "./scraper/7shifts-api";
+import { fetchSalesFromAPI, fetchHourlySalesFromAPI } from "./scraper/7shifts-api";
 
 function log(message: string) {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -53,11 +53,18 @@ async function runScheduledSync() {
   log("Starting scheduled 7shifts sync...");
   
   try {
-    const result = await fetchSalesFromAPI();
-    if (result.success) {
-      log(`Sync completed: ${result.recordsScraped} records updated`);
+    const dailyResult = await fetchSalesFromAPI();
+    if (dailyResult.success) {
+      log(`Daily sync completed: ${dailyResult.recordsScraped} records updated`);
     } else {
-      log(`Sync failed: ${result.error}`);
+      log(`Daily sync failed: ${dailyResult.error}`);
+    }
+    
+    const hourlyResult = await fetchHourlySalesFromAPI();
+    if (hourlyResult.success) {
+      log(`Hourly sync completed: ${hourlyResult.recordsScraped} hourly records updated`);
+    } else {
+      log(`Hourly sync failed: ${hourlyResult.error}`);
     }
   } catch (error) {
     log(`Sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);

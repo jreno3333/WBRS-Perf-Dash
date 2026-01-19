@@ -7,10 +7,11 @@ import {
   type HourlySalesData,
   type LeaderboardData,
   restaurants,
-  dailySales
+  dailySales,
+  hourlySales
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lt, desc } from "drizzle-orm";
+import { eq, and, gte, lt, lte, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -97,31 +98,35 @@ export class DatabaseStorage implements IStorage {
     const restaurantList = await this.getRestaurants();
     const normalizedHourCutoff = getNormalizedHourCutoff(restaurantList);
     
-    const allSales = await db.select().from(dailySales);
+    const allHourlySales = await db.select().from(hourlySales);
     
-    const todaySales = allSales.filter(s => {
+    const todayHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === todayStr;
     });
     
-    const lastWeekSales = allSales.filter(s => {
+    const lastWeekHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
     });
     
-    const todaySalesMap = new Map(todaySales.map(s => [s.restaurantId, s]));
-    const lastWeekSalesMap = new Map(lastWeekSales.map(s => [s.restaurantId, s]));
-    
     const restaurantSales: RestaurantSales[] = restaurantList.map(restaurant => {
-      const todayData = todaySalesMap.get(restaurant.id);
-      const lastWeekData = lastWeekSalesMap.get(restaurant.id);
+      const todayRestaurantHours = todayHourly.filter(
+        s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
+      );
+      const lastWeekRestaurantHours = lastWeekHourly.filter(
+        s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
+      );
       
-      const todaySalesAmount = todayData ? parseFloat(todayData.totalSales || '0') / 100 : 0;
-      const lastWeekSalesAmount = lastWeekData ? parseFloat(lastWeekData.totalSales || '0') / 100 : 0;
+      const todaySalesAmount = todayRestaurantHours.reduce(
+        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+      );
+      const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
+        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+      );
       
       const pacePercentage = ((normalizedHourCutoff + 1) / 24) * 100;
-      const expectedAtThisPoint = lastWeekSalesAmount * (pacePercentage / 100);
-      const isAheadOfPace = todaySalesAmount >= expectedAtThisPoint;
+      const isAheadOfPace = todaySalesAmount >= lastWeekSalesAmount;
       
       return {
         restaurantId: restaurant.id.toString(),
@@ -160,52 +165,52 @@ export class DatabaseStorage implements IStorage {
     const todayStr = today.toISOString().split('T')[0];
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
     
-    const allSales = await db.select().from(dailySales);
+    const allHourlySales = await db.select().from(hourlySales);
     
-    const todaySales = allSales.filter(s => {
+    const todayHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === todayStr;
     });
     
-    const lastWeekSales = allSales.filter(s => {
+    const lastWeekHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
     });
     
-    let todayTotal = 0;
-    let lastWeekTotal = 0;
+    const todayByHour: Map<number, number> = new Map();
+    const lastWeekByHour: Map<number, number> = new Map();
     
-    if (restaurantId === "all") {
-      todaySales.forEach(s => {
-        todayTotal += parseFloat(s.totalSales || '0') / 100;
-      });
-      lastWeekSales.forEach(s => {
-        lastWeekTotal += parseFloat(s.totalSales || '0') / 100;
-      });
-    } else {
-      const todayData = todaySales.find(s => s.restaurantId === restaurantId);
-      const lastWeekData = lastWeekSales.find(s => s.restaurantId === restaurantId);
-      todayTotal = todayData ? parseFloat(todayData.totalSales || '0') / 100 : 0;
-      lastWeekTotal = lastWeekData ? parseFloat(lastWeekData.totalSales || '0') / 100 : 0;
+    for (let h = 0; h < 24; h++) {
+      todayByHour.set(h, 0);
+      lastWeekByHour.set(h, 0);
     }
     
-    const hourlyPattern = [
-      0.01, 0.01, 0.01, 0.01, 0.02, 0.03,
-      0.04, 0.05, 0.06, 0.07, 0.08, 0.10,
-      0.12, 0.11, 0.08, 0.06, 0.05, 0.07,
-      0.10, 0.12, 0.11, 0.08, 0.05, 0.03,
-    ];
+    if (restaurantId === "all") {
+      todayHourly.forEach(s => {
+        const current = todayByHour.get(s.hour) || 0;
+        todayByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+      });
+      lastWeekHourly.forEach(s => {
+        const current = lastWeekByHour.get(s.hour) || 0;
+        lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+      });
+    } else {
+      todayHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
+        todayByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      });
+      lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
+        lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      });
+    }
     
     let cumulativeToday = 0;
     let cumulativeLastWeek = 0;
     
     for (let hour = 0; hour < 24; hour++) {
-      const hourPercent = hourlyPattern[hour];
-      
       if (hour <= normalizedHourCutoff) {
-        cumulativeToday += todayTotal * hourPercent;
+        cumulativeToday += todayByHour.get(hour) || 0;
       }
-      cumulativeLastWeek += lastWeekTotal * hourPercent;
+      cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
       
       hourlyData.push({
         hour,
