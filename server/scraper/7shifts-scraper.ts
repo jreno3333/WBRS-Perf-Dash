@@ -45,18 +45,116 @@ export class SevenShiftsScraper {
 
     try {
       console.log('Navigating to 7shifts login...');
-      await this.page.goto('https://app.7shifts.com/login', { waitUntil: 'networkidle' });
+      await this.page.goto('https://app.7shifts.com/login', { 
+        waitUntil: 'domcontentloaded',
+        timeout: 60000 
+      });
 
-      await this.page.fill('input[name="email"], input[type="email"]', this.config.email);
-      await this.page.fill('input[name="password"], input[type="password"]', this.config.password);
-
-      await this.page.click('button[type="submit"]');
+      await this.page.waitForTimeout(3000);
       
-      await this.page.waitForURL('**/dashboard**', { timeout: 30000 });
+      const currentUrl = this.page.url();
+      console.log(`After navigation, URL: ${currentUrl}`);
+      
+      console.log('Waiting for login form on OAuth page...');
+      await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+      
+      const emailSelectors = [
+        'input[type="email"]',
+        'input[name="email"]', 
+        'input[id="email"]',
+        'input[placeholder*="email" i]',
+        'input[placeholder*="Email" i]',
+        '#loginId',
+        'input[name="loginId"]',
+        'input[autocomplete="email"]',
+        'input[autocomplete="username"]'
+      ];
+      
+      let emailInput = null;
+      for (const selector of emailSelectors) {
+        const element = this.page.locator(selector).first();
+        if (await element.isVisible().catch(() => false)) {
+          emailInput = element;
+          console.log(`Found email input with selector: ${selector}`);
+          break;
+        }
+      }
+      
+      if (!emailInput) {
+        const htmlContent = await this.page.content();
+        console.log('Page HTML snippet:', htmlContent.substring(0, 2000));
+        throw new Error('Could not find email input on login page');
+      }
+      
+      const passwordSelectors = [
+        'input[type="password"]',
+        'input[name="password"]',
+        'input[id="password"]'
+      ];
+      
+      let passwordInput = null;
+      for (const selector of passwordSelectors) {
+        const element = this.page.locator(selector).first();
+        if (await element.isVisible().catch(() => false)) {
+          passwordInput = element;
+          console.log(`Found password input with selector: ${selector}`);
+          break;
+        }
+      }
+      
+      if (!passwordInput) {
+        throw new Error('Could not find password input on login page');
+      }
+      
+      console.log('Filling credentials...');
+      await emailInput.fill(this.config.email);
+      await passwordInput.fill(this.config.password);
+
+      console.log('Submitting login form...');
+      const submitSelectors = [
+        'button[type="submit"]',
+        'button:has-text("Sign in")',
+        'button:has-text("Log in")',
+        'button:has-text("Login")',
+        'input[type="submit"]',
+        'button.btn-primary'
+      ];
+      
+      let submitButton = null;
+      for (const selector of submitSelectors) {
+        const element = this.page.locator(selector).first();
+        if (await element.isVisible().catch(() => false)) {
+          submitButton = element;
+          console.log(`Found submit button with selector: ${selector}`);
+          break;
+        }
+      }
+      
+      if (submitButton) {
+        await submitButton.click();
+      } else {
+        await this.page.keyboard.press('Enter');
+      }
+      
+      console.log('Waiting for login redirect...');
+      await this.page.waitForURL(/dashboard|home|report|schedule|app\.7shifts\.com/, { timeout: 45000 });
+      
       console.log('Successfully logged in to 7shifts');
       return true;
     } catch (error) {
       console.error('Login failed:', error);
+      
+      if (this.page) {
+        try {
+          const currentUrl = this.page.url();
+          const pageTitle = await this.page.title();
+          console.log(`Current URL: ${currentUrl}`);
+          console.log(`Page title: ${pageTitle}`);
+        } catch (e) {
+          console.log('Could not get page info');
+        }
+      }
+      
       return false;
     }
   }
