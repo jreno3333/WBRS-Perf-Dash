@@ -99,24 +99,25 @@ async function runScheduledSync() {
 async function checkAndSeedHistoricalData() {
   try {
     // Check if we have data for exactly 7 days ago (critical for week-over-week comparisons)
-    const sevenDaysAgo = new Date();
+    // Use UTC date string to match how getLeaderboard compares dates
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const sevenDaysAgoStart = new Date(sevenDaysAgo);
-    sevenDaysAgoStart.setHours(0, 0, 0, 0);
-    const sevenDaysAgoEnd = new Date(sevenDaysAgo);
-    sevenDaysAgoEnd.setHours(23, 59, 59, 999);
+    const lastWeekDateStr = sevenDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD in UTC
     
-    // Check hourly data for 7 days ago specifically
-    const lastWeekHourlyResult = await db.select({ count: sql<number>`count(*)` })
-      .from(hourlySales)
-      .where(sql`${hourlySales.salesDate} >= ${sevenDaysAgoStart} AND ${hourlySales.salesDate} <= ${sevenDaysAgoEnd}`);
-    const lastWeekHourlyCount = Number(lastWeekHourlyResult[0]?.count || 0);
+    // Query hourly sales and filter by date string (matching getLeaderboard logic)
+    const allHourlySales = await db.select().from(hourlySales);
+    const lastWeekRecords = allHourlySales.filter(s => {
+      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      return saleDate === lastWeekDateStr;
+    });
+    const lastWeekHourlyCount = lastWeekRecords.length;
     
     // We need at least some data for 7 days ago (22 restaurants × ~17 hours = ~374 rows expected)
     const expectedLastWeekMin = 300;
     const needsHourlySeeding = lastWeekHourlyCount < expectedLastWeekMin;
     
-    log(`Database check: ${lastWeekHourlyCount} hourly records for ${sevenDaysAgoStart.toISOString().split('T')[0]} (need ${expectedLastWeekMin}+ for week-over-week)`);
+    log(`Database check: ${lastWeekHourlyCount} hourly records for ${lastWeekDateStr} (need ${expectedLastWeekMin}+ for week-over-week)`);
     
     if (needsHourlySeeding) {
       // Pause scheduler during historical sync
