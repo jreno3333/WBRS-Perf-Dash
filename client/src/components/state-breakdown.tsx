@@ -106,7 +106,7 @@ export function StateBreakdown({ restaurants }: StateBreakdownProps) {
                 <div className="text-lg font-semibold">
                   {state.aheadCount}/{state.totalCount}
                 </div>
-                <div className="text-xs text-muted-foreground">ahead of pace</div>
+                <div className="text-xs text-muted-foreground">ahead of LW</div>
               </div>
             </div>
           </CardContent>
