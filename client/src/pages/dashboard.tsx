@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [sortBy, setSortBy] = useState<"sales" | "variance">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
@@ -97,6 +98,20 @@ export default function Dashboard() {
   const goToToday = () => {
     setSelectedDate(new Date());
   };
+
+  // Sort restaurants based on selected criteria
+  const sortedRestaurants = leaderboardData?.restaurants
+    ? [...leaderboardData.restaurants].sort((a, b) => {
+        if (sortBy === "sales") {
+          return b.todaySales - a.todaySales;
+        } else {
+          // Sort by % variance vs last week
+          const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
+          const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
+          return bVariance - aVariance;
+        }
+      })
+    : [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -222,21 +237,41 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Leaderboard Column */}
               <div className="lg:col-span-2 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <Trophy className="w-5 h-5 text-yellow-500" />
                     Restaurant Rankings
                   </h2>
-                  <Badge variant="outline" className="text-xs">
-                    Timezone-normalized
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Sort by:</span>
+                    <div className="flex rounded-md border">
+                      <Button
+                        variant={sortBy === "sales" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="rounded-r-none text-xs h-7"
+                        onClick={() => setSortBy("sales")}
+                        data-testid="button-sort-sales"
+                      >
+                        Total Sales
+                      </Button>
+                      <Button
+                        variant={sortBy === "variance" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="rounded-l-none text-xs h-7"
+                        onClick={() => setSortBy("variance")}
+                        data-testid="button-sort-variance"
+                      >
+                        % vs LW
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
-                  {leaderboardData.restaurants.map((restaurant) => (
+                  {sortedRestaurants.map((restaurant, index) => (
                     <LeaderboardCard 
                       key={restaurant.restaurantId} 
-                      restaurant={restaurant}
+                      restaurant={{...restaurant, rank: index + 1}}
                       hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
                     />
                   ))}
