@@ -62,7 +62,7 @@ function getCurrentHourInTimezone(timezone: string): number {
 // Get the minimum current hour across all timezones for fair comparison
 // This ensures all restaurants are compared at the same number of business hours
 function getNormalizedHourCutoff(restaurants: Restaurant[]): number {
-  const timezones = [...new Set(restaurants.map(r => r.timezone))];
+  const timezones = Array.from(new Set(restaurants.map(r => r.timezone)));
   const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
   // Use the minimum hour so no restaurant has "extra" time
   return Math.min(...currentHours);
