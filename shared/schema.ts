@@ -18,22 +18,42 @@ export const insertRestaurantSchema = createInsertSchema(restaurants).omit({
 export type InsertRestaurant = z.infer<typeof insertRestaurantSchema>;
 export type Restaurant = typeof restaurants.$inferSelect;
 
-// Sales data model
-export const sales = pgTable("sales", {
+// Daily sales snapshot from 7shifts scraping
+export const dailySales = pgTable("daily_sales", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull(),
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  transactionTime: timestamp("transaction_time").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  locationCode: text("location_code").notNull(), // 7shifts location code (e.g., "1060")
+  salesDate: timestamp("sales_date").notNull(),
+  totalSales: decimal("total_sales", { precision: 10, scale: 2 }).notNull(),
+  vsProjected: decimal("vs_projected", { precision: 10, scale: 2 }), // Difference from projected
+  laborPercent: decimal("labor_percent", { precision: 5, scale: 2 }),
+  scrapedAt: timestamp("scraped_at").defaultNow(),
 });
 
-export const insertSaleSchema = createInsertSchema(sales).omit({
+export const insertDailySalesSchema = createInsertSchema(dailySales).omit({
   id: true,
-  createdAt: true,
+  scrapedAt: true,
 });
 
-export type InsertSale = z.infer<typeof insertSaleSchema>;
-export type Sale = typeof sales.$inferSelect;
+export type InsertDailySales = z.infer<typeof insertDailySalesSchema>;
+export type DailySales = typeof dailySales.$inferSelect;
+
+// Scraper run log for tracking automation
+export const scraperRuns = pgTable("scraper_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  status: text("status").notNull().default("running"), // running, success, failed
+  recordsScraped: integer("records_scraped").default(0),
+  errorMessage: text("error_message"),
+});
+
+export const insertScraperRunSchema = createInsertSchema(scraperRuns).omit({
+  id: true,
+});
+
+export type InsertScraperRun = z.infer<typeof insertScraperRunSchema>;
+export type ScraperRun = typeof scraperRuns.$inferSelect;
 
 // Types for API responses
 export interface RestaurantSales {

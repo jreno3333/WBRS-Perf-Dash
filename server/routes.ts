@@ -1,6 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { runScraper, scrapeHistoricalData } from "./scraper/7shifts-scraper";
+import { db } from "./db";
+import { scraperRuns } from "@shared/schema";
+import { desc } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -37,6 +41,61 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching restaurants:", error);
       res.status(500).json({ error: "Failed to fetch restaurants" });
+    }
+  });
+
+  // Trigger manual scraper run
+  app.post("/api/scraper/run", async (req, res) => {
+    try {
+      const { date } = req.body;
+      const targetDate = date ? new Date(date) : undefined;
+      
+      res.json({ message: "Scraper started", status: "running" });
+      
+      runScraper(targetDate).then(result => {
+        console.log("Scraper completed:", result);
+      }).catch(err => {
+        console.error("Scraper error:", err);
+      });
+    } catch (error) {
+      console.error("Error starting scraper:", error);
+      res.status(500).json({ error: "Failed to start scraper" });
+    }
+  });
+
+  // Get scraper status
+  app.get("/api/scraper/status", async (req, res) => {
+    try {
+      const latestRuns = await db.select()
+        .from(scraperRuns)
+        .orderBy(desc(scraperRuns.startedAt))
+        .limit(10);
+      
+      res.json({
+        hasCredentials: !!(process.env.SEVENSHIFTS_EMAIL && process.env.SEVENSHIFTS_PASSWORD),
+        latestRuns,
+      });
+    } catch (error) {
+      console.error("Error fetching scraper status:", error);
+      res.status(500).json({ error: "Failed to fetch scraper status" });
+    }
+  });
+
+  // Scrape historical data (last N days)
+  app.post("/api/scraper/historical", async (req, res) => {
+    try {
+      const { days = 7 } = req.body;
+      
+      res.json({ message: `Starting historical scrape for ${days} days`, status: "running" });
+      
+      scrapeHistoricalData(days).then(() => {
+        console.log("Historical scraping completed");
+      }).catch(err => {
+        console.error("Historical scraping error:", err);
+      });
+    } catch (error) {
+      console.error("Error starting historical scraper:", error);
+      res.status(500).json({ error: "Failed to start historical scraper" });
     }
   });
 
