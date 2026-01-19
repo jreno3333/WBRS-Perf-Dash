@@ -72,7 +72,7 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
               <Store className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Stores Performance</p>
+              <p className="text-sm text-muted-foreground">Store Performance</p>
               <div className="mt-1 space-y-0.5">
                 <p className="text-sm">
                   <span className="font-bold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
