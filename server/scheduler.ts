@@ -1,5 +1,8 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI } from "./scraper/7shifts-api";
 
+// Set to true to pause scheduled syncs (for historical data loading)
+let schedulerPaused = false; // Historical data loaded - scheduler active
+
 function log(message: string) {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -8,6 +11,20 @@ function log(message: string) {
     hour12: true,
   });
   console.log(`${formattedTime} [scheduler] ${message}`);
+}
+
+export function pauseScheduler() {
+  schedulerPaused = true;
+  log("Scheduler PAUSED - historical sync can run uninterrupted");
+}
+
+export function resumeScheduler() {
+  schedulerPaused = false;
+  log("Scheduler RESUMED - regular syncs will continue");
+}
+
+export function isSchedulerPaused(): boolean {
+  return schedulerPaused;
 }
 
 function getNextSyncTime(): Date {
@@ -50,6 +67,11 @@ function scheduleNextSync() {
 }
 
 async function runScheduledSync() {
+  if (schedulerPaused) {
+    log("Scheduler is PAUSED - skipping sync (historical data loading)");
+    return;
+  }
+  
   log("Starting scheduled 7shifts sync...");
   
   try {
