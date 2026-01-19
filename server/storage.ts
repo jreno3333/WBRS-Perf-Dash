@@ -42,7 +42,9 @@ function getNormalizedHourCutoff(restaurantList: Restaurant[]): number {
   const minCurrentHour = Math.min(...currentHours);
   // Use the last COMPLETED hour, not the current hour
   // If Central is at 1pm (hour 13), they've only completed through hour 12
-  return Math.max(0, minCurrentHour - 1);
+  // If Central is at hour 0 (midnight), no hours are completed yet, return -1
+  // This ensures Eastern stores (hour 1) don't get unfair advantage from their hour 0
+  return minCurrentHour - 1;
 }
 
 function getDateRangeForDay(date: Date): { start: Date; end: Date } {
@@ -125,7 +127,9 @@ export class DatabaseStorage implements IStorage {
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
       
-      const pacePercentage = ((normalizedHourCutoff + 1) / 24) * 100;
+      // Handle -1 case: when no hours are completed, pace is 0%
+      const completedHours = Math.max(0, normalizedHourCutoff + 1);
+      const pacePercentage = (completedHours / 24) * 100;
       const isAheadOfPace = todaySalesAmount >= lastWeekSalesAmount;
       
       return {
@@ -207,15 +211,28 @@ export class DatabaseStorage implements IStorage {
     let cumulativeLastWeek = 0;
     
     for (let hour = 0; hour < 24; hour++) {
+      // Only accumulate if this hour is completed (hour <= cutoff)
+      // When cutoff is -1 (no hours completed), nothing accumulates
       if (hour <= normalizedHourCutoff) {
         cumulativeToday += todayByHour.get(hour) || 0;
+        cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
       }
-      cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
+      
+      // Show cumulative up to the cutoff, then full last week for reference
+      const showCumulativeToday = hour <= normalizedHourCutoff ? Math.round(cumulativeToday) : 0;
+      const showCumulativeLastWeek = hour <= normalizedHourCutoff 
+        ? Math.round(cumulativeLastWeek) 
+        : Math.round(cumulativeLastWeek + (lastWeekByHour.get(hour) || 0));
+      
+      // Keep accumulating last week for future hours (reference line)
+      if (hour > normalizedHourCutoff) {
+        cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
+      }
       
       hourlyData.push({
         hour,
-        todaySales: hour <= normalizedHourCutoff ? Math.round(cumulativeToday) : 0,
-        lastWeekSales: Math.round(cumulativeLastWeek),
+        todaySales: showCumulativeToday,
+        lastWeekSales: showCumulativeLastWeek,
         label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
       });
     }

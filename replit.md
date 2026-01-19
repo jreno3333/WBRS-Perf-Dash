@@ -38,6 +38,7 @@ API Routes:
 - `GET /api/restaurants` - List of all restaurant locations
 - `POST /api/scraper/run` - Trigger manual 7shifts data sync
 - `POST /api/scraper/historical` - Fetch historical sales data (supports `days` parameter)
+- `POST /api/scraper/historical-hourly` - Fetch historical hourly data for week-over-week comparison (body: `{"days": 8}`)
 - `GET /api/scraper/status` - View sync status and history
 
 ### 7shifts Integration
@@ -56,7 +57,16 @@ API Routes:
 Database Tables:
 - `restaurants` - 22 store locations with name, timezone (America/Chicago or America/New_York), and active status
 - `daily_sales` - Daily sales snapshots with total sales, vs projected, and labor percent
+- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales)
 - `scraper_runs` - Sync job tracking with status and record counts
+
+### Timezone-Fair Comparison
+The leaderboard uses a normalized hour cutoff to ensure fair comparisons between Eastern (America/New_York) and Central (America/Chicago) timezone stores:
+- Eastern stores are 1 hour ahead of Central stores
+- The normalized hour = (minimum current hour across all timezones) - 1 (last completed hour)
+- Sales are summed only for hours 0 through the normalized hour cutoff
+- This prevents Eastern stores from having an unfair advantage from their extra hour of sales
+- If the normalized hour is -1 (no hours completed), all stores show $0 sales
 
 ### Shared Code
 The `shared/` directory contains TypeScript types and schemas used by both frontend and backend:
