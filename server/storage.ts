@@ -22,8 +22,8 @@ export interface IStorage {
   getRestaurants(): Promise<Restaurant[]>;
   getRestaurant(id: string): Promise<Restaurant | undefined>;
   
-  getLeaderboard(): Promise<LeaderboardData>;
-  getPaceData(restaurantId: string): Promise<HourlySalesData[]>;
+  getLeaderboard(date?: Date): Promise<LeaderboardData>;
+  getPaceData(restaurantId: string, date?: Date): Promise<HourlySalesData[]>;
 }
 
 function getCurrentHourInTimezone(timezone: string): number {
@@ -88,23 +88,27 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getLeaderboard(): Promise<LeaderboardData> {
+  async getLeaderboard(targetDate: Date = new Date()): Promise<LeaderboardData> {
     const now = new Date();
-    const today = new Date();
-    const lastWeek = new Date(today);
+    const selectedDate = new Date(targetDate);
+    const lastWeek = new Date(selectedDate);
     lastWeek.setDate(lastWeek.getDate() - 7);
     
-    const todayStr = today.toISOString().split('T')[0];
+    const selectedDateStr = selectedDate.toISOString().split('T')[0];
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
+    const todayStr = now.toISOString().split('T')[0];
+    
+    // Check if selected date is today - use normalized cutoff for today, all hours for historical
+    const isToday = selectedDateStr === todayStr;
     
     const restaurantList = await this.getRestaurants();
-    const normalizedHourCutoff = getNormalizedHourCutoff(restaurantList);
+    const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
     
     const allHourlySales = await db.select().from(hourlySales);
     
-    const todayHourly = allHourlySales.filter(s => {
+    const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
-      return saleDate === todayStr;
+      return saleDate === selectedDateStr;
     });
     
     const lastWeekHourly = allHourlySales.filter(s => {
@@ -113,14 +117,14 @@ export class DatabaseStorage implements IStorage {
     });
     
     const restaurantSales: RestaurantSales[] = restaurantList.map(restaurant => {
-      const todayRestaurantHours = todayHourly.filter(
+      const selectedDateRestaurantHours = selectedDateHourly.filter(
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
       );
       const lastWeekRestaurantHours = lastWeekHourly.filter(
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
       );
       
-      const todaySalesAmount = todayRestaurantHours.reduce(
+      const selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
       const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
@@ -130,13 +134,13 @@ export class DatabaseStorage implements IStorage {
       // Handle -1 case: when no hours are completed, pace is 0%
       const completedHours = Math.max(0, normalizedHourCutoff + 1);
       const pacePercentage = (completedHours / 24) * 100;
-      const isAheadOfPace = todaySalesAmount >= lastWeekSalesAmount;
+      const isAheadOfPace = selectedDateSalesAmount >= lastWeekSalesAmount;
       
       return {
         restaurantId: restaurant.id.toString(),
         restaurantName: restaurant.name,
         timezone: restaurant.timezone,
-        todaySales: todaySalesAmount,
+        todaySales: selectedDateSalesAmount,
         lastWeekSales: lastWeekSalesAmount,
         pacePercentage,
         isAheadOfPace,
@@ -153,27 +157,31 @@ export class DatabaseStorage implements IStorage {
     return {
       restaurants: restaurantSales,
       lastUpdated: now.toISOString(),
-      currentDate: now.toISOString().split('T')[0],
+      currentDate: selectedDateStr,
     };
   }
 
-  async getPaceData(restaurantId: string): Promise<HourlySalesData[]> {
+  async getPaceData(restaurantId: string, targetDate: Date = new Date()): Promise<HourlySalesData[]> {
     const hourlyData: HourlySalesData[] = [];
     const restaurantList = await this.getRestaurants();
-    const normalizedHourCutoff = getNormalizedHourCutoff(restaurantList);
+    const now = new Date();
+    const selectedDate = new Date(targetDate);
+    const selectedDateStr = selectedDate.toISOString().split('T')[0];
+    const todayStr = now.toISOString().split('T')[0];
     
-    const today = new Date();
-    const lastWeek = new Date(today);
+    // Use normalized cutoff for today, all hours for historical
+    const isToday = selectedDateStr === todayStr;
+    const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
+    
+    const lastWeek = new Date(selectedDate);
     lastWeek.setDate(lastWeek.getDate() - 7);
-    
-    const todayStr = today.toISOString().split('T')[0];
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
     
     const allHourlySales = await db.select().from(hourlySales);
     
-    const todayHourly = allHourlySales.filter(s => {
+    const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
-      return saleDate === todayStr;
+      return saleDate === selectedDateStr;
     });
     
     const lastWeekHourly = allHourlySales.filter(s => {
@@ -181,45 +189,45 @@ export class DatabaseStorage implements IStorage {
       return saleDate === lastWeekStr;
     });
     
-    const todayByHour: Map<number, number> = new Map();
+    const selectedByHour: Map<number, number> = new Map();
     const lastWeekByHour: Map<number, number> = new Map();
     
     for (let h = 0; h < 24; h++) {
-      todayByHour.set(h, 0);
+      selectedByHour.set(h, 0);
       lastWeekByHour.set(h, 0);
     }
     
     if (restaurantId === "all") {
-      todayHourly.forEach(s => {
-        const current = todayByHour.get(s.hour) || 0;
-        todayByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+      selectedDateHourly.forEach(s => {
+        const current = selectedByHour.get(s.hour) || 0;
+        selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
       });
       lastWeekHourly.forEach(s => {
         const current = lastWeekByHour.get(s.hour) || 0;
         lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
       });
     } else {
-      todayHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
-        todayByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
+        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
       lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
     }
     
-    let cumulativeToday = 0;
+    let cumulativeSelected = 0;
     let cumulativeLastWeek = 0;
     
     for (let hour = 0; hour < 24; hour++) {
       // Only accumulate if this hour is completed (hour <= cutoff)
       // When cutoff is -1 (no hours completed), nothing accumulates
       if (hour <= normalizedHourCutoff) {
-        cumulativeToday += todayByHour.get(hour) || 0;
+        cumulativeSelected += selectedByHour.get(hour) || 0;
         cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
       }
       
       // Show cumulative up to the cutoff, then full last week for reference
-      const showCumulativeToday = hour <= normalizedHourCutoff ? Math.round(cumulativeToday) : 0;
+      const showCumulativeSelected = hour <= normalizedHourCutoff ? Math.round(cumulativeSelected) : 0;
       const showCumulativeLastWeek = hour <= normalizedHourCutoff 
         ? Math.round(cumulativeLastWeek) 
         : Math.round(cumulativeLastWeek + (lastWeekByHour.get(hour) || 0));
@@ -231,7 +239,7 @@ export class DatabaseStorage implements IStorage {
       
       hourlyData.push({
         hour,
-        todaySales: showCumulativeToday,
+        todaySales: showCumulativeSelected,
         lastWeekSales: showCumulativeLastWeek,
         label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
       });

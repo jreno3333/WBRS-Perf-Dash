@@ -4,25 +4,42 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, Trophy, BarChart3, AlertCircle } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { RefreshCw, Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
 import { PaceChart } from "@/components/pace-chart";
 import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
+import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData } from "@shared/schema";
 
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
+  const dateStr = format(selectedDate, "yyyy-MM-dd");
+  const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
+
   const { data: leaderboardData, isLoading, error, refetch, isFetching } = useQuery<LeaderboardData>({
-    queryKey: ["/api/leaderboard"],
-    refetchInterval: 15 * 60 * 1000, // 15 minutes
+    queryKey: ["/api/leaderboard", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/leaderboard?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval: isToday ? 15 * 60 * 1000 : false, // Only auto-refresh for today
   });
 
   const { data: paceData } = useQuery<HourlySalesData[]>({
-    queryKey: ["/api/pace", selectedRestaurant],
+    queryKey: ["/api/pace", selectedRestaurant, dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/pace/${selectedRestaurant}?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
     enabled: !!selectedRestaurant,
   });
 
@@ -43,13 +60,33 @@ export default function Dashboard() {
     return restaurant?.restaurantName || "Selected Restaurant";
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
       weekday: "long",
       month: "long",
       day: "numeric",
       year: "numeric",
     });
+  };
+
+  const goToPreviousDay = () => {
+    const prev = new Date(selectedDate);
+    prev.setDate(prev.getDate() - 1);
+    setSelectedDate(prev);
+  };
+
+  const goToNextDay = () => {
+    const next = new Date(selectedDate);
+    next.setDate(next.getDate() + 1);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (next <= today) {
+      setSelectedDate(next);
+    }
+  };
+
+  const goToToday = () => {
+    setSelectedDate(new Date());
   };
 
   return (
@@ -64,17 +101,69 @@ export default function Dashboard() {
               </div>
               <div>
                 <h1 className="text-xl font-bold">Sales Leaderboard</h1>
-                <p className="text-sm text-muted-foreground">
-                  {leaderboardData?.currentDate ? formatDate(leaderboardData.currentDate) : "Today"}
-                </p>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6"
+                    onClick={goToPreviousDay}
+                    data-testid="button-prev-day"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-sm text-muted-foreground hover:text-foreground"
+                        data-testid="button-date-picker"
+                      >
+                        <CalendarIcon className="w-4 h-4 mr-2" />
+                        {formatDate(selectedDate)}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={(date) => date && setSelectedDate(date)}
+                        disabled={(date) => date > new Date()}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6"
+                    onClick={goToNextDay}
+                    disabled={isToday}
+                    data-testid="button-next-day"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                  {!isToday && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={goToToday}
+                      data-testid="button-go-today"
+                    >
+                      Today
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="hidden sm:flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                Live
-              </Badge>
+              {isToday && (
+                <Badge variant="secondary" className="hidden sm:flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  Live
+                </Badge>
+              )}
               <Button 
                 variant="outline" 
                 size="sm"

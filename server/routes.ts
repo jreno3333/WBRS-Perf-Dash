@@ -13,7 +13,9 @@ export async function registerRoutes(
   // Get leaderboard data
   app.get("/api/leaderboard", async (req, res) => {
     try {
-      const leaderboard = await storage.getLeaderboard();
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const leaderboard = await storage.getLeaderboard(targetDate);
       res.json(leaderboard);
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
@@ -25,7 +27,9 @@ export async function registerRoutes(
   app.get("/api/pace/:restaurantId", async (req, res) => {
     try {
       const { restaurantId } = req.params;
-      const paceData = await storage.getPaceData(restaurantId);
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const paceData = await storage.getPaceData(restaurantId, targetDate);
       res.json(paceData);
     } catch (error) {
       console.error("Error fetching pace data:", error);
