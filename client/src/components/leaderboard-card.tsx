@@ -131,17 +131,17 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 </span>
               </div>
             </div>
-            <div className="flex items-end gap-0.5 h-10" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
+            <div className="flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
               {activeHours.map((hour) => {
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
-                const barHeight = Math.max(4, (displayValue / maxSales) * 100);
+                const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
                 const hasNoData = hour.todaySales === 0 && hour.lastWeekSales > 0;
                 
                 return (
                   <div
                     key={hour.hour}
-                    className="flex-1 flex flex-col items-center group relative"
+                    className="flex-1 flex items-end group relative h-full"
                   >
                     <div
                       className={`w-full rounded-t-sm transition-all ${
@@ -151,7 +151,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                             ? "bg-green-500 dark:bg-green-400" 
                             : "bg-red-500 dark:bg-red-400"
                       }`}
-                      style={{ height: `${barHeight}%` }}
+                      style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
