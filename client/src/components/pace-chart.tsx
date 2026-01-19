@@ -28,6 +28,32 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
     }).format(value);
   };
 
+  // Combine 5am and 6am into "Early Bird" and filter out hours 0-4
+  const processedData = data.reduce((acc: HourlySalesData[], item) => {
+    // Skip hours 0-4 (no sales)
+    if (item.hour < 5) return acc;
+    
+    // Combine 5am and 6am into "Early Bird"
+    if (item.hour === 5) {
+      const hour6 = data.find(d => d.hour === 6);
+      acc.push({
+        hour: 5,
+        label: "Early Bird",
+        todaySales: item.todaySales + (hour6?.todaySales || 0),
+        lastWeekSales: item.lastWeekSales + (hour6?.lastWeekSales || 0),
+        forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
+      });
+      return acc;
+    }
+    
+    // Skip 6am since it's combined with 5am
+    if (item.hour === 6) return acc;
+    
+    // Keep all other hours as-is
+    acc.push(item);
+    return acc;
+  }, []);
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -63,7 +89,7 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
         <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={data}
+              data={processedData}
               margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
             >
               <defs>
