@@ -53,7 +53,7 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
     <Card className="h-full" data-testid="card-pace-chart">
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-medium flex items-center justify-between">
-          <span>Hourly Sales Pace</span>
+          <span>Daily Overview</span>
           <span className="text-sm font-normal text-muted-foreground">
             {restaurantName}
           </span>

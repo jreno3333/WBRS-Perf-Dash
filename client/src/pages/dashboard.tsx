@@ -12,6 +12,7 @@ import { LeaderboardCard } from "@/components/leaderboard-card";
 import { PaceChart } from "@/components/pace-chart";
 import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
+import { StateBreakdown } from "@/components/state-breakdown";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData } from "@shared/schema";
 
@@ -213,6 +214,9 @@ export default function Dashboard() {
               restaurants={leaderboardData.restaurants} 
               lastUpdated={leaderboardData.lastUpdated} 
             />
+
+            {/* State Breakdown */}
+            <StateBreakdown restaurants={leaderboardData.restaurants} />
 
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
