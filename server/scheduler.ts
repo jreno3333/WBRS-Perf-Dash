@@ -1,4 +1,7 @@
-import { fetchSalesFromAPI, fetchHourlySalesFromAPI } from "./scraper/7shifts-api";
+import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales } from "./scraper/7shifts-api";
+import { db } from "./db";
+import { dailySales } from "@shared/schema";
+import { sql } from "drizzle-orm";
 
 // Set to true to pause scheduled syncs (for historical data loading)
 let schedulerPaused = false; // Historical data loaded - scheduler active
@@ -93,8 +96,48 @@ async function runScheduledSync() {
   }
 }
 
-export function startScheduler() {
+async function checkAndSeedHistoricalData() {
+  try {
+    // Check if database has any sales data
+    const result = await db.select({ count: sql<number>`count(*)` }).from(dailySales);
+    const recordCount = Number(result[0]?.count || 0);
+    
+    if (recordCount === 0) {
+      log("Database is empty - seeding historical data (8 days)...");
+      
+      // Pause scheduler during historical sync
+      pauseScheduler();
+      
+      try {
+        // Fetch 8 days of historical daily sales
+        log("Fetching historical daily sales...");
+        await fetchHistoricalSales(8);
+        log("Historical daily sales loaded");
+        
+        // Fetch 8 days of historical hourly data
+        log("Fetching historical hourly sales...");
+        await fetchHistoricalHourlySales(8);
+        log("Historical hourly sales loaded");
+        
+        log("Historical data seeding complete!");
+      } catch (seedError) {
+        log(`Historical data seeding error: ${seedError instanceof Error ? seedError.message : 'Unknown error'}`);
+      } finally {
+        resumeScheduler();
+      }
+    } else {
+      log(`Database has ${recordCount} existing records - skipping historical seed`);
+    }
+  } catch (error) {
+    log(`Error checking database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+export async function startScheduler() {
   log("Sales sync scheduler started - syncing every 5 minutes");
+  
+  // Check if database needs historical data seeding
+  await checkAndSeedHistoricalData();
   
   scheduleNextSync();
   
