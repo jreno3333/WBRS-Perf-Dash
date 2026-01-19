@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { runScraper, scrapeHistoricalData } from "./scraper/7shifts-scraper";
+import { fetchSalesFromAPI, fetchHistoricalSales, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db } from "./db";
 import { scraperRuns } from "@shared/schema";
 import { desc } from "drizzle-orm";
@@ -44,26 +44,26 @@ export async function registerRoutes(
     }
   });
 
-  // Trigger manual scraper run
+  // Trigger manual API sync
   app.post("/api/scraper/run", async (req, res) => {
     try {
       const { date } = req.body;
       const targetDate = date ? new Date(date) : undefined;
       
-      res.json({ message: "Scraper started", status: "running" });
+      res.json({ message: "API sync started", status: "running" });
       
-      runScraper(targetDate).then(result => {
-        console.log("Scraper completed:", result);
+      fetchSalesFromAPI(targetDate).then(result => {
+        console.log("API sync completed:", result);
       }).catch(err => {
-        console.error("Scraper error:", err);
+        console.error("API sync error:", err);
       });
     } catch (error) {
-      console.error("Error starting scraper:", error);
-      res.status(500).json({ error: "Failed to start scraper" });
+      console.error("Error starting API sync:", error);
+      res.status(500).json({ error: "Failed to start API sync" });
     }
   });
 
-  // Get scraper status
+  // Get scraper/sync status
   app.get("/api/scraper/status", async (req, res) => {
     try {
       const latestRuns = await db.select()
@@ -72,30 +72,41 @@ export async function registerRoutes(
         .limit(10);
       
       res.json({
-        hasCredentials: !!(process.env.SEVENSHIFTS_EMAIL && process.env.SEVENSHIFTS_PASSWORD),
+        hasApiToken: !!process.env.SEVENSHIFTS_API_TOKEN,
         latestRuns,
       });
     } catch (error) {
-      console.error("Error fetching scraper status:", error);
-      res.status(500).json({ error: "Failed to fetch scraper status" });
+      console.error("Error fetching sync status:", error);
+      res.status(500).json({ error: "Failed to fetch sync status" });
     }
   });
 
-  // Scrape historical data (last N days)
+  // Sync locations from 7shifts
+  app.post("/api/scraper/sync-locations", async (req, res) => {
+    try {
+      const count = await syncLocationsFromAPI();
+      res.json({ message: `Synced ${count} locations`, count });
+    } catch (error) {
+      console.error("Error syncing locations:", error);
+      res.status(500).json({ error: "Failed to sync locations" });
+    }
+  });
+
+  // Fetch historical data (last N days)
   app.post("/api/scraper/historical", async (req, res) => {
     try {
       const { days = 7 } = req.body;
       
-      res.json({ message: `Starting historical scrape for ${days} days`, status: "running" });
+      res.json({ message: `Starting historical fetch for ${days} days`, status: "running" });
       
-      scrapeHistoricalData(days).then(() => {
-        console.log("Historical scraping completed");
+      fetchHistoricalSales(days).then(() => {
+        console.log("Historical fetch completed");
       }).catch(err => {
-        console.error("Historical scraping error:", err);
+        console.error("Historical fetch error:", err);
       });
     } catch (error) {
-      console.error("Error starting historical scraper:", error);
-      res.status(500).json({ error: "Failed to start historical scraper" });
+      console.error("Error starting historical fetch:", error);
+      res.status(500).json({ error: "Failed to start historical fetch" });
     }
   });
 

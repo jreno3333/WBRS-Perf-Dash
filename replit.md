@@ -33,9 +33,19 @@ The frontend follows a component-based architecture with:
 - **Production**: Static file serving from built assets
 
 API Routes:
-- `GET /api/leaderboard` - Aggregated restaurant sales rankings
-- `GET /api/pace/:restaurantId` - Hourly sales data for pace comparison
+- `GET /api/leaderboard` - Aggregated restaurant sales rankings with week-over-week comparison
+- `GET /api/pace/:restaurantId` - Hourly sales data for pace comparison (use "all" for aggregate)
 - `GET /api/restaurants` - List of all restaurant locations
+- `POST /api/scraper/run` - Trigger manual 7shifts data sync
+- `POST /api/scraper/historical` - Fetch historical sales data (supports `days` parameter)
+- `GET /api/scraper/status` - View sync status and history
+
+### 7shifts Integration
+- **API Client**: Custom REST client in `server/scraper/7shifts-api.ts`
+- **Authentication**: Bearer token via `SEVENSHIFTS_API_TOKEN` environment variable
+- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`
+- **Data Sync**: Fetches actual sales data from 7shifts workforce management platform
+- **22 Restaurant Locations**: Athens, Huntsville, Albertville, Hazel Green, Scottsboro, Pell City, Florence, Cullman, Jacksonville, Attalla, Jasper, Gadsden, Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville, plus Training & Development
 
 ### Data Layer
 - **ORM**: Drizzle ORM with PostgreSQL dialect
@@ -44,8 +54,9 @@ API Routes:
 - **Migrations**: Drizzle Kit with migrations output to `./migrations`
 
 Database Tables:
-- `restaurants` - Store locations with timezone and active status
-- `sales` - Transaction records with timestamps and amounts
+- `restaurants` - 22 store locations with name, timezone (America/Chicago or America/New_York), and active status
+- `daily_sales` - Daily sales snapshots with total sales, vs projected, and labor percent
+- `scraper_runs` - Sync job tracking with status and record counts
 
 ### Shared Code
 The `shared/` directory contains TypeScript types and schemas used by both frontend and backend:
