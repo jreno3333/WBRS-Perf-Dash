@@ -305,7 +305,7 @@ export async function fetchHistoricalSales(days: number = 7): Promise<void> {
       console.error(`Failed to fetch ${date.toISOString().split('T')[0]}: ${result.error}`);
     }
     
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 300)); // Reduced delay for faster seeding
   }
   
   console.log('Historical data fetch complete');
@@ -325,7 +325,7 @@ export async function fetchHistoricalHourlySales(days: number = 8): Promise<void
       console.error(`Failed to fetch hourly ${date.toISOString().split('T')[0]}: ${result.error}`);
     }
     
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 500)); // Reduced delay for faster seeding
   }
   
   console.log('Historical hourly data fetch complete');

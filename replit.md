@@ -46,7 +46,10 @@ API Routes:
 - **Authentication**: Bearer token via `SEVENSHIFTS_API_TOKEN` environment variable
 - **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`
 - **Data Sync**: Fetches actual sales data from 7shifts workforce management platform
+- **Sync Interval**: Every 2 minutes for responsive real-time updates
+- **Historical Seeding**: On startup, automatically loads 8 days of data if missing (for week-over-week comparisons)
 - **22 Restaurant Locations**: Athens, Huntsville, Albertville, Hazel Green, Scottsboro, Pell City, Florence, Cullman, Jacksonville, Attalla, Jasper, Gadsden, Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville, plus Training & Development
+- **Known $0 Stores**: East Ridge, Shallowford Village, Sevierville (Tennessee) - likely POS not connected to 7shifts
 
 ### Data Layer
 - **ORM**: Drizzle ORM with PostgreSQL dialect
