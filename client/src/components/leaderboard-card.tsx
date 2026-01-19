@@ -169,7 +169,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
               <span>{activeHours[0]?.label || ""}</span>
-              <span>{activeHours[activeHours.length - 1]?.label || ""}</span>
+              <span>{(() => {
+                const lastHour = activeHours[activeHours.length - 1]?.hour;
+                if (lastHour === undefined) return "";
+                const nextHour = lastHour + 1;
+                return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
+              })()}</span>
             </div>
           </div>
         )}
