@@ -60,7 +60,6 @@ export default function Dashboard() {
 
   const handleRefresh = () => {
     refetch();
-    setLastRefresh(new Date());
   };
 
   const getSelectedRestaurantName = () => {
