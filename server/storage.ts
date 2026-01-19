@@ -8,7 +8,8 @@ import {
   type LeaderboardData,
   restaurants,
   dailySales,
-  hourlySales
+  hourlySales,
+  scraperRuns
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt, lte, desc, sql } from "drizzle-orm";
@@ -158,9 +159,20 @@ export class DatabaseStorage implements IStorage {
       r.rank = idx + 1;
     });
     
+    // Get the last successful data sync time
+    const lastSync = await db.select()
+      .from(scraperRuns)
+      .where(eq(scraperRuns.status, 'success'))
+      .orderBy(desc(scraperRuns.completedAt))
+      .limit(1);
+    
+    const lastUpdated = lastSync.length > 0 && lastSync[0].completedAt 
+      ? lastSync[0].completedAt.toISOString()
+      : now.toISOString();
+    
     return {
       restaurants: restaurantSales,
-      lastUpdated: now.toISOString(),
+      lastUpdated,
       currentDate: selectedDateStr,
     };
   }
