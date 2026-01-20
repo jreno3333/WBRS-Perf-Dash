@@ -49,7 +49,6 @@ API Routes:
 - **Sync Interval**: Data updated hourly (7shifts only reports completed hourly intervals)
 - **Timezone-Aware Sync**: Server runs in UTC but sync uses Central timezone (America/Chicago) to determine the current date. This ensures that at 9 PM Eastern (8 PM Central), the sync fetches the correct day's data instead of the next day's data. Dates are stored at noon UTC on the target date to avoid DST boundary issues.
 - **In-Progress Hour Detection**: Pace charts show a pulsing indicator on the current in-progress hour by scanning cumulative data for the first hour where sales plateau.
-- **Per-Restaurant Hour Cutoff**: Individual restaurant hourly charts use each restaurant's own timezone for display hour cutoff. Eastern stores show more completed hours than Central stores (because Eastern is 1 hour ahead).
 - **Historical Seeding**: On startup, automatically loads 8 days of data if missing (for week-over-week comparisons)
 - **22 Restaurant Locations**: Athens, Huntsville, Albertville, Hazel Green, Scottsboro, Pell City, Florence, Cullman, Jacksonville, Attalla, Jasper, Gadsden, Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville, plus Training & Development
 - **Known $0 Stores**: East Ridge, Shallowford Village, Sevierville (Tennessee) - likely POS not connected to 7shifts
