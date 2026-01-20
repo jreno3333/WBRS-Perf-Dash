@@ -69,22 +69,24 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     1
   );
   
-  // Calculate cumulative ACTUAL labor spent for completed hours
+  // Calculate cumulative ACTUAL labor spent for ALL hours from midnight (0-23)
+  // This includes overnight prep hours (0-4am) that have labor but no sales
   // actualLabor from 7shifts reflects punched hours, not just scheduled
-  const cumulativeActualLabor = processedHours.reduce(
+  const cumulativeActualLabor = (hourlyData || []).reduce(
     (sum, h) => sum + (h.actualLabor || 0), 0
   );
   
-  // Scheduled labor for comparison with forecast
-  const cumulativeScheduledLabor = processedHours.reduce(
+  // Scheduled labor for comparison with forecast - include ALL hours from midnight
+  const cumulativeScheduledLabor = (hourlyData || []).reduce(
     (sum, h) => sum + (h.projectedLabor || 0), 0
   );
   
   // Calculate what labor SHOULD be at this point based on sales performance
   // If sales are above forecast, labor % should be lower (good)
   // If sales are below forecast, labor % should be higher (bad)
-  const cumulativeSales = processedHours.reduce((sum, h) => sum + h.todaySales, 0);
-  const cumulativeForecast = processedHours.reduce((sum, h) => sum + h.forecastSales, 0);
+  // Sales also need to use full hourlyData to be consistent
+  const cumulativeSales = (hourlyData || []).reduce((sum, h) => sum + h.todaySales, 0);
+  const cumulativeForecast = (hourlyData || []).reduce((sum, h) => sum + h.forecastSales, 0);
   
   // Current labor % = (ACTUAL labor spent so far / actual sales so far) * 100
   const currentLaborPercent = cumulativeSales > 0 

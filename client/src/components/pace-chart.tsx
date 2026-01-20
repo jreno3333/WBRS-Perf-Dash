@@ -45,6 +45,9 @@ export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps)
         todaySales: item.todaySales + (hour6?.todaySales || 0),
         lastWeekSales: item.lastWeekSales + (hour6?.lastWeekSales || 0),
         forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
+        projectedLabor: (item.projectedLabor || 0) + (hour6?.projectedLabor || 0),
+        actualLabor: (item.actualLabor || 0) + (hour6?.actualLabor || 0),
+        employeeCount: Math.max(item.employeeCount || 0, hour6?.employeeCount || 0),
       });
       return acc;
     }
