@@ -26,7 +26,13 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/restaurants"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      // Invalidate all leaderboard queries (with any date parameter)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey;
+          return Array.isArray(key) && key[0] === "/api/leaderboard";
+        }
+      });
       toast({
         title: "Labor target updated",
         description: "The labor target has been saved successfully.",
