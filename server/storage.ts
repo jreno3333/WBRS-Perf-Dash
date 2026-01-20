@@ -24,6 +24,7 @@ export interface IStorage {
   
   getRestaurants(): Promise<Restaurant[]>;
   getRestaurant(id: string): Promise<Restaurant | undefined>;
+  updateRestaurantLaborTarget(id: string, laborTarget: number): Promise<Restaurant | undefined>;
   
   getLeaderboard(date?: Date): Promise<LeaderboardData>;
   getPaceData(restaurantId: string, date?: Date): Promise<HourlySalesData[]>;
@@ -101,6 +102,14 @@ export class DatabaseStorage implements IStorage {
 
   async getRestaurant(id: string): Promise<Restaurant | undefined> {
     const result = await db.select().from(restaurants).where(eq(restaurants.id, id));
+    return result[0];
+  }
+
+  async updateRestaurantLaborTarget(id: string, laborTarget: number): Promise<Restaurant | undefined> {
+    const result = await db.update(restaurants)
+      .set({ laborTarget: laborTarget.toFixed(2) })
+      .where(eq(restaurants.id, id))
+      .returning();
     return result[0];
   }
 

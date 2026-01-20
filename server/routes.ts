@@ -68,6 +68,28 @@ export async function registerRoutes(
     }
   });
 
+  // Update restaurant labor target
+  app.patch("/api/restaurants/:id/labor-target", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { laborTarget } = req.body;
+      
+      if (laborTarget === undefined || typeof laborTarget !== 'number' || laborTarget < 0 || laborTarget > 100) {
+        return res.status(400).json({ error: "Labor target must be a number between 0 and 100" });
+      }
+      
+      const updated = await storage.updateRestaurantLaborTarget(id, laborTarget);
+      if (!updated) {
+        return res.status(404).json({ error: "Restaurant not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating labor target:", error);
+      res.status(500).json({ error: "Failed to update labor target" });
+    }
+  });
+
   // Get hourly data for all restaurants (for bar charts)
   app.get("/api/hourly-by-restaurant", async (req, res) => {
     try {
