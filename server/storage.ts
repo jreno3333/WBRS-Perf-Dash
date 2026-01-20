@@ -133,9 +133,6 @@ export class DatabaseStorage implements IStorage {
     // Get all hourly sales from 7shifts for comparison data
     const allHourlySales = await db.select().from(hourlySales);
     
-    // For today: get real-time POS sales data
-    const posSalesByRestaurant = isToday ? await getPosSalesByRestaurant(selectedDate) : new Map();
-    
     const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
@@ -159,17 +156,10 @@ export class DatabaseStorage implements IStorage {
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
       );
       
-      // For today: use real-time POS data, otherwise use 7shifts historical data
-      let selectedDateSalesAmount: number;
-      if (isToday) {
-        // Use POS data for real-time sales
-        selectedDateSalesAmount = posSalesByRestaurant.get(restaurant.id) || 0;
-      } else {
-        // Use 7shifts historical data
-        selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
-          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
-        );
-      }
+      // Use 7shifts hourly data for sales (works for both today and historical)
+      const selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
+        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+      );
       
       const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
