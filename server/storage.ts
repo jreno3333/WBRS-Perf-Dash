@@ -138,8 +138,13 @@ export class DatabaseStorage implements IStorage {
     });
     
     const restaurantSales: RestaurantSales[] = restaurantList.map(restaurant => {
+      // All hourly data for the selected date (used for completed hours comparison)
       const selectedDateRestaurantHours = selectedDateHourly.filter(
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
+      );
+      // All hourly data for the entire day (used for labor forecast)
+      const allSelectedDateHours = selectedDateHourly.filter(
+        s => s.restaurantId === restaurant.id
       );
       const lastWeekRestaurantHours = lastWeekHourly.filter(
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
@@ -169,6 +174,39 @@ export class DatabaseStorage implements IStorage {
       const pacePercentage = (completedHours / 24) * 100;
       const isAheadOfPace = selectedDateSalesAmount >= lastWeekSalesAmount;
       
+      // Labor forecast calculation
+      // Get total scheduled labor for the day (sum of all projected_labor for all hours)
+      const projectedLaborCost = allSelectedDateHours.reduce(
+        (sum, s) => sum + parseFloat(s.projectedLabor || '0'), 0
+      );
+      
+      // Calculate projected end-of-day sales:
+      // For today: current actual sales + forecasted sales for remaining hours
+      // For historical: just use actual sales (day is complete)
+      let projectedEndOfDaySales: number;
+      if (isToday) {
+        // Remaining hours' forecasted sales
+        const remainingHours = allSelectedDateHours.filter(s => s.hour > normalizedHourCutoff);
+        const remainingForecastSales = remainingHours.reduce(
+          (sum, s) => sum + parseFloat(s.projectedSales || '0'), 0
+        );
+        projectedEndOfDaySales = selectedDateSalesAmount + remainingForecastSales;
+      } else {
+        // For historical: use actual sales through end of day
+        projectedEndOfDaySales = allSelectedDateHours.reduce(
+          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+        );
+      }
+      
+      // Calculate projected labor percentage
+      const projectedLaborPercent = projectedEndOfDaySales > 0 
+        ? (projectedLaborCost / projectedEndOfDaySales) * 100 
+        : 0;
+      
+      // Labor target (default 25%)
+      const laborTarget = 25;
+      const willHitLaborTarget = projectedLaborPercent <= laborTarget;
+      
       return {
         restaurantId: restaurant.id.toString(),
         restaurantName: restaurant.name,
@@ -180,6 +218,12 @@ export class DatabaseStorage implements IStorage {
         isAheadOfPace,
         rank: 0,
         normalizedHour: normalizedHourCutoff,
+        // Labor forecast fields
+        projectedLaborCost: Math.round(projectedLaborCost * 100) / 100,
+        projectedEndOfDaySales: Math.round(projectedEndOfDaySales * 100) / 100,
+        projectedLaborPercent: Math.round(projectedLaborPercent * 10) / 10, // Round to 1 decimal
+        laborTarget,
+        willHitLaborTarget,
       };
     });
     
