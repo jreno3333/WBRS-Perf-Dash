@@ -105,7 +105,7 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
                 {lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Refreshes every 5 min
+                Refreshes every 2 min
               </p>
             </div>
           </div>

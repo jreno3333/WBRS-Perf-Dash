@@ -32,7 +32,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    refetchInterval: isToday ? 5 * 60 * 1000 : false,
+    refetchInterval: isToday ? 2 * 60 * 1000 : false,
   });
 
   const { data: paceData } = useQuery<HourlySalesData[]>({
@@ -367,7 +367,7 @@ export default function Dashboard() {
       <footer className="border-t mt-8">
         <div className="container mx-auto px-4 py-4">
           <p className="text-center text-sm text-muted-foreground">
-            Data refreshes automatically every 5 minutes
+            Data refreshes automatically every 2 minutes
           </p>
         </div>
       </footer>
