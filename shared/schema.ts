@@ -9,6 +9,7 @@ export const restaurants = pgTable("restaurants", {
   name: text("name").notNull(),
   timezone: text("timezone").notNull().default("America/New_York"), // Eastern or Central
   isActive: boolean("is_active").notNull().default(true),
+  laborTarget: decimal("labor_target", { precision: 5, scale: 2 }).default("25.00"), // Target labor % (default 25%)
 });
 
 export const insertRestaurantSchema = createInsertSchema(restaurants).omit({

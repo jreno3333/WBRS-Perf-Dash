@@ -218,8 +218,8 @@ export class DatabaseStorage implements IStorage {
         ? (projectedLaborCost / projectedEndOfDaySales) * 100 
         : 0;
       
-      // Labor target (default 25%)
-      const laborTarget = 25;
+      // Labor target from restaurant config (default 25%)
+      const laborTarget = parseFloat(restaurant.laborTarget || '25');
       const willHitLaborTarget = projectedLaborPercent <= laborTarget;
       
       return {
