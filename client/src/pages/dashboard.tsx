@@ -32,7 +32,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    refetchInterval: isToday ? 2 * 60 * 1000 : false,
+    refetchInterval: isToday ? 60 * 1000 : false, // Refresh every 1 minute for real-time updates
   });
 
   const { data: paceData } = useQuery<HourlySalesData[]>({
