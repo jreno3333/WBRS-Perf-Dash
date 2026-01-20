@@ -37,6 +37,19 @@ function getCurrentHourInTimezone(timezone: string): number {
   return parseInt(new Intl.DateTimeFormat('en-US', options).format(now));
 }
 
+function getTodayInTimezone(timezone: string): string {
+  const now = new Date();
+  const options: Intl.DateTimeFormatOptions = { 
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: timezone 
+  };
+  // Format as MM/DD/YYYY then convert to YYYY-MM-DD
+  const formatted = new Intl.DateTimeFormat('en-CA', { ...options, timeZone: timezone }).format(now);
+  return formatted; // en-CA gives YYYY-MM-DD format
+}
+
 function getNormalizedHourCutoff(restaurantList: Restaurant[]): number {
   const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
   const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
@@ -97,7 +110,9 @@ export class DatabaseStorage implements IStorage {
     
     const selectedDateStr = selectedDate.toISOString().split('T')[0];
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
-    const todayStr = now.toISOString().split('T')[0];
+    // Use Central timezone to determine "today" since server runs in UTC
+    // This ensures 7 PM ET / 6 PM CT on Jan 19 is still considered Jan 19, not Jan 20
+    const todayStr = getTodayInTimezone('America/Chicago');
     
     // Check if selected date is today - use normalized cutoff for today, all hours for historical
     const isToday = selectedDateStr === todayStr;
@@ -183,7 +198,8 @@ export class DatabaseStorage implements IStorage {
     const now = new Date();
     const selectedDate = new Date(targetDate);
     const selectedDateStr = selectedDate.toISOString().split('T')[0];
-    const todayStr = now.toISOString().split('T')[0];
+    // Use Central timezone to determine "today" since server runs in UTC
+    const todayStr = getTodayInTimezone('America/Chicago');
     
     // Use normalized cutoff for today, all hours for historical
     const isToday = selectedDateStr === todayStr;
@@ -284,7 +300,8 @@ export class DatabaseStorage implements IStorage {
     
     const selectedDateStr = selectedDate.toISOString().split('T')[0];
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
-    const todayStr = now.toISOString().split('T')[0];
+    // Use Central timezone to determine "today" since server runs in UTC
+    const todayStr = getTodayInTimezone('America/Chicago');
     
     const isToday = selectedDateStr === todayStr;
     
