@@ -232,7 +232,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         {activeHours.length > 0 && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-muted-foreground mb-2">
-              <span>Hourly vs. Last Week</span>
+              <span>Hourly Sales</span>
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
                   <div className="w-2 h-2 rounded-sm bg-green-500" />
@@ -311,7 +311,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 {processedHours.map((hour) => {
                   const actualLabor = hour.actualLabor || 0;
                   const scheduledLabor = hour.projectedLabor || 0;
-                  const isUnderBudget = actualLabor <= scheduledLabor;
+                  // Within $1 tolerance counts as on budget (green)
+                  const isUnderBudget = actualLabor <= scheduledLabor + 1;
                   const maxLabor = Math.max(...processedHours.map(h => Math.max(h.actualLabor || 0, h.projectedLabor || 0)), 1);
                   const displayValue = Math.max(actualLabor, scheduledLabor);
                   const barHeightPx = Math.max(3, (displayValue / maxLabor) * 32);
