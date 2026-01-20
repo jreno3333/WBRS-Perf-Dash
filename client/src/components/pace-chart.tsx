@@ -32,22 +32,36 @@ export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps)
   };
 
   // Combine 5am and 6am into "Early Bird" and filter out hours 0-4
+  // Early Bird labor includes ALL labor from midnight (hours 0-6) to match cumulative sales methodology
   const processedData = data.reduce((acc: HourlySalesData[], item) => {
-    // Skip hours 0-4 (no sales)
+    // Skip hours 0-4 (no sales, but labor is included in Early Bird)
     if (item.hour < 5) return acc;
     
-    // Combine 5am and 6am into "Early Bird"
+    // Combine 5am and 6am into "Early Bird" with cumulative labor from midnight
     if (item.hour === 5) {
       const hour6 = data.find(d => d.hour === 6);
+      // Sum labor from hours 0-6 (midnight through 6am) for Early Bird
+      const cumulativeLabor = data
+        .filter(h => h.hour <= 6)
+        .reduce((sum, h) => ({
+          projectedLabor: sum.projectedLabor + (h.projectedLabor || 0),
+          actualLabor: sum.actualLabor + (h.actualLabor || 0),
+        }), { projectedLabor: 0, actualLabor: 0 });
+      
+      // Peak employee count across hours 0-6
+      const peakEmployees = Math.max(
+        ...data.filter(h => h.hour <= 6).map(h => h.employeeCount || 0)
+      );
+      
       acc.push({
         hour: 5,
         label: "Early Bird",
         todaySales: item.todaySales + (hour6?.todaySales || 0),
         lastWeekSales: item.lastWeekSales + (hour6?.lastWeekSales || 0),
         forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
-        projectedLabor: (item.projectedLabor || 0) + (hour6?.projectedLabor || 0),
-        actualLabor: (item.actualLabor || 0) + (hour6?.actualLabor || 0),
-        employeeCount: Math.max(item.employeeCount || 0, hour6?.employeeCount || 0),
+        projectedLabor: cumulativeLabor.projectedLabor,
+        actualLabor: cumulativeLabor.actualLabor,
+        employeeCount: peakEmployees,
       });
       return acc;
     }
