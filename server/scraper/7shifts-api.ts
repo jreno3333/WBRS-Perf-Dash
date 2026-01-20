@@ -429,6 +429,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
             projectedSales: (interval.projected_sales / 100).toFixed(2),
             pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
             projectedLabor: (interval.projected_labor / 100).toFixed(2), // Scheduled labor cost for this hour
+            actualLabor: (interval.actual_labor / 100).toFixed(2), // Actual labor cost from punched hours
           });
           
           recordsScraped++;
