@@ -9,7 +9,9 @@ import {
   ResponsiveContainer,
   Legend,
   Area,
-  AreaChart
+  AreaChart,
+  ReferenceLine,
+  ReferenceDot
 } from "recharts";
 import type { HourlySalesData } from "@shared/schema";
 
@@ -54,6 +56,29 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
     return acc;
   }, []);
 
+  // Find the current in-progress hour by looking at where todaySales stops increasing
+  // The in-progress hour is the LAST hour where cumulative sales increased (before plateau)
+  let inProgressLabel: string | null = null;
+  let inProgressSales = 0;
+  
+  // Find the last hour where sales increased compared to the NEXT hour (or equals next)
+  // This means we scan forward and find where cumulative growth stops
+  for (let i = 0; i < processedData.length; i++) {
+    const current = processedData[i];
+    const next = i < processedData.length - 1 ? processedData[i + 1] : null;
+    
+    // If this hour has sales and the next hour doesn't add more (plateau starts)
+    // OR this is the last hour with any sales increase
+    if (current.todaySales > 0) {
+      if (!next || next.todaySales <= current.todaySales) {
+        // This is where growth stops - mark as in-progress
+        inProgressLabel = current.label;
+        inProgressSales = current.todaySales;
+        break;
+      }
+    }
+  }
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -78,8 +103,16 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
   return (
     <Card className="h-full" data-testid="card-pace-chart">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base font-medium flex items-center justify-between">
-          <span>Daily Overview</span>
+        <CardTitle className="text-base font-medium flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span>Daily Overview</span>
+            {inProgressLabel && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300" data-testid="badge-in-progress">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                {inProgressLabel} In Progress
+              </span>
+            )}
+          </div>
           <span className="text-sm font-normal text-muted-foreground">
             {restaurantName}
           </span>
@@ -161,6 +194,17 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
                 strokeWidth={2.5}
                 fill="url(#todayGradient)"
               />
+              {inProgressLabel && (
+                <ReferenceDot
+                  x={inProgressLabel}
+                  y={inProgressSales}
+                  r={6}
+                  fill="hsl(24, 91%, 53%)"
+                  stroke="white"
+                  strokeWidth={2}
+                  isFront={true}
+                />
+              )}
             </AreaChart>
           </ResponsiveContainer>
         </div>

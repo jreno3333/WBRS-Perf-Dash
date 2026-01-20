@@ -47,6 +47,8 @@ API Routes:
 - **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`, `/v2/company/{id}/location/{id}/daily_stats`
 - **Data Sync**: Fetches actual sales data from 7shifts workforce management platform
 - **Sync Interval**: Data updated hourly (7shifts only reports completed hourly intervals)
+- **Timezone-Aware Sync**: Server runs in UTC but sync uses Central timezone (America/Chicago) to determine the current date. This ensures that at 9 PM Eastern (8 PM Central), the sync fetches the correct day's data instead of the next day's data. Dates are stored at noon UTC on the target date to avoid DST boundary issues.
+- **In-Progress Hour Detection**: Pace charts show a pulsing indicator on the current in-progress hour by scanning cumulative data for the first hour where sales plateau.
 - **Historical Seeding**: On startup, automatically loads 8 days of data if missing (for week-over-week comparisons)
 - **22 Restaurant Locations**: Athens, Huntsville, Albertville, Hazel Green, Scottsboro, Pell City, Florence, Cullman, Jacksonville, Attalla, Jasper, Gadsden, Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville, plus Training & Development
 - **Known $0 Stores**: East Ridge, Shallowford Village, Sevierville (Tennessee) - likely POS not connected to 7shifts

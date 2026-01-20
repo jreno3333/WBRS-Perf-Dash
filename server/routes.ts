@@ -64,7 +64,7 @@ export async function registerRoutes(
   // Trigger manual API sync
   app.post("/api/scraper/run", async (req, res) => {
     try {
-      const { date } = req.body;
+      const { date } = req.body || {};
       const targetDate = date ? new Date(date) : undefined;
       
       res.json({ message: "API sync started", status: "running" });

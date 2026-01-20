@@ -199,8 +199,27 @@ export async function fetchSalesFromAPI(date?: Date): Promise<{ success: boolean
     const locations = await api.getLocations();
     console.log(`Found ${locations.length} locations`);
     
-    const targetDate = date || new Date();
-    const dateStr = targetDate.toISOString().split('T')[0];
+    // Use Central timezone to determine "today" since server runs in UTC
+    // This ensures 9 PM ET / 8 PM CT on Jan 19 syncs Jan 19 data, not Jan 20
+    let targetDate: Date;
+    let dateStr: string;
+    
+    if (date) {
+      targetDate = date;
+      dateStr = date.toISOString().split('T')[0];
+    } else {
+      // Get today's date in Central timezone (handles DST automatically)
+      dateStr = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+      // Create a Date object for noon UTC on the target date
+      // Using noon UTC avoids timezone offset issues with midnight boundaries
+      // The date portion will match the Central timezone date
+      targetDate = new Date(dateStr + 'T12:00:00.000Z');
+    }
     
     let recordsScraped = 0;
     
@@ -347,8 +366,27 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
     await api.getCompany();
     
     const locations = await api.getLocations();
-    const targetDate = date || new Date();
-    const dateStr = targetDate.toISOString().split('T')[0];
+    
+    // Use Central timezone to determine "today" since server runs in UTC
+    // This ensures 9 PM ET / 8 PM CT on Jan 19 syncs Jan 19 data, not Jan 20
+    let targetDate: Date;
+    let dateStr: string;
+    
+    if (date) {
+      targetDate = date;
+      dateStr = date.toISOString().split('T')[0];
+    } else {
+      // Get today's date in Central timezone (handles DST automatically)
+      dateStr = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+      // Create a Date object for noon UTC on the target date
+      // Using noon UTC avoids timezone offset issues with midnight boundaries
+      targetDate = new Date(dateStr + 'T12:00:00.000Z');
+    }
     
     let recordsScraped = 0;
     
