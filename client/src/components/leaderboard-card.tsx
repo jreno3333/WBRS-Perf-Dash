@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Clock, MapPin, Users, Target } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
+import { getStaffingBreakdown } from "@/lib/labor-model";
 
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
@@ -384,11 +385,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   const employeeCount = hour.employeeCount || 0;
                   const sales = hour.todaySales || 0;
                   
-                  // Labor deployment guide: Calculate recommended employees
-                  // Based on Sales Per Labor Hour (SPLH) target of $60
-                  // Recommended = Sales / SPLH target
-                  const splhTarget = 60; // Target sales per labor hour
-                  const recommendedEmployees = sales > 0 ? Math.ceil(sales / splhTarget) : 0;
+                  // Labor deployment model: Non-production + Production staff
+                  // Uses different ramp-up charts for breakfast (6am-11am) vs non-breakfast
+                  const staffingDetails = getStaffingBreakdown(hour.hour, sales);
+                  const recommendedEmployees = staffingDetails.total;
                   
                   // Staffing status: within +/- 1 employee is "right-sized"
                   const staffingDiff = employeeCount - recommendedEmployees;
@@ -420,13 +420,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                           style={{ height: `${barHeightPx}px` }}
                         />
                       )}
-                      <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                        <div className="font-medium">{hour.label}</div>
+                      <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                        <div className="font-medium">{hour.label} {staffingDetails.isBreakfast ? "(Breakfast)" : ""}</div>
                         <div className={isRightSized ? "text-blue-600" : "text-amber-600"}>
                           On Clock: {employeeCount}
                         </div>
                         <div className="text-muted-foreground">
-                          Recommended: {recommendedEmployees}
+                          Target: {recommendedEmployees} ({staffingDetails.nonProduction} non-prod + {staffingDetails.production} prod)
                         </div>
                         <div className={`text-xs ${isOverstaffed ? "text-amber-600" : isUnderstaffed ? "text-red-600" : "text-green-600"}`}>
                           {isOverstaffed ? `+${staffingDiff} overstaffed` : isUnderstaffed ? `${staffingDiff} understaffed` : "Right-sized"}
