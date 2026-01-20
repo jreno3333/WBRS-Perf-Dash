@@ -183,13 +183,28 @@ export class DatabaseStorage implements IStorage {
       // Calculate projected end-of-day sales:
       // For today: current actual sales + forecasted sales for remaining hours
       // For historical: just use actual sales (day is complete)
+      // Note: 7shifts doesn't provide forecast for all future hours, so use last week's actuals as fallback
       let projectedEndOfDaySales: number;
       if (isToday) {
-        // Remaining hours' forecasted sales
-        const remainingHours = allSelectedDateHours.filter(s => s.hour > normalizedHourCutoff);
-        const remainingForecastSales = remainingHours.reduce(
-          (sum, s) => sum + parseFloat(s.projectedSales || '0'), 0
+        // Get last week's data for remaining hours (as forecast fallback)
+        const lastWeekAllHours = lastWeekHourly.filter(
+          s => s.restaurantId === restaurant.id
         );
+        
+        // Remaining hours' forecasted sales
+        // Use 7shifts projectedSales if available, otherwise use last week's actual as estimate
+        let remainingForecastSales = 0;
+        for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
+          const todayHour = allSelectedDateHours.find(s => s.hour === hour);
+          const lastWeekHour = lastWeekAllHours.find(s => s.hour === hour);
+          
+          // Prefer 7shifts projected, fallback to last week's actual
+          const forecastValue = parseFloat(todayHour?.projectedSales || '0') > 0 
+            ? parseFloat(todayHour?.projectedSales || '0')
+            : parseFloat(lastWeekHour?.actualSales || '0');
+          remainingForecastSales += forecastValue;
+        }
+        
         projectedEndOfDaySales = selectedDateSalesAmount + remainingForecastSales;
       } else {
         // For historical: use actual sales through end of day
