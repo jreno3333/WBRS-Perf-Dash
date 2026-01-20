@@ -292,83 +292,69 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               })()}</span>
             </div>
             
-            {/* Hourly Labor Chart - Actual vs Target vs Forecast */}
+            {/* Hourly Labor % Chart - Single bar per hour */}
             <div className="mt-3 pt-3 border-t border-border/50">
               <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                <span>Hourly Labor</span>
+                <span>Hourly Labor %</span>
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-blue-500" />
-                    Actual
-                  </span>
-                  <span className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-sm bg-green-500" />
-                    Target
+                    On Track
                   </span>
                   <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-amber-500" />
-                    Forecast
+                    <div className="w-2 h-2 rounded-sm bg-red-500" />
+                    Over Forecast
                   </span>
                 </div>
               </div>
-              <div className="flex items-end gap-0.5 h-12" data-testid={`labor-chart-${restaurant.restaurantId}`}>
+              <div className="flex items-end gap-0.5 h-10" data-testid={`labor-chart-${restaurant.restaurantId}`}>
                 {processedHours.map((hour) => {
                   const actualLabor = hour.actualLabor || 0;
                   const forecastLabor = hour.projectedLabor || 0;
-                  // Target labor based on restaurant's labor target % (default 25%)
-                  const laborTargetPercent = (restaurant.laborTarget || 25) / 100;
-                  const targetLabor = hour.todaySales * laborTargetPercent;
-                  const maxLabor = Math.max(
-                    ...processedHours.map(h => Math.max(
-                      h.actualLabor || 0, 
-                      h.projectedLabor || 0, 
-                      h.todaySales * laborTargetPercent
-                    )), 
-                    1
-                  );
-                  const hasNoData = actualLabor === 0 && forecastLabor === 0 && hour.todaySales === 0;
+                  const sales = hour.todaySales || 0;
                   
-                  // Calculate bar heights (max 48px for h-12)
-                  const actualHeightPx = hasNoData ? 0 : Math.max(2, (actualLabor / maxLabor) * 48);
-                  const targetHeightPx = hasNoData ? 0 : Math.max(2, (targetLabor / maxLabor) * 48);
-                  const forecastHeightPx = hasNoData ? 0 : Math.max(2, (forecastLabor / maxLabor) * 48);
+                  // Calculate labor percentages
+                  const actualLaborPercent = sales > 0 ? (actualLabor / sales) * 100 : 0;
+                  const forecastLaborPercent = sales > 0 ? (forecastLabor / sales) * 100 : 0;
+                  const laborTargetPercent = restaurant.laborTarget || 25;
+                  const targetLabor = sales * (laborTargetPercent / 100);
+                  
+                  // Red if actual labor % exceeds forecast labor %
+                  const isOverForecast = actualLaborPercent > forecastLaborPercent && forecastLaborPercent > 0;
+                  const hasNoData = actualLabor === 0 && sales === 0;
+                  
+                  // Bar height based on labor % (cap at 50% for display)
+                  const maxDisplayPercent = 50;
+                  const displayPercent = Math.min(actualLaborPercent, maxDisplayPercent);
+                  const barHeightPx = hasNoData ? 0 : Math.max(3, (displayPercent / maxDisplayPercent) * 40);
                   
                   return (
                     <div
                       key={`labor-${hour.hour}`}
-                      className="flex-1 flex items-end justify-center gap-px group relative h-full"
+                      className="flex-1 flex items-end group relative h-full"
                     >
                       {hasNoData ? (
                         <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
                       ) : (
-                        <>
-                          {/* Actual - Blue */}
-                          <div
-                            className="w-1/3 bg-blue-500 dark:bg-blue-400 rounded-t-sm"
-                            style={{ height: `${actualHeightPx}px` }}
-                          />
-                          {/* Target - Green */}
-                          <div
-                            className="w-1/3 bg-green-500 dark:bg-green-400 rounded-t-sm"
-                            style={{ height: `${targetHeightPx}px` }}
-                          />
-                          {/* Forecast - Amber */}
-                          <div
-                            className="w-1/3 bg-amber-500 dark:bg-amber-400 rounded-t-sm"
-                            style={{ height: `${forecastHeightPx}px` }}
-                          />
-                        </>
+                        <div
+                          className={`w-full rounded-t-sm transition-all ${
+                            isOverForecast
+                              ? "bg-red-500 dark:bg-red-400"
+                              : "bg-green-500 dark:bg-green-400"
+                          }`}
+                          style={{ height: `${barHeightPx}px` }}
+                        />
                       )}
-                      <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                      <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                         <div className="font-medium">{hour.label}</div>
-                        <div className="text-blue-600 dark:text-blue-400">
-                          Actual: {formatCurrency(actualLabor)}
+                        <div className={isOverForecast ? "text-red-600" : "text-green-600"}>
+                          Actual: {formatCurrency(actualLabor)} ({actualLaborPercent.toFixed(1)}%)
                         </div>
-                        <div className="text-green-600 dark:text-green-400">
-                          Target: {formatCurrency(targetLabor)}
+                        <div className="text-muted-foreground">
+                          Target: {formatCurrency(targetLabor)} ({laborTargetPercent}%)
                         </div>
-                        <div className="text-amber-600 dark:text-amber-400">
-                          Forecast: {formatCurrency(forecastLabor)}
+                        <div className="text-muted-foreground">
+                          Forecast: {formatCurrency(forecastLabor)} ({forecastLaborPercent.toFixed(1)}%)
                         </div>
                       </div>
                     </div>
