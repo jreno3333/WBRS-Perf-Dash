@@ -201,9 +201,13 @@ export class DatabaseStorage implements IStorage {
     // Use Central timezone to determine "today" since server runs in UTC
     const todayStr = getTodayInTimezone('America/Chicago');
     
-    // Use normalized cutoff for today, all hours for historical
+    // For charts, show all data through the current hour (not just completed hours)
+    // The normalized cutoff is for fair leaderboard comparisons, not chart display
     const isToday = selectedDateStr === todayStr;
-    const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
+    // For display: use minimum current hour across all timezones (shows in-progress hour)
+    const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
+    const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
+    const displayHourCutoff = isToday ? Math.min(...currentHours) : 23;
     
     const lastWeek = new Date(selectedDate);
     lastWeek.setDate(lastWeek.getDate() - 7);
@@ -257,25 +261,25 @@ export class DatabaseStorage implements IStorage {
     let cumulativeForecast = 0;
     
     for (let hour = 0; hour < 24; hour++) {
-      // Only accumulate if this hour is completed (hour <= cutoff)
-      // When cutoff is -1 (no hours completed), nothing accumulates
-      if (hour <= normalizedHourCutoff) {
+      // Accumulate data through the display cutoff (current hour, not just completed hours)
+      // This shows in-progress data on charts while leaderboard uses completed hours only
+      if (hour <= displayHourCutoff) {
         cumulativeSelected += selectedByHour.get(hour) || 0;
         cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
         cumulativeForecast += forecastByHour.get(hour) || 0;
       }
       
       // Show cumulative up to the cutoff, then full last week/forecast for reference
-      const showCumulativeSelected = hour <= normalizedHourCutoff ? Math.round(cumulativeSelected) : 0;
-      const showCumulativeLastWeek = hour <= normalizedHourCutoff 
+      const showCumulativeSelected = hour <= displayHourCutoff ? Math.round(cumulativeSelected) : 0;
+      const showCumulativeLastWeek = hour <= displayHourCutoff 
         ? Math.round(cumulativeLastWeek) 
         : Math.round(cumulativeLastWeek + (lastWeekByHour.get(hour) || 0));
-      const showCumulativeForecast = hour <= normalizedHourCutoff 
+      const showCumulativeForecast = hour <= displayHourCutoff 
         ? Math.round(cumulativeForecast) 
         : Math.round(cumulativeForecast + (forecastByHour.get(hour) || 0));
       
       // Keep accumulating last week and forecast for future hours (reference line)
-      if (hour > normalizedHourCutoff) {
+      if (hour > displayHourCutoff) {
         cumulativeLastWeek += lastWeekByHour.get(hour) || 0;
         cumulativeForecast += forecastByHour.get(hour) || 0;
       }
@@ -306,7 +310,10 @@ export class DatabaseStorage implements IStorage {
     const isToday = selectedDateStr === todayStr;
     
     const restaurantList = await this.getRestaurants();
-    const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
+    // For display: use current hour (shows in-progress data), not last completed hour
+    const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
+    const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
+    const displayHourCutoff = isToday ? Math.min(...currentHours) : 23;
     
     const allHourlySales = await db.select().from(hourlySales);
     
@@ -340,7 +347,7 @@ export class DatabaseStorage implements IStorage {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
       
-      for (let hour = 0; hour <= normalizedHourCutoff; hour++) {
+      for (let hour = 0; hour <= displayHourCutoff; hour++) {
         const todaySales = Math.round(selectedByHour.get(hour) || 0);
         const lastWeekSales = Math.round(lastWeekByHour.get(hour) || 0);
         const forecastSales = Math.round(forecastByHour.get(hour) || 0);
