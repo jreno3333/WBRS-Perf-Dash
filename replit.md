@@ -54,6 +54,7 @@ API Routes:
 - **Known $0 Stores**: East Ridge, Shallowford Village, Sevierville (Tennessee) - likely POS not connected to 7shifts
 - **Data Sync Timing**: For complete end-of-day sales, data should be re-synced after midnight when all hourly data is finalized in 7shifts. Real-time syncs during the day only capture completed hours. Some stores (like 1249 - Huntsville) may have hours 22-23 (10pm-midnight) unreported until the next day.
 - **Forecast Data Limitation**: 7shifts `daily_stats` API only returns projected_sales for completed hours. For future hours, the system uses last week's actual sales as the forecast estimate since 7shifts doesn't provide future hour forecasts.
+- **Labor Forecast**: The leaderboard calculates projected end-of-day labor percentage for each restaurant. Calculation: (projected labor cost / projected end-of-day sales) * 100. Target is 25% - stores "On Track" are projected to be at or below target, "Over Target" indicates labor may exceed target. Uses 7shifts projectedLabor for all scheduled hours, and last week's actuals for remaining hour sales forecast when 7shifts data is unavailable.
 
 ### Xenial POS Integration (Real-Time Orders)
 - **Webhook Endpoint**: `POST /api/xenial/order` - Receives real-time order pushes from Xenial POS
@@ -84,7 +85,7 @@ POS API Routes:
 Database Tables:
 - `restaurants` - 22 store locations with name, timezone (America/Chicago or America/New_York), and active status
 - `daily_sales` - Daily sales snapshots with total sales, vs projected, and labor percent
-- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales, projectedSales)
+- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales, projectedSales, projectedLabor)
 - `scraper_runs` - Sync job tracking with status and record counts
 - `pos_orders` - Real-time orders received from Xenial POS webhook (xenialOrderId, storeNumber, orderTotal, businessDate, orderClosedAt, orderSource)
 - `location_mapping` - Maps Xenial store numbers to restaurant IDs and 7shifts location IDs
