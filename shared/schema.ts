@@ -104,6 +104,7 @@ export interface HourlySalesData {
   todaySales: number;
   lastWeekSales: number;
   forecastSales: number;
+  projectedLabor: number; // Scheduled labor cost for this hour
   label: string;
 }
 

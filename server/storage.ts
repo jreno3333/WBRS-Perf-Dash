@@ -325,11 +325,13 @@ export class DatabaseStorage implements IStorage {
     const selectedByHour: Map<number, number> = new Map();
     const lastWeekByHour: Map<number, number> = new Map();
     const forecastByHour: Map<number, number> = new Map();
+    const laborByHour: Map<number, number> = new Map();
     
     for (let h = 0; h < 24; h++) {
       selectedByHour.set(h, 0);
       lastWeekByHour.set(h, 0);
       forecastByHour.set(h, 0);
+      laborByHour.set(h, 0);
     }
     
     if (restaurantId === "all") {
@@ -351,6 +353,9 @@ export class DatabaseStorage implements IStorage {
       selectedDateHourly.forEach(s => {
         const currentForecast = forecastByHour.get(s.hour) || 0;
         forecastByHour.set(s.hour, currentForecast + parseFloat(s.projectedSales || '0'));
+        // Projected labor for this hour
+        const currentLabor = laborByHour.get(s.hour) || 0;
+        laborByHour.set(s.hour, currentLabor + parseFloat(s.projectedLabor || '0'));
       });
       // Last week from 7shifts
       lastWeekHourly.forEach(s => {
@@ -371,9 +376,10 @@ export class DatabaseStorage implements IStorage {
           selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
         });
       }
-      // Forecast from 7shifts
+      // Forecast and labor from 7shifts
       selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
+        laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
       });
       // Last week from 7shifts
       lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
@@ -422,6 +428,7 @@ export class DatabaseStorage implements IStorage {
         todaySales: showCumulativeSelected,
         lastWeekSales: showCumulativeLastWeek,
         forecastSales: showCumulativeForecast,
+        projectedLabor: Math.round((laborByHour.get(hour) || 0) * 100) / 100,
         label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
       });
     }
@@ -477,6 +484,7 @@ export class DatabaseStorage implements IStorage {
       const selectedByHour: Map<number, number> = new Map();
       const lastWeekByHour: Map<number, number> = new Map();
       const forecastByHour: Map<number, number> = new Map();
+      const laborByHour: Map<number, number> = new Map();
       
       // For today: use POS data for current sales
       if (isToday && posHourlySales) {
@@ -492,9 +500,10 @@ export class DatabaseStorage implements IStorage {
         });
       }
       
-      // Forecast from 7shifts
+      // Forecast and labor from 7shifts
       restaurantSelectedHourly.forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
+        laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
       });
       // Last week from 7shifts
       restaurantLastWeekHourly.forEach(s => {
@@ -519,6 +528,7 @@ export class DatabaseStorage implements IStorage {
             todaySales,
             lastWeekSales,
             forecastSales,
+            projectedLabor: Math.round((laborByHour.get(hour) || 0) * 100) / 100,
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
           });
         }

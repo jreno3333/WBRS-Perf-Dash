@@ -47,6 +47,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         todaySales: item.todaySales + (hour6?.todaySales || 0),
         lastWeekSales: item.lastWeekSales + (hour6?.lastWeekSales || 0),
         forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
+        projectedLabor: item.projectedLabor + (hour6?.projectedLabor || 0),
       });
       return acc;
     }
@@ -64,6 +65,30 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
     1
   );
+  
+  // Calculate cumulative labor spent (scheduled) for completed hours
+  const cumulativeScheduledLabor = processedHours.reduce(
+    (sum, h) => sum + (h.projectedLabor || 0), 0
+  );
+  
+  // Calculate what labor SHOULD be at this point based on sales performance
+  // If sales are above forecast, labor % should be lower (good)
+  // If sales are below forecast, labor % should be higher (bad)
+  const cumulativeSales = processedHours.reduce((sum, h) => sum + h.todaySales, 0);
+  const cumulativeForecast = processedHours.reduce((sum, h) => sum + h.forecastSales, 0);
+  
+  // Current labor % = (labor spent so far / sales so far) * 100
+  const currentLaborPercent = cumulativeSales > 0 
+    ? (cumulativeScheduledLabor / cumulativeSales) * 100 
+    : 0;
+  
+  // Forecasted labor % at this point = (labor spent / forecast sales) * 100  
+  const forecastLaborPercent = cumulativeForecast > 0
+    ? (cumulativeScheduledLabor / cumulativeForecast) * 100
+    : 0;
+  
+  // Are we making labor? (actual labor % is better than forecasted)
+  const isMakingLabor = currentLaborPercent < forecastLaborPercent;
 
   // Calculate in-progress hour from full timeline (not just filtered activeHours)
   // Find the last hour that has actual sales data in the full timeline
@@ -153,53 +178,47 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
           </div>
         </div>
 
-        {/* Labor Forecast Indicator */}
-        {restaurant.projectedLaborPercent !== undefined && restaurant.projectedLaborCost !== undefined && (
+        {/* Labor Tracking - Based on Scheduled Labor vs Actual Sales */}
+        {cumulativeScheduledLabor > 0 && (
           <div className="mt-3 pt-3 border-t border-border" data-testid={`labor-forecast-${restaurant.restaurantId}`}>
-            {restaurant.projectedLaborCost > 0 ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Labor Forecast:</span>
-                    <span className={`font-semibold ${
-                      restaurant.willHitLaborTarget 
-                        ? "text-green-600 dark:text-green-400" 
-                        : "text-red-600 dark:text-red-400"
-                    }`}>
-                      {restaurant.projectedLaborPercent?.toFixed(1)}%
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      (target: {restaurant.laborTarget}%)
-                    </span>
-                  </div>
-                  <Badge 
-                    className={`border-0 ${
-                      restaurant.willHitLaborTarget 
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
-                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                    }`}
-                    data-testid={`badge-labor-${restaurant.restaurantId}`}
-                  >
-                    <Target className="w-3 h-3 mr-1" />
-                    {restaurant.willHitLaborTarget ? "On Track" : "Over Target"}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                  <span>
-                    Labor: {formatCurrency(restaurant.projectedLaborCost || 0)}
-                  </span>
-                  <span>
-                    Proj. Sales: {formatCurrency(restaurant.projectedEndOfDaySales || 0)}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Users className="w-4 h-4" />
-                <span>Labor data unavailable</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Labor:</span>
+                <span className={`font-semibold ${
+                  isMakingLabor 
+                    ? "text-green-600 dark:text-green-400" 
+                    : "text-red-600 dark:text-red-400"
+                }`}>
+                  {currentLaborPercent.toFixed(1)}%
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  (forecast: {forecastLaborPercent.toFixed(1)}%)
+                </span>
               </div>
-            )}
+              <Badge 
+                className={`border-0 ${
+                  isMakingLabor 
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
+                    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                }`}
+                data-testid={`badge-labor-${restaurant.restaurantId}`}
+              >
+                <Target className="w-3 h-3 mr-1" />
+                {isMakingLabor ? "Making Labor" : "Missing Labor"}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+              <span>
+                Scheduled: {formatCurrency(cumulativeScheduledLabor)}
+              </span>
+              <span>
+                Sales: {formatCurrency(cumulativeSales)}
+              </span>
+              <span>
+                vs Forecast: {formatCurrency(cumulativeForecast)}
+              </span>
+            </div>
           </div>
         )}
 
