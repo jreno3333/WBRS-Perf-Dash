@@ -6,6 +6,8 @@ interface XenialOrderData {
   _id: string;
   origin?: string;
   store_number?: string;
+  net_sales?: number | string;
+  net_amount?: number | string;
   total?: number | string;
   business_date?: string;
   closed?: string;
@@ -36,12 +38,12 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
       return { success: false, error: "Missing store number" };
     }
 
-    // Parse total - may be string or number in Xenial payload
-    const rawTotal = data.total ?? data.payments?.[0]?.amount ?? 0;
-    const orderTotal = typeof rawTotal === 'string' ? parseFloat(rawTotal) : Number(rawTotal);
+    // Parse net sales - prioritize net_sales/net_amount (excludes tax/fees), fallback to total
+    const rawAmount = data.net_sales ?? data.net_amount ?? data.total ?? 0;
+    const orderTotal = typeof rawAmount === 'string' ? parseFloat(rawAmount) : Number(rawAmount);
     
     if (isNaN(orderTotal) || orderTotal <= 0) {
-      return { success: false, error: "Invalid order total" };
+      return { success: false, error: "Invalid order amount" };
     }
 
     const businessDateStr = data.business_date;
