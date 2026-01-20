@@ -154,43 +154,52 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         </div>
 
         {/* Labor Forecast Indicator */}
-        {restaurant.projectedLaborPercent !== undefined && restaurant.projectedLaborCost !== undefined && restaurant.projectedLaborCost > 0 && (
+        {restaurant.projectedLaborPercent !== undefined && restaurant.projectedLaborCost !== undefined && (
           <div className="mt-3 pt-3 border-t border-border" data-testid={`labor-forecast-${restaurant.restaurantId}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="w-4 h-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Labor Forecast:</span>
-                <span className={`font-semibold ${
-                  restaurant.willHitLaborTarget 
-                    ? "text-green-600 dark:text-green-400" 
-                    : "text-red-600 dark:text-red-400"
-                }`}>
-                  {restaurant.projectedLaborPercent?.toFixed(1)}%
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  (target: {restaurant.laborTarget}%)
-                </span>
+            {restaurant.projectedLaborCost > 0 ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Labor Forecast:</span>
+                    <span className={`font-semibold ${
+                      restaurant.willHitLaborTarget 
+                        ? "text-green-600 dark:text-green-400" 
+                        : "text-red-600 dark:text-red-400"
+                    }`}>
+                      {restaurant.projectedLaborPercent?.toFixed(1)}%
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      (target: {restaurant.laborTarget}%)
+                    </span>
+                  </div>
+                  <Badge 
+                    className={`border-0 ${
+                      restaurant.willHitLaborTarget 
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
+                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    }`}
+                    data-testid={`badge-labor-${restaurant.restaurantId}`}
+                  >
+                    <Target className="w-3 h-3 mr-1" />
+                    {restaurant.willHitLaborTarget ? "On Track" : "Over Target"}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                  <span>
+                    Labor: {formatCurrency(restaurant.projectedLaborCost || 0)}
+                  </span>
+                  <span>
+                    Proj. Sales: {formatCurrency(restaurant.projectedEndOfDaySales || 0)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Users className="w-4 h-4" />
+                <span>Labor data unavailable</span>
               </div>
-              <Badge 
-                className={`border-0 ${
-                  restaurant.willHitLaborTarget 
-                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
-                    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                }`}
-                data-testid={`badge-labor-${restaurant.restaurantId}`}
-              >
-                <Target className="w-3 h-3 mr-1" />
-                {restaurant.willHitLaborTarget ? "On Track" : "Over Target"}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-              <span>
-                Labor: {formatCurrency(restaurant.projectedLaborCost || 0)}
-              </span>
-              <span>
-                Proj. Sales: {formatCurrency(restaurant.projectedEndOfDaySales || 0)}
-              </span>
-            </div>
+            )}
           </div>
         )}
 
