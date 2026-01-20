@@ -92,8 +92,61 @@ async function runScheduledSync() {
     } else {
       log(`Hourly sync failed: ${hourlyResult.error}`);
     }
+    
+    // Check if we should also sync yesterday's data (after midnight Central to capture hours 22-23)
+    await syncYesterdayIfNeeded();
   } catch (error) {
     log(`Sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Track last yesterday resync to avoid doing it too frequently
+let lastYesterdaySync: string | null = null;
+
+async function syncYesterdayIfNeeded() {
+  // Get current hour in Central timezone
+  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    hour12: false
+  }).format(new Date()));
+  
+  // Get today's date in Central timezone
+  const todayCentral = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
+  
+  // Only sync yesterday between 12 AM and 6 AM Central, and only once per day
+  if (centralHour >= 0 && centralHour < 6 && lastYesterdaySync !== todayCentral) {
+    log("Running post-midnight yesterday resync to capture late hours...");
+    
+    try {
+      // Calculate yesterday's date in Central timezone
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(yesterday);
+      
+      // Create a date object for yesterday at noon UTC
+      const yesterdayDate = new Date(yesterdayStr + 'T12:00:00.000Z');
+      
+      // Resync yesterday's hourly data
+      const result = await fetchHourlySalesFromAPI(yesterdayDate);
+      if (result.success) {
+        log(`Yesterday resync completed: ${result.recordsScraped} hourly records for ${yesterdayStr}`);
+      }
+      
+      lastYesterdaySync = todayCentral;
+    } catch (error) {
+      log(`Yesterday resync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 

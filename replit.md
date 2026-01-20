@@ -52,6 +52,7 @@ API Routes:
 - **Historical Seeding**: On startup, automatically loads 8 days of data if missing (for week-over-week comparisons)
 - **22 Restaurant Locations**: Athens, Huntsville, Albertville, Hazel Green, Scottsboro, Pell City, Florence, Cullman, Jacksonville, Attalla, Jasper, Gadsden, Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville, plus Training & Development
 - **Known $0 Stores**: East Ridge, Shallowford Village, Sevierville (Tennessee) - likely POS not connected to 7shifts
+- **Data Sync Timing**: For complete end-of-day sales, data should be re-synced after midnight when all hourly data is finalized in 7shifts. Real-time syncs during the day only capture completed hours. Some stores (like 1249 - Huntsville) may have hours 22-23 (10pm-midnight) unreported until the next day.
 - **Forecast Data Limitation**: 7shifts `daily_stats` API only returns projected_sales for completed hours. For future hours, the system uses last week's actual sales as the forecast estimate since 7shifts doesn't provide future hour forecasts.
 
 ### Data Layer
