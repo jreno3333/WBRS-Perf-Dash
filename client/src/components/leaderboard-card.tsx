@@ -291,6 +291,61 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
               })()}</span>
             </div>
+            
+            {/* Hourly Labor Chart */}
+            <div className="mt-3 pt-3 border-t border-border/50">
+              <div className="flex justify-between text-xs text-muted-foreground mb-2">
+                <span>Hourly Labor vs. Scheduled</span>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-green-500" />
+                    Under
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-red-500" />
+                    Over
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-end gap-0.5 h-8" data-testid={`labor-chart-${restaurant.restaurantId}`}>
+                {processedHours.map((hour) => {
+                  const actualLabor = hour.actualLabor || 0;
+                  const scheduledLabor = hour.projectedLabor || 0;
+                  const isUnderBudget = actualLabor <= scheduledLabor;
+                  const maxLabor = Math.max(...processedHours.map(h => Math.max(h.actualLabor || 0, h.projectedLabor || 0)), 1);
+                  const displayValue = Math.max(actualLabor, scheduledLabor);
+                  const barHeightPx = Math.max(3, (displayValue / maxLabor) * 32);
+                  const hasNoActual = actualLabor === 0 && scheduledLabor > 0;
+                  
+                  return (
+                    <div
+                      key={`labor-${hour.hour}`}
+                      className="flex-1 flex items-end group relative h-full"
+                    >
+                      <div
+                        className={`w-full rounded-t-sm transition-all ${
+                          hasNoActual
+                            ? "bg-gray-300 dark:bg-gray-600"
+                            : isUnderBudget
+                              ? "bg-green-500 dark:bg-green-400"
+                              : "bg-red-500 dark:bg-red-400"
+                        }`}
+                        style={{ height: `${barHeightPx}px` }}
+                      />
+                      <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                        <div className="font-medium">{hour.label}</div>
+                        <div className={isUnderBudget ? "text-green-600" : "text-red-600"}>
+                          Actual: {formatCurrency(actualLabor)}
+                        </div>
+                        <div className="text-muted-foreground">
+                          Sched: {formatCurrency(scheduledLabor)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
