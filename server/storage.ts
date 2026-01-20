@@ -296,12 +296,6 @@ export class DatabaseStorage implements IStorage {
     
     const allHourlySales = await db.select().from(hourlySales);
     
-    // For today: get real-time POS hourly sales
-    let posHourlySales: Map<string, Map<number, number>> | null = null;
-    if (isToday) {
-      posHourlySales = await getAllHourlyPosSales(selectedDate);
-    }
-    
     const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
@@ -327,20 +321,11 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (restaurantId === "all") {
-      // For today: use POS data for current sales
-      if (isToday && posHourlySales) {
-        posHourlySales.forEach((hourlyMap, restId) => {
-          hourlyMap.forEach((sales, hour) => {
-            const current = selectedByHour.get(hour) || 0;
-            selectedByHour.set(hour, current + sales);
-          });
-        });
-      } else {
-        selectedDateHourly.forEach(s => {
-          const current = selectedByHour.get(s.hour) || 0;
-          selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
-        });
-      }
+      // Use 7shifts data for all sales
+      selectedDateHourly.forEach(s => {
+        const current = selectedByHour.get(s.hour) || 0;
+        selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+      });
       // Forecast from 7shifts
       selectedDateHourly.forEach(s => {
         const currentForecast = forecastByHour.get(s.hour) || 0;
@@ -358,19 +343,10 @@ export class DatabaseStorage implements IStorage {
         lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
       });
     } else {
-      // For today: use POS data for the specific restaurant
-      if (isToday && posHourlySales) {
-        const restaurantPosData = posHourlySales.get(restaurantId);
-        if (restaurantPosData) {
-          restaurantPosData.forEach((sales, hour) => {
-            selectedByHour.set(hour, sales);
-          });
-        }
-      } else {
-        selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
-          selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
-        });
-      }
+      // Use 7shifts data for the specific restaurant
+      selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
+        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      });
       // Forecast and labor from 7shifts
       selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
@@ -456,12 +432,6 @@ export class DatabaseStorage implements IStorage {
     
     const allHourlySales = await db.select().from(hourlySales);
     
-    // For today: get real-time POS hourly sales
-    let posHourlySales: Map<string, Map<number, number>> | null = null;
-    if (isToday) {
-      posHourlySales = await getAllHourlyPosSales(selectedDate);
-    }
-    
     const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
@@ -486,19 +456,10 @@ export class DatabaseStorage implements IStorage {
       const laborByHour: Map<number, number> = new Map();
       const actualLaborByHour: Map<number, number> = new Map();
       
-      // For today: use POS data for current sales
-      if (isToday && posHourlySales) {
-        const restaurantPosData = posHourlySales.get(restaurant.id);
-        if (restaurantPosData) {
-          restaurantPosData.forEach((sales, hour) => {
-            selectedByHour.set(hour, sales);
-          });
-        }
-      } else {
-        restaurantSelectedHourly.forEach(s => {
-          selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
-        });
-      }
+      // Use 7shifts data for sales
+      restaurantSelectedHourly.forEach(s => {
+        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      });
       
       // Forecast and labor from 7shifts
       restaurantSelectedHourly.forEach(s => {
