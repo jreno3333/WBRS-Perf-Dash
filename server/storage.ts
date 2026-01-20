@@ -256,6 +256,14 @@ export class DatabaseStorage implements IStorage {
       });
     }
     
+    // For hours without forecast data (future hours), use last week's actual as forecast
+    // 7shifts only provides projected_sales for completed hours, not future forecasts
+    for (let h = 0; h < 24; h++) {
+      if ((forecastByHour.get(h) || 0) === 0 && (lastWeekByHour.get(h) || 0) > 0) {
+        forecastByHour.set(h, lastWeekByHour.get(h) || 0);
+      }
+    }
+    
     let cumulativeSelected = 0;
     let cumulativeLastWeek = 0;
     let cumulativeForecast = 0;
@@ -346,6 +354,13 @@ export class DatabaseStorage implements IStorage {
       restaurantLastWeekHourly.forEach(s => {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
+      
+      // For hours without forecast data (future hours), use last week's actual as forecast
+      for (let h = 0; h < 24; h++) {
+        if ((forecastByHour.get(h) || 0) === 0 && (lastWeekByHour.get(h) || 0) > 0) {
+          forecastByHour.set(h, lastWeekByHour.get(h) || 0);
+        }
+      }
       
       for (let hour = 0; hour <= displayHourCutoff; hour++) {
         const todaySales = Math.round(selectedByHour.get(hour) || 0);

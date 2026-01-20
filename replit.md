@@ -44,12 +44,13 @@ API Routes:
 ### 7shifts Integration
 - **API Client**: Custom REST client in `server/scraper/7shifts-api.ts`
 - **Authentication**: Bearer token via `SEVENSHIFTS_API_TOKEN` environment variable
-- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`
+- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`, `/v2/company/{id}/location/{id}/daily_stats`
 - **Data Sync**: Fetches actual sales data from 7shifts workforce management platform
-- **Sync Interval**: Every 2 minutes for responsive real-time updates
+- **Sync Interval**: Data updated hourly (7shifts only reports completed hourly intervals)
 - **Historical Seeding**: On startup, automatically loads 8 days of data if missing (for week-over-week comparisons)
 - **22 Restaurant Locations**: Athens, Huntsville, Albertville, Hazel Green, Scottsboro, Pell City, Florence, Cullman, Jacksonville, Attalla, Jasper, Gadsden, Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville, plus Training & Development
 - **Known $0 Stores**: East Ridge, Shallowford Village, Sevierville (Tennessee) - likely POS not connected to 7shifts
+- **Forecast Data Limitation**: 7shifts `daily_stats` API only returns projected_sales for completed hours. For future hours, the system uses last week's actual sales as the forecast estimate since 7shifts doesn't provide future hour forecasts.
 
 ### Data Layer
 - **ORM**: Drizzle ORM with PostgreSQL dialect
