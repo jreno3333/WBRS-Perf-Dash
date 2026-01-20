@@ -35,7 +35,7 @@ export default function Dashboard() {
     refetchInterval: isToday ? 60 * 1000 : false, // Refresh every 1 minute for real-time updates
   });
 
-  const { data: paceData } = useQuery<HourlySalesData[]>({
+  const { data: paceResponse } = useQuery<{ data: HourlySalesData[]; currentHour: number | null; isToday: boolean }>({
     queryKey: ["/api/pace", selectedRestaurant, dateStr],
     queryFn: async () => {
       const res = await fetch(`/api/pace/${selectedRestaurant}?date=${dateStr}`);
@@ -44,9 +44,11 @@ export default function Dashboard() {
     },
     enabled: !!selectedRestaurant,
   });
+  const paceData = paceResponse?.data;
+  const currentHour = paceResponse?.currentHour ?? null;
 
   // Always fetch aggregate pace data for the summary cards (independent of sidebar selection)
-  const { data: aggregatePaceData } = useQuery<HourlySalesData[]>({
+  const { data: aggregatePaceResponse } = useQuery<{ data: HourlySalesData[]; currentHour: number | null; isToday: boolean }>({
     queryKey: ["/api/pace", "all", dateStr],
     queryFn: async () => {
       const res = await fetch(`/api/pace/all?date=${dateStr}`);
@@ -54,6 +56,7 @@ export default function Dashboard() {
       return res.json();
     },
   });
+  const aggregatePaceData = aggregatePaceResponse?.data;
 
   const { data: hourlyByRestaurant } = useQuery<Record<string, HourlySalesData[]>>({
     queryKey: ["/api/hourly-by-restaurant", dateStr],
@@ -332,7 +335,8 @@ export default function Dashboard() {
                 {paceData && paceData.length > 0 ? (
                   <PaceChart 
                     data={paceData} 
-                    restaurantName={getSelectedRestaurantName()} 
+                    restaurantName={getSelectedRestaurantName()}
+                    currentHour={currentHour}
                   />
                 ) : (
                   <Card>

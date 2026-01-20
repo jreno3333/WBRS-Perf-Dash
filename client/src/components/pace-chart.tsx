@@ -18,9 +18,10 @@ import type { HourlySalesData } from "@shared/schema";
 interface PaceChartProps {
   data: HourlySalesData[];
   restaurantName: string;
+  currentHour?: number | null;
 }
 
-export function PaceChart({ data, restaurantName }: PaceChartProps) {
+export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -56,25 +57,32 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
     return acc;
   }, []);
 
-  // Find the current in-progress hour by looking at where todaySales stops increasing
-  // The in-progress hour is the LAST hour where cumulative sales increased (before plateau)
+  // Use server-provided current hour to determine in-progress indicator
+  // This ensures the correct hour is shown regardless of data patterns
   let inProgressLabel: string | null = null;
   let inProgressSales = 0;
   
-  // Find the last hour where sales increased compared to the NEXT hour (or equals next)
-  // This means we scan forward and find where cumulative growth stops
-  for (let i = 0; i < processedData.length; i++) {
-    const current = processedData[i];
-    const next = i < processedData.length - 1 ? processedData[i + 1] : null;
+  if (currentHour !== null && currentHour !== undefined) {
+    // Map the current hour to a label
+    const hourLabel = currentHour === 0 ? "12am" : currentHour < 12 ? `${currentHour}am` : currentHour === 12 ? "12pm" : `${currentHour - 12}pm`;
     
-    // If this hour has sales and the next hour doesn't add more (plateau starts)
-    // OR this is the last hour with any sales increase
-    if (current.todaySales > 0) {
-      if (!next || next.todaySales <= current.todaySales) {
-        // This is where growth stops - mark as in-progress
-        inProgressLabel = current.label;
-        inProgressSales = current.todaySales;
-        break;
+    // Find matching entry in processedData (accounting for "Early Bird" combining hours 5-6)
+    if (currentHour <= 6) {
+      // Early Bird covers hours 5 and 6
+      const earlyBird = processedData.find(d => d.label === "Early Bird");
+      if (earlyBird) {
+        inProgressLabel = "Early Bird";
+        inProgressSales = earlyBird.todaySales;
+      }
+    } else {
+      const matchingHour = processedData.find(d => d.hour === currentHour);
+      if (matchingHour) {
+        inProgressLabel = matchingHour.label;
+        inProgressSales = matchingHour.todaySales;
+      } else {
+        // If no data for current hour yet, still show the label
+        inProgressLabel = hourLabel;
+        inProgressSales = 0;
       }
     }
   }

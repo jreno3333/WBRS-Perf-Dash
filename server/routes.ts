@@ -31,7 +31,26 @@ export async function registerRoutes(
       const { date } = req.query;
       const targetDate = date ? new Date(date as string) : new Date();
       const paceData = await storage.getPaceData(restaurantId, targetDate);
-      res.json(paceData);
+      
+      // Include the current hour for in-progress indicator
+      const getCurrentHour = (tz: string) => {
+        const options: Intl.DateTimeFormatOptions = { hour: 'numeric', hour12: false, timeZone: tz };
+        return parseInt(new Intl.DateTimeFormat('en-US', options).format(new Date()));
+      };
+      const centralHour = getCurrentHour('America/Chicago');
+      const easternHour = getCurrentHour('America/New_York');
+      const currentHour = Math.min(centralHour, easternHour);
+      
+      // Check if viewing today
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const selectedStr = targetDate.toISOString().split('T')[0];
+      const isToday = todayStr === selectedStr;
+      
+      res.json({ 
+        data: paceData, 
+        currentHour: isToday ? currentHour : null,
+        isToday 
+      });
     } catch (error) {
       console.error("Error fetching pace data:", error);
       res.status(500).json({ error: "Failed to fetch pace data" });
