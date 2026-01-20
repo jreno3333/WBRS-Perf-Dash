@@ -103,6 +103,42 @@ export interface LeaderboardData {
   currentDate: string;
 }
 
+// POS orders from Xenial webhook
+export const posOrders = pgTable("pos_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  xenialOrderId: text("xenial_order_id").notNull().unique(), // Xenial UUID
+  storeNumber: text("store_number").notNull(), // Xenial store ID (e.g., "1237")
+  orderTotal: decimal("order_total", { precision: 10, scale: 2 }).notNull(),
+  businessDate: timestamp("business_date").notNull(),
+  orderClosedAt: timestamp("order_closed_at").notNull(),
+  orderSource: text("order_source"), // "POS", "APP", etc.
+  rawJson: text("raw_json"), // Full JSON for debugging
+  receivedAt: timestamp("received_at").defaultNow(),
+});
+
+export const insertPosOrderSchema = createInsertSchema(posOrders).omit({
+  id: true,
+  receivedAt: true,
+});
+
+export type InsertPosOrder = z.infer<typeof insertPosOrderSchema>;
+export type PosOrder = typeof posOrders.$inferSelect;
+
+// Location mapping from Xenial store IDs to restaurant IDs
+export const locationMapping = pgTable("location_mapping", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  xenialStoreNumber: text("xenial_store_number").notNull().unique(), // e.g., "1237"
+  restaurantId: varchar("restaurant_id").notNull(), // Links to restaurants table
+  sevenShiftsLocationId: text("seven_shifts_location_id"), // For cross-reference
+});
+
+export const insertLocationMappingSchema = createInsertSchema(locationMapping).omit({
+  id: true,
+});
+
+export type InsertLocationMapping = z.infer<typeof insertLocationMappingSchema>;
+export type LocationMapping = typeof locationMapping.$inferSelect;
+
 // Users table (keeping for compatibility)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

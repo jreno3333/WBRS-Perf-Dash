@@ -55,6 +55,26 @@ API Routes:
 - **Data Sync Timing**: For complete end-of-day sales, data should be re-synced after midnight when all hourly data is finalized in 7shifts. Real-time syncs during the day only capture completed hours. Some stores (like 1249 - Huntsville) may have hours 22-23 (10pm-midnight) unreported until the next day.
 - **Forecast Data Limitation**: 7shifts `daily_stats` API only returns projected_sales for completed hours. For future hours, the system uses last week's actual sales as the forecast estimate since 7shifts doesn't provide future hour forecasts.
 
+### Xenial POS Integration (Real-Time Orders)
+- **Webhook Endpoint**: `POST /api/xenial/order` - Receives real-time order pushes from Xenial POS
+- **Authentication**: Bearer token via `MWBURGER_POS_TOKEN` environment variable
+- **Order Data**: Each order includes xenialOrderId, storeNumber, orderTotal, businessDate, orderClosedAt, orderSource
+- **Implementation**: `server/xenial-webhook.ts` handles order processing and aggregation
+- **Location Mapping**: Xenial store numbers (e.g., "1237") mapped to restaurant IDs via `location_mapping` table
+
+POS API Routes:
+- `POST /api/xenial/order` - Webhook endpoint for Xenial to push orders (requires auth token)
+- `GET /api/pos/sales` - Get aggregated POS sales by store for a date
+- `GET /api/pos/recent` - View recent POS orders (debugging)
+- `GET /api/pos/status` - POS webhook status and today's order count
+- `POST /api/pos/seed-mappings` - Seed location mappings from Xenial to restaurant IDs
+
+**Xenial Store Number to Restaurant Mapping**:
+- 1237 → Athens, 1249 → Huntsville, 1238 → Albertville, 1273 → Hazel Green
+- 1350 → Scottsboro, 1351 → Pell City, 1236 → Florence, 1309 → Cullman
+- 1492 → Jacksonville, 1491 → Attalla, 1358 → Jasper, 1251 → Gadsden
+- Plus: Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville
+
 ### Data Layer
 - **ORM**: Drizzle ORM with PostgreSQL dialect
 - **Schema Location**: `shared/schema.ts` (shared between frontend and backend)
@@ -66,6 +86,8 @@ Database Tables:
 - `daily_sales` - Daily sales snapshots with total sales, vs projected, and labor percent
 - `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales, projectedSales)
 - `scraper_runs` - Sync job tracking with status and record counts
+- `pos_orders` - Real-time orders received from Xenial POS webhook (xenialOrderId, storeNumber, orderTotal, businessDate, orderClosedAt, orderSource)
+- `location_mapping` - Maps Xenial store numbers to restaurant IDs and 7shifts location IDs
 
 ### Timezone-Fair Comparison
 The leaderboard uses a normalized hour cutoff to ensure fair comparisons between Eastern (America/New_York) and Central (America/Chicago) timezone stores:
