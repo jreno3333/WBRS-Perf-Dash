@@ -264,6 +264,7 @@ export async function fetchSalesFromAPI(date?: Date): Promise<{ success: boolean
               totalSales: dayData.actual_sales.toString(),
               vsProjected: (dayData.actual_sales - dayData.projected_sales).toString(),
               laborPercent: (dayData.labor_percent * 100).toString(),
+              projectedLaborCost: (dayData.projected_labor_cost / 100).toFixed(2), // Convert from cents
               scrapedAt: new Date(),
             })
             .where(eq(dailySales.id, existing.id));
@@ -275,6 +276,7 @@ export async function fetchSalesFromAPI(date?: Date): Promise<{ success: boolean
             totalSales: dayData.actual_sales.toString(),
             vsProjected: (dayData.actual_sales - dayData.projected_sales).toString(),
             laborPercent: (dayData.labor_percent * 100).toString(),
+            projectedLaborCost: (dayData.projected_labor_cost / 100).toFixed(2), // Convert from cents
           });
         }
         
@@ -426,6 +428,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
             actualSales: (interval.actual_sales / 100).toFixed(2),
             projectedSales: (interval.projected_sales / 100).toFixed(2),
             pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
+            projectedLabor: (interval.projected_labor / 100).toFixed(2), // Scheduled labor cost for this hour
           });
           
           recordsScraped++;

@@ -27,6 +27,8 @@ export const dailySales = pgTable("daily_sales", {
   totalSales: decimal("total_sales", { precision: 10, scale: 2 }).notNull(),
   vsProjected: decimal("vs_projected", { precision: 10, scale: 2 }), // Difference from projected
   laborPercent: decimal("labor_percent", { precision: 5, scale: 2 }),
+  projectedLaborCost: decimal("projected_labor_cost", { precision: 10, scale: 2 }), // Total scheduled labor for the day
+  laborTarget: decimal("labor_target", { precision: 5, scale: 2 }).default("25.00"), // Target labor % (default 25%)
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
 
@@ -47,6 +49,7 @@ export const hourlySales = pgTable("hourly_sales", {
   actualSales: decimal("actual_sales", { precision: 10, scale: 2 }).notNull(),
   projectedSales: decimal("projected_sales", { precision: 10, scale: 2 }),
   pastActualSales: decimal("past_actual_sales", { precision: 10, scale: 2 }), // Last week same hour
+  projectedLabor: decimal("projected_labor", { precision: 10, scale: 2 }), // Scheduled labor cost for this hour
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
 
@@ -87,6 +90,12 @@ export interface RestaurantSales {
   isAheadOfPace: boolean;
   rank: number;
   normalizedHour: number; // Current hour normalized for fair comparison
+  // Labor forecast fields
+  projectedLaborCost?: number; // Total scheduled labor for the day
+  projectedEndOfDaySales?: number; // Actual + forecasted remaining sales
+  projectedLaborPercent?: number; // Projected labor % at end of day
+  laborTarget?: number; // Target labor % (default 25%)
+  willHitLaborTarget?: boolean; // Whether projected to hit target
 }
 
 export interface HourlySalesData {
