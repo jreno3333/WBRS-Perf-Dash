@@ -49,6 +49,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
         projectedLabor: item.projectedLabor + (hour6?.projectedLabor || 0),
         actualLabor: item.actualLabor + (hour6?.actualLabor || 0),
+        employeeCount: Math.max(item.employeeCount || 0, hour6?.employeeCount || 0), // Peak employees during Early Bird
       });
       return acc;
     }
@@ -355,6 +356,80 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                         </div>
                         <div className="text-muted-foreground">
                           Forecast: {formatCurrency(forecastLabor)} ({forecastLaborPercent.toFixed(1)}%)
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Staffing Chart - Employees on Clock vs Recommended */}
+            <div className="mt-3 pt-3 border-t border-border/50">
+              <div className="flex justify-between text-xs text-muted-foreground mb-2">
+                <span>Staffing (Employees on Clock)</span>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-blue-500" />
+                    Right-sized
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-amber-500" />
+                    Over/Under
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
+                {processedHours.map((hour) => {
+                  const employeeCount = hour.employeeCount || 0;
+                  const sales = hour.todaySales || 0;
+                  
+                  // Labor deployment guide: Calculate recommended employees
+                  // Based on Sales Per Labor Hour (SPLH) target of $60
+                  // Recommended = Sales / SPLH target
+                  const splhTarget = 60; // Target sales per labor hour
+                  const recommendedEmployees = sales > 0 ? Math.ceil(sales / splhTarget) : 0;
+                  
+                  // Staffing status: within +/- 1 employee is "right-sized"
+                  const staffingDiff = employeeCount - recommendedEmployees;
+                  const isRightSized = Math.abs(staffingDiff) <= 1;
+                  const isOverstaffed = staffingDiff > 1;
+                  const isUnderstaffed = staffingDiff < -1;
+                  
+                  const hasNoData = employeeCount === 0 && sales === 0;
+                  
+                  // Bar height based on employee count (cap at 15 for display)
+                  const maxDisplayCount = 15;
+                  const displayCount = Math.min(employeeCount, maxDisplayCount);
+                  const barHeightPx = hasNoData ? 0 : Math.max(3, (displayCount / maxDisplayCount) * 40);
+                  
+                  return (
+                    <div
+                      key={`staff-${hour.hour}`}
+                      className="flex-1 flex items-end group relative h-full"
+                    >
+                      {hasNoData ? (
+                        <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
+                      ) : (
+                        <div
+                          className={`w-full rounded-t-sm transition-all ${
+                            isRightSized
+                              ? "bg-blue-500 dark:bg-blue-400"
+                              : "bg-amber-500 dark:bg-amber-400"
+                          }`}
+                          style={{ height: `${barHeightPx}px` }}
+                        />
+                      )}
+                      <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                        <div className="font-medium">{hour.label}</div>
+                        <div className={isRightSized ? "text-blue-600" : "text-amber-600"}>
+                          On Clock: {employeeCount}
+                        </div>
+                        <div className="text-muted-foreground">
+                          Recommended: {recommendedEmployees}
+                        </div>
+                        <div className={`text-xs ${isOverstaffed ? "text-amber-600" : isUnderstaffed ? "text-red-600" : "text-green-600"}`}>
+                          {isOverstaffed ? `+${staffingDiff} overstaffed` : isUnderstaffed ? `${staffingDiff} understaffed` : "Right-sized"}
                         </div>
                       </div>
                     </div>

@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { restaurants, dailySales, hourlySales, scraperRuns } from '@shared/schema';
 import { eq, and, gte, lt } from 'drizzle-orm';
+import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 interface SevenShiftsLocation {
   id: number;
@@ -41,6 +42,28 @@ interface DailyStatsResponse {
       past_projected_sales: number;
     };
     intervals: HourlyInterval[];
+  };
+}
+
+interface TimePunch {
+  id: number;
+  user_id: number;
+  location_id: number;
+  department_id: number;
+  role_id: number;
+  clocked_in: string;
+  clocked_out: string | null;
+  approved: boolean;
+  hourly_wage: number;
+  breaks: { in: string; out: string | null; paid: boolean }[];
+}
+
+interface TimePunchesResponse {
+  data: TimePunch[];
+  meta: {
+    cursor?: {
+      next?: string;
+    };
   };
 }
 
@@ -138,6 +161,103 @@ export class SevenShiftsAPI {
       console.error(`Error fetching hourly sales for location ${locationId}:`, error);
       return [];
     }
+  }
+
+  // Fetch time punches for a location on a specific date
+  // Includes punches that started before the target date but continued into it
+  async getTimePunches(locationId: number, date: string): Promise<TimePunch[]> {
+    if (!this.companyId) {
+      await this.getCompany();
+    }
+
+    try {
+      // Fetch punches that could possibly overlap the target day:
+      // - Start from day before (at 4am local = 10am/9am UTC) to catch overnight shifts (e.g., 10pm-6am)
+      // - The getEmployeesPerHour function will filter to only count hours within the target day
+      const dayBefore = new Date(date);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      const dayBeforeStr = dayBefore.toISOString().split('T')[0];
+      
+      // Use 4am (local) as start time - this catches any overnight shifts that started after 4am the previous day
+      // Most overnight shifts start around 10pm, so 4am the day before gives us plenty of buffer
+      const startDate = `${dayBeforeStr}T04:00:00`;
+      const endDate = `${date}T23:59:59`;
+      
+      // Fetch punches where clocked_in is within range
+      // Add limit=500 to get more results (7shifts API defaults to low limit)
+      const response = await this.request<TimePunchesResponse>(
+        `/v2/company/${this.companyId}/time_punches?location_id=${locationId}&clocked_in[gte]=${startDate}&clocked_in[lte]=${endDate}&limit=500`
+      );
+      return response.data || [];
+    } catch (error) {
+      console.error(`Error fetching time punches for location ${locationId}:`, error);
+      return [];
+    }
+  }
+
+  // Calculate employees on clock for each hour based on time punches
+  // Uses date string and location timezone to determine target day boundaries
+  // Timezone parameter ensures hour boundaries match the location's local time
+  getEmployeesPerHour(punches: TimePunch[], date: string, timezone: string): Map<number, number> {
+    const employeesByHour = new Map<number, number>();
+    
+    // Initialize all hours to 0
+    for (let h = 0; h < 24; h++) {
+      employeesByHour.set(h, 0);
+    }
+    
+    // Use fromZonedTime with string-based date creation to avoid server timezone issues
+    // This approach creates a string that represents the local time in the target timezone
+    // and then converts it to UTC for comparison with punch times
+    const startOfDayUTC = fromZonedTime(`${date}T00:00:00`, timezone);
+    const endOfDayUTC = fromZonedTime(`${date}T23:59:59.999`, timezone);
+    
+    // For each punch, count which hours the employee was on clock
+    for (const punch of punches) {
+      // 7shifts returns punch times as ISO strings with timezone offset
+      // Parsing with new Date() gives us UTC time
+      let clockIn = new Date(punch.clocked_in);
+      
+      // Clamp clock out to end of target day for open punches
+      let clockOut: Date;
+      if (punch.clocked_out) {
+        clockOut = new Date(punch.clocked_out);
+      } else {
+        // Still on clock - clamp to end of target day or current time, whichever is earlier
+        const now = new Date();
+        clockOut = now < endOfDayUTC ? now : endOfDayUTC;
+      }
+      
+      // Skip if punch ended before start of day or started after end of day
+      if (clockOut < startOfDayUTC || clockIn > endOfDayUTC) {
+        continue;
+      }
+      
+      // Clamp punch times to the target day window to avoid counting hours outside the day
+      // This is critical for overnight shifts that start before midnight
+      if (clockIn < startOfDayUTC) {
+        clockIn = startOfDayUTC;
+      }
+      if (clockOut > endOfDayUTC) {
+        clockOut = endOfDayUTC;
+      }
+      
+      // Determine hours this employee was on clock
+      for (let h = 0; h < 24; h++) {
+        // Create hour boundaries in local timezone using string format, then convert to UTC
+        const hourStr = h.toString().padStart(2, '0');
+        const hourStartUTC = fromZonedTime(`${date}T${hourStr}:00:00`, timezone);
+        const hourEndUTC = fromZonedTime(`${date}T${hourStr}:59:59.999`, timezone);
+        
+        // Employee was on clock during this hour if there's any overlap
+        // Overlap exists if: clockIn <= hourEnd AND clockOut >= hourStart
+        if (clockIn <= hourEndUTC && clockOut >= hourStartUTC) {
+          employeesByHour.set(h, (employeesByHour.get(h) || 0) + 1);
+        }
+      }
+    }
+    
+    return employeesByHour;
   }
 }
 
@@ -404,6 +524,13 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       
       const intervals = await api.getHourlySales(location.id, dateStr);
       
+      // Fetch time punches to calculate employees on clock per hour
+      // Use restaurant.timezone from our database (not 7shifts API) for proper timezone-aware hour boundary calculations
+      // 7shifts API returns America/Chicago for all locations regardless of actual timezone
+      const timePunches = await api.getTimePunches(location.id, dateStr);
+      const locationTimezone = restaurant.timezone || 'America/Chicago'; // Use our DB timezone, default to Central
+      const employeesByHour = api.getEmployeesPerHour(timePunches, dateStr, locationTimezone);
+      
       if (intervals.length > 0) {
         const startOfDay = new Date(targetDate);
         startOfDay.setHours(0, 0, 0, 0);
@@ -430,12 +557,13 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
             pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
             projectedLabor: (interval.projected_labor / 100).toFixed(2), // Scheduled labor cost for this hour
             actualLabor: (interval.actual_labor / 100).toFixed(2), // Actual labor cost from punched hours
+            employeeCount: employeesByHour.get(hour) || 0, // Number of employees on clock
           });
           
           recordsScraped++;
         }
         
-        console.log(`Saved ${intervals.length} hourly records for ${location.name}`);
+        console.log(`Saved ${intervals.length} hourly records for ${location.name} (${timePunches.length} time punches)`);
       }
     }
     

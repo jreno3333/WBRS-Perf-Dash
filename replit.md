@@ -44,7 +44,7 @@ API Routes:
 ### 7shifts Integration
 - **API Client**: Custom REST client in `server/scraper/7shifts-api.ts`
 - **Authentication**: Bearer token via `SEVENSHIFTS_API_TOKEN` environment variable
-- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`, `/v2/company/{id}/location/{id}/daily_stats`
+- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`, `/v2/company/{id}/location/{id}/daily_stats`, `/v2/time_punches`
 - **Data Sync**: Fetches actual sales data from 7shifts workforce management platform
 - **Sync Interval**: Data updated hourly (7shifts only reports completed hourly intervals)
 - **Timezone-Aware Sync**: Server runs in UTC but sync uses Central timezone (America/Chicago) to determine the current date. This ensures that at 9 PM Eastern (8 PM Central), the sync fetches the correct day's data instead of the next day's data. Dates are stored at noon UTC on the target date to avoid DST boundary issues.
@@ -55,6 +55,8 @@ API Routes:
 - **Data Sync Timing**: For complete end-of-day sales, data should be re-synced after midnight when all hourly data is finalized in 7shifts. Real-time syncs during the day only capture completed hours. Some stores (like 1249 - Huntsville) may have hours 22-23 (10pm-midnight) unreported until the next day.
 - **Forecast Data Limitation**: 7shifts `daily_stats` API only returns projected_sales for completed hours. For future hours, the system uses last week's actual sales as the forecast estimate since 7shifts doesn't provide future hour forecasts.
 - **Labor Forecast**: The leaderboard calculates projected end-of-day labor percentage for each restaurant. Calculation: (projected labor cost / projected end-of-day sales) * 100. Target is 25% - stores "On Track" are projected to be at or below target, "Over Target" indicates labor may exceed target. Uses 7shifts projectedLabor for all scheduled hours, and last week's actuals for remaining hour sales forecast when 7shifts data is unavailable.
+- **Time Punches API**: Fetches employee clock-in/clock-out data via `/v2/time_punches` endpoint with `limit=500` to avoid API pagination truncation. Query window: from 4am the day before to 11:59pm target day to capture overnight shifts. Calculates employees on clock per hour by checking which punches overlap each hourly interval. Uses restaurant.timezone from our database (not 7shifts API which returns America/Chicago for all locations). Stored in `hourly_sales.employeeCount` field.
+- **Labor Deployment Guide**: Uses time punch data to show actual employees on clock vs recommended staffing. Recommended staffing calculated as: forecastSales / $60 SPLH target (Sales Per Labor Hour). Status indicator: blue if within ±1 employee of target, amber if over/understaffed.
 
 ### Xenial POS Integration (Real-Time Orders)
 - **Webhook Endpoint**: `POST /api/xenial/order` - Receives real-time order pushes from Xenial POS
@@ -85,7 +87,7 @@ POS API Routes:
 Database Tables:
 - `restaurants` - 22 store locations with name, timezone (America/Chicago or America/New_York), and active status
 - `daily_sales` - Daily sales snapshots with total sales, vs projected, and labor percent
-- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales, projectedSales, projectedLabor)
+- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales, projectedSales, projectedLabor, actualLabor, employeeCount)
 - `scraper_runs` - Sync job tracking with status and record counts
 - `pos_orders` - Real-time orders received from Xenial POS webhook (xenialOrderId, storeNumber, orderTotal, businessDate, orderClosedAt, orderSource)
 - `location_mapping` - Maps Xenial store numbers to restaurant IDs and 7shifts location IDs

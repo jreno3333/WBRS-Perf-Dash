@@ -52,6 +52,7 @@ export const hourlySales = pgTable("hourly_sales", {
   pastActualSales: decimal("past_actual_sales", { precision: 10, scale: 2 }), // Last week same hour
   projectedLabor: decimal("projected_labor", { precision: 10, scale: 2 }), // Scheduled labor cost for this hour
   actualLabor: decimal("actual_labor", { precision: 10, scale: 2 }), // Actual labor cost from punched hours
+  employeeCount: integer("employee_count"), // Number of employees on clock during this hour
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
 
@@ -107,6 +108,7 @@ export interface HourlySalesData {
   forecastSales: number;
   projectedLabor: number; // Scheduled labor cost for this hour
   actualLabor: number; // Actual labor cost from punched hours
+  employeeCount: number; // Number of employees on clock during this hour
   label: string;
 }
 

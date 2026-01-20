@@ -187,6 +187,25 @@ export async function registerRoutes(
     }
   });
 
+  // Sync hourly data for today (with time punches)
+  app.post("/api/scraper/hourly", async (req, res) => {
+    try {
+      const { date } = req.body || {};
+      const targetDate = date ? new Date(date) : undefined;
+      
+      res.json({ message: "Hourly sync with time punches started", status: "running" });
+      
+      fetchHourlySalesFromAPI(targetDate).then(result => {
+        console.log("Hourly sync completed:", result);
+      }).catch(err => {
+        console.error("Hourly sync error:", err);
+      });
+    } catch (error) {
+      console.error("Error starting hourly sync:", error);
+      res.status(500).json({ error: "Failed to start hourly sync" });
+    }
+  });
+
   // ===== XENIAL POS WEBHOOK ENDPOINTS =====
 
   // Receive order from Xenial POS (webhook endpoint)
