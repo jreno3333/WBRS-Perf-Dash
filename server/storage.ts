@@ -108,11 +108,21 @@ export class DatabaseStorage implements IStorage {
     const lastWeek = new Date(selectedDate);
     lastWeek.setDate(lastWeek.getDate() - 7);
     
-    const selectedDateStr = selectedDate.toISOString().split('T')[0];
-    const lastWeekStr = lastWeek.toISOString().split('T')[0];
-    // Use Central timezone to determine "today" since server runs in UTC
-    // This ensures 7 PM ET / 6 PM CT on Jan 19 is still considered Jan 19, not Jan 20
+    // Use Central timezone for all date comparisons to ensure consistency
+    // This ensures 9 PM ET / 8 PM CT on Jan 19 is still considered Jan 19, not Jan 20
     const todayStr = getTodayInTimezone('America/Chicago');
+    const selectedDateStr = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(selectedDate);
+    const lastWeekStr = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(lastWeek);
     
     // Check if selected date is today - use normalized cutoff for today, all hours for historical
     const isToday = selectedDateStr === todayStr;
@@ -122,13 +132,24 @@ export class DatabaseStorage implements IStorage {
     
     const allHourlySales = await db.select().from(hourlySales);
     
+    // Filter hourly sales using Central timezone date comparison
     const selectedDateHourly = allHourlySales.filter(s => {
-      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      const saleDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(s.salesDate));
       return saleDate === selectedDateStr;
     });
     
     const lastWeekHourly = allHourlySales.filter(s => {
-      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      const saleDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(s.salesDate));
       return saleDate === lastWeekStr;
     });
     
@@ -197,31 +218,67 @@ export class DatabaseStorage implements IStorage {
     const restaurantList = await this.getRestaurants();
     const now = new Date();
     const selectedDate = new Date(targetDate);
-    const selectedDateStr = selectedDate.toISOString().split('T')[0];
-    // Use Central timezone to determine "today" since server runs in UTC
+    
+    // Use Central timezone to determine both dates for consistent comparison
+    // This ensures that at 9pm ET (8pm CT), we're still showing "today" correctly
     const todayStr = getTodayInTimezone('America/Chicago');
+    const selectedDateStr = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(selectedDate);
     
     // For charts, show all data through the current hour (not just completed hours)
     // The normalized cutoff is for fair leaderboard comparisons, not chart display
     const isToday = selectedDateStr === todayStr;
-    // For display: use minimum current hour across all timezones (shows in-progress hour)
-    const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
-    const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
-    const displayHourCutoff = isToday ? Math.min(...currentHours) : 23;
+    
+    // For display hour cutoff:
+    // - "all" (aggregate): use minimum current hour across all timezones for fair comparison
+    // - single restaurant: use that restaurant's own timezone
+    let displayHourCutoff: number;
+    if (!isToday) {
+      displayHourCutoff = 23;
+    } else if (restaurantId === "all") {
+      const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
+      const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
+      displayHourCutoff = Math.min(...currentHours);
+    } else {
+      const restaurant = restaurantList.find(r => r.id === restaurantId);
+      displayHourCutoff = restaurant 
+        ? getCurrentHourInTimezone(restaurant.timezone) 
+        : Math.min(...restaurantList.map(r => getCurrentHourInTimezone(r.timezone)));
+    }
     
     const lastWeek = new Date(selectedDate);
     lastWeek.setDate(lastWeek.getDate() - 7);
-    const lastWeekStr = lastWeek.toISOString().split('T')[0];
+    const lastWeekStr = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(lastWeek);
     
     const allHourlySales = await db.select().from(hourlySales);
     
+    // Filter hourly sales using Central timezone date comparison
     const selectedDateHourly = allHourlySales.filter(s => {
-      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      const saleDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(s.salesDate));
       return saleDate === selectedDateStr;
     });
     
     const lastWeekHourly = allHourlySales.filter(s => {
-      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      const saleDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(s.salesDate));
       return saleDate === lastWeekStr;
     });
     
@@ -310,28 +367,47 @@ export class DatabaseStorage implements IStorage {
     const lastWeek = new Date(selectedDate);
     lastWeek.setDate(lastWeek.getDate() - 7);
     
-    const selectedDateStr = selectedDate.toISOString().split('T')[0];
-    const lastWeekStr = lastWeek.toISOString().split('T')[0];
-    // Use Central timezone to determine "today" since server runs in UTC
+    // Use Central timezone to determine both dates for consistent comparison
+    // This ensures that at 9pm ET (8pm CT), we're still showing "today" correctly
     const todayStr = getTodayInTimezone('America/Chicago');
+    // Convert selectedDate to Central timezone for comparison
+    const selectedDateStr = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(selectedDate);
+    const lastWeekStr = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(lastWeek);
     
     const isToday = selectedDateStr === todayStr;
     
     const restaurantList = await this.getRestaurants();
-    // For display: use current hour (shows in-progress data), not last completed hour
-    const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
-    const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
-    const displayHourCutoff = isToday ? Math.min(...currentHours) : 23;
     
     const allHourlySales = await db.select().from(hourlySales);
     
+    // Filter hourly sales using Central timezone date comparison
     const selectedDateHourly = allHourlySales.filter(s => {
-      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      const saleDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(s.salesDate));
       return saleDate === selectedDateStr;
     });
     
     const lastWeekHourly = allHourlySales.filter(s => {
-      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+      const saleDate = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(s.salesDate));
       return saleDate === lastWeekStr;
     });
     
@@ -339,6 +415,11 @@ export class DatabaseStorage implements IStorage {
     
     for (const restaurant of restaurantList) {
       const hourlyData: HourlySalesData[] = [];
+      
+      // Use each restaurant's own timezone for display hour cutoff
+      // This ensures Eastern stores show their current hour, Central stores show theirs
+      const restaurantCurrentHour = getCurrentHourInTimezone(restaurant.timezone);
+      const displayHourCutoff = isToday ? restaurantCurrentHour : 23;
       
       const restaurantSelectedHourly = selectedDateHourly.filter(s => s.restaurantId === restaurant.id);
       const restaurantLastWeekHourly = lastWeekHourly.filter(s => s.restaurantId === restaurant.id);
