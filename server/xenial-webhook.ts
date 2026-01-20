@@ -154,37 +154,137 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date): 
   return hourlyData;
 }
 
+// Get POS sales aggregated by restaurant ID (using location_mapping to convert store numbers)
+export async function getPosSalesByRestaurant(targetDate: Date): Promise<Map<string, number>> {
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+
+  // Join pos_orders with location_mapping to get restaurant IDs
+  const results = await db
+    .select({
+      restaurantId: locationMapping.restaurantId,
+      totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+    })
+    .from(posOrders)
+    .innerJoin(locationMapping, eq(posOrders.storeNumber, locationMapping.xenialStoreNumber))
+    .where(
+      and(
+        gte(posOrders.businessDate, startOfDay),
+        lt(posOrders.businessDate, endOfDay)
+      )
+    )
+    .groupBy(locationMapping.restaurantId);
+
+  const salesByRestaurant = new Map<string, number>();
+  for (const row of results) {
+    if (row.restaurantId) {
+      salesByRestaurant.set(row.restaurantId, Number(row.totalSales) || 0);
+    }
+  }
+
+  return salesByRestaurant;
+}
+
+// Get hourly POS sales by restaurant ID for a specific date
+export async function getHourlyPosSalesByRestaurant(restaurantId: string, targetDate: Date): Promise<Map<number, number>> {
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+
+  const results = await db
+    .select({
+      hour: sql<number>`extract(hour from ${posOrders.orderClosedAt})::int`,
+      totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+    })
+    .from(posOrders)
+    .innerJoin(locationMapping, eq(posOrders.storeNumber, locationMapping.xenialStoreNumber))
+    .where(
+      and(
+        eq(locationMapping.restaurantId, restaurantId),
+        gte(posOrders.businessDate, startOfDay),
+        lt(posOrders.businessDate, endOfDay)
+      )
+    )
+    .groupBy(sql`extract(hour from ${posOrders.orderClosedAt})`);
+
+  const hourlyData = new Map<number, number>();
+  for (const row of results) {
+    hourlyData.set(row.hour, Number(row.totalSales) || 0);
+  }
+
+  return hourlyData;
+}
+
+// Get all hourly POS sales for all restaurants on a given date
+export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string, Map<number, number>>> {
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+
+  const results = await db
+    .select({
+      restaurantId: locationMapping.restaurantId,
+      hour: sql<number>`extract(hour from ${posOrders.orderClosedAt})::int`,
+      totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+    })
+    .from(posOrders)
+    .innerJoin(locationMapping, eq(posOrders.storeNumber, locationMapping.xenialStoreNumber))
+    .where(
+      and(
+        gte(posOrders.businessDate, startOfDay),
+        lt(posOrders.businessDate, endOfDay)
+      )
+    )
+    .groupBy(locationMapping.restaurantId, sql`extract(hour from ${posOrders.orderClosedAt})`);
+
+  const allHourlySales = new Map<string, Map<number, number>>();
+  for (const row of results) {
+    if (row.restaurantId) {
+      if (!allHourlySales.has(row.restaurantId)) {
+        allHourlySales.set(row.restaurantId, new Map());
+      }
+      allHourlySales.get(row.restaurantId)!.set(row.hour, Number(row.totalSales) || 0);
+    }
+  }
+
+  return allHourlySales;
+}
+
 export async function seedLocationMappings(): Promise<number> {
+  // Map Xenial store numbers to restaurant name patterns
+  // Restaurant names in DB are like "1237 - Athens", so we match by store number prefix
   const mappings = [
-    { xenialStore: "1237", name: "Athens", sevenShifts: "298133" },
-    { xenialStore: "1249", name: "Huntsville", sevenShifts: "298320" },
-    { xenialStore: "1238", name: "Albertville", sevenShifts: "317365" },
-    { xenialStore: "1273", name: "Hazel Green", sevenShifts: "340006" },
-    { xenialStore: "1350", name: "Scottsboro", sevenShifts: "351864" },
-    { xenialStore: "1351", name: "Pell City", sevenShifts: "355675" },
-    { xenialStore: "1236", name: "Florence", sevenShifts: "368063" },
-    { xenialStore: "1309", name: "Cullman", sevenShifts: "321834" },
-    { xenialStore: "1492", name: "Jacksonville", sevenShifts: "402456" },
-    { xenialStore: "1491", name: "Attalla", sevenShifts: "342831" },
-    { xenialStore: "1358", name: "Jasper", sevenShifts: "208333" },
-    { xenialStore: "1251", name: "Gadsden", sevenShifts: "308603" },
-    { xenialStore: "1489", name: "Owens Cross Roads", sevenShifts: "420456" },
-    { xenialStore: "1890", name: "Madison County Line", sevenShifts: "425678" },
-    { xenialStore: "1801", name: "Cumberland Avenue", sevenShifts: "430123" },
-    { xenialStore: "1802", name: "Turkey Creek", sevenShifts: "435678" },
-    { xenialStore: "1803", name: "Powell", sevenShifts: "440123" },
-    { xenialStore: "1679", name: "East Ridge", sevenShifts: "445678" },
-    { xenialStore: "1605", name: "Shallowford Village", sevenShifts: "450123" },
-    { xenialStore: "1729", name: "Sevierville", sevenShifts: "455678" },
-    { xenialStore: "1000", name: "Training & Development", sevenShifts: "208334" },
+    { xenialStore: "1237", storePrefix: "1237 - ", sevenShifts: "298133" },
+    { xenialStore: "1249", storePrefix: "1249 - ", sevenShifts: "298320" },
+    { xenialStore: "1238", storePrefix: "1238 - ", sevenShifts: "317365" },
+    { xenialStore: "1273", storePrefix: "1273 - ", sevenShifts: "340006" },
+    { xenialStore: "1350", storePrefix: "1350 - ", sevenShifts: "351864" },
+    { xenialStore: "1351", storePrefix: "1351 - ", sevenShifts: "355675" },
+    { xenialStore: "1236", storePrefix: "1236 - ", sevenShifts: "368063" },
+    { xenialStore: "1309", storePrefix: "1309 - ", sevenShifts: "321834" },
+    { xenialStore: "1492", storePrefix: "1492 - ", sevenShifts: "402456" },
+    { xenialStore: "1491", storePrefix: "1491 - ", sevenShifts: "342831" },
+    { xenialStore: "1516", storePrefix: "1516 - ", sevenShifts: "208333" },
+    { xenialStore: "1508", storePrefix: "1508 - ", sevenShifts: "308603" },
+    { xenialStore: "1541", storePrefix: "1541 - ", sevenShifts: "342831" },
+    { xenialStore: "1438", storePrefix: "1438 - ", sevenShifts: "420456" },
+    { xenialStore: "1606", storePrefix: "1606 - ", sevenShifts: "425678" },
+    { xenialStore: "1682", storePrefix: "1682 - ", sevenShifts: "430123" },
+    { xenialStore: "1681", storePrefix: "1681 - ", sevenShifts: "435678" },
+    { xenialStore: "1680", storePrefix: "1680 - ", sevenShifts: "440123" },
+    { xenialStore: "1679", storePrefix: "1679 - ", sevenShifts: "445678" },
+    { xenialStore: "1605", storePrefix: "1605 - ", sevenShifts: "450123" },
+    { xenialStore: "1729", storePrefix: "1729 - ", sevenShifts: "455678" },
   ];
 
   let count = 0;
   for (const mapping of mappings) {
+    // Find restaurant by store number prefix in name (e.g., "1237 - Athens")
     const existingRestaurant = await db
       .select()
       .from(restaurants)
-      .where(eq(restaurants.name, mapping.name))
+      .where(sql`${restaurants.name} LIKE ${mapping.storePrefix + '%'}`)
       .limit(1);
 
     if (existingRestaurant.length > 0) {
@@ -194,6 +294,7 @@ export async function seedLocationMappings(): Promise<number> {
         sevenShiftsLocationId: mapping.sevenShifts,
       }).onConflictDoNothing();
       count++;
+      console.log(`Mapped Xenial store ${mapping.xenialStore} to ${existingRestaurant[0].name}`);
     }
   }
 

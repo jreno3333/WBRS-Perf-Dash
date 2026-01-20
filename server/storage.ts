@@ -9,11 +9,13 @@ import {
   restaurants,
   dailySales,
   hourlySales,
-  scraperRuns
+  scraperRuns,
+  posOrders
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt, lte, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { getPosSalesByRestaurant, getAllHourlyPosSales } from "./xenial-webhook";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -111,16 +113,19 @@ export class DatabaseStorage implements IStorage {
     const selectedDateStr = selectedDate.toISOString().split('T')[0];
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
     // Use Central timezone to determine "today" since server runs in UTC
-    // This ensures 7 PM ET / 6 PM CT on Jan 19 is still considered Jan 19, not Jan 20
     const todayStr = getTodayInTimezone('America/Chicago');
     
-    // Check if selected date is today - use normalized cutoff for today, all hours for historical
+    // Check if selected date is today - use POS data for today, 7shifts data for historical
     const isToday = selectedDateStr === todayStr;
     
     const restaurantList = await this.getRestaurants();
     const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
     
+    // Get all hourly sales from 7shifts for comparison data
     const allHourlySales = await db.select().from(hourlySales);
+    
+    // For today: get real-time POS sales data
+    const posSalesByRestaurant = isToday ? await getPosSalesByRestaurant(selectedDate) : new Map();
     
     const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
@@ -140,9 +145,18 @@ export class DatabaseStorage implements IStorage {
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
       );
       
-      const selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
-        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
-      );
+      // For today: use real-time POS data, otherwise use 7shifts historical data
+      let selectedDateSalesAmount: number;
+      if (isToday) {
+        // Use POS data for real-time sales
+        selectedDateSalesAmount = posSalesByRestaurant.get(restaurant.id) || 0;
+      } else {
+        // Use 7shifts historical data
+        selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
+          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+        );
+      }
+      
       const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
@@ -174,16 +188,26 @@ export class DatabaseStorage implements IStorage {
       r.rank = idx + 1;
     });
     
-    // Get the last successful data sync time
-    const lastSync = await db.select()
-      .from(scraperRuns)
-      .where(eq(scraperRuns.status, 'success'))
-      .orderBy(desc(scraperRuns.completedAt))
-      .limit(1);
-    
-    const lastUpdated = lastSync.length > 0 && lastSync[0].completedAt 
-      ? lastSync[0].completedAt.toISOString()
-      : now.toISOString();
+    // Get the last POS order time for "last updated" when viewing today
+    let lastUpdated: string;
+    if (isToday) {
+      const lastPosOrder = await db.select()
+        .from(posOrders)
+        .orderBy(desc(posOrders.receivedAt))
+        .limit(1);
+      lastUpdated = lastPosOrder.length > 0 && lastPosOrder[0].receivedAt 
+        ? lastPosOrder[0].receivedAt.toISOString()
+        : now.toISOString();
+    } else {
+      const lastSync = await db.select()
+        .from(scraperRuns)
+        .where(eq(scraperRuns.status, 'success'))
+        .orderBy(desc(scraperRuns.completedAt))
+        .limit(1);
+      lastUpdated = lastSync.length > 0 && lastSync[0].completedAt 
+        ? lastSync[0].completedAt.toISOString()
+        : now.toISOString();
+    }
     
     return {
       restaurants: restaurantSales,
@@ -202,7 +226,6 @@ export class DatabaseStorage implements IStorage {
     const todayStr = getTodayInTimezone('America/Chicago');
     
     // For charts, show all data through the current hour (not just completed hours)
-    // The normalized cutoff is for fair leaderboard comparisons, not chart display
     const isToday = selectedDateStr === todayStr;
     // For display: use minimum current hour across all timezones (shows in-progress hour)
     const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
@@ -214,6 +237,12 @@ export class DatabaseStorage implements IStorage {
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
     
     const allHourlySales = await db.select().from(hourlySales);
+    
+    // For today: get real-time POS hourly sales
+    let posHourlySales: Map<string, Map<number, number>> | null = null;
+    if (isToday) {
+      posHourlySales = await getAllHourlyPosSales(selectedDate);
+    }
     
     const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
@@ -236,21 +265,49 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (restaurantId === "all") {
+      // For today: use POS data for current sales
+      if (isToday && posHourlySales) {
+        posHourlySales.forEach((hourlyMap, restId) => {
+          hourlyMap.forEach((sales, hour) => {
+            const current = selectedByHour.get(hour) || 0;
+            selectedByHour.set(hour, current + sales);
+          });
+        });
+      } else {
+        selectedDateHourly.forEach(s => {
+          const current = selectedByHour.get(s.hour) || 0;
+          selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+        });
+      }
+      // Forecast from 7shifts
       selectedDateHourly.forEach(s => {
-        const current = selectedByHour.get(s.hour) || 0;
-        selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
         const currentForecast = forecastByHour.get(s.hour) || 0;
         forecastByHour.set(s.hour, currentForecast + parseFloat(s.projectedSales || '0'));
       });
+      // Last week from 7shifts
       lastWeekHourly.forEach(s => {
         const current = lastWeekByHour.get(s.hour) || 0;
         lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
       });
     } else {
+      // For today: use POS data for the specific restaurant
+      if (isToday && posHourlySales) {
+        const restaurantPosData = posHourlySales.get(restaurantId);
+        if (restaurantPosData) {
+          restaurantPosData.forEach((sales, hour) => {
+            selectedByHour.set(hour, sales);
+          });
+        }
+      } else {
+        selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
+          selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+        });
+      }
+      // Forecast from 7shifts
       selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
-        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
       });
+      // Last week from 7shifts
       lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
@@ -325,6 +382,12 @@ export class DatabaseStorage implements IStorage {
     
     const allHourlySales = await db.select().from(hourlySales);
     
+    // For today: get real-time POS hourly sales
+    let posHourlySales: Map<string, Map<number, number>> | null = null;
+    if (isToday) {
+      posHourlySales = await getAllHourlyPosSales(selectedDate);
+    }
+    
     const selectedDateHourly = allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
@@ -347,10 +410,25 @@ export class DatabaseStorage implements IStorage {
       const lastWeekByHour: Map<number, number> = new Map();
       const forecastByHour: Map<number, number> = new Map();
       
+      // For today: use POS data for current sales
+      if (isToday && posHourlySales) {
+        const restaurantPosData = posHourlySales.get(restaurant.id);
+        if (restaurantPosData) {
+          restaurantPosData.forEach((sales, hour) => {
+            selectedByHour.set(hour, sales);
+          });
+        }
+      } else {
+        restaurantSelectedHourly.forEach(s => {
+          selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+        });
+      }
+      
+      // Forecast from 7shifts
       restaurantSelectedHourly.forEach(s => {
-        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
       });
+      // Last week from 7shifts
       restaurantLastWeekHourly.forEach(s => {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
