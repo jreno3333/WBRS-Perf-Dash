@@ -48,6 +48,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         lastWeekSales: item.lastWeekSales + (hour6?.lastWeekSales || 0),
         forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
         projectedLabor: item.projectedLabor + (hour6?.projectedLabor || 0),
+        actualLabor: item.actualLabor + (hour6?.actualLabor || 0),
       });
       return acc;
     }
@@ -66,7 +67,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     1
   );
   
-  // Calculate cumulative labor spent (scheduled) for completed hours
+  // Calculate cumulative ACTUAL labor spent for completed hours
+  // actualLabor from 7shifts reflects punched hours, not just scheduled
+  const cumulativeActualLabor = processedHours.reduce(
+    (sum, h) => sum + (h.actualLabor || 0), 0
+  );
+  
+  // Scheduled labor for comparison with forecast
   const cumulativeScheduledLabor = processedHours.reduce(
     (sum, h) => sum + (h.projectedLabor || 0), 0
   );
@@ -77,12 +84,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
   const cumulativeSales = processedHours.reduce((sum, h) => sum + h.todaySales, 0);
   const cumulativeForecast = processedHours.reduce((sum, h) => sum + h.forecastSales, 0);
   
-  // Current labor % = (labor spent so far / sales so far) * 100
+  // Current labor % = (ACTUAL labor spent so far / actual sales so far) * 100
   const currentLaborPercent = cumulativeSales > 0 
-    ? (cumulativeScheduledLabor / cumulativeSales) * 100 
+    ? (cumulativeActualLabor / cumulativeSales) * 100 
     : 0;
   
-  // Forecasted labor % at this point = (labor spent / forecast sales) * 100  
+  // Forecasted labor % at this point = (scheduled labor / forecast sales) * 100  
   const forecastLaborPercent = cumulativeForecast > 0
     ? (cumulativeScheduledLabor / cumulativeForecast) * 100
     : 0;
@@ -210,13 +217,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
               <span>
-                Scheduled: {formatCurrency(cumulativeScheduledLabor)}
+                Actual Labor: {formatCurrency(cumulativeActualLabor)}
               </span>
               <span>
                 Sales: {formatCurrency(cumulativeSales)}
               </span>
               <span>
-                vs Forecast: {formatCurrency(cumulativeForecast)}
+                Forecast: {formatCurrency(cumulativeForecast)}
               </span>
             </div>
           </div>
