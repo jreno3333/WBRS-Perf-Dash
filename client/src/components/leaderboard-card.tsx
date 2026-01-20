@@ -315,13 +315,14 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 {processedHours.map((hour) => {
                   const actualLabor = hour.actualLabor || 0;
                   const forecastLabor = hour.projectedLabor || 0;
-                  // Target labor = 25% of actual sales for the hour
-                  const targetLabor = hour.todaySales * 0.25;
+                  // Target labor based on restaurant's labor target % (default 25%)
+                  const laborTargetPercent = (restaurant.laborTarget || 25) / 100;
+                  const targetLabor = hour.todaySales * laborTargetPercent;
                   const maxLabor = Math.max(
                     ...processedHours.map(h => Math.max(
                       h.actualLabor || 0, 
                       h.projectedLabor || 0, 
-                      h.todaySales * 0.25
+                      h.todaySales * laborTargetPercent
                     )), 
                     1
                   );
