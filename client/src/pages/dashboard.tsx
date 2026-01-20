@@ -45,6 +45,16 @@ export default function Dashboard() {
     enabled: !!selectedRestaurant,
   });
 
+  // Always fetch aggregate pace data for the summary cards (independent of sidebar selection)
+  const { data: aggregatePaceData } = useQuery<HourlySalesData[]>({
+    queryKey: ["/api/pace", "all", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/pace/all?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
   const { data: hourlyByRestaurant } = useQuery<Record<string, HourlySalesData[]>>({
     queryKey: ["/api/hourly-by-restaurant", dateStr],
     queryFn: async () => {
@@ -227,7 +237,8 @@ export default function Dashboard() {
             {/* Summary Cards */}
             <SummaryCards 
               restaurants={leaderboardData.restaurants} 
-              lastUpdated={leaderboardData.lastUpdated} 
+              lastUpdated={leaderboardData.lastUpdated}
+              paceData={aggregatePaceData}
             />
 
             {/* State Breakdown */}
@@ -367,7 +378,7 @@ export default function Dashboard() {
       <footer className="border-t mt-8">
         <div className="container mx-auto px-4 py-4">
           <p className="text-center text-sm text-muted-foreground">
-            Data refreshes automatically every 2 minutes
+            Sales data updated hourly from 7shifts
           </p>
         </div>
       </footer>

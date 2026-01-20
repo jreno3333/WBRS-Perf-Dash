@@ -1,13 +1,14 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, TrendingUp, Store, Clock } from "lucide-react";
-import type { RestaurantSales } from "@shared/schema";
+import { DollarSign, TrendingUp, Store, Target } from "lucide-react";
+import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 
 interface SummaryCardsProps {
   restaurants: RestaurantSales[];
   lastUpdated: string;
+  paceData?: HourlySalesData[];
 }
 
-export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
+export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCardsProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -36,6 +37,42 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
 
   // Count stores ahead of last week (vs forecast comparison)
   const aheadOfForecastCount = restaurants.filter((r) => r.todaySales >= r.forecastSales).length;
+
+  // Calculate projected daily sales: actual sales so far + remaining forecast
+  // Data is cumulative, so actualSoFar = last hour's todaySales
+  // remainingForecast = full day forecast - forecast at last data hour
+  const calculateProjectedDaily = () => {
+    if (!paceData || paceData.length === 0) {
+      return { projected: 0, actualSoFar: 0, remainingForecast: 0 };
+    }
+    
+    // Find cumulative actual sales (highest todaySales value)
+    let actualSoFar = 0;
+    let lastHourWithSales = -1;
+    let forecastAtLastHour = 0;
+    
+    paceData.forEach((hour) => {
+      if (hour.todaySales > 0) {
+        actualSoFar = hour.todaySales; // Cumulative - last value is total so far
+        lastHourWithSales = hour.hour;
+        forecastAtLastHour = hour.forecastSales;
+      }
+    });
+    
+    // Find the full day forecast (max forecastSales value)
+    const fullDayForecast = Math.max(...paceData.map(h => h.forecastSales), 0);
+    
+    // Remaining forecast = full day forecast - forecast at last hour with actual data
+    const remainingForecast = Math.max(0, fullDayForecast - forecastAtLastHour);
+    
+    return {
+      projected: actualSoFar + remainingForecast,
+      actualSoFar,
+      remainingForecast
+    };
+  };
+  
+  const projectedData = calculateProjectedDaily();
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -92,21 +129,26 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
         </CardContent>
       </Card>
 
-      {/* Last Updated */}
-      <Card data-testid="card-summary-updated">
+      {/* Projected Daily Sales */}
+      <Card data-testid="card-summary-projected">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="p-2.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-              <Clock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <Target className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Last Updated</p>
-              <p className="text-xl font-bold" data-testid="text-last-updated">
-                {lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--"}
+              <p className="text-sm text-muted-foreground">Projected Daily Total</p>
+              <p className="text-xl font-bold" data-testid="text-projected-daily">
+                {projectedData.projected > 0 ? formatCurrency(projectedData.projected) : "--"}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Refreshes every 2 min
-              </p>
+              <div className="mt-1 space-y-0.5">
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} forecast
+                </p>
+                <p className="text-xs text-muted-foreground/70">
+                  Data updated hourly from 7shifts
+                </p>
+              </div>
             </div>
           </div>
         </CardContent>
