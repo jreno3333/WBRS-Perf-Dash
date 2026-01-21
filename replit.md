@@ -1,4 +1,4 @@
-# MWB Sales Leaderboard - Restaurant Performance Dashboard
+# MWB Unit Ticker - Restaurant Performance Dashboard
 
 ## Overview
 
