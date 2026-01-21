@@ -183,12 +183,14 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     return (
                       <Tooltip key={port}>
                         <TooltipTrigger asChild>
-                          <Badge 
-                            className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5 cursor-help`}
-                            data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
-                          >
-                            <Icon className="w-3 h-3" />
-                          </Badge>
+                          <span className="cursor-help">
+                            <Badge 
+                              className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5`}
+                              data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                            >
+                              <Icon className="w-3 h-3" />
+                            </Badge>
+                          </span>
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="font-medium">{config.label}</p>
@@ -208,20 +210,28 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               <span className="text-xs">
                 Last wk: {formatCurrency(restaurant.lastWeekSales)}
               </span>
-              <span className="text-xs flex items-center gap-1">
-                Forecast: {formatCurrency(restaurant.forecastSales)}
-                {restaurant.forecastSales > 0 && restaurant.lastWeekSales > 0 && (
-                  restaurant.forecastSales >= restaurant.lastWeekSales ? (
-                    <span className="text-green-600 dark:text-green-400 flex items-center">
-                      <TrendingUp className="w-3 h-3" />
-                    </span>
-                  ) : (
-                    <span className="text-red-600 dark:text-red-400 flex items-center">
-                      <TrendingDown className="w-3 h-3" />
-                    </span>
-                  )
-                )}
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs flex items-center gap-1 cursor-help">
+                    Forecast: {formatCurrency(restaurant.forecastSales)}
+                    {restaurant.forecastSales > 0 && restaurant.lastWeekSales > 0 && (
+                      restaurant.forecastSales >= restaurant.lastWeekSales ? (
+                        <span className="text-green-600 dark:text-green-400 flex items-center">
+                          <TrendingUp className="w-3 h-3" />
+                        </span>
+                      ) : (
+                        <span className="text-red-600 dark:text-red-400 flex items-center">
+                          <TrendingDown className="w-3 h-3" />
+                        </span>
+                      )
+                    )}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-medium">Projected End-of-Day Sales</p>
+                  <p className="text-xs text-muted-foreground">Current day sales + remainder of day sales from last week</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
 
