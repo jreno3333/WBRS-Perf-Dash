@@ -101,6 +101,9 @@ export interface RestaurantSales {
   projectedLaborPercent?: number; // Projected labor % at end of day
   laborTarget?: number; // Target labor % (default 25%)
   willHitLaborTarget?: boolean; // Whether projected to hit target
+  // Unit status fields
+  status?: "training" | "new" | "established"; // Based on openDate
+  daysOpen?: number; // Days since open date (for NEW UNIT countdown)
 }
 
 export interface HourlySalesData {

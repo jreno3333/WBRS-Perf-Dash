@@ -121,6 +121,29 @@ export class DatabaseStorage implements IStorage {
     const restaurantList = await this.getRestaurants();
     const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
     
+    // Helper to calculate restaurant status from openDate
+    const getRestaurantStatus = (openDate: Date | null | undefined): { status: "training" | "new" | "established"; daysOpen?: number } => {
+      if (!openDate) return { status: "established" };
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const openDateNorm = new Date(openDate);
+      openDateNorm.setHours(0, 0, 0, 0);
+      
+      if (openDateNorm > today) {
+        return { status: "training" };
+      }
+      
+      const diffTime = today.getTime() - openDateNorm.getTime();
+      const daysOpen = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (daysOpen < 90) {
+        return { status: "new", daysOpen };
+      }
+      
+      return { status: "established", daysOpen };
+    };
+    
     // Get all hourly sales from 7shifts for comparison data
     const allHourlySales = await db.select().from(hourlySales);
     
@@ -227,6 +250,9 @@ export class DatabaseStorage implements IStorage {
       const laborTarget = parseFloat(restaurant.laborTarget || '25');
       const willHitLaborTarget = projectedLaborPercent <= laborTarget;
       
+      // Get unit status from openDate
+      const unitStatus = getRestaurantStatus(restaurant.openDate);
+      
       return {
         restaurantId: restaurant.id.toString(),
         restaurantName: restaurant.name,
@@ -244,13 +270,31 @@ export class DatabaseStorage implements IStorage {
         projectedLaborPercent: Math.round(projectedLaborPercent * 10) / 10, // Round to 1 decimal
         laborTarget,
         willHitLaborTarget,
+        // Unit status fields
+        status: unitStatus.status,
+        daysOpen: unitStatus.daysOpen,
       };
     });
     
-    restaurantSales.sort((a, b) => b.todaySales - a.todaySales);
-    restaurantSales.forEach((r, idx) => {
+    // Separate training units from ranked units
+    const rankedUnits = restaurantSales.filter(r => r.status !== "training");
+    const trainingUnits = restaurantSales.filter(r => r.status === "training");
+    
+    // Sort ranked units by sales
+    rankedUnits.sort((a, b) => b.todaySales - a.todaySales);
+    
+    // Assign ranks only to non-training units
+    rankedUnits.forEach((r, idx) => {
       r.rank = idx + 1;
     });
+    
+    // Training units get rank 0 (unranked) and are appended at the end
+    trainingUnits.forEach(r => {
+      r.rank = 0;
+    });
+    
+    // Combine: ranked units first (sorted by sales), then training units at the end
+    const sortedRestaurantSales = [...rankedUnits, ...trainingUnits];
     
     // Get the last POS order time for "last updated" when viewing today
     let lastUpdated: string;
@@ -274,7 +318,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     return {
-      restaurants: restaurantSales,
+      restaurants: sortedRestaurantSales,
       lastUpdated,
       currentDate: selectedDateStr,
     };

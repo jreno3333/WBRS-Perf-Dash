@@ -102,30 +102,49 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
       <CardContent className="p-4">
         <div className="flex items-center gap-4">
           <div className="flex-shrink-0">
-            <div 
-              className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
-                restaurant.rank === 1 
-                  ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" 
-                  : restaurant.rank === 2 
-                    ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                    : restaurant.rank === 3 
-                      ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                      : "bg-muted text-muted-foreground"
-              }`}
-              data-testid={`text-rank-${restaurant.restaurantId}`}
-            >
-              #{restaurant.rank}
-            </div>
+            {restaurant.status === "training" ? (
+              <div 
+                className="w-12 h-12 rounded-full flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                data-testid={`text-rank-${restaurant.restaurantId}`}
+              >
+                N/A
+              </div>
+            ) : (
+              <div 
+                className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
+                  restaurant.rank === 1 
+                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" 
+                    : restaurant.rank === 2 
+                      ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                      : restaurant.rank === 3 
+                        ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                        : "bg-muted text-muted-foreground"
+                }`}
+                data-testid={`text-rank-${restaurant.restaurantId}`}
+              >
+                #{restaurant.rank}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <h3 
                 className="font-semibold text-base truncate"
                 data-testid={`text-restaurant-name-${restaurant.restaurantId}`}
               >
                 {restaurant.restaurantName}
               </h3>
+              {restaurant.status === "training" && (
+                <Badge variant="secondary" className="flex-shrink-0 text-xs" data-testid={`badge-training-${restaurant.restaurantId}`}>
+                  Training
+                </Badge>
+              )}
+              {restaurant.status === "new" && (
+                <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
+                  NEW UNIT
+                </Badge>
+              )}
               <Badge variant="secondary" className="flex-shrink-0 text-xs">
                 <MapPin className="w-3 h-3 mr-1" />
                 {getTimezoneLabel(restaurant.timezone)}
