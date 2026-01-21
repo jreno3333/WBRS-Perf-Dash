@@ -76,7 +76,8 @@ export async function registerRoutes(
       
       const updates: Record<string, any> = {};
       if (openDate !== undefined) {
-        updates.openDate = openDate ? new Date(openDate) : null;
+        // Parse date at noon UTC to avoid timezone boundary issues
+        updates.openDate = openDate ? new Date(`${openDate}T12:00:00Z`) : null;
       }
       if (laborTarget !== undefined) {
         updates.laborTarget = laborTarget;
