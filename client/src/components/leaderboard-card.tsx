@@ -210,7 +210,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="text-xs">
-                LW thru {restaurant.normalizedHour}:00: {formatCurrency(restaurant.lastWeekSales)}
+                LW thru {restaurant.normalizedHour === 0 ? '12am' : restaurant.normalizedHour > 12 ? `${restaurant.normalizedHour - 12}pm` : restaurant.normalizedHour === 12 ? '12pm' : `${restaurant.normalizedHour}am`}: {formatCurrency(restaurant.lastWeekSales)}
               </span>
               <div className="relative group">
                 <span className="text-xs cursor-help">
