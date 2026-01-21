@@ -19,11 +19,19 @@ Preferred communication style: Simple, everyday language.
 - **Build Tool**: Vite with React plugin and path aliasing
 
 The frontend follows a component-based architecture with:
-- Pages in `client/src/pages/` (dashboard, not-found)
+- Pages in `client/src/pages/` (dashboard, settings, not-found)
 - Reusable UI components in `client/src/components/ui/` (shadcn/ui)
 - Feature components in `client/src/components/` (leaderboard-card, pace-chart, summary-cards)
 - Custom hooks in `client/src/hooks/`
 - Utilities and query client in `client/src/lib/`
+
+### Settings/Admin Page
+- **URL**: `/settings`
+- **Purpose**: Manage restaurant open dates and unit status
+- **Unit Statuses**:
+  - **Training**: Open date is in the future. Excluded from rankings (rank = 0, shows "N/A"), still displayed on dashboard at the end of the list.
+  - **New Unit**: Open date is within the last 90 days. Included in rankings with "NEW UNIT" badge. Badge automatically removed after 90 days.
+  - **Established**: Open date is more than 90 days ago or not set. Normal ranking and display.
 
 ### Backend Architecture
 - **Runtime**: Node.js with Express 5
