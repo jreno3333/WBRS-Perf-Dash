@@ -201,12 +201,14 @@ export class DatabaseStorage implements IStorage {
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
       // Calculate forecast: current actual sales + last week's remaining hours
+      // Use restaurant's actual current hour (not normalized) to avoid double-counting
       // This gives a simple projection based on actual performance today + historical pattern for rest of day
       const lastWeekAllHoursForForecast = lastWeekHourly.filter(
         s => s.restaurantId === restaurant.id
       );
       let lastWeekRemainingHoursSales = 0;
-      for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
+      // Use restaurant's completed hour to determine remaining hours (avoids double-counting)
+      for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
         const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
         lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
       }
