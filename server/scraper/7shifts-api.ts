@@ -549,31 +549,34 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
         const endOfDay = new Date(targetDate);
         endOfDay.setHours(23, 59, 59, 999);
         
-        await db.delete(hourlySales)
-          .where(and(
-            eq(hourlySales.restaurantId, restaurant.id),
-            gte(hourlySales.salesDate, startOfDay),
-            lt(hourlySales.salesDate, endOfDay)
-          ));
-        
-        for (const interval of intervals) {
-          const hourMatch = interval.start.match(/T(\d{2}):/);
-          const hour = hourMatch ? parseInt(hourMatch[1]) : 0;
+        // Use transaction to ensure atomic delete + insert (prevents race conditions with queries)
+        await db.transaction(async (tx) => {
+          await tx.delete(hourlySales)
+            .where(and(
+              eq(hourlySales.restaurantId, restaurant.id),
+              gte(hourlySales.salesDate, startOfDay),
+              lt(hourlySales.salesDate, endOfDay)
+            ));
           
-          await db.insert(hourlySales).values({
-            restaurantId: restaurant.id,
-            salesDate: targetDate,
-            hour,
-            actualSales: (interval.actual_sales / 100).toFixed(2),
-            projectedSales: (interval.projected_sales / 100).toFixed(2),
-            pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
-            projectedLabor: (interval.projected_labor / 100).toFixed(2), // Scheduled labor cost for this hour
-            actualLabor: (interval.actual_labor / 100).toFixed(2), // Actual labor cost from punched hours
-            employeeCount: (Math.round((laborHoursByHour.get(hour) || 0) * 100) / 100).toFixed(2), // Total labor hours deployed (rounded to 2 decimals)
-          });
-          
-          recordsScraped++;
-        }
+          for (const interval of intervals) {
+            const hourMatch = interval.start.match(/T(\d{2}):/);
+            const hour = hourMatch ? parseInt(hourMatch[1]) : 0;
+            
+            await tx.insert(hourlySales).values({
+              restaurantId: restaurant.id,
+              salesDate: targetDate,
+              hour,
+              actualSales: (interval.actual_sales / 100).toFixed(2),
+              projectedSales: (interval.projected_sales / 100).toFixed(2),
+              pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
+              projectedLabor: (interval.projected_labor / 100).toFixed(2),
+              actualLabor: (interval.actual_labor / 100).toFixed(2),
+              employeeCount: (Math.round((laborHoursByHour.get(hour) || 0) * 100) / 100).toFixed(2),
+            });
+            
+            recordsScraped++;
+          }
+        });
         
         console.log(`Saved ${intervals.length} hourly records for ${location.name} (${timePunches.length} time punches)`);
       }
