@@ -33,10 +33,15 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     return `${sign}${value.toFixed(1)}%`;
   };
 
-  const getTimezoneLabel = (tz: string) => {
-    if (tz.includes("New_York") || tz.includes("Eastern")) return "ET";
-    if (tz.includes("Chicago") || tz.includes("Central")) return "CT";
-    return tz.split("/").pop()?.substring(0, 2) || "??";
+  const getTimezoneDisplay = (tz: string, hour: number) => {
+    // Format hour as 12-hour time (e.g., "9am", "12pm")
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    const ampm = hour >= 12 ? 'pm' : 'am';
+    const timeStr = `${displayHour}${ampm}`;
+    
+    if (tz.includes("New_York") || tz.includes("Eastern")) return `${timeStr} EST`;
+    if (tz.includes("Chicago") || tz.includes("Central")) return `${timeStr} CST`;
+    return `${timeStr}`;
   };
 
   const paceVariance = restaurant.lastWeekSales > 0 
@@ -174,8 +179,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 </Badge>
               )}
               <Badge variant="secondary" className="flex-shrink-0 text-xs">
-                <MapPin className="w-3 h-3 mr-1" />
-                {getTimezoneLabel(restaurant.timezone)}
+                <Clock className="w-3 h-3 mr-1" />
+                {getTimezoneDisplay(restaurant.timezone, restaurant.normalizedHour)}
               </Badge>
               {/* Revenue Port Badges - Show all with enabled/disabled state */}
               <div className="flex items-center gap-1">
@@ -204,10 +209,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </div>
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5" />
-                Hour {restaurant.normalizedHour}
-              </span>
               <span className="text-xs">
                 Last wk: {formatCurrency(restaurant.actualLastWeekSales)}
               </span>

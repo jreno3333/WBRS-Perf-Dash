@@ -368,6 +368,11 @@ export default function Dashboard() {
                   </SelectContent>
                 </Select>
 
+                {/* Time Zone Info - Above chart */}
+                <p className="text-xs text-muted-foreground">
+                  Rankings compare sales at equivalent local hours for fair comparison between EST and CST restaurants.
+                </p>
+
                 {paceData && paceData.length > 0 ? (
                   <PaceChart 
                     data={paceData} 
@@ -384,30 +389,6 @@ export default function Dashboard() {
                     </CardContent>
                   </Card>
                 )}
-
-                {/* Time Zone Info */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Timezone Normalization
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-sm space-y-2">
-                    <p className="text-muted-foreground">
-                      Sales are compared at equivalent local hours to ensure fair comparison between Eastern and Central time restaurants.
-                    </p>
-                    <div className="flex items-center gap-4 text-xs">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span>Eastern Time</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-orange-500" />
-                        <span>Central Time</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
             </div>
           </>
