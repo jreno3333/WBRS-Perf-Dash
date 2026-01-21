@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { RefreshCw, Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
 import { PaceChart } from "@/components/pace-chart";
@@ -19,13 +19,12 @@ import type { LeaderboardData, HourlySalesData } from "@shared/schema";
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [sortBy, setSortBy] = useState<"sales" | "variance">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
 
-  const { data: leaderboardData, isLoading, error, refetch, isFetching } = useQuery<LeaderboardData>({
+  const { data: leaderboardData, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard", dateStr],
     queryFn: async () => {
       const res = await fetch(`/api/leaderboard?date=${dateStr}`);
@@ -66,16 +65,6 @@ export default function Dashboard() {
       return res.json();
     },
   });
-
-  useEffect(() => {
-    if (leaderboardData?.lastUpdated) {
-      setLastRefresh(new Date(leaderboardData.lastUpdated));
-    }
-  }, [leaderboardData]);
-
-  const handleRefresh = () => {
-    refetch();
-  };
 
   const getSelectedRestaurantName = () => {
     if (selectedRestaurant === "all") return "All Restaurants";
@@ -201,16 +190,6 @@ export default function Dashboard() {
                   Live
                 </Badge>
               )}
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleRefresh}
-                disabled={isFetching}
-                data-testid="button-refresh"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
               <ThemeToggle />
             </div>
           </div>
