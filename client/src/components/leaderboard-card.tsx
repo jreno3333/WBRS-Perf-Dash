@@ -42,45 +42,61 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
     : 0;
 
-  // Combine 5am and 6am into "Early Bird" and filter out hours 0-4
-  // Early Bird labor includes ALL labor from midnight (hours 0-6) to match cumulative sales methodology
+  // Eastern timezone units have data issues with Early Bird extending through 8am
+  // Central units use the standard 0-6 Early Bird range
+  const isEasternTimezone = restaurant.timezone?.includes("New_York") || restaurant.timezone?.includes("Eastern");
+  const earlyBirdEndHour = isEasternTimezone ? 8 : 6;
+  
+  // Combine early morning hours into "Early Bird" bucket
+  // For Eastern: hours 0-8, For Central: hours 0-6
   const processedHours = (hourlyData || []).reduce((acc: HourlySalesData[], item) => {
-    // Skip hours 0-4 (no sales, but labor is included in Early Bird)
+    // Skip hours before 5am (no sales displayed, but labor is included in Early Bird)
     if (item.hour < 5) return acc;
     
-    // Combine 5am and 6am into "Early Bird" with cumulative labor from midnight
+    // Combine hours into "Early Bird" with cumulative labor from midnight
     if (item.hour === 5) {
-      const hour6 = hourlyData?.find(d => d.hour === 6);
-      // Sum labor from hours 0-6 (midnight through 6am) for Early Bird
+      const lastEarlyBirdHour = hourlyData?.find(d => d.hour === earlyBirdEndHour);
+      // Sum labor from hours 0 through earlyBirdEndHour for Early Bird
       const cumulativeLabor = (hourlyData || [])
-        .filter(h => h.hour <= 6)
+        .filter(h => h.hour <= earlyBirdEndHour)
         .reduce((sum, h) => ({
           projectedLabor: sum.projectedLabor + (h.projectedLabor || 0),
           actualLabor: sum.actualLabor + (h.actualLabor || 0),
         }), { projectedLabor: 0, actualLabor: 0 });
       
-      // Peak labor hours across hours 0-6
-      const peakLaborHours = Math.max(
-        ...(hourlyData || []).filter(h => h.hour <= 6).map(h => Number(h.employeeCount) || 0)
-      );
+      // Sum labor hours across the Early Bird period
+      const totalLaborHours = (hourlyData || [])
+        .filter(h => h.hour <= earlyBirdEndHour)
+        .reduce((sum, h) => sum + (Number(h.employeeCount) || 0), 0);
       
-      // Sales values are cumulative (running total), so use hour6's cumulative value
-      // which already includes all sales from open through 6am
+      // Combine position breakdowns from all Early Bird hours
+      const combinedPositionBreakdown: Record<string, number> = {};
+      (hourlyData || [])
+        .filter(h => h.hour <= earlyBirdEndHour)
+        .forEach(h => {
+          const breakdown = h.positionBreakdown || {};
+          Object.entries(breakdown).forEach(([pos, hours]) => {
+            combinedPositionBreakdown[pos] = (combinedPositionBreakdown[pos] || 0) + (hours as number);
+          });
+        });
+      
+      // Sales values are cumulative (running total), so use the last Early Bird hour's value
       acc.push({
         hour: 5,
         label: "Early Bird",
-        todaySales: hour6?.todaySales || item.todaySales,
-        lastWeekSales: hour6?.lastWeekSales || item.lastWeekSales,
-        forecastSales: hour6?.forecastSales || item.forecastSales,
+        todaySales: lastEarlyBirdHour?.todaySales || item.todaySales,
+        lastWeekSales: lastEarlyBirdHour?.lastWeekSales || item.lastWeekSales,
+        forecastSales: lastEarlyBirdHour?.forecastSales || item.forecastSales,
         projectedLabor: cumulativeLabor.projectedLabor,
         actualLabor: cumulativeLabor.actualLabor,
-        employeeCount: peakLaborHours,
+        employeeCount: totalLaborHours,
+        positionBreakdown: combinedPositionBreakdown,
       });
       return acc;
     }
     
-    // Skip 6am since it's combined with 5am
-    if (item.hour === 6) return acc;
+    // Skip hours that are combined into Early Bird
+    if (item.hour <= earlyBirdEndHour) return acc;
     
     // Keep all other hours as-is
     acc.push(item);
@@ -327,10 +343,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </div>
               <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
                 {processedHours.map((hour) => {
-                  // Early Bird hours (0-6) are excluded from staffing display - not meaningful
-                  const isEarlyBird = hour.label === "Early Bird" || hour.hour <= 6;
+                  // Early Bird hours are excluded from staffing display - not meaningful
+                  // Eastern units: hours 0-8, Central units: hours 0-6
+                  const isEarlyBirdHour = hour.label === "Early Bird" || hour.hour <= earlyBirdEndHour;
                   
-                  if (isEarlyBird) {
+                  if (isEarlyBirdHour) {
                     return (
                       <div
                         key={`staff-${hour.hour}`}
@@ -447,12 +464,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 })}
               </div>
               
-              {/* Total Staffing Summary for the Day - excludes Early Bird (hours 0-6) */}
+              {/* Total Staffing Summary for the Day - excludes Early Bird hours */}
               {(() => {
                 const totals = processedHours.reduce((acc, hour) => {
-                  // Skip Early Bird hours (0-6) - labor data not meaningful
-                  const isEarlyBird = hour.label === "Early Bird" || hour.hour <= 6;
-                  if (isEarlyBird) return acc;
+                  // Skip Early Bird hours - labor data not meaningful
+                  // Eastern units: hours 0-8, Central units: hours 0-6
+                  const isEarlyBirdHour = hour.label === "Early Bird" || hour.hour <= earlyBirdEndHour;
+                  if (isEarlyBirdHour) return acc;
                   
                   const laborHrs = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;
