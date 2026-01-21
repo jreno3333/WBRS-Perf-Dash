@@ -210,14 +210,14 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="text-xs">
-                Last wk: {formatCurrency(restaurant.actualLastWeekSales)}
+                LW thru {restaurant.normalizedHour}:00: {formatCurrency(restaurant.lastWeekSales)}
               </span>
               <div className="relative group">
                 <span className="text-xs cursor-help">
-                  Forecast: {formatCurrency(restaurant.forecastSales)}
+                  EOD Forecast: {formatCurrency(restaurant.forecastSales)}
                 </span>
                 <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                  <div className="font-medium">Projected End-of-Day Sales</div>
+                  <div className="font-medium">End-of-Day Forecast</div>
                   <div className="text-muted-foreground">Today's actual + last week's remaining hours</div>
                 </div>
               </div>
@@ -299,8 +299,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                       <div className="font-medium">{hour.label}{isInProgress && " (In Progress)"}</div>
                       <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
-                      <div className="text-blue-600 dark:text-blue-400">Last wk: ${hour.lastWeekSales.toLocaleString()}</div>
-                      <div className="text-green-600 dark:text-green-400">Forecast: ${hour.forecastSales.toLocaleString()}</div>
+                      <div className="text-blue-600 dark:text-blue-400">LW same hr: ${hour.lastWeekSales.toLocaleString()}</div>
+                      <div className="text-green-600 dark:text-green-400">LW actual: ${hour.forecastSales.toLocaleString()}</div>
                       {isInProgress && <div className="text-orange-500 text-[10px]">Data updating...</div>}
                     </div>
                   </div>
