@@ -398,6 +398,46 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   );
                 })}
               </div>
+              
+              {/* Total Staffing Summary for the Day */}
+              {(() => {
+                const totals = processedHours.reduce((acc, hour) => {
+                  const employeeCount = hour.employeeCount || 0;
+                  const sales = hour.todaySales || 0;
+                  const hasData = employeeCount > 0 || sales > 0;
+                  
+                  if (hasData) {
+                    const staffingDetails = getStaffingBreakdown(hour.hour, sales);
+                    acc.totalOnClock += employeeCount;
+                    acc.totalRecommended += staffingDetails.total;
+                    acc.hoursWithData++;
+                  }
+                  return acc;
+                }, { totalOnClock: 0, totalRecommended: 0, hoursWithData: 0 });
+                
+                const staffingDiff = totals.totalOnClock - totals.totalRecommended;
+                const isOverstaffed = staffingDiff > 0;
+                const isUnderstaffed = staffingDiff < 0;
+                
+                if (totals.hoursWithData === 0) return null;
+                
+                return (
+                  <div className="mt-2 flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground">
+                      Day Total: {totals.totalOnClock} on clock / {totals.totalRecommended} target
+                    </span>
+                    <span className={`font-medium ${
+                      isOverstaffed ? "text-red-600 dark:text-red-400" : 
+                      isUnderstaffed ? "text-yellow-600 dark:text-yellow-400" : 
+                      "text-green-600 dark:text-green-400"
+                    }`} data-testid={`staffing-total-${restaurant.restaurantId}`}>
+                      {isOverstaffed ? `+${staffingDiff} overstaffed` : 
+                       isUnderstaffed ? `${staffingDiff} understaffed` : 
+                       "Right-sized"}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
