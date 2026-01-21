@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -53,6 +53,7 @@ export const hourlySales = pgTable("hourly_sales", {
   projectedLabor: decimal("projected_labor", { precision: 10, scale: 2 }), // Scheduled labor cost for this hour
   actualLabor: decimal("actual_labor", { precision: 10, scale: 2 }), // Actual labor cost from punched hours
   employeeCount: decimal("employee_count", { precision: 10, scale: 2 }), // Total labor hours deployed during this hour (sum of fractional hours worked)
+  positionBreakdown: jsonb("position_breakdown").$type<Record<string, number>>(), // Hours by position: { "Server": 2.5, "Cook": 3.0, ... }
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
 

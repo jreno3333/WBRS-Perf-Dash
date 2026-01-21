@@ -67,6 +67,22 @@ interface TimePunchesResponse {
   };
 }
 
+interface Role {
+  id: number;
+  name: string;
+  location_id: number;
+  department_id: number;
+}
+
+interface RolesResponse {
+  data: Role[];
+}
+
+interface LaborByHour {
+  totalHours: number;
+  byPosition: Record<string, number>; // e.g., { "Grill": 2.5, "Counter": 1.5 }
+}
+
 interface ApiConfig {
   accessToken: string;
   companyId?: number;
@@ -200,6 +216,30 @@ export class SevenShiftsAPI {
     }
   }
 
+  // Fetch all roles for a location to map role_id to role name
+  async getRoles(locationId: number): Promise<Map<number, string>> {
+    if (!this.companyId) {
+      await this.getCompany();
+    }
+
+    const roleMap = new Map<number, string>();
+    
+    try {
+      const response = await this.request<RolesResponse>(
+        `/v2/company/${this.companyId}/roles?location_id=${locationId}&limit=100`
+      );
+      
+      for (const role of response.data || []) {
+        roleMap.set(role.id, role.name);
+      }
+      
+      return roleMap;
+    } catch (error) {
+      console.error(`Error fetching roles for location ${locationId}:`, error);
+      return roleMap;
+    }
+  }
+
   // Calculate total labor hours worked for each hour based on time punches
   // Returns fractional hours (e.g., 5.6 hours) representing the sum of all employee time worked
   // Uses date string and location timezone to determine target day boundaries
@@ -275,6 +315,69 @@ export class SevenShiftsAPI {
     }
     
     return laborHoursByHour;
+  }
+
+  // Calculate labor hours per hour WITH position breakdown
+  // Returns total hours AND breakdown by role/position name
+  getLaborHoursWithPositions(
+    punches: TimePunch[], 
+    date: string, 
+    timezone: string, 
+    roleMap: Map<number, string>
+  ): Map<number, LaborByHour> {
+    const laborByHour = new Map<number, LaborByHour>();
+    
+    // Initialize all hours
+    for (let h = 0; h < 24; h++) {
+      laborByHour.set(h, { totalHours: 0, byPosition: {} });
+    }
+    
+    const startOfDayUTC = fromZonedTime(`${date}T00:00:00`, timezone);
+    const endOfDayUTC = fromZonedTime(`${date}T23:59:59.999`, timezone);
+    
+    for (const punch of punches) {
+      let clockIn = new Date(punch.clocked_in);
+      
+      let clockOut: Date;
+      if (punch.clocked_out) {
+        clockOut = new Date(punch.clocked_out);
+      } else {
+        const now = new Date();
+        clockOut = now < endOfDayUTC ? now : endOfDayUTC;
+      }
+      
+      if (clockOut < startOfDayUTC || clockIn > endOfDayUTC) {
+        continue;
+      }
+      
+      if (clockIn < startOfDayUTC) clockIn = startOfDayUTC;
+      if (clockOut > endOfDayUTC) clockOut = endOfDayUTC;
+      
+      // Get position name from role_id
+      const positionName = roleMap.get(punch.role_id) || `Role ${punch.role_id}`;
+      
+      for (let h = 0; h < 24; h++) {
+        const hourStr = h.toString().padStart(2, '0');
+        const hourStartUTC = fromZonedTime(`${date}T${hourStr}:00:00`, timezone);
+        const nextHourStr = (h + 1).toString().padStart(2, '0');
+        const hourEndUTC = h < 23 
+          ? fromZonedTime(`${date}T${nextHourStr}:00:00`, timezone)
+          : new Date(fromZonedTime(`${date}T23:59:59.999`, timezone).getTime() + 1);
+        
+        if (clockIn < hourEndUTC && clockOut > hourStartUTC) {
+          const overlapStart = clockIn > hourStartUTC ? clockIn : hourStartUTC;
+          const overlapEnd = clockOut < hourEndUTC ? clockOut : hourEndUTC;
+          const overlapMs = overlapEnd.getTime() - overlapStart.getTime();
+          const hoursWorked = overlapMs / (1000 * 60 * 60);
+          
+          const hourData = laborByHour.get(h)!;
+          hourData.totalHours += hoursWorked;
+          hourData.byPosition[positionName] = (hourData.byPosition[positionName] || 0) + hoursWorked;
+        }
+      }
+    }
+    
+    return laborByHour;
   }
 }
 
@@ -546,7 +649,12 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       // 7shifts API returns America/Chicago for all locations regardless of actual timezone
       const timePunches = await api.getTimePunches(location.id, dateStr);
       const locationTimezone = restaurant.timezone || 'America/Chicago'; // Use our DB timezone, default to Central
-      const laborHoursByHour = api.getLaborHoursPerHour(timePunches, dateStr, locationTimezone);
+      
+      // Fetch roles to map role_id to position names
+      const roleMap = await api.getRoles(location.id);
+      
+      // Get labor hours WITH position breakdown
+      const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
       
       if (intervals.length > 0) {
         const startOfDay = new Date(targetDate);
@@ -567,6 +675,14 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
             const hourMatch = interval.start.match(/T(\d{2}):/);
             const hour = hourMatch ? parseInt(hourMatch[1]) : 0;
             
+            const hourLabor = laborByHour.get(hour) || { totalHours: 0, byPosition: {} };
+            
+            // Round position hours to 2 decimal places for cleaner storage
+            const roundedPositions: Record<string, number> = {};
+            for (const [pos, hrs] of Object.entries(hourLabor.byPosition)) {
+              roundedPositions[pos] = Math.round(hrs * 100) / 100;
+            }
+            
             await tx.insert(hourlySales).values({
               restaurantId: restaurant.id,
               salesDate: targetDate,
@@ -576,7 +692,8 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
               projectedLabor: (interval.projected_labor / 100).toFixed(2),
               actualLabor: (interval.actual_labor / 100).toFixed(2),
-              employeeCount: (Math.round((laborHoursByHour.get(hour) || 0) * 100) / 100).toFixed(2),
+              employeeCount: (Math.round(hourLabor.totalHours * 100) / 100).toFixed(2),
+              positionBreakdown: roundedPositions,
             });
             
             recordsScraped++;
