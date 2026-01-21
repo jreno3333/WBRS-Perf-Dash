@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, TrendingUp, Store, Target } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Store, Target } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 
 interface SummaryCardsProps {
@@ -23,6 +23,13 @@ export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCard
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.todaySales, 0);
   const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.lastWeekSales, 0);
   const totalForecastSales = activeRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+  
+  // Calculate total last week full day sales for projected comparison
+  const totalLastWeekFullDay = activeRestaurants.reduce((sum, r) => {
+    // forecastSales is: today's actual + remainder from last week
+    // So lastWeek full day = forecastSales represents the projected total based on last week's pattern
+    return sum + (r.forecastSales || 0);
+  }, 0);
   const aheadOfPaceCount = activeRestaurants.filter((r) => r.isAheadOfPace).length;
   
   // Calculate variance vs last week
@@ -140,15 +147,25 @@ export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCard
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-muted-foreground">Projected Daily Total</p>
-              <p className="text-xl font-bold" data-testid="text-projected-daily">
+              <p className="text-xl font-bold flex items-center gap-2" data-testid="text-projected-daily">
                 {projectedData.projected > 0 ? formatCurrency(projectedData.projected) : "--"}
+                {projectedData.projected > 0 && totalLastWeekFullDay > 0 && (
+                  projectedData.projected >= totalLastWeekFullDay ? (
+                    <span className="text-green-600 dark:text-green-400 flex items-center text-sm font-medium">
+                      <TrendingUp className="w-4 h-4 mr-0.5" />
+                      vs LW
+                    </span>
+                  ) : (
+                    <span className="text-red-600 dark:text-red-400 flex items-center text-sm font-medium">
+                      <TrendingDown className="w-4 h-4 mr-0.5" />
+                      vs LW
+                    </span>
+                  )
+                )}
               </p>
               <div className="mt-1 space-y-0.5">
                 <p className="text-xs text-muted-foreground">
                   {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} forecast
-                </p>
-                <p className="text-xs text-muted-foreground/70">
-                  Data updated hourly from 7shifts
                 </p>
               </div>
             </div>
