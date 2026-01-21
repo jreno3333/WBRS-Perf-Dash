@@ -424,7 +424,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 return (
                   <div className="mt-2 flex justify-between items-center text-xs">
                     <span className="text-muted-foreground">
-                      Day Total: {totals.totalOnClock} on clock / {totals.totalRecommended} target
+                      Day Total: {totals.totalOnClock} labor hours / {totals.totalRecommended} target
                     </span>
                     <span className={`font-medium ${
                       isOverstaffed ? "text-red-600 dark:text-red-400" : 
