@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { RefreshCw, Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings } from "lucide-react";
-import { Link } from "wouter";
+import { RefreshCw, Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
 import { PaceChart } from "@/components/pace-chart";
@@ -212,11 +211,6 @@ export default function Dashboard() {
                 <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
-              <Link href="/settings">
-                <Button variant="outline" size="icon" data-testid="button-settings">
-                  <Settings className="w-4 h-4" />
-                </Button>
-              </Link>
               <ThemeToggle />
             </div>
           </div>
