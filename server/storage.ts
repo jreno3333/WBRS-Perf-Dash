@@ -171,7 +171,13 @@ export class DatabaseStorage implements IStorage {
       );
       
       // Use 7shifts hourly data for sales (works for both today and historical)
+      // Normalized sales (capped at normalized hour for fair ranking)
       const selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
+        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+      );
+      
+      // Actual current sales (all available hours, matches 7shifts display)
+      const actualSalesAmount = allSelectedDateHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
       
@@ -257,7 +263,8 @@ export class DatabaseStorage implements IStorage {
         restaurantId: restaurant.id.toString(),
         restaurantName: restaurant.name,
         timezone: restaurant.timezone,
-        todaySales: selectedDateSalesAmount,
+        todaySales: selectedDateSalesAmount, // Normalized for fair ranking
+        actualSales: actualSalesAmount, // Current sales matching 7shifts
         lastWeekSales: lastWeekSalesAmount,
         forecastSales: forecastSalesAmount,
         pacePercentage,

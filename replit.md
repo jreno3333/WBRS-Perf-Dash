@@ -109,13 +109,17 @@ Database Tables:
 - `pos_orders` - Real-time orders received from Xenial POS webhook (xenialOrderId, storeNumber, orderTotal, businessDate, orderClosedAt, orderSource)
 - `location_mapping` - Maps Xenial store numbers to restaurant IDs and 7shifts location IDs
 
-### Timezone-Fair Comparison
-The leaderboard uses a normalized hour cutoff to ensure fair comparisons between Eastern (America/New_York) and Central (America/Chicago) timezone stores:
+### Sales Display vs Ranking
+The leaderboard uses two sales values:
+- **actualSales**: Sum of ALL available hourly sales (matches 7shifts display exactly)
+- **todaySales**: Normalized sales capped at the timezone-fair hour cutoff (used for ranking)
+
+The normalized hour cutoff ensures fair comparisons between Eastern (America/New_York) and Central (America/Chicago) timezone stores:
 - Eastern stores are 1 hour ahead of Central stores
 - The normalized hour = (minimum current hour across all timezones) - 1 (last completed hour)
-- Sales are summed only for hours 0 through the normalized hour cutoff
-- This prevents Eastern stores from having an unfair advantage from their extra hour of sales
-- If the normalized hour is -1 (no hours completed), all stores show $0 sales
+- Rankings use normalized sales to prevent Eastern stores from having an unfair advantage
+- Display values use actualSales so totals match 7shifts exactly
+- If the normalized hour is -1 (no hours completed), all stores show $0 sales for ranking
 
 ### Shared Code
 The `shared/` directory contains TypeScript types and schemas used by both frontend and backend:

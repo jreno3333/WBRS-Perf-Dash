@@ -89,7 +89,8 @@ export interface RestaurantSales {
   restaurantId: string;
   restaurantName: string;
   timezone: string;
-  todaySales: number;
+  todaySales: number; // Normalized sales for fair ranking (capped at normalized hour)
+  actualSales: number; // Actual current sales (all available hours, matches 7shifts)
   lastWeekSales: number;
   forecastSales: number;
   pacePercentage: number; // How far through the day they are vs last week

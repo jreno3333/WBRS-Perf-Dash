@@ -35,14 +35,15 @@ export function StateBreakdown({ restaurants }: StateBreakdownProps) {
     !TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
   );
 
-  const alabamaTodaySales = alabamaRestaurants.reduce((sum, r) => sum + r.todaySales, 0);
+  // Use actualSales (all available hours) for display to match 7shifts
+  const alabamaTodaySales = alabamaRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
   const alabamaLastWeekSales = alabamaRestaurants.reduce((sum, r) => sum + r.lastWeekSales, 0);
   const alabamaAheadCount = alabamaRestaurants.filter(r => r.isAheadOfPace).length;
   const alabamaVariance = alabamaLastWeekSales > 0 
     ? ((alabamaTodaySales / alabamaLastWeekSales) - 1) * 100 
     : 0;
 
-  const tennesseeTodaySales = tennesseeRestaurants.reduce((sum, r) => sum + r.todaySales, 0);
+  const tennesseeTodaySales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
   const tennesseeLastWeekSales = tennesseeRestaurants.reduce((sum, r) => sum + r.lastWeekSales, 0);
   const tennesseeAheadCount = tennesseeRestaurants.filter(r => r.isAheadOfPace).length;
   const tennesseeVariance = tennesseeLastWeekSales > 0 
