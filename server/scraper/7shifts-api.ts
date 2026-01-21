@@ -172,16 +172,21 @@ export class SevenShiftsAPI {
 
     try {
       // Fetch punches that could possibly overlap the target day:
-      // - Start from day before (at 4am local = 10am/9am UTC) to catch overnight shifts (e.g., 10pm-6am)
-      // - The getEmployeesPerHour function will filter to only count hours within the target day
+      // - Start from day before to catch overnight shifts that started the previous day
+      // - End at noon the NEXT day to catch all punches that clocked in late at night
+      //   (7shifts may interpret times as UTC, so 23:59 local could be 5:59pm UTC for Central time)
       const dayBefore = new Date(date);
       dayBefore.setDate(dayBefore.getDate() - 1);
       const dayBeforeStr = dayBefore.toISOString().split('T')[0];
       
-      // Use 4am (local) as start time - this catches any overnight shifts that started after 4am the previous day
-      // Most overnight shifts start around 10pm, so 4am the day before gives us plenty of buffer
+      const dayAfter = new Date(date);
+      dayAfter.setDate(dayAfter.getDate() + 1);
+      const dayAfterStr = dayAfter.toISOString().split('T')[0];
+      
+      // Use 4am day before to 12pm day after - wide window to ensure we capture all punches
+      // getLaborHoursPerHour will filter to only count hours within the target day
       const startDate = `${dayBeforeStr}T04:00:00`;
-      const endDate = `${date}T23:59:59`;
+      const endDate = `${dayAfterStr}T12:00:00`;
       
       // Fetch punches where clocked_in is within range
       // Add limit=500 to get more results (7shifts API defaults to low limit)
