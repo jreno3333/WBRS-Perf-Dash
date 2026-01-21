@@ -52,46 +52,43 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     // Skip hours before 5am (no sales displayed, but labor is included in Early Bird)
     if (item.hour < 5) return acc;
     
-    // Combine hours into "Early Bird" with cumulative labor from midnight
+    // Combine hours into "Early Bird" with summed sales and labor from midnight
     if (item.hour === 5) {
-      // Find all hours within Early Bird range and get the one with highest hour number
-      // (sales are cumulative, so highest hour has total Early Bird sales)
-      const earlyBirdHours = (hourlyData || [])
-        .filter(h => h.hour <= earlyBirdEndHour)
-        .sort((a, b) => b.hour - a.hour);
-      const lastEarlyBirdHour = earlyBirdHours[0]; // Highest hour in range
+      // Get all hours within Early Bird range
+      const earlyBirdHours = (hourlyData || []).filter(h => h.hour <= earlyBirdEndHour);
+      
+      // SUM sales for all Early Bird hours (data is per-hour, not cumulative)
+      const totalSales = earlyBirdHours.reduce((sum, h) => ({
+        todaySales: sum.todaySales + (h.todaySales || 0),
+        lastWeekSales: sum.lastWeekSales + (h.lastWeekSales || 0),
+        forecastSales: sum.forecastSales + (h.forecastSales || 0),
+      }), { todaySales: 0, lastWeekSales: 0, forecastSales: 0 });
       
       // Sum labor from hours 0 through earlyBirdEndHour for Early Bird
-      const cumulativeLabor = (hourlyData || [])
-        .filter(h => h.hour <= earlyBirdEndHour)
-        .reduce((sum, h) => ({
-          projectedLabor: sum.projectedLabor + (h.projectedLabor || 0),
-          actualLabor: sum.actualLabor + (h.actualLabor || 0),
-        }), { projectedLabor: 0, actualLabor: 0 });
+      const cumulativeLabor = earlyBirdHours.reduce((sum, h) => ({
+        projectedLabor: sum.projectedLabor + (h.projectedLabor || 0),
+        actualLabor: sum.actualLabor + (h.actualLabor || 0),
+      }), { projectedLabor: 0, actualLabor: 0 });
       
       // Sum labor hours across the Early Bird period
-      const totalLaborHours = (hourlyData || [])
-        .filter(h => h.hour <= earlyBirdEndHour)
-        .reduce((sum, h) => sum + (Number(h.employeeCount) || 0), 0);
+      const totalLaborHours = earlyBirdHours.reduce((sum, h) => sum + (Number(h.employeeCount) || 0), 0);
       
       // Combine position breakdowns from all Early Bird hours
       const combinedPositionBreakdown: Record<string, number> = {};
-      (hourlyData || [])
-        .filter(h => h.hour <= earlyBirdEndHour)
-        .forEach(h => {
-          const breakdown = h.positionBreakdown || {};
-          Object.entries(breakdown).forEach(([pos, hours]) => {
-            combinedPositionBreakdown[pos] = (combinedPositionBreakdown[pos] || 0) + (hours as number);
-          });
+      earlyBirdHours.forEach(h => {
+        const breakdown = h.positionBreakdown || {};
+        Object.entries(breakdown).forEach(([pos, hours]) => {
+          combinedPositionBreakdown[pos] = (combinedPositionBreakdown[pos] || 0) + (hours as number);
         });
+      });
       
-      // Sales values are cumulative (running total), so use the highest available Early Bird hour's value
+      // Push combined Early Bird data with summed sales
       acc.push({
         hour: 5,
         label: "Early Bird",
-        todaySales: lastEarlyBirdHour?.todaySales || item.todaySales,
-        lastWeekSales: lastEarlyBirdHour?.lastWeekSales || item.lastWeekSales,
-        forecastSales: lastEarlyBirdHour?.forecastSales || item.forecastSales,
+        todaySales: totalSales.todaySales,
+        lastWeekSales: totalSales.lastWeekSales,
+        forecastSales: totalSales.forecastSales,
         projectedLabor: cumulativeLabor.projectedLabor,
         actualLabor: cumulativeLabor.actualLabor,
         employeeCount: totalLaborHours,
