@@ -106,6 +106,7 @@ export interface RestaurantSales {
   status?: "training" | "new" | "established"; // Based on openDate
   daysOpen?: number; // Days since open date (for NEW UNIT countdown)
   openDate?: string | null; // Open date for training units display
+  revenuePorts?: string[] | null; // Revenue ports: dine_in, drive_thru, app, 3pd
 }
 
 export interface HourlySalesData {

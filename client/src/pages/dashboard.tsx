@@ -102,9 +102,13 @@ export default function Dashboard() {
     setSelectedDate(new Date());
   };
 
-  // Sort restaurants based on selected criteria
+  // Sort restaurants based on selected criteria, keeping training units at the bottom
   const sortedRestaurants = leaderboardData?.restaurants
     ? [...leaderboardData.restaurants].sort((a, b) => {
+        // Training units always go to the bottom
+        if (a.status === "training" && b.status !== "training") return 1;
+        if (a.status !== "training" && b.status === "training") return -1;
+        
         if (sortBy === "sales") {
           return b.todaySales - a.todaySales;
         } else {

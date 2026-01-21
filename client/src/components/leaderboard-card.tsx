@@ -1,8 +1,15 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
+
+const REVENUE_PORT_CONFIG = {
+  dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  drive_thru: { label: "Drive Thru", icon: Car, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+  app: { label: "APP", icon: Smartphone, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  "3pd": { label: "3PD", icon: ShoppingBag, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+} as const;
 
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
@@ -149,6 +156,25 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 <MapPin className="w-3 h-3 mr-1" />
                 {getTimezoneLabel(restaurant.timezone)}
               </Badge>
+              {/* Revenue Port Badges */}
+              {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {restaurant.revenuePorts.map(port => {
+                    const config = REVENUE_PORT_CONFIG[port as keyof typeof REVENUE_PORT_CONFIG];
+                    if (!config) return null;
+                    const Icon = config.icon;
+                    return (
+                      <Badge 
+                        key={port} 
+                        className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5`}
+                        data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                      >
+                        <Icon className="w-3 h-3" />
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
@@ -274,6 +300,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     <div className="w-2 h-2 rounded-sm bg-yellow-500" />
                     Understaffed
                   </span>
+                  <span className="flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-orange-500" />
+                    No Mgr
+                  </span>
                 </div>
               </div>
               <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
@@ -328,6 +358,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       ? "bg-red-500 dark:bg-red-400" 
                       : "bg-yellow-500 dark:bg-yellow-400";
                   
+                  // Check for missing manager/shift supervisor
+                  const positions = hour.positionBreakdown || {};
+                  const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
+                  const hasManager = positionKeys.some(p => p.includes("manager"));
+                  const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
+                  const missingLeadership = !hasManager && !hasShiftSupervisor && laborHours > 0;
+                  
                   return (
                     <div
                       key={`staff-${hour.hour}`}
@@ -346,10 +383,22 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                             className="absolute w-full border-t-2 border-slate-800 dark:border-slate-200 pointer-events-none"
                             style={{ bottom: `${targetLineHeightPx}px` }}
                           />
+                          {/* Hazard indicator for missing manager/supervisor */}
+                          {missingLeadership && (
+                            <div className="absolute -top-1 left-1/2 -translate-x-1/2">
+                              <AlertTriangle className="w-3 h-3 text-orange-500 animate-pulse" />
+                            </div>
+                          )}
                         </>
                       )}
-                      <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-10 min-w-[160px]">
+                      <div className={`absolute ${missingLeadership ? '-top-24' : '-top-20'} left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-10 min-w-[160px]`}>
                         <div className="font-medium">{hour.label} {staffingDetails.isBreakfast ? "(Breakfast)" : ""}</div>
+                        {missingLeadership && (
+                          <div className="text-orange-500 flex items-center gap-1 font-medium">
+                            <AlertTriangle className="w-3 h-3" />
+                            No Manager/Supervisor
+                          </div>
+                        )}
                         <div className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
                           Deployed: {laborHours.toFixed(1)} hrs
                         </div>
