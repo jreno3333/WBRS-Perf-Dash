@@ -362,7 +362,7 @@ export class DatabaseStorage implements IStorage {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
         laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
         actualLaborByHour.set(s.hour, parseFloat(s.actualLabor || '0'));
-        employeeCountByHour.set(s.hour, s.employeeCount || 0);
+        employeeCountByHour.set(s.hour, Number(s.employeeCount) || 0);
       });
       // Last week from 7shifts
       lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
@@ -480,7 +480,7 @@ export class DatabaseStorage implements IStorage {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
         laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
         actualLaborByHour.set(s.hour, parseFloat(s.actualLabor || '0'));
-        employeeCountByHour.set(s.hour, s.employeeCount || 0);
+        employeeCountByHour.set(s.hour, Number(s.employeeCount) || 0);
       });
       // Last week from 7shifts
       restaurantLastWeekHourly.forEach(s => {
