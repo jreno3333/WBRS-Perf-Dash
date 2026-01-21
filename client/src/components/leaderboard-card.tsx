@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin, Users, Target } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -85,39 +85,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     1
   );
   
-  // Calculate cumulative ACTUAL labor spent for ALL hours from midnight (0-23)
-  // This includes overnight prep hours (0-4am) that have labor but no sales
-  // actualLabor from 7shifts reflects punched hours, not just scheduled
-  const cumulativeActualLabor = (hourlyData || []).reduce(
-    (sum, h) => sum + (h.actualLabor || 0), 0
-  );
-  
-  // Scheduled labor for comparison with forecast - include ALL hours from midnight
-  const cumulativeScheduledLabor = (hourlyData || []).reduce(
-    (sum, h) => sum + (h.projectedLabor || 0), 0
-  );
-  
-  // Calculate what labor SHOULD be at this point based on sales performance
-  // If sales are above forecast, labor % should be lower (good)
-  // If sales are below forecast, labor % should be higher (bad)
-  // Sales also need to use full hourlyData to be consistent
-  const cumulativeSales = (hourlyData || []).reduce((sum, h) => sum + h.todaySales, 0);
-  const cumulativeForecast = (hourlyData || []).reduce((sum, h) => sum + h.forecastSales, 0);
-  
-  // Current labor % = (ACTUAL labor spent so far / actual sales so far) * 100
-  const currentLaborPercent = cumulativeSales > 0 
-    ? (cumulativeActualLabor / cumulativeSales) * 100 
-    : 0;
-  
-  // Labor target from restaurant settings (e.g., 25%) - ensure it's a number
-  const laborTargetPercent = Number(restaurant.laborTarget ?? 25);
-  
-  // Projected end-of-day labor % = actual labor + forecasted remaining / projected end-of-day sales
-  // This comes from the server which calculates: (actualLaborCompleted + projectedLaborRemaining) / projectedEndOfDaySales
-  const projectedFinalLaborPercent = Number(restaurant.projectedLaborPercent ?? 0);
-  
-  // Are we making labor? Compare projected final % against target
-  const isMakingLabor = projectedFinalLaborPercent <= laborTargetPercent;
 
   // Calculate in-progress hour from full timeline (not just filtered activeHours)
   // Find the last hour that has actual sales data in the full timeline
@@ -207,49 +174,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
           </div>
         </div>
 
-        {/* Labor Tracking - Based on Scheduled Labor vs Actual Sales */}
-        {cumulativeScheduledLabor > 0 && (
-          <div className="mt-3 pt-3 border-t border-border" data-testid={`labor-forecast-${restaurant.restaurantId}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="w-4 h-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Labor:</span>
-                <span className={`font-semibold ${
-                  isMakingLabor 
-                    ? "text-green-600 dark:text-green-400" 
-                    : "text-red-600 dark:text-red-400"
-                }`}>
-                  {currentLaborPercent.toFixed(1)}%
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  (proj: {projectedFinalLaborPercent.toFixed(1)}% / target: {laborTargetPercent}%)
-                </span>
-              </div>
-              <Badge 
-                className={`border-0 ${
-                  isMakingLabor 
-                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
-                    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                }`}
-                data-testid={`badge-labor-${restaurant.restaurantId}`}
-              >
-                <Target className="w-3 h-3 mr-1" />
-                {isMakingLabor ? "Making Labor" : "Missing Labor"}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-              <span>
-                Actual Labor: {formatCurrency(cumulativeActualLabor)}
-              </span>
-              <span>
-                Sales: {formatCurrency(cumulativeSales)}
-              </span>
-              <span>
-                Forecast: {formatCurrency(cumulativeForecast)}
-              </span>
-            </div>
-          </div>
-        )}
 
         {activeHours.length > 0 && (
           <div className="mt-4">
