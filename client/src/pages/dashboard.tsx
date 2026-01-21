@@ -117,59 +117,56 @@ export default function Dashboard() {
     });
   };
 
-  // Sort restaurants based on selected criteria, keeping training units at the bottom
+  // Filter and sort restaurants based on selected criteria
   const sortedRestaurants = leaderboardData?.restaurants
-    ? [...leaderboardData.restaurants].sort((a, b) => {
-        // Training units always go to the bottom
-        if (a.status === "training" && b.status !== "training") return 1;
-        if (a.status !== "training" && b.status === "training") return -1;
-        
-        switch (sortBy) {
-          case "sales":
-            return b.todaySales - a.todaySales;
-          case "variance":
-            const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
-            const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
-            return bVariance - aVariance;
-          case "new_unit":
-            // New units first, then by sales
-            if (a.status === "new" && b.status !== "new") return -1;
-            if (a.status !== "new" && b.status === "new") return 1;
-            return b.todaySales - a.todaySales;
-          case "alabama":
-            // Alabama (Central) stores first
-            const aIsAL = a.timezone?.includes("Chicago");
-            const bIsAL = b.timezone?.includes("Chicago");
-            if (aIsAL && !bIsAL) return -1;
-            if (!aIsAL && bIsAL) return 1;
-            return b.todaySales - a.todaySales;
-          case "tennessee":
-            // Tennessee (Eastern) stores first
-            const aIsTN = a.timezone?.includes("New_York");
-            const bIsTN = b.timezone?.includes("New_York");
-            if (aIsTN && !bIsTN) return -1;
-            if (!aIsTN && bIsTN) return 1;
-            return b.todaySales - a.todaySales;
-          case "overstaffed":
-            // Units missing labor target first (overstaffed)
-            if (!a.willHitLaborTarget && b.willHitLaborTarget) return -1;
-            if (a.willHitLaborTarget && !b.willHitLaborTarget) return 1;
-            // Then by projected labor % descending (highest labor % first)
-            return (b.projectedLaborPercent || 0) - (a.projectedLaborPercent || 0);
-          case "understaffed":
-            // Sort by projected labor % ascending (lowest labor % first = understaffed)
-            return (a.projectedLaborPercent || 0) - (b.projectedLaborPercent || 0);
-          case "missing_manager":
-            // Units with missing manager first
-            const aMissing = hasMissingManager(a.restaurantId);
-            const bMissing = hasMissingManager(b.restaurantId);
-            if (aMissing && !bMissing) return -1;
-            if (!aMissing && bMissing) return 1;
-            return b.todaySales - a.todaySales;
-          default:
-            return b.todaySales - a.todaySales;
-        }
-      })
+    ? [...leaderboardData.restaurants]
+        // First, apply filters
+        .filter((r) => {
+          switch (sortBy) {
+            case "alabama":
+              // Only Alabama (Central timezone) stores
+              return r.timezone?.includes("Chicago");
+            case "tennessee":
+              // Only Tennessee (Eastern timezone) stores
+              return r.timezone?.includes("New_York");
+            case "new_unit":
+              // Only new units
+              return r.status === "new";
+            case "overstaffed":
+              // Only overstaffed units (missing labor target)
+              return !r.willHitLaborTarget;
+            case "understaffed":
+              // Only understaffed units (very low labor %)
+              return (r.projectedLaborPercent || 0) < 15;
+            case "missing_manager":
+              // Only units missing manager
+              return hasMissingManager(r.restaurantId);
+            default:
+              return true; // No filter for sales/variance
+          }
+        })
+        // Then sort
+        .sort((a, b) => {
+          // Training units always go to the bottom
+          if (a.status === "training" && b.status !== "training") return 1;
+          if (a.status !== "training" && b.status === "training") return -1;
+          
+          switch (sortBy) {
+            case "variance":
+              const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
+              const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
+              return bVariance - aVariance;
+            case "overstaffed":
+              // Sort by projected labor % descending (highest labor % first)
+              return (b.projectedLaborPercent || 0) - (a.projectedLaborPercent || 0);
+            case "understaffed":
+              // Sort by projected labor % ascending (lowest labor % first)
+              return (a.projectedLaborPercent || 0) - (b.projectedLaborPercent || 0);
+            default:
+              // Default sort by sales
+              return b.todaySales - a.todaySales;
+          }
+        })
     : [];
 
   return (
