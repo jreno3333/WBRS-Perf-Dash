@@ -59,7 +59,8 @@ API Routes:
 - **Labor Deployment Guide**: Uses time punch data to show actual employees on clock vs recommended staffing. Recommended staffing uses a multi-component labor model:
   - **Non-Production Staff**: Fixed hourly positions based on Labor Model 1 (PIC 11am-2pm & 5pm-8pm, Porter 6am-11am, Prep 8am-9am & 4pm-5pm & 11pm-12am, Training 3pm-5pm, DR Attendant 12pm-1:30pm & 5pm-6:30pm, Curbside 10am-2pm & 5pm-9pm). Total: ~19 baseline hours/day.
   - **Production Staff**: Sales-based ramp-up with different charts for Breakfast (6am-11am) vs Non-Breakfast (11am-6am). Breakfast: $0-$118.87=3 staff, scaling to $2,629+=30 staff. Non-Breakfast: $0-$154.53=3 staff, scaling to $3,418+=30 staff.
-  - **Total Required = Non-Production + Production**. Status indicator: blue if within ±1 employee of target, amber if over/understaffed.
+  - **Total Required = Non-Production + Production**. Status indicator: green if within ±1 employee of target, red if overstaffed, yellow if understaffed.
+  - **Early Bird Exclusion**: Hours 0-6 (12am-6am, labeled "Early Bird") are excluded from labor and staffing displays, showing "N/A" instead. This is because overnight labor data from 7shifts isn't meaningful for day-to-day management. The daily staffing totals also exclude these hours.
 
 ### Xenial POS Integration (Real-Time Orders)
 - **Webhook Endpoint**: `POST /api/xenial/order` - Receives real-time order pushes from Xenial POS

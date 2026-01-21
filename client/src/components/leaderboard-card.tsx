@@ -255,6 +255,24 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </div>
               <div className="flex items-end gap-0.5 h-10" data-testid={`labor-chart-${restaurant.restaurantId}`}>
                 {processedHours.map((hour) => {
+                  // Early Bird hours (0-6) are excluded from labor display - not meaningful
+                  const isEarlyBird = hour.label === "Early Bird" || hour.hour <= 6;
+                  
+                  if (isEarlyBird) {
+                    return (
+                      <div
+                        key={`labor-${hour.hour}`}
+                        className="flex-1 flex items-end group relative h-full"
+                      >
+                        <div className="w-full h-1 bg-gray-300 dark:bg-gray-600 rounded-sm" />
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                          <div className="font-medium">{hour.label}</div>
+                          <div className="text-muted-foreground">Labor: N/A</div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
                   const actualLabor = hour.actualLabor || 0;
                   const forecastLabor = hour.projectedLabor || 0;
                   const sales = hour.todaySales || 0;
@@ -330,6 +348,24 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </div>
               <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
                 {processedHours.map((hour) => {
+                  // Early Bird hours (0-6) are excluded from staffing display - not meaningful
+                  const isEarlyBird = hour.label === "Early Bird" || hour.hour <= 6;
+                  
+                  if (isEarlyBird) {
+                    return (
+                      <div
+                        key={`staff-${hour.hour}`}
+                        className="flex-1 flex items-end group relative h-full"
+                      >
+                        <div className="w-full h-1 bg-gray-300 dark:bg-gray-600 rounded-sm" />
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                          <div className="font-medium">{hour.label}</div>
+                          <div className="text-muted-foreground">Staffing: N/A</div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
                   const employeeCount = hour.employeeCount || 0;
                   const sales = hour.todaySales || 0;
                   
@@ -399,9 +435,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 })}
               </div>
               
-              {/* Total Staffing Summary for the Day */}
+              {/* Total Staffing Summary for the Day - excludes Early Bird (hours 0-6) */}
               {(() => {
                 const totals = processedHours.reduce((acc, hour) => {
+                  // Skip Early Bird hours (0-6) - labor data not meaningful
+                  const isEarlyBird = hour.label === "Early Bird" || hour.hour <= 6;
+                  if (isEarlyBird) return acc;
+                  
                   const employeeCount = hour.employeeCount || 0;
                   const sales = hour.todaySales || 0;
                   const hasData = employeeCount > 0 || sales > 0;
