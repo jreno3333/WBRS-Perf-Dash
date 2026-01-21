@@ -213,23 +213,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 Last wk: {formatCurrency(restaurant.actualLastWeekSales)}
               </span>
               <div className="relative group">
-                <span className="text-xs flex items-center gap-1 cursor-help">
+                <span className="text-xs cursor-help">
                   Forecast: {formatCurrency(restaurant.forecastSales)}
-                  {restaurant.forecastSales > 0 && restaurant.lastWeekSales > 0 && (
-                    restaurant.forecastSales >= restaurant.lastWeekSales ? (
-                      <span className="text-green-600 dark:text-green-400 flex items-center">
-                        <TrendingUp className="w-3 h-3" />
-                      </span>
-                    ) : (
-                      <span className="text-red-600 dark:text-red-400 flex items-center">
-                        <TrendingDown className="w-3 h-3" />
-                      </span>
-                    )
-                  )}
                 </span>
                 <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
                   <div className="font-medium">Projected End-of-Day Sales</div>
-                  <div className="text-muted-foreground">Current day sales + remainder of day from last week</div>
+                  <div className="text-muted-foreground">Current sales + estimated remaining from last week</div>
                 </div>
               </div>
             </div>
