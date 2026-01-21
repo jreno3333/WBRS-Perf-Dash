@@ -60,11 +60,42 @@ export async function registerRoutes(
   // Get all restaurants
   app.get("/api/restaurants", async (req, res) => {
     try {
-      const restaurants = await storage.getRestaurants();
-      res.json(restaurants);
+      const restaurantList = await storage.getRestaurants();
+      res.json(restaurantList);
     } catch (error) {
       console.error("Error fetching restaurants:", error);
       res.status(500).json({ error: "Failed to fetch restaurants" });
+    }
+  });
+
+  // Update restaurant settings (open date, labor target, etc.)
+  app.patch("/api/restaurants/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { openDate, laborTarget, isActive } = req.body;
+      
+      const updates: Record<string, any> = {};
+      if (openDate !== undefined) {
+        updates.openDate = openDate ? new Date(openDate) : null;
+      }
+      if (laborTarget !== undefined) {
+        updates.laborTarget = laborTarget;
+      }
+      if (isActive !== undefined) {
+        updates.isActive = isActive;
+      }
+      
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "No valid fields to update" });
+      }
+      
+      await db.update(restaurants).set(updates).where(eq(restaurants.id, id));
+      
+      const updatedRestaurant = await db.select().from(restaurants).where(eq(restaurants.id, id));
+      res.json(updatedRestaurant[0]);
+    } catch (error) {
+      console.error("Error updating restaurant:", error);
+      res.status(500).json({ error: "Failed to update restaurant" });
     }
   });
 
