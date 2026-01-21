@@ -233,7 +233,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               <span>{(() => {
                 const lastHour = activeHours[activeHours.length - 1]?.hour;
                 if (lastHour === undefined) return "";
-                const nextHour = lastHour + 1;
+                const nextHour = (lastHour + 1) % 24;
                 return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
               })()}</span>
             </div>
