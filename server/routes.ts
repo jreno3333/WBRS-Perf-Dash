@@ -3,8 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db } from "./db";
-import { scraperRuns, posOrders } from "@shared/schema";
-import { desc, sql, gte, lt, and } from "drizzle-orm";
+import { scraperRuns, posOrders, hourlySales, restaurants } from "@shared/schema";
+import { desc, sql, gte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "./xenial-webhook";
 
 export async function registerRoutes(
@@ -115,6 +115,104 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching sync status:", error);
       res.status(500).json({ error: "Failed to fetch sync status" });
+    }
+  });
+
+  // Diagnostic: Check for duplicate hourly records
+  app.get("/api/scraper/check-duplicates", async (req, res) => {
+    try {
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const dateStr = targetDate.toISOString().split('T')[0];
+      
+      const allHourly = await db.select().from(hourlySales);
+      const dayRecords = allHourly.filter(s => {
+        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+        return saleDate === dateStr;
+      });
+      
+      // Count records per restaurant/hour
+      const counts: Record<string, number> = {};
+      const duplicates: Array<{restaurantId: string, hour: number, count: number}> = [];
+      
+      dayRecords.forEach(r => {
+        const key = `${r.restaurantId}-${r.hour}`;
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      
+      Object.entries(counts).forEach(([key, count]) => {
+        if (count > 1) {
+          const [restaurantId, hour] = key.split('-');
+          duplicates.push({ restaurantId, hour: parseInt(hour), count });
+        }
+      });
+      
+      const totalSales = dayRecords.reduce((sum, r) => sum + parseFloat(r.actualSales || '0'), 0);
+      
+      res.json({
+        date: dateStr,
+        totalRecords: dayRecords.length,
+        expectedRecords: 22 * 24, // 22 restaurants x 24 hours
+        duplicateGroups: duplicates.length,
+        duplicates,
+        totalSales: totalSales.toFixed(2),
+      });
+    } catch (error) {
+      console.error("Error checking duplicates:", error);
+      res.status(500).json({ error: "Failed to check duplicates" });
+    }
+  });
+
+  // Cleanup: Remove duplicate hourly records, keeping the most recent
+  app.post("/api/scraper/cleanup-duplicates", async (req, res) => {
+    try {
+      const { date } = req.body;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const dateStr = targetDate.toISOString().split('T')[0];
+      
+      const allHourly = await db.select().from(hourlySales);
+      const dayRecords = allHourly.filter(s => {
+        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+        return saleDate === dateStr;
+      });
+      
+      // Group by restaurant/hour
+      const groups: Record<string, typeof dayRecords> = {};
+      dayRecords.forEach(r => {
+        const key = `${r.restaurantId}-${r.hour}`;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(r);
+      });
+      
+      let deletedCount = 0;
+      for (const records of Object.values(groups)) {
+        if (records.length > 1) {
+          // Keep the first, delete the rest
+          const toDelete = records.slice(1);
+          for (const record of toDelete) {
+            await db.delete(hourlySales).where(eq(hourlySales.id, record.id));
+            deletedCount++;
+          }
+        }
+      }
+      
+      // Get new total
+      const remainingRecords = await db.select().from(hourlySales);
+      const newDayRecords = remainingRecords.filter(s => {
+        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+        return saleDate === dateStr;
+      });
+      const newTotal = newDayRecords.reduce((sum, r) => sum + parseFloat(r.actualSales || '0'), 0);
+      
+      res.json({
+        date: dateStr,
+        deletedRecords: deletedCount,
+        remainingRecords: newDayRecords.length,
+        newTotalSales: newTotal.toFixed(2),
+      });
+    } catch (error) {
+      console.error("Error cleaning duplicates:", error);
+      res.status(500).json({ error: "Failed to cleanup duplicates" });
     }
   });
 
