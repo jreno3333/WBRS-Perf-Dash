@@ -1,15 +1,17 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
 const REVENUE_PORT_CONFIG = {
-  dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", description: "Indoor dining available" },
-  drive_thru: { label: "Drive Thru", icon: Car, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", description: "Drive-thru window service" },
-  app: { label: "APP", icon: Smartphone, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", description: "Mobile app ordering" },
-  "3pd": { label: "3PD", icon: ShoppingBag, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400", description: "Third-party delivery (DoorDash, UberEats, etc.)" },
+  dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Indoor dining available", disabledDesc: "No indoor dining" },
+  drive_thru: { label: "Drive Thru", icon: Car, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Drive-thru window service", disabledDesc: "No drive-thru" },
+  app: { label: "APP", icon: Smartphone, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Mobile app ordering", disabledDesc: "No app ordering" },
+  "3pd": { label: "3PD", icon: ShoppingBag, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Third-party delivery (DoorDash, UberEats, etc.)", disabledDesc: "No third-party delivery" },
 } as const;
+
+const ALL_REVENUE_PORTS = ["dine_in", "drive_thru", "app", "3pd"] as const;
 
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
@@ -175,30 +177,31 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 <MapPin className="w-3 h-3 mr-1" />
                 {getTimezoneLabel(restaurant.timezone)}
               </Badge>
-              {/* Revenue Port Badges */}
-              {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
-                <div className="flex items-center gap-1">
-                  {restaurant.revenuePorts.map(port => {
-                    const config = REVENUE_PORT_CONFIG[port as keyof typeof REVENUE_PORT_CONFIG];
-                    if (!config) return null;
-                    const Icon = config.icon;
-                    return (
-                      <div key={port} className="relative group">
-                        <Badge 
-                          className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5 cursor-help`}
-                          data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
-                        >
-                          <Icon className="w-3 h-3" />
-                        </Badge>
-                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                          <div className="font-medium">{config.label}</div>
-                          <div className="text-muted-foreground">{config.description}</div>
-                        </div>
+              {/* Revenue Port Badges - Show all with enabled/disabled state */}
+              <div className="flex items-center gap-1">
+                {ALL_REVENUE_PORTS.map(port => {
+                  const config = REVENUE_PORT_CONFIG[port];
+                  const isEnabled = restaurant.revenuePorts?.includes(port) ?? false;
+                  const Icon = config.icon;
+                  return (
+                    <div key={port} className="relative group">
+                      <Badge 
+                        className={`${isEnabled ? config.color : config.disabledColor} border-0 flex-shrink-0 text-xs px-1.5 cursor-help relative`}
+                        data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                      >
+                        <Icon className="w-3 h-3" />
+                        {!isEnabled && (
+                          <Ban className="w-4 h-4 absolute -top-0.5 -right-0.5 text-red-500 dark:text-red-400" strokeWidth={2.5} />
+                        )}
+                      </Badge>
+                      <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                        <div className="font-medium">{config.label}</div>
+                        <div className="text-muted-foreground">{isEnabled ? config.description : config.disabledDesc}</div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
