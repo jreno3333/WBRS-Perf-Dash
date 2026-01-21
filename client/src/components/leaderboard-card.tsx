@@ -51,9 +51,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
           actualLabor: sum.actualLabor + (h.actualLabor || 0),
         }), { projectedLabor: 0, actualLabor: 0 });
       
-      // Peak employee count across hours 0-6
-      const peakEmployees = Math.max(
-        ...(hourlyData || []).filter(h => h.hour <= 6).map(h => h.employeeCount || 0)
+      // Peak labor hours across hours 0-6
+      const peakLaborHours = Math.max(
+        ...(hourlyData || []).filter(h => h.hour <= 6).map(h => Number(h.employeeCount) || 0)
       );
       
       // Sales values are cumulative (running total), so use hour6's cumulative value
@@ -66,7 +66,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         forecastSales: hour6?.forecastSales || item.forecastSales,
         projectedLabor: cumulativeLabor.projectedLabor,
         actualLabor: cumulativeLabor.actualLabor,
-        employeeCount: peakEmployees,
+        employeeCount: peakLaborHours,
       });
       return acc;
     }
@@ -327,10 +327,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </div>
             </div>
             
-            {/* Staffing Chart - Employees on Clock vs Recommended */}
+            {/* Staffing Chart - Labor Hours Deployed vs Recommended */}
             <div className="mt-3 pt-3 border-t border-border/50">
               <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                <span>Staffing (Employees on Clock)</span>
+                <span>Labor Hours Deployed</span>
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-sm bg-green-500" />
@@ -366,30 +366,30 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     );
                   }
                   
-                  const employeeCount = hour.employeeCount || 0;
+                  const laborHours = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;
                   
                   // Labor deployment model: Non-production + Production staff
                   // Uses different ramp-up charts for breakfast (6am-11am) vs non-breakfast
                   const staffingDetails = getStaffingBreakdown(hour.hour, sales);
-                  const recommendedEmployees = staffingDetails.total;
+                  const recommendedHours = staffingDetails.total;
                   
-                  // Staffing status: Green ±1, Red >2 over, Yellow >2 under
-                  const staffingDiff = employeeCount - recommendedEmployees;
+                  // Staffing status: Green ±1 hr, Red >1 over, Yellow >1 under
+                  const staffingDiff = laborHours - recommendedHours;
                   const isRightSized = Math.abs(staffingDiff) <= 1;
                   const isOverstaffed = staffingDiff > 1;
                   const isUnderstaffed = staffingDiff < -1;
                   
-                  const hasNoData = employeeCount === 0 && sales === 0;
+                  const hasNoData = laborHours === 0 && sales === 0;
                   
-                  // Bar height based on employee count (cap at 15 for display)
-                  const maxDisplayCount = 15;
-                  const displayCount = Math.min(employeeCount, maxDisplayCount);
-                  const barHeightPx = hasNoData ? 0 : Math.max(3, (displayCount / maxDisplayCount) * 40);
+                  // Bar height based on labor hours (cap at 15 for display)
+                  const maxDisplayHours = 15;
+                  const displayHours = Math.min(laborHours, maxDisplayHours);
+                  const barHeightPx = hasNoData ? 0 : Math.max(3, (displayHours / maxDisplayHours) * 40);
                   
                   // Target line position (cap at same max for consistency)
-                  const targetDisplayCount = Math.min(recommendedEmployees, maxDisplayCount);
-                  const targetLineHeightPx = (targetDisplayCount / maxDisplayCount) * 40;
+                  const targetDisplayHours = Math.min(recommendedHours, maxDisplayHours);
+                  const targetLineHeightPx = (targetDisplayHours / maxDisplayHours) * 40;
                   
                   // Bar color: green (right-sized), red (>2 over), yellow (>2 under)
                   const barColor = isRightSized 
@@ -421,13 +421,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                         <div className="font-medium">{hour.label} {staffingDetails.isBreakfast ? "(Breakfast)" : ""}</div>
                         <div className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
-                          On Clock: {employeeCount}
+                          Deployed: {laborHours.toFixed(1)} hrs
                         </div>
                         <div className="text-muted-foreground">
-                          Target: {recommendedEmployees} ({staffingDetails.nonProduction} non-prod + {staffingDetails.production} prod)
+                          Target: {recommendedHours} hrs ({staffingDetails.nonProduction} non-prod + {staffingDetails.production} prod)
                         </div>
                         <div className={`text-xs ${isOverstaffed ? "text-red-600" : isUnderstaffed ? "text-yellow-600" : "text-green-600"}`}>
-                          {isOverstaffed ? `+${staffingDiff} overstaffed` : isUnderstaffed ? `${staffingDiff} understaffed` : "Right-sized"}
+                          {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` : isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` : "Right-sized"}
                         </div>
                       </div>
                     </div>
@@ -442,20 +442,20 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   const isEarlyBird = hour.label === "Early Bird" || hour.hour <= 6;
                   if (isEarlyBird) return acc;
                   
-                  const employeeCount = hour.employeeCount || 0;
+                  const laborHrs = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;
-                  const hasData = employeeCount > 0 || sales > 0;
+                  const hasData = laborHrs > 0 || sales > 0;
                   
                   if (hasData) {
                     const staffingDetails = getStaffingBreakdown(hour.hour, sales);
-                    acc.totalOnClock += employeeCount;
-                    acc.totalRecommended += staffingDetails.total;
+                    acc.totalDeployed += laborHrs;
+                    acc.totalTarget += staffingDetails.total;
                     acc.hoursWithData++;
                   }
                   return acc;
-                }, { totalOnClock: 0, totalRecommended: 0, hoursWithData: 0 });
+                }, { totalDeployed: 0, totalTarget: 0, hoursWithData: 0 });
                 
-                const staffingDiff = totals.totalOnClock - totals.totalRecommended;
+                const staffingDiff = totals.totalDeployed - totals.totalTarget;
                 const isOverstaffed = staffingDiff > 0;
                 const isUnderstaffed = staffingDiff < 0;
                 
@@ -464,15 +464,15 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 return (
                   <div className="mt-2 flex justify-between items-center text-xs">
                     <span className="text-muted-foreground">
-                      Day Total: {totals.totalOnClock} labor hours / {totals.totalRecommended} target
+                      Day Total: {totals.totalDeployed.toFixed(1)} labor hrs / {totals.totalTarget} target
                     </span>
                     <span className={`font-medium ${
                       isOverstaffed ? "text-red-600 dark:text-red-400" : 
                       isUnderstaffed ? "text-yellow-600 dark:text-yellow-400" : 
                       "text-green-600 dark:text-green-400"
                     }`} data-testid={`staffing-total-${restaurant.restaurantId}`}>
-                      {isOverstaffed ? `+${staffingDiff} overstaffed` : 
-                       isUnderstaffed ? `${staffingDiff} understaffed` : 
+                      {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` : 
+                       isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` : 
                        "Right-sized"}
                     </span>
                   </div>

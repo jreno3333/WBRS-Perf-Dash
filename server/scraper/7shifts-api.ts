@@ -195,15 +195,16 @@ export class SevenShiftsAPI {
     }
   }
 
-  // Calculate employees on clock for each hour based on time punches
+  // Calculate total labor hours worked for each hour based on time punches
+  // Returns fractional hours (e.g., 5.6 hours) representing the sum of all employee time worked
   // Uses date string and location timezone to determine target day boundaries
   // Timezone parameter ensures hour boundaries match the location's local time
-  getEmployeesPerHour(punches: TimePunch[], date: string, timezone: string): Map<number, number> {
-    const employeesByHour = new Map<number, number>();
+  getLaborHoursPerHour(punches: TimePunch[], date: string, timezone: string): Map<number, number> {
+    const laborHoursByHour = new Map<number, number>();
     
     // Initialize all hours to 0
     for (let h = 0; h < 24; h++) {
-      employeesByHour.set(h, 0);
+      laborHoursByHour.set(h, 0);
     }
     
     // Use fromZonedTime with string-based date creation to avoid server timezone issues
@@ -212,7 +213,7 @@ export class SevenShiftsAPI {
     const startOfDayUTC = fromZonedTime(`${date}T00:00:00`, timezone);
     const endOfDayUTC = fromZonedTime(`${date}T23:59:59.999`, timezone);
     
-    // For each punch, count which hours the employee was on clock
+    // For each punch, calculate the labor hours contributed to each hour
     for (const punch of punches) {
       // 7shifts returns punch times as ISO strings with timezone offset
       // Parsing with new Date() gives us UTC time
@@ -242,22 +243,33 @@ export class SevenShiftsAPI {
         clockOut = endOfDayUTC;
       }
       
-      // Determine hours this employee was on clock
+      // Calculate fractional hours worked for each hour interval
       for (let h = 0; h < 24; h++) {
         // Create hour boundaries in local timezone using string format, then convert to UTC
         const hourStr = h.toString().padStart(2, '0');
         const hourStartUTC = fromZonedTime(`${date}T${hourStr}:00:00`, timezone);
-        const hourEndUTC = fromZonedTime(`${date}T${hourStr}:59:59.999`, timezone);
+        // Use exact hour boundary (not 59:59.999) for accurate fraction calculation
+        const nextHourStr = (h + 1).toString().padStart(2, '0');
+        const hourEndUTC = h < 23 
+          ? fromZonedTime(`${date}T${nextHourStr}:00:00`, timezone)
+          : new Date(fromZonedTime(`${date}T23:59:59.999`, timezone).getTime() + 1);
         
-        // Employee was on clock during this hour if there's any overlap
-        // Overlap exists if: clockIn <= hourEnd AND clockOut >= hourStart
-        if (clockIn <= hourEndUTC && clockOut >= hourStartUTC) {
-          employeesByHour.set(h, (employeesByHour.get(h) || 0) + 1);
+        // Check if there's any overlap
+        if (clockIn < hourEndUTC && clockOut > hourStartUTC) {
+          // Calculate the actual overlap in this hour
+          const overlapStart = clockIn > hourStartUTC ? clockIn : hourStartUTC;
+          const overlapEnd = clockOut < hourEndUTC ? clockOut : hourEndUTC;
+          
+          // Calculate fraction of hour worked (in hours, e.g., 0.5 for 30 minutes)
+          const overlapMs = overlapEnd.getTime() - overlapStart.getTime();
+          const hoursWorked = overlapMs / (1000 * 60 * 60); // Convert ms to hours
+          
+          laborHoursByHour.set(h, (laborHoursByHour.get(h) || 0) + hoursWorked);
         }
       }
     }
     
-    return employeesByHour;
+    return laborHoursByHour;
   }
 }
 
@@ -524,12 +536,12 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       
       const intervals = await api.getHourlySales(location.id, dateStr);
       
-      // Fetch time punches to calculate employees on clock per hour
+      // Fetch time punches to calculate total labor hours deployed per hour
       // Use restaurant.timezone from our database (not 7shifts API) for proper timezone-aware hour boundary calculations
       // 7shifts API returns America/Chicago for all locations regardless of actual timezone
       const timePunches = await api.getTimePunches(location.id, dateStr);
       const locationTimezone = restaurant.timezone || 'America/Chicago'; // Use our DB timezone, default to Central
-      const employeesByHour = api.getEmployeesPerHour(timePunches, dateStr, locationTimezone);
+      const laborHoursByHour = api.getLaborHoursPerHour(timePunches, dateStr, locationTimezone);
       
       if (intervals.length > 0) {
         const startOfDay = new Date(targetDate);
@@ -557,7 +569,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
             pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
             projectedLabor: (interval.projected_labor / 100).toFixed(2), // Scheduled labor cost for this hour
             actualLabor: (interval.actual_labor / 100).toFixed(2), // Actual labor cost from punched hours
-            employeeCount: employeesByHour.get(hour) || 0, // Number of employees on clock
+            employeeCount: Math.round((laborHoursByHour.get(hour) || 0) * 100) / 100, // Total labor hours deployed (rounded to 2 decimals)
           });
           
           recordsScraped++;
