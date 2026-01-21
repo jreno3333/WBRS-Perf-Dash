@@ -53,12 +53,14 @@ export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps)
         ...data.filter(h => h.hour <= 6).map(h => h.employeeCount || 0)
       );
       
+      // Sales values are cumulative (running total), so use hour6's cumulative value
+      // which already includes all sales from open through 6am
       acc.push({
         hour: 5,
         label: "Early Bird",
-        todaySales: item.todaySales + (hour6?.todaySales || 0),
-        lastWeekSales: item.lastWeekSales + (hour6?.lastWeekSales || 0),
-        forecastSales: item.forecastSales + (hour6?.forecastSales || 0),
+        todaySales: hour6?.todaySales || item.todaySales,
+        lastWeekSales: hour6?.lastWeekSales || item.lastWeekSales,
+        forecastSales: hour6?.forecastSales || item.forecastSales,
         projectedLabor: cumulativeLabor.projectedLabor,
         actualLabor: cumulativeLabor.actualLabor,
         employeeCount: peakEmployees,
