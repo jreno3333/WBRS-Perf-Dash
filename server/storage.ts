@@ -166,8 +166,13 @@ export class DatabaseStorage implements IStorage {
       const allSelectedDateHours = selectedDateHourly.filter(
         s => s.restaurantId === restaurant.id
       );
+      // Normalized last week hours (for ranking comparison)
       const lastWeekRestaurantHours = lastWeekHourly.filter(
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
+      );
+      // All last week hours (for display - full day comparison)
+      const allLastWeekHours = lastWeekHourly.filter(
+        s => s.restaurantId === restaurant.id
       );
       
       // Use 7shifts hourly data for sales (works for both today and historical)
@@ -181,7 +186,12 @@ export class DatabaseStorage implements IStorage {
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
       
+      // Normalized last week (for ranking)
       const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
+        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+      );
+      // Full last week sales (all hours, for display)
+      const actualLastWeekAmount = allLastWeekHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
       const forecastSalesAmount = selectedDateRestaurantHours.reduce(
@@ -265,7 +275,8 @@ export class DatabaseStorage implements IStorage {
         timezone: restaurant.timezone,
         todaySales: selectedDateSalesAmount, // Normalized for fair ranking
         actualSales: actualSalesAmount, // Current sales matching 7shifts
-        lastWeekSales: lastWeekSalesAmount,
+        lastWeekSales: lastWeekSalesAmount, // Normalized for ranking
+        actualLastWeekSales: actualLastWeekAmount, // Full last week for display
         forecastSales: forecastSalesAmount,
         pacePercentage,
         isAheadOfPace,

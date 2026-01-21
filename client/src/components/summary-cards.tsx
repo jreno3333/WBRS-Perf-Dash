@@ -20,9 +20,9 @@ export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCard
 
   // Exclude training units from totals
   const activeRestaurants = restaurants.filter(r => r.status !== "training");
-  // Use actualSales (all available hours) for display to match 7shifts
+  // Use actualSales and actualLastWeekSales (all available hours) for display to match 7shifts
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
-  const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.lastWeekSales, 0);
+  const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
   const totalForecastSales = activeRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
   
   // Calculate total last week full day sales for projected comparison

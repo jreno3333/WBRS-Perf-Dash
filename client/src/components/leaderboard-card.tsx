@@ -206,7 +206,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 Hour {restaurant.normalizedHour}
               </span>
               <span className="text-xs">
-                Last wk: {formatCurrency(restaurant.lastWeekSales)}
+                Last wk: {formatCurrency(restaurant.actualLastWeekSales)}
               </span>
               <div className="relative group">
                 <span className="text-xs flex items-center gap-1 cursor-help">
