@@ -418,7 +418,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                           />
                         </>
                       )}
-                      <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                      <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-10 min-w-[160px]">
                         <div className="font-medium">{hour.label} {staffingDetails.isBreakfast ? "(Breakfast)" : ""}</div>
                         <div className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
                           Deployed: {laborHours.toFixed(1)} hrs
@@ -429,6 +429,20 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                         <div className={`text-xs ${isOverstaffed ? "text-red-600" : isUnderstaffed ? "text-yellow-600" : "text-green-600"}`}>
                           {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` : isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` : "Right-sized"}
                         </div>
+                        {hour.positionBreakdown && Object.keys(hour.positionBreakdown).length > 0 && (
+                          <div className="border-t border-border/50 mt-1 pt-1">
+                            <div className="text-[10px] text-muted-foreground mb-0.5">By Position:</div>
+                            {Object.entries(hour.positionBreakdown)
+                              .sort(([,a], [,b]) => b - a)
+                              .map(([position, hrs]) => (
+                                <div key={position} className="text-[10px] flex justify-between gap-2">
+                                  <span className="truncate">{position}</span>
+                                  <span className="font-medium">{hrs.toFixed(1)}h</span>
+                                </div>
+                              ))
+                            }
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

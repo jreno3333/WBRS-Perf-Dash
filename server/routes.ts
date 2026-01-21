@@ -81,6 +81,40 @@ export async function registerRoutes(
     }
   });
 
+  // Get position breakdown for a restaurant
+  app.get("/api/positions/:restaurantId", async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const dateStr = targetDate.toISOString().split('T')[0];
+      
+      // Fetch hourly data with position breakdown
+      const allHourly = await db.select().from(hourlySales);
+      const records = allHourly.filter(s => {
+        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
+        return saleDate === dateStr && s.restaurantId === restaurantId;
+      });
+      
+      // Build response with position data per hour
+      // Compute totalHours directly from position breakdown sum (authoritative)
+      const result = records.map(r => {
+        const positions = (r.positionBreakdown || {}) as Record<string, number>;
+        const totalHours = Object.values(positions).reduce((sum, hrs) => sum + hrs, 0);
+        return {
+          hour: r.hour,
+          totalHours: Math.round(totalHours * 100) / 100,
+          positions,
+        };
+      }).sort((a, b) => a.hour - b.hour);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching position data:", error);
+      res.status(500).json({ error: "Failed to fetch position data" });
+    }
+  });
+
   // Trigger manual API sync
   app.post("/api/scraper/run", async (req, res) => {
     try {

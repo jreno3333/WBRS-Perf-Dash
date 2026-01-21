@@ -318,6 +318,7 @@ export class DatabaseStorage implements IStorage {
     const laborByHour: Map<number, number> = new Map();
     const actualLaborByHour: Map<number, number> = new Map();
     const employeeCountByHour: Map<number, number> = new Map();
+    const positionByHour: Map<number, Record<string, number>> = new Map();
     
     for (let h = 0; h < 24; h++) {
       selectedByHour.set(h, 0);
@@ -357,12 +358,15 @@ export class DatabaseStorage implements IStorage {
       selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
-      // Forecast, labor, and employee count from 7shifts
+      // Forecast, labor, employee count, and position breakdown from 7shifts
       selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
         laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
         actualLaborByHour.set(s.hour, parseFloat(s.actualLabor || '0'));
         employeeCountByHour.set(s.hour, Number(s.employeeCount) || 0);
+        if (s.positionBreakdown) {
+          positionByHour.set(s.hour, s.positionBreakdown as Record<string, number>);
+        }
       });
       // Last week from 7shifts
       lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
@@ -409,6 +413,7 @@ export class DatabaseStorage implements IStorage {
       const projectedLabor = Math.round((laborByHour.get(hour) || 0) * 100) / 100;
       const actualLabor = Math.round((actualLaborByHour.get(hour) || 0) * 100) / 100;
       const employeeCount = employeeCountByHour.get(hour) || 0;
+      const positionBreakdown = positionByHour.get(hour);
       hourlyData.push({
         hour,
         todaySales: showCumulativeSelected,
@@ -417,6 +422,7 @@ export class DatabaseStorage implements IStorage {
         projectedLabor,
         actualLabor, // Use actual labor as-is from 7shifts punched hours
         employeeCount, // Number of employees on clock from time punches
+        positionBreakdown, // Hours worked by each position
         label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
       });
     }
@@ -469,18 +475,22 @@ export class DatabaseStorage implements IStorage {
       const laborByHour: Map<number, number> = new Map();
       const actualLaborByHour: Map<number, number> = new Map();
       const employeeCountByHour: Map<number, number> = new Map();
+      const positionByHour: Map<number, Record<string, number>> = new Map();
       
       // Use 7shifts data for sales
       restaurantSelectedHourly.forEach(s => {
         selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
       
-      // Forecast, labor, and employee count from 7shifts
+      // Forecast, labor, employee count, and position breakdown from 7shifts
       restaurantSelectedHourly.forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
         laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
         actualLaborByHour.set(s.hour, parseFloat(s.actualLabor || '0'));
         employeeCountByHour.set(s.hour, Number(s.employeeCount) || 0);
+        if (s.positionBreakdown) {
+          positionByHour.set(s.hour, s.positionBreakdown as Record<string, number>);
+        }
       });
       // Last week from 7shifts
       restaurantLastWeekHourly.forEach(s => {
@@ -501,6 +511,7 @@ export class DatabaseStorage implements IStorage {
         const projectedLabor = Math.round((laborByHour.get(hour) || 0) * 100) / 100;
         const actualLabor = Math.round((actualLaborByHour.get(hour) || 0) * 100) / 100;
         const employeeCount = employeeCountByHour.get(hour) || 0;
+        const positionBreakdown = positionByHour.get(hour);
         
         // Include hours with any data (sales, forecast, or labor)
         // Hours 0-4 often have labor but no sales - needed for Early Bird labor totals
@@ -513,6 +524,7 @@ export class DatabaseStorage implements IStorage {
             projectedLabor,
             actualLabor,
             employeeCount,
+            positionBreakdown,
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
           });
         }

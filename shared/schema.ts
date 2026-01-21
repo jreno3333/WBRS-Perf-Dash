@@ -110,6 +110,7 @@ export interface HourlySalesData {
   projectedLabor: number; // Scheduled labor cost for this hour
   actualLabor: number; // Actual labor cost from punched hours
   employeeCount: number; // Number of employees on clock during this hour
+  positionBreakdown?: Record<string, number>; // Hours by position: { "Manager": 1.5, "Team Member": 3.0 }
   label: string;
 }
 

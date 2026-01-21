@@ -36,15 +36,20 @@ API Routes:
 - `GET /api/leaderboard` - Aggregated restaurant sales rankings with week-over-week comparison
 - `GET /api/pace/:restaurantId` - Hourly sales data for pace comparison (use "all" for aggregate)
 - `GET /api/restaurants` - List of all restaurant locations
+- `GET /api/positions/:restaurantId` - Hourly position/role breakdown for a restaurant (query: `?date=YYYY-MM-DD`)
+- `GET /api/hourly-by-restaurant` - All restaurant hourly data with position breakdown
 - `POST /api/scraper/run` - Trigger manual 7shifts data sync
 - `POST /api/scraper/historical` - Fetch historical sales data (supports `days` parameter)
 - `POST /api/scraper/historical-hourly` - Fetch historical hourly data for week-over-week comparison (body: `{"days": 8}`)
 - `GET /api/scraper/status` - View sync status and history
+- `GET /api/scraper/check-duplicates` - Diagnostic: check for duplicate hourly records (query: `?date=YYYY-MM-DD`)
+- `POST /api/scraper/cleanup-duplicates` - Remove duplicate hourly records (body: `{"date": "YYYY-MM-DD"}`)
 
 ### 7shifts Integration
 - **API Client**: Custom REST client in `server/scraper/7shifts-api.ts`
 - **Authentication**: Bearer token via `SEVENSHIFTS_API_TOKEN` environment variable
-- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`, `/v2/company/{id}/location/{id}/daily_stats`, `/v2/time_punches`
+- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`, `/v2/company/{id}/location/{id}/daily_stats`, `/v2/time_punches`, `/v2/company/{id}/roles`
+- **Position/Role Tracking**: Fetches roles from 7shifts to map role_id to position names (e.g., Manager, Team Member, Shift Supervisor, Team Member Trainer). Position breakdown stored per hour in the `position_breakdown` JSONB column.
 - **Data Sync**: Fetches actual sales data from 7shifts workforce management platform
 - **Sync Interval**: Data updated hourly (7shifts only reports completed hourly intervals)
 - **Timezone-Aware Sync**: Server runs in UTC but sync uses Central timezone (America/Chicago) to determine the current date. This ensures that at 9 PM Eastern (8 PM Central), the sync fetches the correct day's data instead of the next day's data. Dates are stored at noon UTC on the target date to avoid DST boundary issues.
