@@ -389,12 +389,16 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 <span>Staffing (Employees on Clock)</span>
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-blue-500" />
+                    <div className="w-2 h-2 rounded-sm bg-green-500" />
                     Right-sized
                   </span>
                   <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-amber-500" />
-                    Over/Under
+                    <div className="w-2 h-2 rounded-sm bg-red-500" />
+                    Overstaffed
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-yellow-500" />
+                    Understaffed
                   </span>
                 </div>
               </div>
@@ -408,7 +412,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   const staffingDetails = getStaffingBreakdown(hour.hour, sales);
                   const recommendedEmployees = staffingDetails.total;
                   
-                  // Staffing status: within +/- 1 employee is "right-sized"
+                  // Staffing status: Green ±1, Red >2 over, Yellow >2 under
                   const staffingDiff = employeeCount - recommendedEmployees;
                   const isRightSized = Math.abs(staffingDiff) <= 1;
                   const isOverstaffed = staffingDiff > 1;
@@ -421,6 +425,17 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   const displayCount = Math.min(employeeCount, maxDisplayCount);
                   const barHeightPx = hasNoData ? 0 : Math.max(3, (displayCount / maxDisplayCount) * 40);
                   
+                  // Target line position (cap at same max for consistency)
+                  const targetDisplayCount = Math.min(recommendedEmployees, maxDisplayCount);
+                  const targetLineHeightPx = (targetDisplayCount / maxDisplayCount) * 40;
+                  
+                  // Bar color: green (right-sized), red (>2 over), yellow (>2 under)
+                  const barColor = isRightSized 
+                    ? "bg-green-500 dark:bg-green-400" 
+                    : isOverstaffed 
+                      ? "bg-red-500 dark:bg-red-400" 
+                      : "bg-yellow-500 dark:bg-yellow-400";
+                  
                   return (
                     <div
                       key={`staff-${hour.hour}`}
@@ -429,24 +444,27 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       {hasNoData ? (
                         <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
                       ) : (
-                        <div
-                          className={`w-full rounded-t-sm transition-all ${
-                            isRightSized
-                              ? "bg-blue-500 dark:bg-blue-400"
-                              : "bg-amber-500 dark:bg-amber-400"
-                          }`}
-                          style={{ height: `${barHeightPx}px` }}
-                        />
+                        <>
+                          <div
+                            className={`w-full rounded-t-sm transition-all ${barColor}`}
+                            style={{ height: `${barHeightPx}px` }}
+                          />
+                          {/* Target line showing recommended staffing level */}
+                          <div
+                            className="absolute w-full border-t-2 border-slate-800 dark:border-slate-200 pointer-events-none"
+                            style={{ bottom: `${targetLineHeightPx}px` }}
+                          />
+                        </>
                       )}
                       <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                         <div className="font-medium">{hour.label} {staffingDetails.isBreakfast ? "(Breakfast)" : ""}</div>
-                        <div className={isRightSized ? "text-blue-600" : "text-amber-600"}>
+                        <div className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
                           On Clock: {employeeCount}
                         </div>
                         <div className="text-muted-foreground">
                           Target: {recommendedEmployees} ({staffingDetails.nonProduction} non-prod + {staffingDetails.production} prod)
                         </div>
-                        <div className={`text-xs ${isOverstaffed ? "text-amber-600" : isUnderstaffed ? "text-red-600" : "text-green-600"}`}>
+                        <div className={`text-xs ${isOverstaffed ? "text-red-600" : isUnderstaffed ? "text-yellow-600" : "text-green-600"}`}>
                           {isOverstaffed ? `+${staffingDiff} overstaffed` : isUnderstaffed ? `${staffingDiff} understaffed` : "Right-sized"}
                         </div>
                       </div>
