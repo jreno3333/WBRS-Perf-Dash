@@ -1,6 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -181,22 +180,18 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     if (!config) return null;
                     const Icon = config.icon;
                     return (
-                      <Tooltip key={port}>
-                        <TooltipTrigger asChild>
-                          <span className="cursor-help">
-                            <Badge 
-                              className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5`}
-                              data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
-                            >
-                              <Icon className="w-3 h-3" />
-                            </Badge>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="font-medium">{config.label}</p>
-                          <p className="text-xs text-muted-foreground">{config.description}</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <div key={port} className="relative group">
+                        <Badge 
+                          className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5 cursor-help`}
+                          data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                        >
+                          <Icon className="w-3 h-3" />
+                        </Badge>
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                          <div className="font-medium">{config.label}</div>
+                          <div className="text-muted-foreground">{config.description}</div>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -210,28 +205,26 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               <span className="text-xs">
                 Last wk: {formatCurrency(restaurant.lastWeekSales)}
               </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-xs flex items-center gap-1 cursor-help">
-                    Forecast: {formatCurrency(restaurant.forecastSales)}
-                    {restaurant.forecastSales > 0 && restaurant.lastWeekSales > 0 && (
-                      restaurant.forecastSales >= restaurant.lastWeekSales ? (
-                        <span className="text-green-600 dark:text-green-400 flex items-center">
-                          <TrendingUp className="w-3 h-3" />
-                        </span>
-                      ) : (
-                        <span className="text-red-600 dark:text-red-400 flex items-center">
-                          <TrendingDown className="w-3 h-3" />
-                        </span>
-                      )
-                    )}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="font-medium">Projected End-of-Day Sales</p>
-                  <p className="text-xs text-muted-foreground">Current day sales + remainder of day sales from last week</p>
-                </TooltipContent>
-              </Tooltip>
+              <div className="relative group">
+                <span className="text-xs flex items-center gap-1 cursor-help">
+                  Forecast: {formatCurrency(restaurant.forecastSales)}
+                  {restaurant.forecastSales > 0 && restaurant.lastWeekSales > 0 && (
+                    restaurant.forecastSales >= restaurant.lastWeekSales ? (
+                      <span className="text-green-600 dark:text-green-400 flex items-center">
+                        <TrendingUp className="w-3 h-3" />
+                      </span>
+                    ) : (
+                      <span className="text-red-600 dark:text-red-400 flex items-center">
+                        <TrendingDown className="w-3 h-3" />
+                      </span>
+                    )
+                  )}
+                </span>
+                <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                  <div className="font-medium">Projected End-of-Day Sales</div>
+                  <div className="text-muted-foreground">Current day sales + remainder of day from last week</div>
+                </div>
+              </div>
             </div>
           </div>
 

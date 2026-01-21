@@ -20,7 +20,7 @@ import type { LeaderboardData, HourlySalesData } from "@shared/schema";
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [sortBy, setSortBy] = useState<"sales" | "variance">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
@@ -102,6 +102,21 @@ export default function Dashboard() {
     setSelectedDate(new Date());
   };
 
+  // Helper to check if restaurant has missing manager (will be computed from hourly data)
+  const hasMissingManager = (restaurantId: string) => {
+    const data = hourlyByRestaurant?.[restaurantId] || [];
+    // Check if any hour with labor has no manager/shift supervisor
+    return data.some((hour: HourlySalesData) => {
+      const laborHours = Number(hour.employeeCount) || 0;
+      if (laborHours === 0) return false;
+      const positions = hour.positionBreakdown || {};
+      const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
+      const hasManager = positionKeys.some(p => p.includes("manager"));
+      const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
+      return !hasManager && !hasShiftSupervisor;
+    });
+  };
+
   // Sort restaurants based on selected criteria, keeping training units at the bottom
   const sortedRestaurants = leaderboardData?.restaurants
     ? [...leaderboardData.restaurants].sort((a, b) => {
@@ -109,13 +124,50 @@ export default function Dashboard() {
         if (a.status === "training" && b.status !== "training") return 1;
         if (a.status !== "training" && b.status === "training") return -1;
         
-        if (sortBy === "sales") {
-          return b.todaySales - a.todaySales;
-        } else {
-          // Sort by % variance vs last week
-          const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
-          const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
-          return bVariance - aVariance;
+        switch (sortBy) {
+          case "sales":
+            return b.todaySales - a.todaySales;
+          case "variance":
+            const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
+            const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
+            return bVariance - aVariance;
+          case "new_unit":
+            // New units first, then by sales
+            if (a.status === "new" && b.status !== "new") return -1;
+            if (a.status !== "new" && b.status === "new") return 1;
+            return b.todaySales - a.todaySales;
+          case "alabama":
+            // Alabama (Central) stores first
+            const aIsAL = a.timezone?.includes("Chicago");
+            const bIsAL = b.timezone?.includes("Chicago");
+            if (aIsAL && !bIsAL) return -1;
+            if (!aIsAL && bIsAL) return 1;
+            return b.todaySales - a.todaySales;
+          case "tennessee":
+            // Tennessee (Eastern) stores first
+            const aIsTN = a.timezone?.includes("New_York");
+            const bIsTN = b.timezone?.includes("New_York");
+            if (aIsTN && !bIsTN) return -1;
+            if (!aIsTN && bIsTN) return 1;
+            return b.todaySales - a.todaySales;
+          case "overstaffed":
+            // Units missing labor target first (overstaffed)
+            if (!a.willHitLaborTarget && b.willHitLaborTarget) return -1;
+            if (a.willHitLaborTarget && !b.willHitLaborTarget) return 1;
+            // Then by projected labor % descending (highest labor % first)
+            return (b.projectedLaborPercent || 0) - (a.projectedLaborPercent || 0);
+          case "understaffed":
+            // Sort by projected labor % ascending (lowest labor % first = understaffed)
+            return (a.projectedLaborPercent || 0) - (b.projectedLaborPercent || 0);
+          case "missing_manager":
+            // Units with missing manager first
+            const aMissing = hasMissingManager(a.restaurantId);
+            const bMissing = hasMissingManager(b.restaurantId);
+            if (aMissing && !bMissing) return -1;
+            if (!aMissing && bMissing) return 1;
+            return b.todaySales - a.todaySales;
+          default:
+            return b.todaySales - a.todaySales;
         }
       })
     : [];
@@ -247,26 +299,21 @@ export default function Dashboard() {
                   </h2>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Sort by:</span>
-                    <div className="flex rounded-md border">
-                      <Button
-                        variant={sortBy === "sales" ? "secondary" : "ghost"}
-                        size="sm"
-                        className="rounded-r-none text-xs h-7"
-                        onClick={() => setSortBy("sales")}
-                        data-testid="button-sort-sales"
-                      >
-                        Total Sales
-                      </Button>
-                      <Button
-                        variant={sortBy === "variance" ? "secondary" : "ghost"}
-                        size="sm"
-                        className="rounded-l-none text-xs h-7"
-                        onClick={() => setSortBy("variance")}
-                        data-testid="button-sort-variance"
-                      >
-                        % vs LW
-                      </Button>
-                    </div>
+                    <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
+                      <SelectTrigger className="w-[140px] h-7 text-xs" data-testid="select-sort">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sales">Total Sales</SelectItem>
+                        <SelectItem value="variance">% vs LW</SelectItem>
+                        <SelectItem value="new_unit">New Units</SelectItem>
+                        <SelectItem value="alabama">Alabama</SelectItem>
+                        <SelectItem value="tennessee">Tennessee</SelectItem>
+                        <SelectItem value="overstaffed">Overstaffed</SelectItem>
+                        <SelectItem value="understaffed">Understaffed</SelectItem>
+                        <SelectItem value="missing_manager">Missing Mgr</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
