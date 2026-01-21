@@ -142,7 +142,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               )}
               {restaurant.status === "new" && (
                 <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
-                  NEW UNIT
+                  NEW UNIT ({restaurant.daysOpen} days)
                 </Badge>
               )}
               <Badge variant="secondary" className="flex-shrink-0 text-xs">
@@ -255,95 +255,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const nextHour = (lastHour + 1) % 24;
                 return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
               })()}</span>
-            </div>
-            
-            {/* Hourly Labor % Chart - Single bar per hour */}
-            <div className="mt-3 pt-3 border-t border-border/50">
-              <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                <span>Hourly Labor %</span>
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-green-500" />
-                    On Track
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-red-500" />
-                    Over Forecast
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-end gap-0.5 h-10" data-testid={`labor-chart-${restaurant.restaurantId}`}>
-                {processedHours.map((hour) => {
-                  // Early Bird hours (0-6) are excluded from labor display - not meaningful
-                  const isEarlyBird = hour.label === "Early Bird" || hour.hour <= 6;
-                  
-                  if (isEarlyBird) {
-                    return (
-                      <div
-                        key={`labor-${hour.hour}`}
-                        className="flex-1 flex items-end group relative h-full"
-                      >
-                        <div className="w-full h-1 bg-gray-300 dark:bg-gray-600 rounded-sm" />
-                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                          <div className="font-medium">{hour.label}</div>
-                          <div className="text-muted-foreground">Labor: N/A</div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  
-                  const actualLabor = hour.actualLabor || 0;
-                  const forecastLabor = hour.projectedLabor || 0;
-                  const sales = hour.todaySales || 0;
-                  
-                  // Calculate labor percentages
-                  const actualLaborPercent = sales > 0 ? (actualLabor / sales) * 100 : 0;
-                  const forecastLaborPercent = sales > 0 ? (forecastLabor / sales) * 100 : 0;
-                  const laborTargetPercent = restaurant.laborTarget || 25;
-                  const targetLabor = sales * (laborTargetPercent / 100);
-                  
-                  // Red if actual labor % exceeds forecast labor %
-                  const isOverForecast = actualLaborPercent > forecastLaborPercent && forecastLaborPercent > 0;
-                  const hasNoData = actualLabor === 0 && sales === 0;
-                  
-                  // Bar height based on labor % (cap at 50% for display)
-                  const maxDisplayPercent = 50;
-                  const displayPercent = Math.min(actualLaborPercent, maxDisplayPercent);
-                  const barHeightPx = hasNoData ? 0 : Math.max(3, (displayPercent / maxDisplayPercent) * 40);
-                  
-                  return (
-                    <div
-                      key={`labor-${hour.hour}`}
-                      className="flex-1 flex items-end group relative h-full"
-                    >
-                      {hasNoData ? (
-                        <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
-                      ) : (
-                        <div
-                          className={`w-full rounded-t-sm transition-all ${
-                            isOverForecast
-                              ? "bg-red-500 dark:bg-red-400"
-                              : "bg-green-500 dark:bg-green-400"
-                          }`}
-                          style={{ height: `${barHeightPx}px` }}
-                        />
-                      )}
-                      <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                        <div className="font-medium">{hour.label}</div>
-                        <div className={isOverForecast ? "text-red-600" : "text-green-600"}>
-                          Actual: {formatCurrency(actualLabor)} ({actualLaborPercent.toFixed(1)}%)
-                        </div>
-                        <div className="text-muted-foreground">
-                          Target: {formatCurrency(targetLabor)} ({laborTargetPercent}%)
-                        </div>
-                        <div className="text-muted-foreground">
-                          Forecast: {formatCurrency(forecastLabor)} ({forecastLaborPercent.toFixed(1)}%)
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
             
             {/* Staffing Chart - Labor Hours Deployed vs Recommended */}
