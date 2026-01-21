@@ -109,13 +109,15 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     ? (cumulativeActualLabor / cumulativeSales) * 100 
     : 0;
   
-  // Forecasted labor % at this point = (scheduled labor / forecast sales) * 100  
-  const forecastLaborPercent = cumulativeForecast > 0
-    ? (cumulativeScheduledLabor / cumulativeForecast) * 100
-    : 0;
+  // Labor target from restaurant settings (e.g., 25%) - ensure it's a number
+  const laborTargetPercent = Number(restaurant.laborTarget ?? 25);
   
-  // Are we making labor? (actual labor % is better than forecasted)
-  const isMakingLabor = currentLaborPercent < forecastLaborPercent;
+  // Projected end-of-day labor % = actual labor + forecasted remaining / projected end-of-day sales
+  // This comes from the server which calculates: (actualLaborCompleted + projectedLaborRemaining) / projectedEndOfDaySales
+  const projectedFinalLaborPercent = Number(restaurant.projectedLaborPercent ?? 0);
+  
+  // Are we making labor? Compare projected final % against target
+  const isMakingLabor = projectedFinalLaborPercent <= laborTargetPercent;
 
   // Calculate in-progress hour from full timeline (not just filtered activeHours)
   // Find the last hour that has actual sales data in the full timeline
@@ -220,7 +222,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   {currentLaborPercent.toFixed(1)}%
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  (forecast: {forecastLaborPercent.toFixed(1)}%)
+                  (proj: {projectedFinalLaborPercent.toFixed(1)}% / target: {laborTargetPercent}%)
                 </span>
               </div>
               <Badge 

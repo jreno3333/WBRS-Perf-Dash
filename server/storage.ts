@@ -174,10 +174,25 @@ export class DatabaseStorage implements IStorage {
       const isAheadOfPace = selectedDateSalesAmount >= lastWeekSalesAmount;
       
       // Labor forecast calculation
-      // Get total scheduled labor for the day (sum of all projected_labor for all hours)
-      const projectedLaborCost = allSelectedDateHours.reduce(
-        (sum, s) => sum + parseFloat(s.projectedLabor || '0'), 0
-      );
+      // Blended approach: actual labor for completed hours + projected labor for remaining hours
+      // This gives the most accurate projected end-of-day labor %
+      let actualLaborCompleted = 0;
+      let projectedLaborRemaining = 0;
+      
+      // Sum actual labor for completed hours (0 through normalizedHourCutoff)
+      for (let hour = 0; hour <= normalizedHourCutoff; hour++) {
+        const hourData = allSelectedDateHours.find(s => s.hour === hour);
+        actualLaborCompleted += parseFloat(hourData?.actualLabor || '0');
+      }
+      
+      // Sum projected labor for remaining hours
+      for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
+        const hourData = allSelectedDateHours.find(s => s.hour === hour);
+        projectedLaborRemaining += parseFloat(hourData?.projectedLabor || '0');
+      }
+      
+      // Total projected labor = actual so far + projected for remaining hours
+      const projectedLaborCost = actualLaborCompleted + projectedLaborRemaining;
       
       // Calculate projected end-of-day sales:
       // For today: current actual sales + forecasted sales for remaining hours
@@ -212,7 +227,7 @@ export class DatabaseStorage implements IStorage {
         );
       }
       
-      // Calculate projected labor percentage
+      // Calculate projected labor percentage (blended actual + projected)
       const projectedLaborPercent = projectedEndOfDaySales > 0 
         ? (projectedLaborCost / projectedEndOfDaySales) * 100 
         : 0;
