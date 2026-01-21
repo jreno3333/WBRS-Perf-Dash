@@ -1,14 +1,15 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
 const REVENUE_PORT_CONFIG = {
-  dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  drive_thru: { label: "Drive Thru", icon: Car, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  app: { label: "APP", icon: Smartphone, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
-  "3pd": { label: "3PD", icon: ShoppingBag, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+  dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", description: "Indoor dining available" },
+  drive_thru: { label: "Drive Thru", icon: Car, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", description: "Drive-thru window service" },
+  app: { label: "APP", icon: Smartphone, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", description: "Mobile app ordering" },
+  "3pd": { label: "3PD", icon: ShoppingBag, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400", description: "Third-party delivery (DoorDash, UberEats, etc.)" },
 } as const;
 
 interface LeaderboardCardProps {
@@ -164,13 +165,20 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     if (!config) return null;
                     const Icon = config.icon;
                     return (
-                      <Badge 
-                        key={port} 
-                        className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5`}
-                        data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
-                      >
-                        <Icon className="w-3 h-3" />
-                      </Badge>
+                      <Tooltip key={port}>
+                        <TooltipTrigger asChild>
+                          <Badge 
+                            className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5 cursor-help`}
+                            data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                          >
+                            <Icon className="w-3 h-3" />
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="font-medium">{config.label}</p>
+                          <p className="text-xs text-muted-foreground">{config.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   })}
                 </div>
@@ -184,8 +192,19 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               <span className="text-xs">
                 Last wk: {formatCurrency(restaurant.lastWeekSales)}
               </span>
-              <span className="text-xs">
+              <span className="text-xs flex items-center gap-1">
                 Forecast: {formatCurrency(restaurant.forecastSales)}
+                {restaurant.forecastSales > 0 && restaurant.lastWeekSales > 0 && (
+                  restaurant.forecastSales >= restaurant.lastWeekSales ? (
+                    <span className="text-green-600 dark:text-green-400 flex items-center">
+                      <TrendingUp className="w-3 h-3" />
+                    </span>
+                  ) : (
+                    <span className="text-red-600 dark:text-red-400 flex items-center">
+                      <TrendingDown className="w-3 h-3" />
+                    </span>
+                  )
+                )}
               </span>
             </div>
           </div>
