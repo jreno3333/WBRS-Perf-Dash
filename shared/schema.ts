@@ -104,6 +104,7 @@ export interface RestaurantSales {
   // Unit status fields
   status?: "training" | "new" | "established"; // Based on openDate
   daysOpen?: number; // Days since open date (for NEW UNIT countdown)
+  openDate?: string | null; // Open date for training units display
 }
 
 export interface HourlySalesData {

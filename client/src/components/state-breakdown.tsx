@@ -26,10 +26,12 @@ export function StateBreakdown({ restaurants }: StateBreakdownProps) {
     }).format(amount);
   };
 
-  const tennesseeRestaurants = restaurants.filter(r => 
+  // Exclude training units from state breakdowns
+  const activeRestaurants = restaurants.filter(r => r.status !== "training");
+  const tennesseeRestaurants = activeRestaurants.filter(r => 
     TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
   );
-  const alabamaRestaurants = restaurants.filter(r => 
+  const alabamaRestaurants = activeRestaurants.filter(r => 
     !TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
   );
 

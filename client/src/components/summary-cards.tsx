@@ -18,10 +18,12 @@ export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCard
     }).format(amount);
   };
 
-  const totalTodaySales = restaurants.reduce((sum, r) => sum + r.todaySales, 0);
-  const totalLastWeekSales = restaurants.reduce((sum, r) => sum + r.lastWeekSales, 0);
-  const totalForecastSales = restaurants.reduce((sum, r) => sum + r.forecastSales, 0);
-  const aheadOfPaceCount = restaurants.filter((r) => r.isAheadOfPace).length;
+  // Exclude training units from totals
+  const activeRestaurants = restaurants.filter(r => r.status !== "training");
+  const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.todaySales, 0);
+  const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.lastWeekSales, 0);
+  const totalForecastSales = activeRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+  const aheadOfPaceCount = activeRestaurants.filter((r) => r.isAheadOfPace).length;
   
   // Calculate variance vs last week
   const lwVariance = totalLastWeekSales > 0 
@@ -35,8 +37,8 @@ export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCard
     : 0;
   const fcDollarDiff = totalTodaySales - totalForecastSales;
 
-  // Count stores ahead of last week (vs forecast comparison)
-  const aheadOfForecastCount = restaurants.filter((r) => r.todaySales >= r.forecastSales).length;
+  // Count stores ahead of last week (vs forecast comparison) - exclude training
+  const aheadOfForecastCount = activeRestaurants.filter((r) => r.todaySales >= r.forecastSales).length;
 
   // Calculate projected daily sales: actual sales so far + remaining forecast
   // Data is cumulative, so actualSoFar = last hour's todaySales

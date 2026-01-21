@@ -137,12 +137,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </h3>
               {restaurant.status === "training" && (
                 <Badge variant="secondary" className="flex-shrink-0 text-xs" data-testid={`badge-training-${restaurant.restaurantId}`}>
-                  Training
+                  Training - Opens {restaurant.openDate ? new Date(restaurant.openDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'}
                 </Badge>
               )}
               {restaurant.status === "new" && (
                 <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
-                  NEW UNIT ({restaurant.daysOpen} days)
+                  NEW UNIT ({restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w ${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`})
                 </Badge>
               )}
               <Badge variant="secondary" className="flex-shrink-0 text-xs">

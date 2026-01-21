@@ -302,7 +302,7 @@ function RestaurantRow({
         )}
         {restaurant.status === "new" && (
           <Badge className="bg-blue-500 hover:bg-blue-600 shrink-0">
-            NEW UNIT ({restaurant.daysOpen || 0} days)
+            NEW UNIT ({restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w ${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`})
           </Badge>
         )}
       </div>

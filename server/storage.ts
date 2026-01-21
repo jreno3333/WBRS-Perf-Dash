@@ -273,6 +273,7 @@ export class DatabaseStorage implements IStorage {
         // Unit status fields
         status: unitStatus.status,
         daysOpen: unitStatus.daysOpen,
+        openDate: restaurant.openDate ? restaurant.openDate.toISOString() : null,
       };
     });
     
