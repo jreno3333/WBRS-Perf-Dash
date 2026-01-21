@@ -10,6 +10,7 @@ export const restaurants = pgTable("restaurants", {
   timezone: text("timezone").notNull().default("America/New_York"), // Eastern or Central
   isActive: boolean("is_active").notNull().default(true),
   laborTarget: decimal("labor_target", { precision: 5, scale: 2 }).default("25.00"), // Target labor % (default 25%)
+  openDate: timestamp("open_date"), // Date when restaurant opened/will open. Future = training, < 90 days = new unit
 });
 
 export const insertRestaurantSchema = createInsertSchema(restaurants).omit({
