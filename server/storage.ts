@@ -170,9 +170,15 @@ export class DatabaseStorage implements IStorage {
       const lastWeekRestaurantHours = lastWeekHourly.filter(
         s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
       );
-      // All last week hours (for display - full day comparison)
-      const allLastWeekHours = lastWeekHourly.filter(
-        s => s.restaurantId === restaurant.id
+      
+      // Get current hour in this restaurant's timezone for proper comparison
+      const restaurantCurrentHour = getCurrentHourInTimezone(restaurant.timezone);
+      // Last completed hour in this restaurant's timezone
+      const restaurantCompletedHour = restaurantCurrentHour - 1;
+      
+      // Last week hours up to current hour in this restaurant's timezone
+      const lastWeekHoursForComparison = lastWeekHourly.filter(
+        s => s.restaurantId === restaurant.id && s.hour <= restaurantCompletedHour
       );
       
       // Use 7shifts hourly data for sales (works for both today and historical)
@@ -190,8 +196,8 @@ export class DatabaseStorage implements IStorage {
       const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
-      // Full last week sales (all hours, for display)
-      const actualLastWeekAmount = allLastWeekHours.reduce(
+      // Last week sales up to current hour in restaurant's timezone (for display)
+      const actualLastWeekAmount = lastWeekHoursForComparison.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
       const forecastSalesAmount = selectedDateRestaurantHours.reduce(
