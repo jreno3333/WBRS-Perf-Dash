@@ -54,7 +54,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     
     // Combine hours into "Early Bird" with cumulative labor from midnight
     if (item.hour === 5) {
-      const lastEarlyBirdHour = hourlyData?.find(d => d.hour === earlyBirdEndHour);
+      // Find all hours within Early Bird range and get the one with highest hour number
+      // (sales are cumulative, so highest hour has total Early Bird sales)
+      const earlyBirdHours = (hourlyData || [])
+        .filter(h => h.hour <= earlyBirdEndHour)
+        .sort((a, b) => b.hour - a.hour);
+      const lastEarlyBirdHour = earlyBirdHours[0]; // Highest hour in range
+      
       // Sum labor from hours 0 through earlyBirdEndHour for Early Bird
       const cumulativeLabor = (hourlyData || [])
         .filter(h => h.hour <= earlyBirdEndHour)
@@ -79,7 +85,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
           });
         });
       
-      // Sales values are cumulative (running total), so use the last Early Bird hour's value
+      // Sales values are cumulative (running total), so use the highest available Early Bird hour's value
       acc.push({
         hour: 5,
         label: "Early Bird",
