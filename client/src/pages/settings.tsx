@@ -5,15 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture } from "date-fns";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Restaurant } from "@shared/schema";
+
+const REVENUE_PORTS = [
+  { id: "dine_in", label: "Dine In", icon: Utensils, color: "bg-emerald-500" },
+  { id: "drive_thru", label: "Drive Thru", icon: Car, color: "bg-amber-500" },
+  { id: "app", label: "APP", icon: Smartphone, color: "bg-blue-500" },
+  { id: "3pd", label: "3PD", icon: ShoppingBag, color: "bg-purple-500" },
+] as const;
 
 type RestaurantWithStatus = Restaurant & {
   status: "training" | "new" | "established";
@@ -68,6 +76,26 @@ export default function SettingsPage() {
     },
   });
 
+  const revenuePortMutation = useMutation({
+    mutationFn: async ({ id, revenuePorts }: { id: string; revenuePorts: string[] }) => {
+      return apiRequest("PATCH", `/api/restaurants/${id}`, { revenuePorts });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/restaurants"] });
+      toast({
+        title: "Revenue ports updated",
+        description: "Changes saved successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update revenue ports.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSave = (id: string) => {
     updateMutation.mutate({
       id,
@@ -80,6 +108,14 @@ export default function SettingsPage() {
       id,
       openDate: null,
     });
+  };
+
+  const toggleRevenuePort = (restaurantId: string, currentPorts: string[] | null, portId: string) => {
+    const ports = currentPorts || [];
+    const newPorts = ports.includes(portId)
+      ? ports.filter(p => p !== portId)
+      : [...ports, portId];
+    revenuePortMutation.mutate({ id: restaurantId, revenuePorts: newPorts });
   };
 
   const startEditing = (restaurant: Restaurant) => {
@@ -156,6 +192,7 @@ export default function SettingsPage() {
                           onClear={() => handleClear(restaurant.id)}
                           onCancel={cancelEditing}
                           isPending={updateMutation.isPending}
+                          onToggleRevenuePort={(portId) => toggleRevenuePort(restaurant.id, restaurant.revenuePorts, portId)}
                         />
                       ))}
                     </div>
@@ -183,6 +220,7 @@ export default function SettingsPage() {
                           onClear={() => handleClear(restaurant.id)}
                           onCancel={cancelEditing}
                           isPending={updateMutation.isPending}
+                          onToggleRevenuePort={(portId) => toggleRevenuePort(restaurant.id, restaurant.revenuePorts, portId)}
                         />
                       ))}
                     </div>
@@ -210,6 +248,7 @@ export default function SettingsPage() {
                           onClear={() => handleClear(restaurant.id)}
                           onCancel={cancelEditing}
                           isPending={updateMutation.isPending}
+                          onToggleRevenuePort={(portId) => toggleRevenuePort(restaurant.id, restaurant.revenuePorts, portId)}
                         />
                       ))}
                     </div>
@@ -277,6 +316,7 @@ function RestaurantRow({
   onClear,
   onCancel,
   isPending,
+  onToggleRevenuePort,
 }: {
   restaurant: RestaurantWithStatus;
   isEditing: boolean;
@@ -287,25 +327,28 @@ function RestaurantRow({
   onClear: () => void;
   onCancel: () => void;
   isPending: boolean;
+  onToggleRevenuePort: (portId: string) => void;
 }) {
   const openDate = restaurant.openDate ? new Date(restaurant.openDate) : null;
+  const revenuePorts = restaurant.revenuePorts || [];
 
   return (
     <div
-      className="flex items-center justify-between gap-4 p-3 rounded-lg border bg-card hover-elevate flex-wrap"
+      className="flex flex-col gap-3 p-3 rounded-lg border bg-card hover-elevate"
       data-testid={`row-restaurant-${restaurant.id}`}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="font-medium truncate">{restaurant.name}</span>
-        {restaurant.status === "training" && (
-          <Badge variant="secondary" className="shrink-0">Training</Badge>
-        )}
-        {restaurant.status === "new" && (
-          <Badge className="bg-blue-500 hover:bg-blue-600 shrink-0">
-            NEW UNIT ({restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w ${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`})
-          </Badge>
-        )}
-      </div>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="font-medium truncate">{restaurant.name}</span>
+          {restaurant.status === "training" && (
+            <Badge variant="secondary" className="shrink-0">Training</Badge>
+          )}
+          {restaurant.status === "new" && (
+            <Badge className="bg-blue-500 hover:bg-blue-600 shrink-0">
+              NEW UNIT ({restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w ${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`})
+            </Badge>
+          )}
+        </div>
 
       <div className="flex items-center gap-2 flex-wrap">
         {isEditing ? (
@@ -328,6 +371,9 @@ function RestaurantRow({
                   selected={editDate}
                   onSelect={setEditDate}
                   initialFocus
+                  captionLayout="dropdown-buttons"
+                  fromYear={2022}
+                  toYear={new Date().getFullYear() + 2}
                 />
               </PopoverContent>
             </Popover>
@@ -376,6 +422,38 @@ function RestaurantRow({
             )}
           </>
         )}
+      </div>
+      </div>
+      
+      {/* Revenue Ports */}
+      <div className="flex items-center gap-4 pt-2 border-t border-border/50">
+        <span className="text-xs text-muted-foreground shrink-0">Revenue Ports:</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          {REVENUE_PORTS.map(port => {
+            const Icon = port.icon;
+            const isActive = revenuePorts.includes(port.id);
+            return (
+              <div 
+                key={port.id} 
+                className="flex items-center gap-1.5"
+              >
+                <Checkbox
+                  id={`${restaurant.id}-${port.id}`}
+                  checked={isActive}
+                  onCheckedChange={() => onToggleRevenuePort(port.id)}
+                  data-testid={`checkbox-${port.id}-${restaurant.id}`}
+                />
+                <label 
+                  htmlFor={`${restaurant.id}-${port.id}`}
+                  className="flex items-center gap-1 text-xs cursor-pointer"
+                >
+                  <Icon className="h-3 w-3" />
+                  <span>{port.label}</span>
+                </label>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

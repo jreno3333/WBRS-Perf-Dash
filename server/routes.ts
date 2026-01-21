@@ -68,11 +68,11 @@ export async function registerRoutes(
     }
   });
 
-  // Update restaurant settings (open date, labor target, etc.)
+  // Update restaurant settings (open date, labor target, revenue ports, etc.)
   app.patch("/api/restaurants/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { openDate, laborTarget, isActive } = req.body;
+      const { openDate, laborTarget, isActive, revenuePorts } = req.body;
       
       const updates: Record<string, any> = {};
       if (openDate !== undefined) {
@@ -83,6 +83,9 @@ export async function registerRoutes(
       }
       if (isActive !== undefined) {
         updates.isActive = isActive;
+      }
+      if (revenuePorts !== undefined) {
+        updates.revenuePorts = revenuePorts;
       }
       
       if (Object.keys(updates).length === 0) {
