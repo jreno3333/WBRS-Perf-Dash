@@ -492,19 +492,21 @@ export class DatabaseStorage implements IStorage {
         const todaySales = Math.round(selectedByHour.get(hour) || 0);
         const lastWeekSales = Math.round(lastWeekByHour.get(hour) || 0);
         const forecastSales = Math.round(forecastByHour.get(hour) || 0);
+        const projectedLabor = Math.round((laborByHour.get(hour) || 0) * 100) / 100;
+        const actualLabor = Math.round((actualLaborByHour.get(hour) || 0) * 100) / 100;
+        const employeeCount = employeeCountByHour.get(hour) || 0;
         
-        if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0) {
-          const projectedLabor = Math.round((laborByHour.get(hour) || 0) * 100) / 100;
-          const actualLabor = Math.round((actualLaborByHour.get(hour) || 0) * 100) / 100;
-          const employeeCount = employeeCountByHour.get(hour) || 0;
+        // Include hours with any data (sales, forecast, or labor)
+        // Hours 0-4 often have labor but no sales - needed for Early Bird labor totals
+        if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0 || projectedLabor > 0 || actualLabor > 0) {
           hourlyData.push({
             hour,
             todaySales,
             lastWeekSales,
             forecastSales,
             projectedLabor,
-            actualLabor, // Use actual labor as-is from 7shifts punched hours
-            employeeCount, // Number of employees on clock from time punches
+            actualLabor,
+            employeeCount,
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
           });
         }
