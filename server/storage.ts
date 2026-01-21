@@ -200,9 +200,18 @@ export class DatabaseStorage implements IStorage {
       const actualLastWeekAmount = lastWeekHoursForComparison.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
-      const forecastSalesAmount = selectedDateRestaurantHours.reduce(
-        (sum, s) => sum + parseFloat(s.projectedSales || '0'), 0
+      // Calculate forecast: current actual sales + last week's remaining hours
+      // This gives a simple projection based on actual performance today + historical pattern for rest of day
+      const lastWeekAllHoursForForecast = lastWeekHourly.filter(
+        s => s.restaurantId === restaurant.id
       );
+      let lastWeekRemainingHoursSales = 0;
+      for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
+        const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
+        lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+      }
+      // Forecast = today's actual sales so far + last week's remaining hours
+      const forecastSalesAmount = actualSalesAmount + lastWeekRemainingHoursSales;
       
       // Handle -1 case: when no hours are completed, pace is 0%
       const completedHours = Math.max(0, normalizedHourCutoff + 1);
