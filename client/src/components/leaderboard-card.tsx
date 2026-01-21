@@ -229,7 +229,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               className="text-xl font-bold mb-1"
               data-testid={`text-sales-${restaurant.restaurantId}`}
             >
-              {formatCurrency(restaurant.actualSales)}
+              {formatCurrency(restaurant.todaySales)}
             </div>
             <div className="flex items-center justify-end gap-1">
               {restaurant.isAheadOfPace ? (
