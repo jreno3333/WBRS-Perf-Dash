@@ -9,6 +9,9 @@ interface SevenShiftsLocation {
   address: string;
   timezone: string;
   country: string;
+  lat?: number;
+  lng?: number;
+  formatted_address?: string;
 }
 
 interface SevenShiftsSalesData {
@@ -403,8 +406,23 @@ export async function syncLocationsFromAPI(): Promise<number> {
         name: location.name,
         timezone: location.timezone || 'America/Chicago',
         isActive: true,
+        latitude: location.lat ? String(location.lat) : null,
+        longitude: location.lng ? String(location.lng) : null,
+        address: location.formatted_address || null,
       });
       console.log(`Created restaurant: ${location.name}`);
+    } else {
+      // Update existing restaurant with lat/lng if missing
+      if (!existingRestaurant.latitude || !existingRestaurant.longitude) {
+        await db.update(restaurants)
+          .set({
+            latitude: location.lat ? String(location.lat) : existingRestaurant.latitude,
+            longitude: location.lng ? String(location.lng) : existingRestaurant.longitude,
+            address: location.formatted_address || existingRestaurant.address,
+          })
+          .where(eq(restaurants.id, existingRestaurant.id));
+        console.log(`Updated coordinates for: ${location.name}`);
+      }
     }
     syncedCount++;
   }
