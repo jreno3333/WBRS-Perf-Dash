@@ -20,11 +20,16 @@ function getWeatherCondition(weatherCode: number): string {
   return "clear";
 }
 
-// Fetch weather for a location
+// Fetch weather for a location with timeout
 async function fetchWeather(latitude: number, longitude: number): Promise<{ temp: number; condition: string; humidity: number; windSpeed: number; } | null> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
-    const weatherRes = await fetch(weatherUrl);
+    const weatherRes = await fetch(weatherUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
     if (weatherRes.ok) {
       const weatherData = await weatherRes.json();
       const current = weatherData.current;
@@ -36,10 +41,13 @@ async function fetchWeather(latitude: number, longitude: number): Promise<{ temp
       };
     }
   } catch (e) {
-    console.error(`Weather fetch failed:`, e);
+    // Silently handle timeout/network errors
   }
   return null;
 }
+
+// Helper to add delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function registerRoutes(
   httpServer: Server,
@@ -56,17 +64,32 @@ export async function registerRoutes(
       const restaurantList = await storage.getRestaurants();
       const restaurantMap = new Map(restaurantList.map(r => [r.id, r]));
       
-      // Fetch weather for each restaurant in parallel
-      const restaurantsWithWeather = await Promise.all(
-        leaderboard.restaurants.map(async (r) => {
-          const restaurant = restaurantMap.get(r.restaurantId);
-          if (restaurant?.latitude && restaurant?.longitude) {
-            const weather = await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
-            return { ...r, weather };
-          }
-          return { ...r, weather: null };
-        })
-      );
+      // Fetch weather for each restaurant in batches of 5 to avoid rate limiting
+      const batchSize = 5;
+      const restaurantsWithWeather = [...leaderboard.restaurants];
+      
+      for (let i = 0; i < restaurantsWithWeather.length; i += batchSize) {
+        const batch = restaurantsWithWeather.slice(i, i + batchSize);
+        const weatherResults = await Promise.all(
+          batch.map(async (r) => {
+            const restaurant = restaurantMap.get(r.restaurantId);
+            if (restaurant?.latitude && restaurant?.longitude) {
+              return await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
+            }
+            return null;
+          })
+        );
+        
+        // Assign weather results back to restaurants
+        for (let j = 0; j < batch.length; j++) {
+          (restaurantsWithWeather[i + j] as any).weather = weatherResults[j];
+        }
+        
+        // Small delay between batches to avoid rate limiting
+        if (i + batchSize < restaurantsWithWeather.length) {
+          await delay(100);
+        }
+      }
       
       res.json({
         ...leaderboard,
@@ -209,45 +232,60 @@ export async function registerRoutes(
       );
       
       // Combine restaurant data with leaderboard data
-      const mapData = await Promise.all(
-        restaurantList
-          .filter(r => r.latitude && r.longitude)
-          .map(async (restaurant) => {
-            const salesData = leaderboardMap.get(restaurant.id);
-            
-            // Determine status based on openDate
-            let status: "training" | "new" | "established" = "established";
-            if (restaurant.openDate) {
-              const openDate = new Date(restaurant.openDate);
-              const now = new Date();
-              if (openDate > now) {
-                status = "training";
-              } else {
-                const daysSinceOpen = Math.floor((now.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24));
-                if (daysSinceOpen <= 90) {
-                  status = "new";
-                }
-              }
+      const validRestaurants = restaurantList.filter(r => r.latitude && r.longitude);
+      const mapData: any[] = [];
+      
+      // First pass: build map data without weather
+      for (const restaurant of validRestaurants) {
+        const salesData = leaderboardMap.get(restaurant.id);
+        
+        // Determine status based on openDate
+        let status: "training" | "new" | "established" = "established";
+        if (restaurant.openDate) {
+          const openDate = new Date(restaurant.openDate);
+          const now = new Date();
+          if (openDate > now) {
+            status = "training";
+          } else {
+            const daysSinceOpen = Math.floor((now.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysSinceOpen <= 90) {
+              status = "new";
             }
-            
-            // Fetch weather data for the location
-            const weather = await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
-            
-            return {
-              id: restaurant.id,
-              name: restaurant.name,
-              unitNumber: restaurant.unitNumber || "",
-              address: restaurant.address || "",
-              latitude: parseFloat(restaurant.latitude as string),
-              longitude: parseFloat(restaurant.longitude as string),
-              todaySales: salesData?.todaySales || 0,
-              lastWeekSales: salesData?.lastWeekSales || 0,
-              isAheadOfPace: salesData?.isAheadOfPace || false,
-              status,
-              weather,
-            };
-          })
-      );
+          }
+        }
+        
+        mapData.push({
+          id: restaurant.id,
+          name: restaurant.name,
+          unitNumber: restaurant.unitNumber || "",
+          address: restaurant.address || "",
+          latitude: parseFloat(restaurant.latitude as string),
+          longitude: parseFloat(restaurant.longitude as string),
+          todaySales: salesData?.todaySales || 0,
+          lastWeekSales: salesData?.lastWeekSales || 0,
+          isAheadOfPace: salesData?.isAheadOfPace || false,
+          status,
+          weather: null,
+        });
+      }
+      
+      // Second pass: fetch weather in batches to avoid rate limiting
+      const batchSize = 5;
+      for (let i = 0; i < mapData.length; i += batchSize) {
+        const batch = mapData.slice(i, i + batchSize);
+        const weatherResults = await Promise.all(
+          batch.map(r => fetchWeather(r.latitude, r.longitude))
+        );
+        
+        for (let j = 0; j < batch.length; j++) {
+          mapData[i + j].weather = weatherResults[j];
+        }
+        
+        // Small delay between batches to avoid rate limiting
+        if (i + batchSize < mapData.length) {
+          await delay(100);
+        }
+      }
       
       // Get holiday context
       const holidayContext = getHolidayContext(targetDate);
