@@ -8,6 +8,39 @@ import { desc, sql, gte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
 
+// Weather code to condition mapping
+function getWeatherCondition(weatherCode: number): string {
+  if (weatherCode === 0) return "clear";
+  if (weatherCode >= 1 && weatherCode <= 3) return "partly cloudy";
+  if (weatherCode >= 45 && weatherCode <= 48) return "foggy";
+  if (weatherCode >= 51 && weatherCode <= 67) return "rain";
+  if (weatherCode >= 71 && weatherCode <= 77) return "snow";
+  if (weatherCode >= 80 && weatherCode <= 82) return "showers";
+  if (weatherCode >= 95) return "thunderstorm";
+  return "clear";
+}
+
+// Fetch weather for a location
+async function fetchWeather(latitude: number, longitude: number): Promise<{ temp: number; condition: string; humidity: number; windSpeed: number; } | null> {
+  try {
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+    const weatherRes = await fetch(weatherUrl);
+    if (weatherRes.ok) {
+      const weatherData = await weatherRes.json();
+      const current = weatherData.current;
+      return {
+        temp: current.temperature_2m,
+        condition: getWeatherCondition(current.weather_code),
+        humidity: current.relative_humidity_2m,
+        windSpeed: current.wind_speed_10m,
+      };
+    }
+  } catch (e) {
+    console.error(`Weather fetch failed:`, e);
+  }
+  return null;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -18,7 +51,27 @@ export async function registerRoutes(
       const { date } = req.query;
       const targetDate = date ? new Date(date as string) : new Date();
       const leaderboard = await storage.getLeaderboard(targetDate);
-      res.json(leaderboard);
+      
+      // Get all restaurants to fetch coordinates for weather
+      const restaurantList = await storage.getRestaurants();
+      const restaurantMap = new Map(restaurantList.map(r => [r.id, r]));
+      
+      // Fetch weather for each restaurant in parallel
+      const restaurantsWithWeather = await Promise.all(
+        leaderboard.restaurants.map(async (r) => {
+          const restaurant = restaurantMap.get(r.restaurantId);
+          if (restaurant?.latitude && restaurant?.longitude) {
+            const weather = await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
+            return { ...r, weather };
+          }
+          return { ...r, weather: null };
+        })
+      );
+      
+      res.json({
+        ...leaderboard,
+        restaurants: restaurantsWithWeather,
+      });
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
       res.status(500).json({ error: "Failed to fetch leaderboard data" });
@@ -178,34 +231,7 @@ export async function registerRoutes(
             }
             
             // Fetch weather data for the location
-            let weather = null;
-            try {
-              const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${restaurant.latitude}&longitude=${restaurant.longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
-              const weatherRes = await fetch(weatherUrl);
-              if (weatherRes.ok) {
-                const weatherData = await weatherRes.json();
-                const current = weatherData.current;
-                
-                // Map weather code to condition
-                const weatherCode = current.weather_code;
-                let condition = "clear";
-                if (weatherCode >= 1 && weatherCode <= 3) condition = "partly cloudy";
-                else if (weatherCode >= 45 && weatherCode <= 48) condition = "foggy";
-                else if (weatherCode >= 51 && weatherCode <= 67) condition = "rain";
-                else if (weatherCode >= 71 && weatherCode <= 77) condition = "snow";
-                else if (weatherCode >= 80 && weatherCode <= 82) condition = "showers";
-                else if (weatherCode >= 95) condition = "thunderstorm";
-                
-                weather = {
-                  temp: current.temperature_2m,
-                  condition,
-                  humidity: current.relative_humidity_2m,
-                  windSpeed: current.wind_speed_10m,
-                };
-              }
-            } catch (e) {
-              console.error(`Weather fetch failed for ${restaurant.name}:`, e);
-            }
+            const weather = await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
             
             return {
               id: restaurant.id,

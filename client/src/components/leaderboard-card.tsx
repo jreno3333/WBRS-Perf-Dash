@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -13,6 +13,28 @@ const REVENUE_PORT_CONFIG = {
 } as const;
 
 const ALL_REVENUE_PORTS = ["dine_in", "drive_thru", "app", "3pd"] as const;
+
+function WeatherIcon({ condition }: { condition: string }) {
+  const iconClass = "w-3.5 h-3.5";
+  switch (condition.toLowerCase()) {
+    case "clear":
+      return <Sun className={iconClass} />;
+    case "partly cloudy":
+      return <Cloud className={iconClass} />;
+    case "foggy":
+      return <CloudFog className={iconClass} />;
+    case "rain":
+      return <CloudRain className={iconClass} />;
+    case "showers":
+      return <CloudDrizzle className={iconClass} />;
+    case "snow":
+      return <CloudSnow className={iconClass} />;
+    case "thunderstorm":
+      return <CloudLightning className={iconClass} />;
+    default:
+      return <Sun className={iconClass} />;
+  }
+}
 
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
@@ -216,6 +238,30 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   );
                 })}
               </div>
+              {/* Weather Badge */}
+              {restaurant.weather && (
+                <div className="relative group">
+                  <Badge 
+                    variant="secondary" 
+                    className="flex-shrink-0 text-xs cursor-help gap-1"
+                    data-testid={`badge-weather-${restaurant.restaurantId}`}
+                  >
+                    <WeatherIcon condition={restaurant.weather.condition} />
+                    <span>{Math.round(restaurant.weather.temp)}°F</span>
+                  </Badge>
+                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium capitalize">{restaurant.weather.condition}</div>
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Droplets className="w-3 h-3" />
+                      {restaurant.weather.humidity}%
+                    </div>
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Wind className="w-3 h-3" />
+                      {Math.round(restaurant.weather.windSpeed)} mph
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="text-xs">
