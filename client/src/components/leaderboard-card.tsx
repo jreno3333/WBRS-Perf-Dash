@@ -33,10 +33,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     return `${sign}${value.toFixed(1)}%`;
   };
 
-  const getTimezoneDisplay = (tz: string, hour: number) => {
-    // Format hour as 12-hour time (e.g., "9am", "12pm")
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    const ampm = hour >= 12 ? 'pm' : 'am';
+  const getTimezoneDisplay = (tz: string, normalizedHour: number) => {
+    // Show "up to X" time - the next hour after the last completed hour
+    // If normalizedHour is 19 (7pm completed), show "up to 8pm"
+    const upToHour = (normalizedHour + 1) % 24;
+    const displayHour = upToHour === 0 ? 12 : upToHour > 12 ? upToHour - 12 : upToHour;
+    const ampm = upToHour >= 12 ? 'pm' : 'am';
     const timeStr = `${displayHour}${ampm}`;
     
     if (tz.includes("New_York") || tz.includes("Eastern")) return `${timeStr} EST`;
@@ -210,7 +212,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="text-xs">
-                LW thru {restaurant.normalizedHour === 0 ? '12am' : restaurant.normalizedHour > 12 ? `${restaurant.normalizedHour - 12}pm` : restaurant.normalizedHour === 12 ? '12pm' : `${restaurant.normalizedHour}am`}: {formatCurrency(restaurant.lastWeekSales)}
+                LW up to {(() => {
+                  const upToHour = (restaurant.normalizedHour + 1) % 24;
+                  const displayHour = upToHour === 0 ? 12 : upToHour > 12 ? upToHour - 12 : upToHour;
+                  const ampm = upToHour >= 12 ? 'pm' : 'am';
+                  return `${displayHour}${ampm}`;
+                })()}: {formatCurrency(restaurant.lastWeekSales)}
               </span>
               <div className="relative group">
                 <span className="text-xs cursor-help">
