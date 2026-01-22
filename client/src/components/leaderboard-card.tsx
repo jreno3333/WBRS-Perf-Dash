@@ -225,11 +225,22 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </span>
               <div className="relative group">
                 <span className="text-xs cursor-help">
-                  EOD Forecast: {formatCurrency(restaurant.forecastSales)}
+                  EOD Forecast: {(() => {
+                    // If forecast equals actual (no remaining hours), day is complete - show N/A
+                    const forecastPortion = restaurant.forecastSales - restaurant.actualSales;
+                    if (forecastPortion <= 0) {
+                      return "N/A";
+                    }
+                    return formatCurrency(restaurant.forecastSales);
+                  })()}
                 </span>
                 <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
                   <div className="font-medium">End-of-Day Forecast</div>
-                  <div className="text-muted-foreground">Today's actual + last week's remaining hours</div>
+                  <div className="text-muted-foreground">
+                    {restaurant.forecastSales - restaurant.actualSales <= 0 
+                      ? "Day complete - no forecast needed" 
+                      : "Today's actual + last week's remaining hours"}
+                  </div>
                 </div>
               </div>
             </div>
