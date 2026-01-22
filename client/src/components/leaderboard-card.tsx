@@ -326,11 +326,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                       <div className="font-medium">{hour.label}</div>
                       <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
-                      <div className="text-blue-600 dark:text-blue-400">LW same hr: ${hour.lastWeekSales.toLocaleString()}</div>
-                      <div className="text-green-600 dark:text-green-400">LW actual: ${hour.forecastSales.toLocaleString()}</div>
+                      <div className="text-blue-600 dark:text-blue-400">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
                     </div>
                   </div>
                 );
