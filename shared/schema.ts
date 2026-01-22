@@ -12,6 +12,10 @@ export const restaurants = pgTable("restaurants", {
   laborTarget: decimal("labor_target", { precision: 5, scale: 2 }).default("25.00"), // Target labor % (default 25%)
   openDate: timestamp("open_date"), // Date when restaurant opened/will open. Future = training, < 90 days = new unit
   revenuePorts: text("revenue_ports").array(), // Revenue ports: dine_in, drive_thru, app, 3pd
+  address: text("address"), // Full street address
+  latitude: decimal("latitude", { precision: 10, scale: 7 }), // GPS latitude
+  longitude: decimal("longitude", { precision: 10, scale: 7 }), // GPS longitude
+  unitNumber: text("unit_number"), // Store unit number (e.g., "1237")
 });
 
 export const insertRestaurantSchema = createInsertSchema(restaurants).omit({

@@ -116,6 +116,93 @@ export async function registerRoutes(
     }
   });
 
+  // Get map data with restaurant locations and weather
+  app.get("/api/map-data", async (req, res) => {
+    try {
+      const targetDate = new Date();
+      const leaderboard = await storage.getLeaderboard(targetDate);
+      const restaurantList = await storage.getRestaurants();
+      
+      // Create a map of restaurant ID to leaderboard data
+      const leaderboardMap = new Map(
+        leaderboard.restaurants.map(r => [r.restaurantId, r])
+      );
+      
+      // Combine restaurant data with leaderboard data
+      const mapData = await Promise.all(
+        restaurantList
+          .filter(r => r.latitude && r.longitude)
+          .map(async (restaurant) => {
+            const salesData = leaderboardMap.get(restaurant.id);
+            
+            // Determine status based on openDate
+            let status: "training" | "new" | "established" = "established";
+            if (restaurant.openDate) {
+              const openDate = new Date(restaurant.openDate);
+              const now = new Date();
+              if (openDate > now) {
+                status = "training";
+              } else {
+                const daysSinceOpen = Math.floor((now.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24));
+                if (daysSinceOpen <= 90) {
+                  status = "new";
+                }
+              }
+            }
+            
+            // Fetch weather data for the location
+            let weather = null;
+            try {
+              const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${restaurant.latitude}&longitude=${restaurant.longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+              const weatherRes = await fetch(weatherUrl);
+              if (weatherRes.ok) {
+                const weatherData = await weatherRes.json();
+                const current = weatherData.current;
+                
+                // Map weather code to condition
+                const weatherCode = current.weather_code;
+                let condition = "clear";
+                if (weatherCode >= 1 && weatherCode <= 3) condition = "partly cloudy";
+                else if (weatherCode >= 45 && weatherCode <= 48) condition = "foggy";
+                else if (weatherCode >= 51 && weatherCode <= 67) condition = "rain";
+                else if (weatherCode >= 71 && weatherCode <= 77) condition = "snow";
+                else if (weatherCode >= 80 && weatherCode <= 82) condition = "showers";
+                else if (weatherCode >= 95) condition = "thunderstorm";
+                
+                weather = {
+                  temp: current.temperature_2m,
+                  condition,
+                  humidity: current.relative_humidity_2m,
+                  windSpeed: current.wind_speed_10m,
+                };
+              }
+            } catch (e) {
+              console.error(`Weather fetch failed for ${restaurant.name}:`, e);
+            }
+            
+            return {
+              id: restaurant.id,
+              name: restaurant.name,
+              unitNumber: restaurant.unitNumber || "",
+              address: restaurant.address || "",
+              latitude: parseFloat(restaurant.latitude as string),
+              longitude: parseFloat(restaurant.longitude as string),
+              todaySales: salesData?.todaySales || 0,
+              lastWeekSales: salesData?.lastWeekSales || 0,
+              isAheadOfPace: salesData?.isAheadOfPace || false,
+              status,
+              weather,
+            };
+          })
+      );
+      
+      res.json(mapData);
+    } catch (error) {
+      console.error("Error fetching map data:", error);
+      res.status(500).json({ error: "Failed to fetch map data" });
+    }
+  });
+
   // Get position breakdown for a restaurant
   app.get("/api/positions/:restaurantId", async (req, res) => {
     try {
