@@ -114,20 +114,24 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     return acc;
   }, []);
 
-  const activeHours = processedHours.filter(h => h.todaySales > 0 || h.lastWeekSales > 0 || h.forecastSales > 0);
+  // Filter to only show hours up to the normalized cutoff (used for ranking)
+  // This keeps the chart consistent with the sales figures displayed
+  const normalizedCutoff = restaurant.normalizedHour;
+  const activeHours = processedHours.filter(h => {
+    // Early Bird (hour 5) represents hours 0 through earlyBirdEndHour
+    // Show it if the normalized cutoff is at or past the Early Bird end
+    if (h.hour === 5 && h.label === "Early Bird") {
+      return normalizedCutoff >= earlyBirdEndHour;
+    }
+    // For other hours, only show if within the normalized cutoff
+    return h.hour <= normalizedCutoff && (h.todaySales > 0 || h.lastWeekSales > 0 || h.forecastSales > 0);
+  });
   const maxSales = Math.max(
     ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
     1
   );
   
-
-  // Calculate in-progress hour from full timeline (not just filtered activeHours)
-  // Find the last hour that has actual sales data in the full timeline
-  const lastHourWithSales = processedHours.reduce((max, h) => 
-    h.todaySales > 0 ? h.hour : max, -1
-  );
-  // The in-progress hour is the first hour after lastHourWithSales
-  const inProgressHour = lastHourWithSales >= 0 ? lastHourWithSales + 1 : -1;
+  // No in-progress hour needed since we only show completed hours now
 
   return (
     <Card 
@@ -281,9 +285,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
-                const hasNoData = hour.todaySales === 0 && hour.lastWeekSales > 0;
-                // Only flag as "in progress" the first hour after the last hour with actual sales
-                const isInProgress = hasNoData && hour.hour === inProgressHour;
                 
                 return (
                   <div
@@ -292,23 +293,18 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   >
                     <div
                       className={`w-full rounded-t-sm transition-all ${
-                        isInProgress
-                          ? "bg-gradient-to-t from-orange-400 to-orange-300 dark:from-orange-600 dark:to-orange-500 animate-pulse"
-                          : hasNoData 
-                            ? "bg-gray-300 dark:bg-gray-600" 
-                            : isAhead 
-                              ? "bg-green-500 dark:bg-green-400" 
-                              : "bg-red-500 dark:bg-red-400"
+                        isAhead 
+                          ? "bg-green-500 dark:bg-green-400" 
+                          : "bg-red-500 dark:bg-red-400"
                       }`}
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
                     <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                      <div className="font-medium">{hour.label}{isInProgress && " (In Progress)"}</div>
+                      <div className="font-medium">{hour.label}</div>
                       <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
                       <div className="text-blue-600 dark:text-blue-400">LW same hr: ${hour.lastWeekSales.toLocaleString()}</div>
                       <div className="text-green-600 dark:text-green-400">LW actual: ${hour.forecastSales.toLocaleString()}</div>
-                      {isInProgress && <div className="text-orange-500 text-[10px]">Data updating...</div>}
                     </div>
                   </div>
                 );
