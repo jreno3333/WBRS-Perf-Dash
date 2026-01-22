@@ -174,7 +174,8 @@ export class DatabaseStorage implements IStorage {
       // Get current hour in this restaurant's timezone for proper comparison
       const restaurantCurrentHour = getCurrentHourInTimezone(restaurant.timezone);
       // Last completed hour in this restaurant's timezone
-      const restaurantCompletedHour = restaurantCurrentHour - 1;
+      // For historical dates, all hours are complete (use 23), for today use current-1
+      const restaurantCompletedHour = isToday ? restaurantCurrentHour - 1 : 23;
       
       // Last week hours up to current hour in this restaurant's timezone
       const lastWeekHoursForComparison = lastWeekHourly.filter(
@@ -200,19 +201,23 @@ export class DatabaseStorage implements IStorage {
       const actualLastWeekAmount = lastWeekHoursForComparison.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
+      
       // Calculate forecast: current actual sales + last week's remaining hours
-      // Use restaurant's actual current hour (not normalized) to avoid double-counting
-      // This gives a simple projection based on actual performance today + historical pattern for rest of day
+      // For historical dates: no remaining hours (day is complete), forecast = actual
+      // For today: actual + last week's remaining hours as forecast
       const lastWeekAllHoursForForecast = lastWeekHourly.filter(
         s => s.restaurantId === restaurant.id
       );
       let lastWeekRemainingHoursSales = 0;
-      // Use restaurant's completed hour to determine remaining hours (avoids double-counting)
-      for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
-        const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
-        lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+      // Only calculate remaining hours for today (historical has no remaining hours)
+      if (isToday) {
+        for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
+          const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
+          lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+        }
       }
       // Forecast = today's actual sales so far + last week's remaining hours
+      // For historical: remaining = 0, so forecast = actual
       const forecastSalesAmount = actualSalesAmount + lastWeekRemainingHoursSales;
       
       // Handle -1 case: when no hours are completed, pace is 0%
