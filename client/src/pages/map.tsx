@@ -186,10 +186,16 @@ export default function MapPage() {
                         </div>
                       </div>
 
-                      <div className={`text-sm font-medium ${restaurant.isAheadOfPace ? "text-green-600" : "text-red-600"}`}>
-                        {restaurant.isAheadOfPace ? "Ahead" : "Behind"} of last week by{" "}
-                        {Math.abs(((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100).toFixed(1)}%
-                      </div>
+                      {restaurant.lastWeekSales > 0 ? (
+                        <div className={`text-sm font-medium ${restaurant.isAheadOfPace ? "text-green-600" : "text-red-600"}`}>
+                          {restaurant.isAheadOfPace ? "Ahead" : "Behind"} of last week by{" "}
+                          {Math.abs(((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100).toFixed(1)}%
+                        </div>
+                      ) : (
+                        <div className="text-sm font-medium text-muted-foreground">
+                          No last week data for comparison
+                        </div>
+                      )}
 
                       {restaurant.weather && (
                         <div className="pt-2 border-t">
