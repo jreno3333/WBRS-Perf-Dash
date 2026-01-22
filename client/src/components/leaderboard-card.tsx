@@ -138,9 +138,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
 
   return (
     <Card 
-      className="hover-elevate transition-all duration-200 cursor-pointer"
+      className="hover-elevate transition-all duration-200"
       data-testid={`card-restaurant-${restaurant.restaurantId}`}
-      onClick={() => setIsExpanded(!isExpanded)}
     >
       <CardContent className="p-4">
         <div className="flex items-center gap-4">
@@ -278,7 +277,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
           </div>
           
-          <div className="flex-shrink-0 text-muted-foreground">
+          <div 
+            className="flex-shrink-0 text-muted-foreground cursor-pointer p-2 -m-2 rounded-full hover:bg-muted/50 transition-colors"
+            onClick={() => setIsExpanded(!isExpanded)}
+            data-testid={`toggle-expand-${restaurant.restaurantId}`}
+          >
             {isExpanded ? (
               <ChevronUp className="w-5 h-5" data-testid={`chevron-collapse-${restaurant.restaurantId}`} />
             ) : (
