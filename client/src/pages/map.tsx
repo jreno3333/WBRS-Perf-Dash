@@ -49,24 +49,14 @@ interface MapDataResponse {
 }
 
 function createMarkerIcon(isAhead: boolean, status: string) {
-  const color = status === "training" ? "#6b7280" : (isAhead ? "#22c55e" : "#ef4444");
   const size = 32;
+  const colorClass = status === "training" ? "marker-training" : (isAhead ? "marker-ahead" : "marker-behind");
   
   return new DivIcon({
     className: "custom-marker",
     html: `
-      <div style="
-        width: ${size}px;
-        height: ${size}px;
-        background-color: ${color};
-        border: 3px solid white;
-        border-radius: 50%;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="white">
+      <div class="marker-pin ${colorClass}">
+        <svg viewBox="0 0 24 24">
           <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
         </svg>
       </div>
