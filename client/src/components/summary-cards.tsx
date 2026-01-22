@@ -45,12 +45,6 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
     ? ((totalTodaySales / totalLastWeekSales) - 1) * 100 
     : 0;
   const lwDollarDiff = totalTodaySales - totalLastWeekSales;
-  
-  // Calculate variance vs forecast
-  const fcVariance = totalForecastSales > 0 
-    ? ((totalTodaySales / totalForecastSales) - 1) * 100 
-    : 0;
-  const fcDollarDiff = totalTodaySales - totalForecastSales;
 
   // Count stores ahead of last week (vs forecast comparison) - exclude training
   const aheadOfForecastCount = activeRestaurants.filter((r) => r.todaySales >= r.forecastSales).length;
@@ -66,7 +60,7 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {/* Total Sales with vs LW and vs FC */}
+      {/* Total Sales with vs LW */}
       <Card data-testid="card-summary-sales">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
@@ -78,14 +72,9 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
               <p className="text-xl font-bold" data-testid="text-total-sales">
                 {formatCurrency(totalTodaySales)}
               </p>
-              <div className="mt-1 space-y-0.5">
-                <p className={`text-xs font-medium ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                  vs LW: {lwVariance >= 0 ? "+" : ""}{lwVariance.toFixed(1)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
-                </p>
-                <p className={`text-xs font-medium ${fcVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                  vs FC: {fcVariance >= 0 ? "+" : ""}{fcVariance.toFixed(1)}% ({fcDollarDiff >= 0 ? "+" : ""}{formatCurrency(fcDollarDiff)})
-                </p>
-              </div>
+              <p className={`text-xs font-medium mt-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                vs LW: {lwVariance >= 0 ? "+" : ""}{lwVariance.toFixed(1)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+              </p>
             </div>
           </div>
         </CardContent>
