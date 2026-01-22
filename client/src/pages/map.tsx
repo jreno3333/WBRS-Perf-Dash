@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { Icon, DivIcon } from "leaflet";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Cloud, Sun, CloudRain, CloudSnow, Wind, Thermometer, Droplets, ArrowLeft } from "lucide-react";
+import { Cloud, Sun, CloudRain, CloudSnow, Wind, Thermometer, Droplets, ArrowLeft, CalendarDays } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import "leaflet/dist/leaflet.css";
@@ -25,6 +25,26 @@ interface RestaurantMapData {
     humidity: number;
     windSpeed: number;
     icon: string;
+  };
+}
+
+interface HolidayInfo {
+  name: string;
+  date: string;
+  dayOfWeek: string;
+  isToday: boolean;
+}
+
+interface MapDataResponse {
+  restaurants: RestaurantMapData[];
+  holidays: {
+    todayHoliday: HolidayInfo | null;
+    lastWeekHoliday: HolidayInfo | null;
+    upcomingHolidays: HolidayInfo[];
+    comparison: {
+      thisYear: HolidayInfo | null;
+      lastYear: HolidayInfo | null;
+    };
   };
 }
 
@@ -100,12 +120,14 @@ function MapBounds({ restaurants }: { restaurants: RestaurantMapData[] }) {
 }
 
 export default function MapPage() {
-  const { data: restaurants, isLoading } = useQuery<RestaurantMapData[]>({
+  const { data, isLoading } = useQuery<MapDataResponse>({
     queryKey: ["/api/map-data"],
     refetchInterval: 60000,
   });
 
-  const validRestaurants = restaurants?.filter(r => r.latitude && r.longitude) || [];
+  const restaurants = data?.restaurants || [];
+  const holidays = data?.holidays;
+  const validRestaurants = restaurants.filter(r => r.latitude && r.longitude);
   const defaultCenter: [number, number] = [34.5, -86.5];
 
   return (
@@ -119,7 +141,24 @@ export default function MapPage() {
           </Link>
           <h1 className="text-lg font-semibold">Restaurant Map</h1>
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm flex-wrap">
+          {holidays?.todayHoliday && (
+            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+              <CalendarDays className="w-3 h-3 mr-1" />
+              Today: {holidays.todayHoliday.name} ({holidays.todayHoliday.dayOfWeek})
+            </Badge>
+          )}
+          {holidays?.lastWeekHoliday && (
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              <CalendarDays className="w-3 h-3 mr-1" />
+              Last Week: {holidays.lastWeekHoliday.name} ({holidays.lastWeekHoliday.dayOfWeek})
+            </Badge>
+          )}
+          {holidays?.comparison?.thisYear && holidays?.comparison?.lastYear && (
+            <Badge variant="outline" className="text-xs">
+              {holidays.comparison.thisYear.name}: {holidays.comparison.thisYear.dayOfWeek} vs {holidays.comparison.lastYear.dayOfWeek} last year
+            </Badge>
+          )}
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-green-500" />
             <span className="text-muted-foreground">Ahead of LW</span>

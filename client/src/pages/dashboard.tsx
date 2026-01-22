@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin } from "lucide-react";
+import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
@@ -62,6 +62,24 @@ export default function Dashboard() {
     queryKey: ["/api/hourly-by-restaurant", dateStr],
     queryFn: async () => {
       const res = await fetch(`/api/hourly-by-restaurant?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  // Fetch holiday data
+  const { data: holidayData } = useQuery<{
+    todayHoliday: { name: string; date: string; dayOfWeek: string } | null;
+    lastWeekHoliday: { name: string; date: string; dayOfWeek: string } | null;
+    upcomingHolidays: { name: string; date: string; dayOfWeek: string }[];
+    comparison: {
+      thisYear: { name: string; date: string; dayOfWeek: string } | null;
+      lastYear: { name: string; date: string; dayOfWeek: string } | null;
+    };
+  }>({
+    queryKey: ["/api/holidays", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/holidays?date=${dateStr}`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -280,6 +298,32 @@ export default function Dashboard() {
           <LeaderboardSkeleton />
         ) : leaderboardData ? (
           <>
+            {/* Holiday Context Banner */}
+            {(holidayData?.todayHoliday || holidayData?.lastWeekHoliday || (holidayData?.comparison?.thisYear && holidayData?.comparison?.lastYear)) && (
+              <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <CalendarDays className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    {holidayData?.todayHoliday && (
+                      <Badge className="bg-amber-500 text-white">
+                        Today: {holidayData.todayHoliday.name} ({holidayData.todayHoliday.dayOfWeek})
+                      </Badge>
+                    )}
+                    {holidayData?.lastWeekHoliday && (
+                      <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-300">
+                        Last Week: {holidayData.lastWeekHoliday.name} ({holidayData.lastWeekHoliday.dayOfWeek})
+                      </Badge>
+                    )}
+                    {holidayData?.comparison?.thisYear && holidayData?.comparison?.lastYear && (
+                      <span className="text-sm text-amber-800 dark:text-amber-200">
+                        {holidayData.comparison.thisYear.name}: {holidayData.comparison.thisYear.dayOfWeek} this year vs {holidayData.comparison.lastYear.dayOfWeek} last year
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Summary Cards */}
             <SummaryCards 
               restaurants={leaderboardData.restaurants} 

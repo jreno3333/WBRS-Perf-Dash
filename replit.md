@@ -1,172 +1,73 @@
 # MWB Unit Ticker - Restaurant Performance Dashboard
 
 ## Overview
-
-A restaurant sales performance dashboard that tracks and compares sales across multiple locations with timezone-normalized comparisons and real-time pace tracking. The application displays a leaderboard ranking restaurants by daily sales, compares current performance against the previous week, and visualizes hourly sales patterns through interactive charts.
+The MWB Unit Ticker is a restaurant sales performance dashboard designed to track and compare sales across multiple locations. Its primary purpose is to provide real-time insights into restaurant performance, including timezone-normalized comparisons, daily sales leaderboards, and hourly sales visualizations. The application aims to enhance operational efficiency by providing clear data on sales trends, holiday impacts, and labor deployment.
 
 ## User Preferences
-
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### Frontend
 - **Framework**: React 18 with TypeScript
-- **Routing**: Wouter for lightweight client-side routing
-- **State Management**: TanStack React Query for server state and caching
-- **Styling**: Tailwind CSS with shadcn/ui component library (New York style variant)
-- **Charts**: Recharts for data visualization (line/area charts for pace tracking)
-- **Build Tool**: Vite with React plugin and path aliasing
+- **Routing**: Wouter
+- **State Management**: TanStack React Query
+- **Styling**: Tailwind CSS with shadcn/ui (New York style)
+- **Charts**: Recharts (line/area charts)
+- **Build Tool**: Vite
+- **Component Architecture**: Pages, reusable UI components (shadcn/ui), feature-specific components, custom hooks, and utilities.
 
-The frontend follows a component-based architecture with:
-- Pages in `client/src/pages/` (dashboard, settings, map, not-found)
-- Reusable UI components in `client/src/components/ui/` (shadcn/ui)
-- Feature components in `client/src/components/` (leaderboard-card, pace-chart, summary-cards)
-- Custom hooks in `client/src/hooks/`
-- Utilities and query client in `client/src/lib/`
-
-### Map Page
-- **URL**: `/map`
-- **Purpose**: Visual geographic overview of all restaurant locations with sales performance indicators
-- **Features**:
-  - Interactive map using Leaflet/react-leaflet showing all 21+ restaurant locations
-  - **Red/green markers**: Green = ahead of last week sales, Red = behind, Gray = training unit
-  - **Popup on click**: Shows restaurant name, address, today's sales vs last week, percentage difference
-  - **Unit badges**: "Training" or "New Unit" badges shown in popup
-  - **Weather data**: Current temperature, conditions, humidity, wind speed via Open-Meteo API (free, no API key required)
-- **Restaurant data**: Coordinates stored in `restaurants` table (latitude, longitude, address, unitNumber fields)
-
-### Settings/Admin Page
-- **URL**: `/settings`
-- **Purpose**: Manage restaurant open dates and unit status
-- **Unit Statuses**:
-  - **Training**: Open date is in the future. Excluded from rankings (rank = 0, shows "N/A"), still displayed on dashboard at the end of the list.
-  - **New Unit**: Open date is within the last 90 days. Included in rankings with "NEW UNIT" badge. Badge automatically removed after 90 days.
-  - **Established**: Open date is more than 90 days ago or not set. Normal ranking and display.
-
-### Backend Architecture
+### Backend
 - **Runtime**: Node.js with Express 5
 - **Language**: TypeScript with ES modules
-- **API Design**: RESTful JSON endpoints under `/api/` prefix
-- **Development**: Vite middleware for HMR in development mode
-- **Production**: Static file serving from built assets
-
-API Routes:
-- `GET /api/leaderboard` - Aggregated restaurant sales rankings with week-over-week comparison
-- `GET /api/pace/:restaurantId` - Hourly sales data for pace comparison (use "all" for aggregate)
-- `GET /api/restaurants` - List of all restaurant locations
-- `GET /api/map-data` - Restaurant locations with sales data and weather for map display
-- `GET /api/positions/:restaurantId` - Hourly position/role breakdown for a restaurant (query: `?date=YYYY-MM-DD`)
-- `GET /api/hourly-by-restaurant` - All restaurant hourly data with position breakdown
-- `POST /api/scraper/run` - Trigger manual 7shifts data sync
-- `POST /api/scraper/historical` - Fetch historical sales data (supports `days` parameter)
-- `POST /api/scraper/historical-hourly` - Fetch historical hourly data for week-over-week comparison (body: `{"days": 8}`)
-- `GET /api/scraper/status` - View sync status and history
-- `GET /api/scraper/check-duplicates` - Diagnostic: check for duplicate hourly records (query: `?date=YYYY-MM-DD`)
-- `POST /api/scraper/cleanup-duplicates` - Remove duplicate hourly records (body: `{"date": "YYYY-MM-DD"}`)
-
-### 7shifts Integration
-- **API Client**: Custom REST client in `server/scraper/7shifts-api.ts`
-- **Authentication**: Bearer token via `SEVENSHIFTS_API_TOKEN` environment variable
-- **Endpoints Used**: `/v2/whoami`, `/v2/company/{id}/locations`, `/v2/reports/daily_sales_and_labor`, `/v2/company/{id}/location/{id}/daily_stats`, `/v2/time_punches`, `/v2/company/{id}/roles`
-- **Position/Role Tracking**: Fetches roles from 7shifts to map role_id to position names (e.g., Manager, Team Member, Shift Supervisor, Team Member Trainer). Position breakdown stored per hour in the `position_breakdown` JSONB column.
-- **Data Sync**: Fetches actual sales data from 7shifts workforce management platform
-- **Sync Interval**: Data updated hourly (7shifts only reports completed hourly intervals)
-- **Timezone-Aware Sync**: Server runs in UTC but sync uses Central timezone (America/Chicago) to determine the current date. This ensures that at 9 PM Eastern (8 PM Central), the sync fetches the correct day's data instead of the next day's data. Dates are stored at noon UTC on the target date to avoid DST boundary issues.
-- **In-Progress Hour Detection**: Pace charts show a pulsing indicator on the current in-progress hour by scanning cumulative data for the first hour where sales plateau.
-- **Historical Seeding**: On startup, automatically loads 8 days of data if missing (for week-over-week comparisons)
-- **22 Restaurant Locations**: Athens, Huntsville, Albertville, Hazel Green, Scottsboro, Pell City, Florence, Cullman, Jacksonville, Attalla, Jasper, Gadsden, Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville, plus Training & Development
-- **Known $0 Stores**: East Ridge, Shallowford Village, Sevierville (Tennessee) - likely POS not connected to 7shifts
-- **Data Sync Timing**: For complete end-of-day sales, data should be re-synced after midnight when all hourly data is finalized in 7shifts. Real-time syncs during the day only capture completed hours. Some stores (like 1249 - Huntsville) may have hours 22-23 (10pm-midnight) unreported until the next day.
-- **Forecast Data Limitation**: 7shifts `daily_stats` API only returns projected_sales for completed hours. For future hours, the system uses last week's actual sales as the forecast estimate since 7shifts doesn't provide future hour forecasts.
-- **Labor Forecast**: The leaderboard calculates projected end-of-day labor percentage for each restaurant using a blended approach: (actual labor for completed hours + projected labor for remaining hours) / projected end-of-day sales * 100. This gives the most accurate projection since it uses actual time punch data for hours that have passed. Target labor % is configurable per restaurant via settings (default 25%). Stores show "Making Labor" (green badge) if projected % ≤ target, or "Missing Labor" (red badge) if projected % > target. Uses last week's actuals for remaining hour sales forecast when 7shifts data is unavailable.
-- **Time Punches API**: Fetches employee clock-in/clock-out data via `/v2/time_punches` endpoint with `limit=500` to avoid API pagination truncation. Query window: from 4am the day before to **noon the day after** to capture all punches (7shifts interprets query times as UTC, so narrow windows miss evening shifts). Calculates **total labor hours deployed** per hour by summing the fractional hours worked by each employee (e.g., if employee A works 60 min and employee B works 30 min, total = 1.5 hrs). Uses restaurant.timezone from our database (not 7shifts API which returns America/Chicago for all locations). Stored in `hourly_sales.employeeCount` field (legacy name, now contains labor hours as decimal).
-- **Labor Deployment Guide**: Uses time punch data to show actual employees on clock vs recommended staffing. Recommended staffing uses a multi-component labor model:
-  - **Non-Production Staff**: Fixed hourly positions based on Labor Model 1 (PIC 11am-2pm & 5pm-8pm, Porter 6am-11am, Prep 8am-9am & 4pm-5pm & 11pm-12am, Training 3pm-5pm, DR Attendant 12pm-1:30pm & 5pm-6:30pm, Curbside 10am-2pm & 5pm-9pm). Total: ~19 baseline hours/day.
-  - **Production Staff**: Sales-based ramp-up with different charts for Breakfast (6am-11am) vs Non-Breakfast (11am-6am). Breakfast: $0-$118.87=3 staff, scaling to $2,629+=30 staff. Non-Breakfast: $0-$154.53=3 staff, scaling to $3,418+=30 staff.
-  - **Total Required = Non-Production + Production**. Status indicator: green if within ±1 employee of target, red if overstaffed, yellow if understaffed.
-  - **Early Bird Exclusion**: Hours 0-6 (12am-6am, labeled "Early Bird") are excluded from labor and staffing displays, showing "N/A" instead. This is because overnight labor data from 7shifts isn't meaningful for day-to-day management. The daily staffing totals also exclude these hours.
-
-### Xenial POS Integration (Real-Time Orders)
-- **Webhook Endpoint**: `POST /api/xenial/order` - Receives real-time order pushes from Xenial POS
-- **Authentication**: Bearer token via `MWBURGER_POS_TOKEN` environment variable
-- **Order Data**: Each order includes xenialOrderId, storeNumber, orderTotal, businessDate, orderClosedAt, orderSource
-- **Implementation**: `server/xenial-webhook.ts` handles order processing and aggregation
-- **Location Mapping**: Xenial store numbers (e.g., "1237") mapped to restaurant IDs via `location_mapping` table
-
-POS API Routes:
-- `POST /api/xenial/order` - Webhook endpoint for Xenial to push orders (requires auth token)
-- `GET /api/pos/sales` - Get aggregated POS sales by store for a date
-- `GET /api/pos/recent` - View recent POS orders (debugging)
-- `GET /api/pos/status` - POS webhook status and today's order count
-- `POST /api/pos/seed-mappings` - Seed location mappings from Xenial to restaurant IDs
-
-**Xenial Store Number to Restaurant Mapping**:
-- 1237 → Athens, 1249 → Huntsville, 1238 → Albertville, 1273 → Hazel Green
-- 1350 → Scottsboro, 1351 → Pell City, 1236 → Florence, 1309 → Cullman
-- 1492 → Jacksonville, 1491 → Attalla, 1358 → Jasper, 1251 → Gadsden
-- Plus: Owens Cross Roads, Madison County Line, Cumberland Avenue, Turkey Creek, Powell, East Ridge, Shallowford Village, Sevierville
+- **API Design**: RESTful JSON endpoints (`/api/`)
+- **Development**: Vite middleware for HMR
+- **Production**: Static file serving
 
 ### Data Layer
 - **ORM**: Drizzle ORM with PostgreSQL dialect
-- **Schema Location**: `shared/schema.ts` (shared between frontend and backend)
-- **Validation**: Zod schemas via drizzle-zod for type-safe data validation
-- **Migrations**: Drizzle Kit with migrations output to `./migrations`
+- **Schema**: `shared/schema.ts`
+- **Validation**: Zod schemas via drizzle-zod
+- **Migrations**: Drizzle Kit
 
-Database Tables:
-- `restaurants` - 22 store locations with name, timezone (America/Chicago or America/New_York), and active status
-- `daily_sales` - Daily sales snapshots with total sales, vs projected, and labor percent
-- `hourly_sales` - Per-hour sales data for timezone-fair comparisons (restaurantId, salesDate, hour 0-23, actualSales, projectedSales, projectedLabor, actualLabor, employeeCount as decimal for labor hours deployed)
-- `scraper_runs` - Sync job tracking with status and record counts
-- `pos_orders` - Real-time orders received from Xenial POS webhook (xenialOrderId, storeNumber, orderTotal, businessDate, orderClosedAt, orderSource)
-- `location_mapping` - Maps Xenial store numbers to restaurant IDs and 7shifts location IDs
+### Key Features
+- **Map Page**: Interactive map displaying restaurant locations with sales performance indicators (red/green markers for week-over-week performance), pop-up details, and real-time weather data.
+- **Holiday Context**: Displays US Federal Holiday information on the dashboard and map to contextualize sales performance.
+- **Settings/Admin Page**: Manages restaurant open dates and unit statuses (Training, New Unit, Established) affecting ranking and display.
+- **Sales Display & Ranking**: Uses `todaySales` (normalized, timezone-fair) for ranking and `actualSales` (sum of all available hourly sales) for display to ensure fair comparisons while matching 7shifts totals.
 
-### Sales Display vs Ranking
-The leaderboard uses two sales values:
-- **actualSales**: Sum of ALL available hourly sales (matches 7shifts display exactly)
-- **todaySales**: Normalized sales capped at the timezone-fair hour cutoff (used for ranking)
+### 7shifts Integration
+- **Purpose**: Fetches actual sales data, labor data, and position/role information from 7shifts.
+- **Data Sync**: Hourly data updates, timezone-aware sync (Central timezone for data cutoff), and historical data seeding.
+- **Labor Forecast**: Calculates projected end-of-day labor percentage using actual and projected data.
+- **Labor Deployment Guide**: Utilizes time punch data to compare actual employees on clock against a multi-component labor model (non-production and sales-based production staff).
 
-The normalized hour cutoff ensures fair comparisons between Eastern (America/New_York) and Central (America/Chicago) timezone stores:
-- Eastern stores are 1 hour ahead of Central stores
-- The normalized hour = (minimum current hour across all timezones) - 1 (last completed hour)
-- Rankings use normalized sales to prevent Eastern stores from having an unfair advantage
-- Display values use actualSales so totals match 7shifts exactly
-- If the normalized hour is -1 (no hours completed), all stores show $0 sales for ranking
-
-### Shared Code
-The `shared/` directory contains TypeScript types and schemas used by both frontend and backend:
-- Database table definitions (Drizzle schemas)
-- Insert/select types derived from schemas
-- API response interfaces (RestaurantSales with forecastSales, HourlySalesData with forecastSales, LeaderboardData)
-
-### Build System
-- **Development**: `tsx` for TypeScript execution, Vite dev server with HMR
-- **Production Build**: Custom build script using esbuild for server bundling, Vite for client
-- **Output**: Server bundle as `dist/index.cjs`, client assets in `dist/public/`
+### Xenial POS Integration
+- **Purpose**: Receives real-time order pushes from Xenial POS.
+- **Webhook**: `POST /api/xenial/order` for receiving order data.
+- **Data**: Includes order ID, store number, total, business date, closed time, and source.
+- **Mapping**: Xenial store numbers are mapped to internal restaurant IDs.
 
 ## External Dependencies
 
 ### Database
-- **PostgreSQL**: Primary database (connection via `DATABASE_URL` environment variable)
-- **Drizzle ORM**: Database operations and schema management
-- **connect-pg-simple**: PostgreSQL session store (available but sessions not currently implemented)
+- **PostgreSQL**: Primary data store.
+- **Drizzle ORM**: For database interactions.
 
 ### UI Component Libraries
-- **Radix UI**: Headless accessible components (dialog, dropdown, tabs, etc.)
-- **shadcn/ui**: Styled component system built on Radix primitives
-- **Lucide React**: Icon library
-- **Recharts**: Charting library for sales visualizations
-- **Embla Carousel**: Carousel component
-- **cmdk**: Command palette component
-- **Vaul**: Drawer component
+- **Radix UI**: Headless components.
+- **shadcn/ui**: Styled components.
+- **Lucide React**: Icons.
+- **Recharts**: Charting.
+- **Embla Carousel**: Carousel functionality.
 
 ### Development Tools
-- **Vite**: Build tool and dev server
-- **Tailwind CSS**: Utility-first CSS framework
-- **TypeScript**: Type checking across the codebase
-- **Replit plugins**: Runtime error overlay, cartographer, dev banner for Replit environment
+- **Vite**: Build tool and dev server.
+- **Tailwind CSS**: Styling framework.
+- **TypeScript**: Language.
+- **Zod**: Schema validation.
 
-### Form & Validation
-- **React Hook Form**: Form state management
-- **@hookform/resolvers**: Zod resolver for form validation
-- **Zod**: Schema validation library
+### APIs/Services
+- **7shifts API**: For sales, labor, and employee data.
+- **Open-Meteo API**: For weather data on the map page.
+- **@18f/us-federal-holidays**: For US Federal Holiday data.

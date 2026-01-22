@@ -6,6 +6,7 @@ import { db } from "./db";
 import { scraperRuns, posOrders, hourlySales, restaurants } from "@shared/schema";
 import { desc, sql, gte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "./xenial-webhook";
+import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -65,6 +66,32 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching restaurants:", error);
       res.status(500).json({ error: "Failed to fetch restaurants" });
+    }
+  });
+
+  // Get holiday context for today vs last week comparison
+  app.get("/api/holidays", async (req, res) => {
+    try {
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      
+      const context = getHolidayContext(targetDate);
+      const comparison = getHolidayComparisonContext(targetDate);
+      
+      // Get holidays for this year and last year for reference
+      const thisYear = targetDate.getFullYear();
+      const thisYearHolidays = getAllHolidaysForYear(thisYear);
+      const lastYearHolidays = getAllHolidaysForYear(thisYear - 1);
+      
+      res.json({
+        ...context,
+        comparison,
+        thisYearHolidays,
+        lastYearHolidays
+      });
+    } catch (error) {
+      console.error("Error fetching holidays:", error);
+      res.status(500).json({ error: "Failed to fetch holiday data" });
     }
   });
 
@@ -196,7 +223,17 @@ export async function registerRoutes(
           })
       );
       
-      res.json(mapData);
+      // Get holiday context
+      const holidayContext = getHolidayContext(targetDate);
+      const comparison = getHolidayComparisonContext(targetDate);
+      
+      res.json({
+        restaurants: mapData,
+        holidays: {
+          ...holidayContext,
+          comparison
+        }
+      });
     } catch (error) {
       console.error("Error fetching map data:", error);
       res.status(500).json({ error: "Failed to fetch map data" });
