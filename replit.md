@@ -19,11 +19,22 @@ Preferred communication style: Simple, everyday language.
 - **Build Tool**: Vite with React plugin and path aliasing
 
 The frontend follows a component-based architecture with:
-- Pages in `client/src/pages/` (dashboard, settings, not-found)
+- Pages in `client/src/pages/` (dashboard, settings, map, not-found)
 - Reusable UI components in `client/src/components/ui/` (shadcn/ui)
 - Feature components in `client/src/components/` (leaderboard-card, pace-chart, summary-cards)
 - Custom hooks in `client/src/hooks/`
 - Utilities and query client in `client/src/lib/`
+
+### Map Page
+- **URL**: `/map`
+- **Purpose**: Visual geographic overview of all restaurant locations with sales performance indicators
+- **Features**:
+  - Interactive map using Leaflet/react-leaflet showing all 21+ restaurant locations
+  - **Red/green markers**: Green = ahead of last week sales, Red = behind, Gray = training unit
+  - **Popup on click**: Shows restaurant name, address, today's sales vs last week, percentage difference
+  - **Unit badges**: "Training" or "New Unit" badges shown in popup
+  - **Weather data**: Current temperature, conditions, humidity, wind speed via Open-Meteo API (free, no API key required)
+- **Restaurant data**: Coordinates stored in `restaurants` table (latitude, longitude, address, unitNumber fields)
 
 ### Settings/Admin Page
 - **URL**: `/settings`
@@ -44,6 +55,7 @@ API Routes:
 - `GET /api/leaderboard` - Aggregated restaurant sales rankings with week-over-week comparison
 - `GET /api/pace/:restaurantId` - Hourly sales data for pace comparison (use "all" for aggregate)
 - `GET /api/restaurants` - List of all restaurant locations
+- `GET /api/map-data` - Restaurant locations with sales data and weather for map display
 - `GET /api/positions/:restaurantId` - Hourly position/role breakdown for a restaurant (query: `?date=YYYY-MM-DD`)
 - `GET /api/hourly-by-restaurant` - All restaurant hourly data with position breakdown
 - `POST /api/scraper/run` - Trigger manual 7shifts data sync
