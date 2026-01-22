@@ -1,14 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, TrendingUp, TrendingDown, Store, Target } from "lucide-react";
-import type { RestaurantSales, HourlySalesData } from "@shared/schema";
+import type { RestaurantSales } from "@shared/schema";
 
 interface SummaryCardsProps {
   restaurants: RestaurantSales[];
   lastUpdated: string;
-  paceData?: HourlySalesData[];
 }
 
-export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCardsProps) {
+export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -25,11 +24,19 @@ export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCard
   const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
   const totalForecastSales = activeRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
   
-  // Calculate total last week full day sales for projected comparison
+  // Calculate last week's full day total for comparison
+  // We need to compare projected (actual + remaining from LW) against LW full day
+  // Since forecastSales = actual + LW remaining, and we have actualLastWeekSales for the same hour cutoff
+  // LW full day = actualLastWeekSales + remaining hours from LW = same as forecastSales but using LW data
+  // For simplicity, we estimate LW full day by using the forecast total (which represents the pattern)
+  // A more accurate approach: sum each restaurant's forecastSales minus their actual plus their lastWeek
+  // But since forecastSales = actual + lwRemaining, and we want lwFullDay = lwThruHour + lwRemaining
+  // We can calculate: lwFullDay = actualLastWeekSales + (forecastSales - actualSales)
   const totalLastWeekFullDay = activeRestaurants.reduce((sum, r) => {
-    // forecastSales is: today's actual + remainder from last week
-    // So lastWeek full day = forecastSales represents the projected total based on last week's pattern
-    return sum + (r.forecastSales || 0);
+    // LW remaining = forecastSales - actualSales
+    const lwRemaining = Math.max(0, (r.forecastSales || 0) - (r.actualSales || 0));
+    // LW full day = LW through current hour + LW remaining
+    return sum + (r.actualLastWeekSales || 0) + lwRemaining;
   }, 0);
   const aheadOfPaceCount = activeRestaurants.filter((r) => r.isAheadOfPace).length;
   
@@ -48,41 +55,14 @@ export function SummaryCards({ restaurants, lastUpdated, paceData }: SummaryCard
   // Count stores ahead of last week (vs forecast comparison) - exclude training
   const aheadOfForecastCount = activeRestaurants.filter((r) => r.todaySales >= r.forecastSales).length;
 
-  // Calculate projected daily sales: actual sales so far + remaining forecast
-  // Data is cumulative, so actualSoFar = last hour's todaySales
-  // remainingForecast = full day forecast - forecast at last data hour
-  const calculateProjectedDaily = () => {
-    if (!paceData || paceData.length === 0) {
-      return { projected: 0, actualSoFar: 0, remainingForecast: 0 };
-    }
-    
-    // Find cumulative actual sales (highest todaySales value)
-    let actualSoFar = 0;
-    let lastHourWithSales = -1;
-    let forecastAtLastHour = 0;
-    
-    paceData.forEach((hour) => {
-      if (hour.todaySales > 0) {
-        actualSoFar = hour.todaySales; // Cumulative - last value is total so far
-        lastHourWithSales = hour.hour;
-        forecastAtLastHour = hour.forecastSales;
-      }
-    });
-    
-    // Find the full day forecast (max forecastSales value)
-    const fullDayForecast = Math.max(...paceData.map(h => h.forecastSales), 0);
-    
-    // Remaining forecast = full day forecast - forecast at last hour with actual data
-    const remainingForecast = Math.max(0, fullDayForecast - forecastAtLastHour);
-    
-    return {
-      projected: actualSoFar + remainingForecast,
-      actualSoFar,
-      remainingForecast
-    };
+  // Calculate projected daily: sum of all restaurant forecast sales
+  // Each restaurant's forecastSales = actual + LW remaining hours (same methodology)
+  // This gives us the total projected daily sales using consistent logic
+  const projectedData = {
+    projected: totalForecastSales,
+    actualSoFar: totalTodaySales,
+    remainingForecast: Math.max(0, totalForecastSales - totalTodaySales)
   };
-  
-  const projectedData = calculateProjectedDaily();
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

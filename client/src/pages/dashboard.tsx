@@ -279,7 +279,6 @@ export default function Dashboard() {
             <SummaryCards 
               restaurants={leaderboardData.restaurants} 
               lastUpdated={leaderboardData.lastUpdated}
-              paceData={aggregatePaceData}
             />
 
             {/* State Breakdown */}
