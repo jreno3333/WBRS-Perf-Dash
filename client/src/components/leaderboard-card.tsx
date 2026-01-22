@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -19,6 +20,8 @@ interface LeaderboardCardProps {
 }
 
 export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -135,8 +138,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
 
   return (
     <Card 
-      className="hover-elevate transition-all duration-200"
+      className="hover-elevate transition-all duration-200 cursor-pointer"
       data-testid={`card-restaurant-${restaurant.restaurantId}`}
+      onClick={() => setIsExpanded(!isExpanded)}
     >
       <CardContent className="p-4">
         <div className="flex items-center gap-4">
@@ -273,10 +277,18 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               )}
             </div>
           </div>
+          
+          <div className="flex-shrink-0 text-muted-foreground">
+            {isExpanded ? (
+              <ChevronUp className="w-5 h-5" data-testid={`chevron-collapse-${restaurant.restaurantId}`} />
+            ) : (
+              <ChevronDown className="w-5 h-5" data-testid={`chevron-expand-${restaurant.restaurantId}`} />
+            )}
+          </div>
         </div>
 
 
-        {activeHours.length > 0 && (
+        {isExpanded && activeHours.length > 0 && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-muted-foreground mb-2">
               <span>Hourly Sales</span>
@@ -525,7 +537,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
           </div>
         )}
 
-        {activeHours.length === 0 && (
+        {isExpanded && activeHours.length === 0 && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-muted-foreground mb-1">
               <span>Progress vs. last week</span>
