@@ -147,15 +147,27 @@ export class DatabaseStorage implements IStorage {
     // Get all hourly sales from 7shifts for comparison data
     const allHourlySales = await db.select().from(hourlySales);
     
-    const selectedDateHourly = allHourlySales.filter(s => {
+    // Helper function to deduplicate hourly data - only keep one record per restaurant+hour
+    // Takes the last record if there are duplicates (most recent data)
+    const deduplicateHourly = (hourlyData: typeof allHourlySales) => {
+      const uniqueMap = new Map<string, typeof allHourlySales[0]>();
+      hourlyData.forEach(record => {
+        const key = `${record.restaurantId}-${record.hour}`;
+        // Always overwrite - last one wins (most recent)
+        uniqueMap.set(key, record);
+      });
+      return Array.from(uniqueMap.values());
+    };
+    
+    const selectedDateHourly = deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
-    });
+    }));
     
-    const lastWeekHourly = allHourlySales.filter(s => {
+    const lastWeekHourly = deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
-    });
+    }));
     
     const restaurantSales: RestaurantSales[] = restaurantList.map(restaurant => {
       // All hourly data for the selected date (used for completed hours comparison)
@@ -388,15 +400,25 @@ export class DatabaseStorage implements IStorage {
     
     const allHourlySales = await db.select().from(hourlySales);
     
-    const selectedDateHourly = allHourlySales.filter(s => {
+    // Helper function to deduplicate hourly data - only keep one record per restaurant+hour
+    const deduplicateHourly = (hourlyData: typeof allHourlySales) => {
+      const uniqueMap = new Map<string, typeof allHourlySales[0]>();
+      hourlyData.forEach(record => {
+        const key = `${record.restaurantId}-${record.hour}`;
+        uniqueMap.set(key, record);
+      });
+      return Array.from(uniqueMap.values());
+    };
+    
+    const selectedDateHourly = deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
-    });
+    }));
     
-    const lastWeekHourly = allHourlySales.filter(s => {
+    const lastWeekHourly = deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
-    });
+    }));
     
     const selectedByHour: Map<number, number> = new Map();
     const lastWeekByHour: Map<number, number> = new Map();
@@ -537,15 +559,25 @@ export class DatabaseStorage implements IStorage {
     
     const allHourlySales = await db.select().from(hourlySales);
     
-    const selectedDateHourly = allHourlySales.filter(s => {
+    // Helper function to deduplicate hourly data - only keep one record per restaurant+hour
+    const deduplicateHourly = (hourlyData: typeof allHourlySales) => {
+      const uniqueMap = new Map<string, typeof allHourlySales[0]>();
+      hourlyData.forEach(record => {
+        const key = `${record.restaurantId}-${record.hour}`;
+        uniqueMap.set(key, record);
+      });
+      return Array.from(uniqueMap.values());
+    };
+    
+    const selectedDateHourly = deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
-    });
+    }));
     
-    const lastWeekHourly = allHourlySales.filter(s => {
+    const lastWeekHourly = deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
-    });
+    }));
     
     const result: Record<string, HourlySalesData[]> = {};
     
