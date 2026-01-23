@@ -287,7 +287,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     </div>
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <Car className="w-3 h-3" />
-                      Service: {Math.floor(restaurant.driveThru.avgServiceTime / 60)}:{(restaurant.driveThru.avgServiceTime % 60).toString().padStart(2, '0')}
+                      Window: {Math.floor(restaurant.driveThru.avgServiceTime / 60)}:{(restaurant.driveThru.avgServiceTime % 60).toString().padStart(2, '0')}
                     </div>
                     <div className="flex items-center gap-1 text-muted-foreground">
                       Cars today: {restaurant.driveThru.carCount}
