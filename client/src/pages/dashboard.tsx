@@ -16,11 +16,46 @@ import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData } from "@shared/schema";
+import { getStaffingBreakdown } from "@/lib/labor-model";
+
+// X-Score calculation helpers (same as leaderboard-card)
+function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, staffingDiff: number): number {
+  let speed: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
+  if (speedSeconds !== undefined) {
+    if (speedSeconds > 420) speed = 'RED';
+    else if (speedSeconds > 300) speed = 'YELLOW';
+  }
+  let staffing: 'PROPER' | 'UNDER' | 'OVER' = 'PROPER';
+  if (staffingDiff > 1) staffing = 'OVER';
+  else if (staffingDiff < -1) staffing = 'UNDER';
+  
+  const scores: Record<string, number> = {
+    'UP-GREEN-PROPER': 100, 'UP-GREEN-UNDER': 90, 'UP-GREEN-OVER': 90,
+    'UP-YELLOW-PROPER': 90, 'UP-YELLOW-UNDER': 80, 'UP-YELLOW-OVER': 80,
+    'UP-RED-PROPER': 80, 'UP-RED-UNDER': 70, 'UP-RED-OVER': 70,
+    'DOWN-GREEN-PROPER': 80, 'DOWN-GREEN-UNDER': 70, 'DOWN-GREEN-OVER': 70,
+    'DOWN-YELLOW-PROPER': 70, 'DOWN-YELLOW-UNDER': 60, 'DOWN-YELLOW-OVER': 60,
+    'DOWN-RED-PROPER': 60, 'DOWN-RED-UNDER': 50, 'DOWN-RED-OVER': 50,
+  };
+  return scores[`${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`] ?? 0;
+}
+
+function calculateXScore(hourlyData: HourlySalesData[] | undefined): number {
+  if (!hourlyData || hourlyData.length === 0) return 0;
+  const scores = hourlyData.map(hour => {
+    const isAhead = hour.todaySales >= hour.lastWeekSales;
+    const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+    const actualStaff = hour.employeeCount || 0;
+    const staffingDiff = actualStaff - staffing.total;
+    return getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+  }).filter(s => s > 0);
+  return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+}
 
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time">("variance");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time" | "xscore">("variance");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
@@ -192,6 +227,11 @@ export default function Dashboard() {
               const aTime = a.driveThru?.avgServiceTime ?? Infinity;
               const bTime = b.driveThru?.avgServiceTime ?? Infinity;
               return aTime - bTime;
+            case "xscore":
+              // Sort by X-Score descending (highest first)
+              const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId]);
+              const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId]);
+              return bScore - aScore;
             default:
               // Default sort by sales
               return b.todaySales - a.todaySales;
@@ -370,6 +410,7 @@ export default function Dashboard() {
                         <SelectItem value="understaffed">Understaffed</SelectItem>
                         <SelectItem value="missing_manager">Missing Mgr</SelectItem>
                         <SelectItem value="dt_time">DT Time</SelectItem>
+                        <SelectItem value="xscore">X-Score</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
