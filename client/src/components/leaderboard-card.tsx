@@ -480,13 +480,18 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               })}
               {/* SOS Line Overlay */}
               {activeHours.some(h => h.avgServiceTime) && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+                <svg 
+                  className="absolute inset-0 w-full h-full pointer-events-none" 
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
                   <polyline
                     fill="none"
                     stroke="rgb(6, 182, 212)"
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
                     points={activeHours
                       .map((hour, idx) => {
                         if (!hour.avgServiceTime) return null;
@@ -495,7 +500,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                         const maxTime = 600;
                         const normalizedTime = Math.min(hour.avgServiceTime, maxTime) / maxTime;
                         const y = (1 - normalizedTime) * 100;
-                        return `${x}%,${y}%`;
+                        return `${x},${y}`;
                       })
                       .filter(Boolean)
                       .join(' ')}
