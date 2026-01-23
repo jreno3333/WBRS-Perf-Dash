@@ -604,9 +604,9 @@ export class DatabaseStorage implements IStorage {
       const positionByHour: Map<number, Record<string, number>> = new Map();
       const hmeByHour: Map<number, { avgServiceTime: number; carCount: number }> = new Map();
       
-      // HME drive-thru data by hour
+      // HME drive-thru data by hour (using avgTotalTime = lane total)
       restaurantHmeData.forEach(h => {
-        hmeByHour.set(h.hour, { avgServiceTime: h.avgServiceTime, carCount: h.carCount });
+        hmeByHour.set(h.hour, { avgServiceTime: h.avgTotalTime, carCount: h.carCount });
       });
       
       // Use 7shifts data for sales
