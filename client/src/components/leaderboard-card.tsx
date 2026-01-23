@@ -44,6 +44,11 @@ interface LeaderboardCardProps {
 export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
+  // Debug: Log driveThru data for this restaurant
+  if (restaurant.driveThru) {
+    console.log(`[Card ${restaurant.restaurantName}] Has driveThru:`, restaurant.driveThru);
+  }
+  
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -384,20 +389,23 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             >
               {formatCurrency(restaurant.todaySales)}
             </div>
-            {restaurant.driveThru && (
-              <div 
-                className={`text-xs font-medium ${
-                  restaurant.driveThru.avgTotalTime > 420 
-                    ? "text-red-600 dark:text-red-400" 
-                    : restaurant.driveThru.avgTotalTime > 300 
-                      ? "text-amber-600 dark:text-amber-400"
-                      : "text-green-600 dark:text-green-400"
-                }`}
-                data-testid={`text-drivethru-${restaurant.restaurantId}`}
-              >
-                DT: {Math.floor(restaurant.driveThru.avgTotalTime / 60)}:{(restaurant.driveThru.avgTotalTime % 60).toString().padStart(2, '0')}
-              </div>
-            )}
+            <div 
+              className={`text-xs font-medium ${
+                restaurant.driveThru
+                  ? (restaurant.driveThru.avgTotalTime > 420 
+                      ? "text-red-600 dark:text-red-400" 
+                      : restaurant.driveThru.avgTotalTime > 300 
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-green-600 dark:text-green-400")
+                  : "text-gray-400"
+              }`}
+              data-testid={`text-drivethru-${restaurant.restaurantId}`}
+            >
+              {restaurant.driveThru 
+                ? `DT: ${Math.floor(restaurant.driveThru.avgTotalTime / 60)}:${(restaurant.driveThru.avgTotalTime % 60).toString().padStart(2, '0')}`
+                : "No DT"
+              }
+            </div>
             <div className="flex items-center justify-end gap-1 mt-1">
               {restaurant.isAheadOfPace ? (
                 <Badge 
