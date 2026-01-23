@@ -1,0 +1,958 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "version": "1.0",
+    "title": "HME API Reference",
+    "contact": {
+      "name": "HME API Support",
+      "url": "https://www.HME.com/contact/",
+      "email": "apiintegrations@HME.com"
+    },
+    "description": "# DXS Documentation\n## What is DXS RCD API?\nDXS RCD API is a REST API that makes accessible the event-level data records for HME CLOUD connected timers (ZOOM and Nitro). The intended use is to provide short term access to detailed timing records for retrieval and insertion into a local database for business analytics use. It is not intended to be used as the back-end data storage or database source for those business analytics.\n\n### API Base URL\nThe HME CLOUD APIs can all be accessed by using the following base url:\n\n`https://api.hmecloud.com`\n\n## Sending the request\n### HEADER Parameters\n<SecurityDefinitions />\n",
+    "x-logo": {
+      "url": "https://www.hme.com/images/logos/hme-logo.png",
+      "backgroundColor": "#0033A0"
+    }
+  },
+  "security": [],
+  "components": {
+    "securitySchemes": {
+      "authToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "auth-key",
+        "description": "Service Account specific UID authentication key. This token is used by the server to validate the source of the Request, similar to a password.\\\nProvided by HME after setting up a DXS subscription."
+      },
+      "serviceAccount": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "service-account",
+        "description": "Name of the DXS Service Account.\\\n Provided by HME after setting up a DXS subscription."
+      },
+      "accountEmail": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "account-email",
+        "description": "The email address for the Account Owner of the HME Cloud account. A service-account/auth-key pair can have multiple valid account-email associated. Only a single account-email can be requested at a time. Any store numbers referenced below must be valid store numbers for the account-email."
+      }
+    },
+    "schemas": {
+      "GetStoresResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedEnvelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Store"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ErrorSimple": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ErrorKeyed": {
+        "type": "object",
+        "required": [
+          "key",
+          "status"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "status": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GetStoresV2Response": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PagedEnvelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StoreWithDevices"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "RawCarDataEnvelope": {
+        "type": "object",
+        "required": [
+          "data",
+          "status"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "total",
+              "moreData",
+              "totalInSet",
+              "offsetNext",
+              "data"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Total available records."
+              },
+              "moreData": {
+                "type": "boolean",
+                "description": "True if more records exists."
+              },
+              "totalInSet": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of records in this result set."
+              },
+              "offsetNext": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Offset for next result set, or null if none."
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RawCarRecord"
+                }
+              }
+            }
+          },
+          "status": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PagedEnvelope": {
+        "type": "object",
+        "required": [
+          "total",
+          "moreData",
+          "totalInSet",
+          "offsetNext",
+          "data"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total available records."
+          },
+          "moreData": {
+            "type": "boolean",
+            "description": "True if more records exists."
+          },
+          "totalInSet": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of records in this result set."
+          },
+          "offsetNext": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Offset for next result set, or null if none."
+          },
+          "data": {
+            "type": "array",
+            "items": {}
+          }
+        }
+      },
+      "Store": {
+        "type": "object",
+        "required": [
+          "Brand",
+          "StoreNumber",
+          "AccountEmail",
+          "LaneConfig"
+        ],
+        "properties": {
+          "Brand": {
+            "type": "string"
+          },
+          "StoreNumber": {
+            "type": "string"
+          },
+          "StoreName": {
+            "type": "string"
+          },
+          "ReportGroup": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "AccountEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "LaneConfig": {
+            "type": "string",
+            "enum": [
+              "Single Lane",
+              "Dual Lane",
+              "Y Lane",
+              "Tandem Lane",
+              "Mobile - Outside Lane",
+              "Mobile - Inside Lane",
+              "Curbside Only"
+            ]
+          },
+          "AddressLine1": {
+            "type": "string"
+          },
+          "AddressLine2": {
+            "type": "string"
+          },
+          "AddressLine3": {
+            "type": "string"
+          },
+          "AddressLine4": {
+            "type": "string"
+          },
+          "City": {
+            "type": "string"
+          },
+          "State": {
+            "type": "string"
+          },
+          "Zip": {
+            "type": "string"
+          },
+          "Country": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceInfo": {
+        "type": "object",
+        "required": [
+          "DeviceType",
+          "DeviceVersion"
+        ],
+        "properties": {
+          "DeviceType": {
+            "type": "string",
+            "enum": [
+              "ZOOM",
+              "ZOOM Nitro",
+              "NEXEO",
+              "NVD"
+            ]
+          },
+          "DeviceVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "StoreWithDevices": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Store"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "DeviceInfo": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeviceInfo"
+                },
+                "minItems": 0,
+                "description": "Zero or more devices associated with the store."
+              }
+            }
+          }
+        ]
+      },
+      "DetectorReading": {
+        "type": "object",
+        "required": [
+          "EventName",
+          "TimeOnDetector",
+          "TimeInQueue"
+        ],
+        "properties": {
+          "EventName": {
+            "type": "string",
+            "description": "Refer Event Names section for possible values"
+          },
+          "TimeOnDetector": {
+            "type": "integer"
+          },
+          "TimeInQueue": {
+            "type": "integer"
+          }
+        }
+      },
+      "CarEvent": {
+        "type": "object",
+        "required": [
+          "EventType",
+          "DepartureTime",
+          "Lane",
+          "Detectors"
+        ],
+        "properties": {
+          "EventType": {
+            "type": "string",
+            "enum": [
+              "Car_Departure",
+              "Car_Pull_In",
+              "Delete_Auto_Pullout",
+              "Delete_Auto_Drive_Off",
+              "Independent"
+            ]
+          },
+          "DepartureTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "Lane": {
+            "type": "integer"
+          },
+          "Detectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetectorReading"
+            }
+          },
+          "TotalTimeInLane": {
+            "type": "integer"
+          },
+          "QueueTimeInLane": {
+            "type": "integer"
+          },
+          "Total2TimeInLane": {
+            "type": "integer"
+          },
+          "Queue2TimeInLane": {
+            "type": "integer"
+          },
+          "CarsInQueue": {
+            "type": "integer"
+          },
+          "EvdCarId": {
+            "type": "uuid"
+          },
+          "CarsInOrderQueue": {
+            "type": "integer"
+          },
+          "CarsInOrderPointStack": {
+            "type": "integer"
+          },
+          "TotalDetectedTime": {
+            "type": "integer"
+          },
+          "CarsAheadTillOrderPoint": {
+            "type": "integer"
+          }
+        }
+      },
+      "RawCarRecord": {
+        "type": "object",
+        "required": [
+          "RecordId",
+          "StoreNumber",
+          "LaneConfig",
+          "Brand",
+          "Events"
+        ],
+        "properties": {
+          "RecordId": {
+            "type": "string"
+          },
+          "StoreNumber": {
+            "type": "string"
+          },
+          "LaneConfig": {
+            "type": "string",
+            "enum": [
+              "Single Lane",
+              "Dual Lane",
+              "Y Lane",
+              "Tandem Lane",
+              "Mobile - Outside Lane",
+              "Mobile - Inside Lane",
+              "Curbside Only"
+            ]
+          },
+          "Brand": {
+            "type": "string"
+          },
+          "Events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarEvent"
+            },
+            "minItems": 1
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/dxsmgmt/v1/store/list/default": {
+      "get": {
+        "tags": [
+          "Requests"
+        ],
+        "summary": "Get Stores",
+        "description": "Get Stores Associated with DXS Service Account (Based on HEADER Parameters above)",
+        "x-codeSamples": [
+          {
+            "lang": "bash",
+            "source": "curl -X GET \"https://api.hmecloud.com/dxsmgmt/v1/store/list/default?Limit=1000&Offset=0\" \\\n  -H \"accept: application/json; charset=utf-8\" \\\n -H \"auth-key: 11111111-2222-3333-4444-555555555555\" \\\n  -H \"service-account: Service Account Example\""
+          },
+          {
+            "lang": "nodejs",
+            "source": "// Code to get stores associated with DXS Service account\n// This sample code writes the response to a file named GetStoresResponse.json in the same directory as the script.\n/* \nTested with Versions:\nNode v20.11.1\naxios v1.6.7\n*/\nconst axios = require('axios');\nconst fs = require('fs').promises;\n\n// This API uses v1 of the HME DXS Management API, please refer on the left for the parameter details\n// Change the values of the following variables to your own values\nconst apiParams = {\n  baseUrl: 'https://api.hmecloud.com/dxsmgmt/v1/store/list/default',\n  service_account: 'Service Account Example',\n  auth_key: '11111111-2222-3333-4444-555555555555',\n  limit: 1000,\n  offset: 0,\n};\n\n// Function to make the HTTP GET request\nasync function makeGetRequest(params) {\n  const apiUrl = `${params.baseUrl}?Limit=${params.limit}&Offset=${params.offset}`;\n  const headers = {\n    'service-account': params.service_account,\n    'auth-key': params.auth_key,\n  };\n\n  try {\n    const response = await axios.get(apiUrl, { headers });\n\n    // Write the response to a file\n    await fs.writeFile('GetStoresResponse.json', JSON.stringify(response.data, null, 2));\n\n  } catch (error) {\n    // Handle any errors that occurred during the request\n    console.error('Error:');\n    console.error('Status Code:',error.response.status);\n    console.error('Message:',error.response.data);\n  }\n}\n\n// Calling the function to make the request\nmakeGetRequest(apiParams);\n"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Limit",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Max number of car records to include in a single response.\\\nMax value of 5000\\\nDefaults to 5000",
+            "example": "1"
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Offset into the complete set of the starting record to be returned. Used to page through the full result set when the result size is larger than the Limit.\\\nDefaults to 0",
+            "example": "0"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetStoresResponse"
+                },
+                "example": {
+                  "total": 1,
+                  "moreData": false,
+                  "totalInSet": 1,
+                  "offsetNext": null,
+                  "data": [
+                    {
+                      "Brand": "HME",
+                      "StoreNumber": "123456",
+                      "StoreName": "HME Coffee Shop",
+                      "ReportGroup": null,
+                      "AccountEmail": "hmecoffeeshop@gmail.com",
+                      "LaneConfig": "Single Lane",
+                      "AddressLine1": "1234 Main Street",
+                      "AddressLine2": "Suite 101",
+                      "AddressLine3": "",
+                      "AddressLine4": "",
+                      "City": "Anytown",
+                      "State": "California",
+                      "Zip": "12345",
+                      "Country": "United States"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "example": {
+                  "key": "Attempts_limitation_exceeded",
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorKeyed"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "servers": [
+          {
+            "url": "https://api.hmecloud.com"
+          }
+        ]
+      }
+    },
+    "/dxsmgmt/v2/store/list/default": {
+      "get": {
+        "tags": [
+          "Requests"
+        ],
+        "summary": "Get Stores V2",
+        "description": "Get Stores along with device details Associated with DXS Service Account (Based on HEADER Parameters above)",
+        "x-codeSamples": [
+          {
+            "lang": "bash",
+            "source": "curl -X GET \"https://api.hmecloud.com/dxsmgmt/v2/store/list/default?Limit=1000&Offset=0\" \\\n  -H \"accept: application/json; charset=utf-8\" \\\n -H \"auth-key: 11111111-2222-3333-4444-555555555555\" \\\n  -H \"service-account: Service Account Example\""
+          },
+          {
+            "lang": "nodejs",
+            "source": "// Code to get stores associated with DXS Service account\n// This sample code writes the response to a file named GetStoresResponse.json in the same directory as the script.\n/* \nTested with Versions:\nNode v20.11.1\naxios v1.6.7\n*/\nconst axios = require('axios');\nconst fs = require('fs').promises;\n\n// This API uses v2 of the HME DXS Management API, please refer on the left for the parameter details\n// Change the values of the following variables to your own values\nconst apiParams = {\n  baseUrl: 'https://api.hmecloud.com/dxsmgmt/v2/store/list/default',\n  service_account: 'Service Account Example',\n  auth_key: '11111111-2222-3333-4444-555555555555',\n  limit: 1000,\n  offset: 0,\n};\n\n// Function to make the HTTP GET request\nasync function makeGetRequest(params) {\n  const apiUrl = `${params.baseUrl}?Limit=${params.limit}&Offset=${params.offset}`;\n  const headers = {\n    'service-account': params.service_account,\n    'auth-key': params.auth_key,\n  };\n\n  try {\n    const response = await axios.get(apiUrl, { headers });\n\n    // Write the response to a file\n    await fs.writeFile('GetStoresResponse.json', JSON.stringify(response.data, null, 2));\n\n  } catch (error) {\n    // Handle any errors that occurred during the request\n    console.error('Error:');\n    console.error('Status Code:',error.response.status);\n    console.error('Message:',error.response.data);\n  }\n}\n\n// Calling the function to make the request\nmakeGetRequest(apiParams);\n"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Limit",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Max number of car records to include in a single response.\\\nMax value of 5000\\\nDefaults to 5000",
+            "example": "1"
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Offset into the complete set of the starting record to be returned. Used to page through the full result set when the result size is larger than the Limit.\\\nDefaults to 0",
+            "example": "0"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "example": {
+                  "total": 1,
+                  "moreData": false,
+                  "totalInSet": 1,
+                  "offsetNext": null,
+                  "data": [
+                    {
+                      "Brand": "HME",
+                      "StoreNumber": "123456",
+                      "StoreName": "HME Coffee Shop",
+                      "ReportGroup": null,
+                      "AccountEmail": "hmecoffeeshop@gmail.com",
+                      "LaneConfig": "Single Lane",
+                      "AddressLine1": "1234 Main Street",
+                      "AddressLine2": "Suite 101",
+                      "AddressLine3": "",
+                      "AddressLine4": "",
+                      "City": "Anytown",
+                      "State": "California",
+                      "Zip": "12345",
+                      "Country": "United States",
+                      "DeviceInfo": [
+                        {
+                          "DeviceType": "ZOOM",
+                          "DeviceVersion": "3.15.1"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/GetStoresV2Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "example": {
+                  "key": "Attempts_limitation_exceeded",
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorKeyed"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "servers": [
+          {
+            "url": "https://api.hmecloud.com"
+          }
+        ]
+      }
+    },
+    "/dxs/v1/rcd/report": {
+      "get": {
+        "tags": [
+          "Requests"
+        ],
+        "summary": "Get Raw Car Data",
+        "description": "This API lists Raw Car Data for a specified Service Account. There are several filters that may be used to limit the number of records that are returned.",
+        "x-codeSamples": [
+          {
+            "lang": "bash",
+            "source": "curl -X GET \"https://api.hmecloud.com/dxs/v1/rcd/report/?StartDateTime=2019-10-01T11:00:00.000Z&BrandNames=\\[\\\"BrandName\\\"\\]&EndDateTime=2019-10-01T19T13:00:00.000Z&StoreNumberList=\\[\\\"123456\\\"\\]&IncludePullOuts=true&IncludeIndependents=true&Limit=1000&Offset=0\" \\\n  -H \"accept: application/json; charset=utf-8\" \\\n  -H \"account-email: test@hme.com\" \\\n  -H \"auth-key: 11111111-2222-3333-4444-555555555555\" \\\n  -H \"service-account: Service Account Example\""
+          },
+          {
+            "lang": "nodejs",
+            "source": "// Code to get raw car data for a specified service account\n// This sample code writes the response to a file named GetRCDResponse.json in the same directory as the script.\n/* \nTested with Versions:\nNode v20.11.1\naxios v1.6.7\n*/\nconst axios = require('axios');\nconst fs = require('fs').promises;\n\n// This API uses v1 of the HME DXS Management API, please refer on the left for the parameter details\n// Change the values of the following variables to your own values\nconst apiParams = {\n  baseUrl: 'https://api.hmecloud.com/dxs/v1/rcd/report',\n  service_account: 'Service Account Example',\n  auth_key: '11111111-2222-3333-4444-555555555555',\n  account_email: 'test@test.com',\n  includePullOuts: true,\n  storeNumberList: [\"123456\"],\n  includeIndependents: false,\n  startDateTime: '2024-01-01T12:00:00.000Z',\n  endDateTime: '2024-01-02T12:00:08.000Z',\n  limit: 1000,\n  offset: 0\n};\n\n// Function to make the HTTP GET request\nasync function makeGetRequest(params) {\n  const apiUrl = `${params.baseUrl}?IncludePullOuts=${params.includePullOuts}&StoreNumberList=${encodeURIComponent(JSON.stringify(params.storeNumberList))}&IncludeIndependents=${params.includeIndependents}&StartDateTime=${params.startDateTime}&EndDateTime=${params.endDateTime}&limit=${params.limit}&offset=${params.offset}`;\n  const headers = {\n    'service-account': params.service_account,\n    'auth-key': params.auth_key,\n    'account-email': params.account_email\n  };\n\n  try {\n    const response = await axios.get(apiUrl, { headers });\n\n    // Write the response to a file\n    await fs.writeFile('GetRCDResponse.json', JSON.stringify(response.data, null, 2));\n\n  } catch (error) {\n    // Handle any errors that occurred during the request\n    console.error('Error:');\n    console.error('Status Code:',error.response.status);\n    console.error('Message:',error.response.data);\n  }\n}\n\n// Calling the function to make the request\nmakeGetRequest(apiParams);\n"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "StartDateTime",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The beginning date/time for filtering the returned car records.\\\nTimezone is optional, UTC assumed if no timezone is provided.\\\nThe earliest valid date is 90 days before current date.\\\nExample is 21 September 2022 6:00am Pacific Standard Time",
+            "example": "2022-09-21T06:00-08:00"
+          },
+          {
+            "name": "EndDateTime",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ending date/time for filtering the returned car records.\\\nTimezone is optional, UTC assumed if no timezone is provided.\\\nEndDateTime can be no more than 72 hours after the StartDateTime or an error will be returned.\\\nExample is 21 September 2022 10:00pm Pacific Standard Time",
+            "example": "2022-09-23T22:00-08:00"
+          },
+          {
+            "name": "StoreNumberList",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Store numbers to filter results. Defaults to all stores.",
+            "example": "[1122,3344,\"0011\"]"
+          },
+          {
+            "name": "BrandNames",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Brand names to filter results. Brand name string must match exactly with what is in the ZOOM/Nitro timer. Defaults to all brands.",
+            "example": "[\"HME\",\"ClearComm\"]"
+          },
+          {
+            "name": "IncludeIndependents",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Selects whether Independent events are included in results. Defaults to false.",
+            "example": "true"
+          },
+          {
+            "name": "IncludePullOuts",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Selects whether Pullout events are included in results. Defaults to false.",
+            "example": "true"
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Max number of car records to include in a single response.\\\nMax value of 5000\\\nDefaults to 5000",
+            "example": "1"
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Offset into the complete set of the starting record to be returned. Used to page through the full result set when the result size is larger than the Limit.\\\nDefaults to 0",
+            "example": "0"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Example report",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": {
+                    "total": 60,
+                    "moreData": true,
+                    "totalInSet": 1,
+                    "offsetNext": 1,
+                    "data": [
+                      {
+                        "RecordId": "5dcbe14acee9a76bd8d4ed82",
+                        "StoreNumber": "51",
+                        "LaneConfig": "Dual Lane",
+                        "Brand": "HME",
+                        "Events": [
+                          {
+                            "EventType": "Car_Departure",
+                            "DepartureTime": "2019-10-01T11:59:23-07:00",
+                            "Lane": 1,
+                            "Detectors": [
+                              {
+                                "EventName": "Menu Board",
+                                "TimeOnDetector": 10,
+                                "TimeInQueue": 26
+                              },
+                              {
+                                "EventName": "Greet",
+                                "TimeOnDetector": 10,
+                                "TimeInQueue": 0
+                              },
+                              {
+                                "EventName": "Service",
+                                "TimeOnDetector": 29,
+                                "TimeInQueue": 0
+                              }
+                            ],
+                            "TotalTimeInLane": 59,
+                            "QueueTimeInLane": 20,
+                            "Total2TimeInLane": 39,
+                            "Queue2TimeInLane": 0,
+                            "CarsInQueue": 3,
+                            "EvdCarId": "5da72c04-62ab-48e3-a235-d98128c208a6"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "status": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RawCarDataEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "key": "start_end_date_missed",
+                  "status": false,
+                  "details": []
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorKeyed"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "key": "no_stores_in_account",
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorKeyed"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "key": "Invalid start date. Please ensure the date is within last 90 days only.",
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorKeyed"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "example": {
+                  "key": "Attempts_limitation_exceeded",
+                  "status": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorKeyed"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "servers": [
+          {
+            "url": "https://api.hmecloud.com"
+          }
+        ]
+      },
+      "servers": [
+        {
+          "url": "https://api.hmecloud.com"
+        }
+      ]
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.hmecloud.com/",
+      "description": "Data Feed API Server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Requests"
+    },
+    {
+      "name": "Request limitations",
+      "description": "## Date range limitations\nData up to 90 days old is available to to be requested. Requests for older data will return the response error 422: \"Invalid start date. Please ensure the date is within last 90 days only.\"\n\nThe most recent data available is 15 minutes or more behind the time the request is received. Requests for more current data will be empty.\n\nTime difference between the requests StartDateTime and EndDateTime can be at most 72 hours. If a larger time window is requested the return response will be be error 400: \"dates_is_out_of_range\".\n\n## Number of request limitations\nThe API allows the same request, with all the same input parameters, to be sent 3 times within a 60 minute period. Any additional request with those parameters will return response error 429: \"Attempts_limitation_exceeded\".\n\nAdditionally, any requests coming in faster than 10 a second will also generate a 429 error response."
+    },
+    {
+      "name": "Event names",
+      "description": "\n| Event type    | ZOOM<br>Single lane| ZOOM<br>Y-lane| ZOOM<br>Dual lane| Nitro<br>Single Lane| Nitro<br>Y-lane or Mobile Lane| Nitro<br>Dual Lane|\n-|-|-|-|-|-|-\n| Pre-order     | Arrival<br>Pre-Alert<br>Pre-Loop<br>Pre-Warning|Arrival<br>Pre-Alert<br>Pre-Loop<br>Pre-Warning<br>Split 1<br>Split 2|Arrival 1<br>Arrival 2<br>Alert 1<br>Alert 2<br>Pre-Alert 1<br>Pre-Alert 2<br>Pre-Loop 1<br>Pre-Loop 2<br>Pre-Warning 1<br>Pre-Warning 2 |Pre Menu|Pre Menu1<br>Pre Menu2| Pre Menu1<br>Pre Menu2|\n|Order point| Menu Board<br>Menu Board1<br>Menu Board2<br>Menu 1<br>Menu 2<br>Order<br>Order 1<br>Order 2<br>Order Point<br>Order Point 1<br>Order Point 2 | Menu Board<br>Menu Board1<br>Menu Board2<br>Menu 1<br>Menu 2<br>Order<br>Order 1<br>Order 2<br>Order Point<br>Order Point 1<br>Order Point 2 | Menu Board1<br>Menu Board2<br>Menu 1<br>Menu 2<br>Order 1<br>Order 2<br>Order Point 1<br>Order Point 2|Menu Board|Menu Board1<br>Menu Board2| Menu1<br>Menu2|\n| Greet| Greet<br>Greet 1<br>Greet 2|Greet<br>Greet 1<br>Greet 2| Greet 1<br>Greet 2|Greet|Greet 1<br>Greet 2| Greet1<br>Greet2|\n| Merge|| Merge 1<br>Merge 2 ||| Merge1<br>Merge2 ||\n| Cashier| Cashier<br>Window 2|Cashier<br>Window 2|Cashier 1<br>Cashier 2| Cashier|Cashier| Cashier 1<br>Cashier 2|\n| Delivery|Delivery<br>Pickup<br>Pickup Window<br>Present<br>Presenter<br>Service<br>Window<br>Window 1<br>Window1|Delivery<br>Pickup<br>Pickup Window<br>Present<br>Presenter<br>Service<br>Window<br>Window 1<br>Window1|Delivery 1<br>Delivery 2<br>Present 1<br>Present 2<br>Service 1<br>Service 2| Service| Service | Service1<br>Service2|\n| Post-delivery | Wait Area<br>Pull Forward<br>Pull Forward 1<br>Pull Forward 2| Wait Area<br>Pull Forward<br>Pull Forward 1<br>Pull Forward 2| Pull Forward 1<br>Pull Forward 2| PF Window<br>Wait Area<br>Wait Area 1<br>Wait Area 2 | PF Window<br>Wait Area<br>Wait Area 1<br>Wait Area 2 | Wait Area 1<br>Wait Area 2<br>Wait Area 3<br>Wait Area 4 |\n| Independent   |||| Mobile<br>Mobile \\[1-15\\]**<br>** | Mobile<br>Mobile \\[1-15\\]| Mobile<br>Mobile \\[1-15\\]|\n"
+    },
+    {
+      "name": "FAQ",
+      "description": "1.  Can I include a timezone in the Start and End datetime parameters?\n    +  Yes, timezone can be included at the end.\n    +  Examples: 'Z' for UTC time; '-05:00' for EST; '-08:00' for PST. Daylight savings is not adjusted for in these times, and timezone value must be updated appropriately.\n2.  Are the parameter names in the request case sensitive?\n    +  Yes. A request with parameter name of 'offset' will not be recognized while the parameter name 'Offset' will be recognized.\n3.  What format should I use for the StoreNumberList?\n    +  An array of integers or an array of strings (with single or double quotes) is accepted. If a store number as it appears on the Cloud includes leading zeros (possible for Nitro timers only), then it must be a string and the leading zeros must be included.\n    +  Examples: [1001,245,9876]; [\"1001\",\"245\",\"9876\"]; [\"1001\",\"0245\",\"9876\"]\n4.  Does it matter what order the parameters are included in the request?\n    +  No, the order does not matter.\n5.  Data was requested and the returned response was 200:{\"data\": {\"total\": 0,...}. What does this mean?\n    +  It means that the Cloud data pool does not contain data that meet the requested parameters.\n    +  Reasons there may not be any data available:\n        +  Requested parameters are not correct\n        +  The timer is offline and has not uploaded data for the requested period\n        +  The timer did not record any valid Departure events during the requested period. This could be because there was no traffic through the drive-thru during that period, or all of the events could be exceptions (Pullins, Pullouts, Discards, etc). In this case, the Cloud Portal should be used to Remote Connect to the timer for verification.\n6.  Once I have retrieved data for a time range, will it ever be updated/added?\n    +  No, data is sent from the timer in a first-in-first-out fashion. If a store record with departure time A has been retrieved, no records for that store prior to time A will be added or modified.\n    +  However, if you request time range [A-C] and the DepartureTime of the last returned record was B, where A < B < C, then there could still be records added later in the range [B-C].\n7.  I received a response 429:\"attempts_limitation_exceeded\". What does that mean?\n    +  The Attempts_limitation_exceeded response comes back when you make the same request more than 3 times in 60 minutes. To avoid this, we recommend making changes to the requested Start or End times, or the Limit or Offset parameter. For initial development work and testing, it is recommended to set the Limit parameter to a lower number between 10 to 50. This limits the number of records returned in a single response to avoid dealing with large datasets when simply testing the processing. This can also be changed by 1 with each request to avoid the Attempts_limitation_exceeded error.\n    +  This response can also indicate that more than 10 requests per second have been made with the same auth-key no matter the parameters.\n\n8.  When I make a request, how long may it take to return?\n    +  The DXS API will time out after 230 seconds."
+    }
+  ]
+}
