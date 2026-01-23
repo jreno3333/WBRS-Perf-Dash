@@ -50,6 +50,35 @@ async function fetchWeather(latitude: number, longitude: number): Promise<{ temp
 // Helper to add delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Fetch historical daily weather (actual high/low for a specific date)
+async function fetchHistoricalWeather(latitude: number, longitude: number, date: string): Promise<{ highTemp: number; lowTemp: number; avgTemp: number; condition: string } | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    // Open-Meteo Archive API for historical daily data
+    const weatherUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${date}&end_date=${date}&daily=temperature_2m_max,temperature_2m_min,temperature_2m_mean,weather_code&temperature_unit=fahrenheit`;
+    const weatherRes = await fetch(weatherUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (weatherRes.ok) {
+      const weatherData = await weatherRes.json();
+      const daily = weatherData.daily;
+      if (daily && daily.temperature_2m_max?.[0] !== undefined) {
+        return {
+          highTemp: daily.temperature_2m_max[0],
+          lowTemp: daily.temperature_2m_min[0],
+          avgTemp: daily.temperature_2m_mean[0],
+          condition: getWeatherCondition(daily.weather_code?.[0] || 0),
+        };
+      }
+    }
+  } catch (e) {
+    // Silently handle timeout/network errors
+  }
+  return null;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -73,19 +102,42 @@ export async function registerRoutes(
       const restaurantsWithWeather = [...leaderboard.restaurants];
       
       if (isHistorical) {
-        // For historical dates, use stored weather
-        const storedWeather = await storage.getAllDailyWeather(targetDateStr);
-        const weatherMap = new Map(storedWeather.map(w => [w.restaurantId, w]));
-        
-        for (const r of restaurantsWithWeather) {
-          const weather = weatherMap.get(r.restaurantId);
-          if (weather) {
-            (r as any).weather = {
-              temp: parseFloat(String(weather.avgTemp || 0)),
-              condition: weather.condition || "clear",
-              humidity: weather.humidity || 0,
-              windSpeed: parseFloat(String(weather.windSpeed || 0)),
-            };
+        // For historical dates, fetch actual daily high/low from archive API
+        const batchSize = 5;
+        for (let i = 0; i < restaurantsWithWeather.length; i += batchSize) {
+          const batch = restaurantsWithWeather.slice(i, i + batchSize);
+          const weatherResults = await Promise.all(
+            batch.map(async (r) => {
+              const restaurant = restaurantMap.get(r.restaurantId);
+              if (restaurant?.latitude && restaurant?.longitude) {
+                return await fetchHistoricalWeather(
+                  parseFloat(String(restaurant.latitude)),
+                  parseFloat(String(restaurant.longitude)),
+                  targetDateStr
+                );
+              }
+              return null;
+            })
+          );
+          
+          // Assign historical weather results
+          for (let j = 0; j < batch.length; j++) {
+            const weather = weatherResults[j];
+            if (weather) {
+              (restaurantsWithWeather[i + j] as any).weather = {
+                temp: weather.avgTemp,
+                highTemp: weather.highTemp,
+                lowTemp: weather.lowTemp,
+                condition: weather.condition,
+                humidity: 0, // Not available in historical API
+                windSpeed: 0,
+              };
+            }
+          }
+          
+          // Small delay between batches
+          if (i + batchSize < restaurantsWithWeather.length) {
+            await delay(100);
           }
         }
       } else {

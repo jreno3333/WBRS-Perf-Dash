@@ -246,18 +246,30 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     data-testid={`badge-weather-${restaurant.restaurantId}`}
                   >
                     <WeatherIcon condition={restaurant.weather.condition} />
-                    <span>{Math.round(restaurant.weather.temp)}°F</span>
+                    {restaurant.weather.highTemp !== undefined ? (
+                      <span>{Math.round(restaurant.weather.highTemp)}°/{Math.round(restaurant.weather.lowTemp ?? 0)}°</span>
+                    ) : (
+                      <span>{Math.round(restaurant.weather.temp)}°F</span>
+                    )}
                   </Badge>
                   <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
                     <div className="font-medium capitalize">{restaurant.weather.condition}</div>
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <Droplets className="w-3 h-3" />
-                      {restaurant.weather.humidity}%
-                    </div>
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <Wind className="w-3 h-3" />
-                      {Math.round(restaurant.weather.windSpeed)} mph
-                    </div>
+                    {restaurant.weather.highTemp !== undefined ? (
+                      <div className="text-muted-foreground">
+                        High: {Math.round(restaurant.weather.highTemp)}°F / Low: {Math.round(restaurant.weather.lowTemp ?? 0)}°F
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Droplets className="w-3 h-3" />
+                          {restaurant.weather.humidity}%
+                        </div>
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Wind className="w-3 h-3" />
+                          {Math.round(restaurant.weather.windSpeed)} mph
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}

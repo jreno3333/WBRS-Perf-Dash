@@ -115,6 +115,8 @@ export interface RestaurantSales {
   revenuePorts?: string[] | null; // Revenue ports: dine_in, drive_thru, app, 3pd
   weather?: {
     temp: number;
+    highTemp?: number; // For historical data: actual daily high
+    lowTemp?: number;  // For historical data: actual daily low
     condition: string;
     humidity: number;
     windSpeed: number;
