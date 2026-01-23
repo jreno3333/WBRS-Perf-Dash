@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { restaurants, dailySales, hourlySales, scraperRuns } from '@shared/schema';
-import { eq, and, gte, lt } from 'drizzle-orm';
+import { restaurants, dailySales, hourlySales, scraperRuns, locationMapping, posOrders } from '@shared/schema';
+import { eq, and, gte, lt, sql } from 'drizzle-orm';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 interface SevenShiftsLocation {
@@ -807,6 +807,230 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Hourly sync failed:', errorMessage);
+    return { success: false, recordsScraped: 0, error: errorMessage };
+  }
+}
+
+// Hybrid sync: Uses Xenial POS for sales data + 7shifts for labor data
+// This removes the 24-hour constraint from 7shifts and provides real-time sales updates
+export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: boolean; recordsScraped: number; error?: string }> {
+  const accessToken = process.env.SEVENSHIFTS_API_TOKEN;
+  
+  if (!accessToken) {
+    return {
+      success: false,
+      recordsScraped: 0,
+      error: 'SEVENSHIFTS_API_TOKEN not configured',
+    };
+  }
+
+  try {
+    const api = new SevenShiftsAPI({ accessToken });
+    await api.getCompany();
+    
+    const locations = await api.getLocations();
+    
+    // Determine target date in Central timezone
+    let targetDate: Date;
+    let dateStr: string;
+    
+    if (date) {
+      targetDate = date;
+      dateStr = date.toISOString().split('T')[0];
+    } else {
+      dateStr = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+      targetDate = new Date(dateStr + 'T12:00:00.000Z');
+    }
+    
+    // Get all restaurants with their location mappings
+    const allRestaurants = await db.select().from(restaurants);
+    const allMappings = await db.select().from(locationMapping);
+    
+    // Build mapping from restaurant ID to Xenial store numbers
+    const restaurantToXenial = new Map<string, string>();
+    const sevenShiftsToRestaurant = new Map<string, string>();
+    for (const mapping of allMappings) {
+      if (mapping.restaurantId && mapping.xenialStoreNumber) {
+        restaurantToXenial.set(mapping.restaurantId, mapping.xenialStoreNumber);
+      }
+      if (mapping.restaurantId && mapping.sevenShiftsLocationId) {
+        sevenShiftsToRestaurant.set(mapping.sevenShiftsLocationId, mapping.restaurantId);
+      }
+    }
+    
+    // Build map for restaurant lookups by ID
+    const restaurantById = new Map(allRestaurants.map(r => [r.id, r]));
+    
+    console.log(`Xenial POS: ${restaurantToXenial.size} restaurants have Xenial mapping`);
+    
+    let recordsScraped = 0;
+    
+    for (const location of locations) {
+      // Use location_mapping to find restaurant (prefer mapping over name match)
+      let restaurant = sevenShiftsToRestaurant.has(String(location.id))
+        ? restaurantById.get(sevenShiftsToRestaurant.get(String(location.id))!)
+        : undefined;
+      
+      // Fallback to name matching if no mapping found
+      if (!restaurant) {
+        restaurant = allRestaurants.find(r => r.name === location.name);
+      }
+      
+      if (!restaurant) {
+        continue;
+      }
+      
+      const locationTimezone = restaurant.timezone || 'America/Chicago';
+      
+      // Get the date string in restaurant's local timezone for proper POS data lookup
+      const localDateStr = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: locationTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+      
+      // Use the same date for consistency (target date, not current date)
+      const posDateStr = dateStr;
+      
+      // Get POS sales for this restaurant using timezone-aware hour extraction
+      const xenialStoreNumber = restaurantToXenial.get(restaurant.id);
+      const restaurantSales = new Map<number, number>();
+      
+      if (xenialStoreNumber) {
+        // Fetch POS orders for this store with timezone-aware hour extraction
+        const startOfDay = new Date(posDateStr + 'T00:00:00.000Z');
+        const endOfDay = new Date(posDateStr + 'T23:59:59.999Z');
+        
+        // Extract hour in restaurant's local timezone using AT TIME ZONE
+        const posResults = await db
+          .select({
+            hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${locationTimezone})::int`,
+            totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+          })
+          .from(posOrders)
+          .where(
+            and(
+              eq(posOrders.storeNumber, xenialStoreNumber),
+              gte(posOrders.businessDate, startOfDay),
+              lt(posOrders.businessDate, endOfDay)
+            )
+          )
+          .groupBy(sql`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${locationTimezone})`);
+        
+        for (const row of posResults) {
+          restaurantSales.set(row.hour, Number(row.totalSales) || 0);
+        }
+      }
+      
+      const hasPosData = restaurantSales.size > 0;
+      
+      // If no POS data, skip this restaurant and keep existing hourly_sales data
+      // The original 7shifts hourly sync will have populated correct data
+      if (!hasPosData) {
+        console.log(`No POS data for ${restaurant.name} - skipping (will use existing 7shifts data)`);
+        continue;
+      }
+      
+      // Still need 7shifts for labor data (time punches, roles, operator schedules)
+      const timePunches = await api.getTimePunches(location.id, dateStr);
+      const roleMap = await api.getRoles(location.id);
+      const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
+      
+      // Get labor hours with position breakdown from 7shifts
+      const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
+      
+      // Get projected labor/sales from 7shifts for forecasting (and as fallback for sales)
+      const intervals = await api.getHourlySales(location.id, dateStr);
+      const projectedByHour = new Map<number, { projectedSales: number; projectedLabor: number; actualLabor: number; actualSales: number }>();
+      for (const interval of intervals) {
+        const hourMatch = interval.start.match(/T(\d{2}):/);
+        const hour = hourMatch ? parseInt(hourMatch[1]) : 0;
+        projectedByHour.set(hour, {
+          projectedSales: interval.projected_sales / 100,
+          projectedLabor: interval.projected_labor / 100,
+          actualLabor: interval.actual_labor / 100,
+          actualSales: interval.actual_sales / 100, // 7shifts sales as fallback
+        });
+      }
+      
+      // Determine which hours have data (POS sales, 7shifts sales, or labor)
+      const hoursWithData = new Set<number>();
+      Array.from(restaurantSales.keys()).forEach(h => hoursWithData.add(h));
+      Array.from(laborByHour.entries()).forEach(([h, labor]) => {
+        if (labor.totalHours > 0) hoursWithData.add(h);
+      });
+      Array.from(projectedByHour.keys()).forEach(h => hoursWithData.add(h));
+      
+      if (hoursWithData.size > 0) {
+        const dayStart = new Date(targetDate);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(targetDate);
+        dayEnd.setHours(23, 59, 59, 999);
+        
+        await db.transaction(async (tx) => {
+          // Delete existing hourly sales for this restaurant/date
+          await tx.delete(hourlySales)
+            .where(and(
+              eq(hourlySales.restaurantId, restaurant.id),
+              gte(hourlySales.salesDate, dayStart),
+              lt(hourlySales.salesDate, dayEnd)
+            ));
+          
+          // Insert new hourly records
+          for (const hour of Array.from(hoursWithData).sort((a, b) => a - b)) {
+            const posSales = restaurantSales.get(hour);
+            const hourLabor = laborByHour.get(hour) || { totalHours: 0, byPosition: {} };
+            const projected = projectedByHour.get(hour) || { projectedSales: 0, projectedLabor: 0, actualLabor: 0, actualSales: 0 };
+            
+            // Use POS sales if available, otherwise fall back to 7shifts actualSales
+            const finalSales = posSales !== undefined ? posSales : projected.actualSales;
+            
+            // Round position hours
+            const roundedPositions: Record<string, number> = {};
+            for (const [pos, hrs] of Object.entries(hourLabor.byPosition)) {
+              roundedPositions[pos] = Math.round(hrs * 100) / 100;
+            }
+            
+            // Check if operator is scheduled
+            const hasOperator = api.hasOperatorScheduledForHour(scheduledShifts, roleMap, hour, locationTimezone, dateStr);
+            if (hasOperator) {
+              roundedPositions['_operatorScheduled'] = 1;
+            }
+            
+            await tx.insert(hourlySales).values({
+              restaurantId: restaurant.id,
+              salesDate: targetDate,
+              hour,
+              actualSales: finalSales.toFixed(2),
+              projectedSales: projected.projectedSales.toFixed(2),
+              pastActualSales: '0.00',
+              projectedLabor: projected.projectedLabor.toFixed(2),
+              actualLabor: projected.actualLabor.toFixed(2),
+              employeeCount: (Math.round(hourLabor.totalHours * 100) / 100).toFixed(2),
+              positionBreakdown: roundedPositions,
+            });
+            
+            recordsScraped++;
+          }
+        });
+        
+        const posHours = restaurantSales.size;
+        console.log(`Synced ${hoursWithData.size} hours for ${location.name} (${posHours > 0 ? posHours + ' POS' : '7shifts'} sales, ${timePunches.length} punches)`);
+      }
+    }
+    
+    console.log(`Xenial + 7shifts hybrid sync completed. ${recordsScraped} records saved.`);
+    return { success: true, recordsScraped };
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Hybrid sync failed:', errorMessage);
     return { success: false, recordsScraped: 0, error: errorMessage };
   }
 }

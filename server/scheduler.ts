@@ -1,4 +1,4 @@
-import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales } from "./scraper/7shifts-api";
+import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, syncSalesWithXenialPOS } from "./scraper/7shifts-api";
 import { syncHMETimerData } from "./scraper/hme-api";
 import { db } from "./db";
 import { dailySales, hourlySales, restaurants } from "@shared/schema";
@@ -78,21 +78,27 @@ async function runScheduledSync() {
     return;
   }
   
-  log("Starting scheduled 7shifts sync...");
+  log("Starting scheduled sales sync (Xenial POS + 7shifts labor)...");
   
   try {
+    // First, run the 7shifts daily/hourly sync to get data for all restaurants
+    // This provides the baseline data from 7shifts
     const dailyResult = await fetchSalesFromAPI();
     if (dailyResult.success) {
       log(`Daily sync completed: ${dailyResult.recordsScraped} records updated`);
-    } else {
-      log(`Daily sync failed: ${dailyResult.error}`);
     }
-    
     const hourlyResult = await fetchHourlySalesFromAPI();
     if (hourlyResult.success) {
       log(`Hourly sync completed: ${hourlyResult.recordsScraped} hourly records updated`);
-    } else {
-      log(`Hourly sync failed: ${hourlyResult.error}`);
+    }
+    
+    // Then, overlay with Xenial POS data for restaurants that have it
+    // This provides real-time sales updates for POS-connected restaurants
+    const hybridResult = await syncSalesWithXenialPOS();
+    if (hybridResult.success && hybridResult.recordsScraped > 0) {
+      log(`Xenial POS overlay: ${hybridResult.recordsScraped} records updated with real-time sales`);
+    } else if (!hybridResult.success) {
+      log(`Xenial POS overlay skipped: ${hybridResult.error}`);
     }
     
     // Sync HME drive-thru timer data
