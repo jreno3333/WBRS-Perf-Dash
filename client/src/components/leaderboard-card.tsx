@@ -549,7 +549,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
                       <div className="text-blue-600 dark:text-blue-400">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
                       {hour.avgServiceTime && (
-                        <div className="text-cyan-600 dark:text-cyan-400">
+                        <div className={
+                          hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
+                          hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
+                          "text-green-600 dark:text-green-400"
+                        }>
                           SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
                         </div>
                       )}
