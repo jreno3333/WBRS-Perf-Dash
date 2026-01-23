@@ -81,6 +81,24 @@ function getExecutionGrade(
   return gradeTable[key] || { grade: '-', color: 'text-muted-foreground' };
 }
 
+// Convert letter grade to numeric score for averaging
+function gradeToScore(grade: string): number {
+  const scores: Record<string, number> = {
+    'A+': 100, 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'F': 50
+  };
+  return scores[grade] ?? 0;
+}
+
+// Convert average score back to letter grade
+function scoreToGrade(score: number): { grade: string; color: string } {
+  if (score >= 95) return { grade: 'A+', color: 'text-green-600 dark:text-green-400' };
+  if (score >= 85) return { grade: 'A', color: 'text-green-600 dark:text-green-400' };
+  if (score >= 75) return { grade: 'B', color: 'text-blue-600 dark:text-blue-400' };
+  if (score >= 65) return { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' };
+  if (score >= 55) return { grade: 'D', color: 'text-orange-600 dark:text-orange-400' };
+  return { grade: 'F', color: 'text-red-600 dark:text-red-400' };
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
@@ -215,6 +233,21 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     1
   );
   
+  // Calculate overall execution grade from hourly grades
+  const hourlyGradeScores = activeHours.map(hour => {
+    const isAhead = hour.todaySales >= hour.lastWeekSales;
+    const staffing = getStaffingBreakdown(hour.todaySales, hour.hour);
+    const actualStaff = hour.employeeCount || 0;
+    const staffingDiff = actualStaff - staffing.total;
+    const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+    return gradeToScore(gradeInfo.grade);
+  }).filter(score => score > 0);
+  
+  const overallScore = hourlyGradeScores.length > 0 
+    ? hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length 
+    : 0;
+  const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
+  
   // No in-progress hour needed since we only show completed hours now
 
   return (
@@ -272,6 +305,16 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 <Clock className="w-3 h-3 mr-1" />
                 {getTimezoneDisplay(restaurant.timezone, restaurant.normalizedHour)}
               </Badge>
+              {/* Overall Execution Grade */}
+              {overallGrade && (
+                <Badge 
+                  variant="outline" 
+                  className={`flex-shrink-0 text-xs font-bold ${overallGrade.color} border-current`}
+                  data-testid={`badge-grade-${restaurant.restaurantId}`}
+                >
+                  {overallGrade.grade} ({hourlyGradeScores.length}hr)
+                </Badge>
+              )}
               {/* Revenue Port Badges - Only show enabled ports */}
               {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
                 <div className="flex items-center gap-1">
