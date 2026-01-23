@@ -99,12 +99,18 @@ export async function registerRoutes(
       const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
       // Use the input date string directly if provided, otherwise use today
       const targetDateStr = date ? (date as string) : todayStr;
-      const isHistorical = targetDateStr !== todayStr;
+      
+      // Calculate days ago - archive API needs 3+ days for reliable observed data
+      const today = new Date(todayStr + 'T12:00:00');
+      const target = new Date(targetDateStr + 'T12:00:00');
+      const daysDiff = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+      // Only use historical API for dates 3+ days old (archive data needs time to be accurate)
+      const useHistoricalWeather = daysDiff >= 3;
       
       const restaurantsWithWeather = [...leaderboard.restaurants];
       
-      if (isHistorical) {
-        // For historical dates, fetch actual daily high/low from archive API
+      if (useHistoricalWeather) {
+        // For older historical dates (3+ days), fetch actual daily high/low from archive API
         const batchSize = 5;
         for (let i = 0; i < restaurantsWithWeather.length; i += batchSize) {
           const batch = restaurantsWithWeather.slice(i, i + batchSize);
