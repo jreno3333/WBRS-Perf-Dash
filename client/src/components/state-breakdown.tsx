@@ -1,10 +1,63 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, MapPin } from "lucide-react";
-import type { RestaurantSales } from "@shared/schema";
+import type { RestaurantSales, HourlySalesData } from "@shared/schema";
+import { getStaffingBreakdown } from "@/lib/labor-model";
 
 interface StateBreakdownProps {
   restaurants: RestaurantSales[];
+  hourlyByRestaurant?: Record<string, HourlySalesData[]>;
+}
+
+// Grade scoring for X-Score calculation
+const gradeToScore = (grade: string): number => {
+  const scores: Record<string, number> = { 'A+': 100, 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'F': 50 };
+  return scores[grade] || 0;
+};
+
+const scoreToGrade = (score: number): string => {
+  if (score >= 95) return 'A+';
+  if (score >= 85) return 'A';
+  if (score >= 75) return 'B';
+  if (score >= 65) return 'C';
+  if (score >= 55) return 'D';
+  return 'F';
+};
+
+function getExecutionGrade(salesUp: boolean, avgServiceTime: number | undefined, staffingDiff: number): string {
+  const speed = !avgServiceTime ? 'GREEN' : avgServiceTime <= 300 ? 'GREEN' : avgServiceTime <= 420 ? 'YELLOW' : 'RED';
+  const staffing = staffingDiff > 1 ? 'OVER' : staffingDiff < -1 ? 'UNDER' : 'PROPER';
+  const scores: Record<string, string> = {
+    'UP-GREEN-PROPER': 'A+', 'UP-GREEN-UNDER': 'A', 'UP-GREEN-OVER': 'B',
+    'UP-YELLOW-PROPER': 'A', 'UP-YELLOW-UNDER': 'B', 'UP-YELLOW-OVER': 'C',
+    'UP-RED-PROPER': 'B', 'UP-RED-UNDER': 'C', 'UP-RED-OVER': 'D',
+    'DOWN-GREEN-PROPER': 'B', 'DOWN-GREEN-UNDER': 'C', 'DOWN-GREEN-OVER': 'D',
+    'DOWN-YELLOW-PROPER': 'C', 'DOWN-YELLOW-UNDER': 'D', 'DOWN-YELLOW-OVER': 'F',
+    'DOWN-RED-PROPER': 'D', 'DOWN-RED-UNDER': 'F', 'DOWN-RED-OVER': 'F',
+  };
+  return scores[`${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`] ?? 'C';
+}
+
+function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>): { grade: string; hoursGraded: number } {
+  const allScores: number[] = [];
+  if (hourlyByRestaurant) {
+    for (const restaurantId of restaurantIds) {
+      const hours = hourlyByRestaurant[restaurantId];
+      if (!hours) continue;
+      for (const hour of hours) {
+        if (hour.label === "Early Bird") continue;
+        const isAhead = hour.todaySales >= hour.lastWeekSales;
+        const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+        const actualStaff = Number(hour.employeeCount) || 0;
+        const staffingDiff = actualStaff - staffing.total;
+        const grade = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+        const score = gradeToScore(grade);
+        if (score > 0) allScores.push(score);
+      }
+    }
+  }
+  const avgScore = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
+  return { grade: scoreToGrade(avgScore), hoursGraded: allScores.length };
 }
 
 const TENNESSEE_STORES = [
@@ -16,7 +69,7 @@ const TENNESSEE_STORES = [
   "1729 - Sevierville"
 ];
 
-export function StateBreakdown({ restaurants }: StateBreakdownProps) {
+export function StateBreakdown({ restaurants, hourlyByRestaurant }: StateBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -50,6 +103,23 @@ export function StateBreakdown({ restaurants }: StateBreakdownProps) {
     ? ((tennesseeTodaySales / tennesseeLastWeekSales) - 1) * 100 
     : 0;
 
+  // Calculate X-Scores for each state
+  const alabamaXScore = calculateStateXScore(
+    alabamaRestaurants.map(r => r.restaurantId),
+    hourlyByRestaurant
+  );
+  const tennesseeXScore = calculateStateXScore(
+    tennesseeRestaurants.map(r => r.restaurantId),
+    hourlyByRestaurant
+  );
+
+  const getGradeColor = (grade: string) => {
+    if (grade === 'A+' || grade === 'A') return 'text-green-600 dark:text-green-400 bg-green-500/20 border-green-500/50';
+    if (grade === 'B') return 'text-blue-600 dark:text-blue-400 bg-blue-500/20 border-blue-500/50';
+    if (grade === 'C') return 'text-yellow-600 dark:text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
+    return 'text-red-600 dark:text-red-400 bg-red-500/20 border-red-500/50';
+  };
+
   const states = [
     {
       name: "Alabama",
@@ -60,6 +130,7 @@ export function StateBreakdown({ restaurants }: StateBreakdownProps) {
       aheadCount: alabamaAheadCount,
       totalCount: alabamaRestaurants.length,
       isAhead: alabamaVariance >= 0,
+      xScore: alabamaXScore,
     },
     {
       name: "Tennessee",
@@ -70,6 +141,7 @@ export function StateBreakdown({ restaurants }: StateBreakdownProps) {
       aheadCount: tennesseeAheadCount,
       totalCount: tennesseeRestaurants.length,
       isAhead: tennesseeVariance >= 0,
+      xScore: tennesseeXScore,
     },
   ];
 
@@ -98,18 +170,25 @@ export function StateBreakdown({ restaurants }: StateBreakdownProps) {
                 </Badge>
               )}
             </div>
-            <div className="flex items-baseline justify-between">
+            <div className="flex items-center justify-between">
               <div>
                 <div className="text-2xl font-bold">{formatCurrency(state.todaySales)}</div>
                 <div className="text-xs text-muted-foreground">
                   vs {formatCurrency(state.lastWeekSales)} last week
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-lg font-semibold">
-                  {state.aheadCount}/{state.totalCount}
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <div className="text-lg font-semibold">
+                    {state.aheadCount}/{state.totalCount}
+                  </div>
+                  <div className="text-xs text-muted-foreground">ahead of LW</div>
                 </div>
-                <div className="text-xs text-muted-foreground">ahead of LW</div>
+                {state.xScore.hoursGraded > 0 && (
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getGradeColor(state.xScore.grade)}`}>
+                    <span className="text-lg font-bold">{state.xScore.grade}</span>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>

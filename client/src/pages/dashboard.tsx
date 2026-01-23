@@ -388,7 +388,7 @@ export default function Dashboard() {
             />
 
             {/* State Breakdown */}
-            <StateBreakdown restaurants={leaderboardData.restaurants} />
+            <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} />
 
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
