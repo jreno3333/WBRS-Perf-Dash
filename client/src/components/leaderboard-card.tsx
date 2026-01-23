@@ -437,9 +437,15 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   <div className="w-2 h-2 rounded-sm bg-red-500" />
                   Below
                 </span>
+                {activeHours.some(h => h.avgServiceTime) && (
+                  <span className="flex items-center gap-1">
+                    <div className="w-3 h-0.5 bg-cyan-500" />
+                    SOS
+                  </span>
+                )}
               </div>
             </div>
-            <div className="flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
+            <div className="relative flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
               {activeHours.map((hour) => {
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
@@ -463,10 +469,39 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       <div className="font-medium">{hour.label}</div>
                       <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
                       <div className="text-blue-600 dark:text-blue-400">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
+                      {hour.avgServiceTime && (
+                        <div className="text-cyan-600 dark:text-cyan-400">
+                          SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
+              {/* SOS Line Overlay */}
+              {activeHours.some(h => h.avgServiceTime) && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+                  <polyline
+                    fill="none"
+                    stroke="rgb(6, 182, 212)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    points={activeHours
+                      .map((hour, idx) => {
+                        if (!hour.avgServiceTime) return null;
+                        const x = ((idx + 0.5) / activeHours.length) * 100;
+                        // Scale: 0-600s maps to chart height (600s = 10min max for display)
+                        const maxTime = 600;
+                        const normalizedTime = Math.min(hour.avgServiceTime, maxTime) / maxTime;
+                        const y = (1 - normalizedTime) * 100;
+                        return `${x}%,${y}%`;
+                      })
+                      .filter(Boolean)
+                      .join(' ')}
+                  />
+                </svg>
+              )}
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
               <span>{activeHours[0]?.label || ""}</span>
