@@ -236,7 +236,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
   // Calculate overall execution grade from hourly grades
   const hourlyGradeScores = activeHours.map(hour => {
     const isAhead = hour.todaySales >= hour.lastWeekSales;
-    const staffing = getStaffingBreakdown(hour.todaySales, hour.hour);
+    const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
     const actualStaff = hour.employeeCount || 0;
     const staffingDiff = actualStaff - staffing.total;
     const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
@@ -545,7 +545,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             <div className="flex gap-0.5 mb-1">
               {activeHours.map((hour) => {
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
-                const staffing = getStaffingBreakdown(hour.todaySales, hour.hour);
+                const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = hour.employeeCount || 0;
                 const staffingDiff = actualStaff - staffing.total;
                 const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
@@ -567,7 +567,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
-                const staffing = getStaffingBreakdown(hour.todaySales, hour.hour);
+                const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = hour.employeeCount || 0;
                 const staffingDiff = actualStaff - staffing.total;
                 const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
