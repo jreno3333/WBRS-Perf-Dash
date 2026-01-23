@@ -162,9 +162,10 @@ export default function Dashboard() {
   };
 
   // Helper to check if restaurant has missing manager (will be computed from hourly data)
+  // Operators don't punch in but are considered leaders if scheduled
   const hasMissingManager = (restaurantId: string) => {
     const data = hourlyByRestaurant?.[restaurantId] || [];
-    // Check if any hour with labor has no manager/shift supervisor
+    // Check if any hour with labor has no manager/shift supervisor/operator
     return data.some((hour: HourlySalesData) => {
       const laborHours = Number(hour.employeeCount) || 0;
       if (laborHours === 0) return false;
@@ -172,7 +173,8 @@ export default function Dashboard() {
       const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
       const hasManager = positionKeys.some(p => p.includes("manager"));
       const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
-      return !hasManager && !hasShiftSupervisor;
+      const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
+      return !hasManager && !hasShiftSupervisor && !hasOperatorScheduled;
     });
   };
 
@@ -382,6 +384,7 @@ export default function Dashboard() {
             <SummaryCards 
               restaurants={leaderboardData.restaurants} 
               lastUpdated={leaderboardData.lastUpdated}
+              hourlyByRestaurant={hourlyByRestaurant}
             />
 
             {/* State Breakdown */}

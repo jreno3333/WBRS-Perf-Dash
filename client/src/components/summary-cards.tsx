@@ -1,13 +1,44 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, TrendingUp, TrendingDown, Store, Target } from "lucide-react";
-import type { RestaurantSales } from "@shared/schema";
+import type { RestaurantSales, HourlySalesData } from "@shared/schema";
+import { getStaffingBreakdown } from "@/lib/labor-model";
 
 interface SummaryCardsProps {
   restaurants: RestaurantSales[];
   lastUpdated: string;
+  hourlyByRestaurant?: Record<string, HourlySalesData[]>;
 }
 
-export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
+// Grade scoring for X-Score calculation
+const gradeToScore = (grade: string): number => {
+  const scores: Record<string, number> = { 'A+': 100, 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'F': 50 };
+  return scores[grade] || 0;
+};
+
+const scoreToGrade = (score: number): string => {
+  if (score >= 95) return 'A+';
+  if (score >= 85) return 'A';
+  if (score >= 75) return 'B';
+  if (score >= 65) return 'C';
+  if (score >= 55) return 'D';
+  return 'F';
+};
+
+function getExecutionGrade(salesUp: boolean, avgServiceTime: number | undefined, staffingDiff: number): string {
+  const speed = !avgServiceTime ? 'GREEN' : avgServiceTime <= 300 ? 'GREEN' : avgServiceTime <= 420 ? 'YELLOW' : 'RED';
+  const staffing = staffingDiff > 1 ? 'OVER' : staffingDiff < -1 ? 'UNDER' : 'PROPER';
+  const scores: Record<string, string> = {
+    'UP-GREEN-PROPER': 'A+', 'UP-GREEN-UNDER': 'A', 'UP-GREEN-OVER': 'B',
+    'UP-YELLOW-PROPER': 'A', 'UP-YELLOW-UNDER': 'B', 'UP-YELLOW-OVER': 'C',
+    'UP-RED-PROPER': 'B', 'UP-RED-UNDER': 'C', 'UP-RED-OVER': 'D',
+    'DOWN-GREEN-PROPER': 'B', 'DOWN-GREEN-UNDER': 'C', 'DOWN-GREEN-OVER': 'D',
+    'DOWN-YELLOW-PROPER': 'C', 'DOWN-YELLOW-UNDER': 'D', 'DOWN-YELLOW-OVER': 'F',
+    'DOWN-RED-PROPER': 'D', 'DOWN-RED-UNDER': 'F', 'DOWN-RED-OVER': 'F',
+  };
+  return scores[`${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`] ?? 'C';
+}
+
+export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: SummaryCardsProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -46,8 +77,37 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
     : 0;
   const lwDollarDiff = totalTodaySales - totalLastWeekSales;
 
-  // Count stores ahead of last week (vs forecast comparison) - exclude training
-  const aheadOfForecastCount = activeRestaurants.filter((r) => r.todaySales >= r.forecastSales).length;
+  // Calculate overall execution score across all restaurants
+  const allHourlyScores: number[] = [];
+  if (hourlyByRestaurant) {
+    for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
+      // Skip training units
+      const restaurant = activeRestaurants.find(r => r.restaurantId === restaurantId);
+      if (!restaurant) continue;
+      
+      for (const hour of hours) {
+        // Skip Early Bird hours
+        if (hour.label === "Early Bird") continue;
+        
+        const isAhead = hour.todaySales >= hour.lastWeekSales;
+        const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+        const actualStaff = Number(hour.employeeCount) || 0;
+        const staffingDiff = actualStaff - staffing.total;
+        const grade = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+        const score = gradeToScore(grade);
+        if (score > 0) allHourlyScores.push(score);
+      }
+    }
+  }
+  
+  const overallXScore = allHourlyScores.length > 0 
+    ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length 
+    : 0;
+  const overallGrade = scoreToGrade(overallXScore);
+  const gradeColor = overallGrade === 'A+' || overallGrade === 'A' ? 'text-green-600 dark:text-green-400' 
+    : overallGrade === 'B' ? 'text-blue-600 dark:text-blue-400' 
+    : overallGrade === 'C' ? 'text-yellow-600 dark:text-yellow-400'
+    : 'text-red-600 dark:text-red-400';
 
   // Calculate projected daily: sum of all restaurant forecast sales
   // Each restaurant's forecastSales = actual + LW remaining hours (same methodology)
@@ -99,8 +159,8 @@ export function SummaryCards({ restaurants, lastUpdated }: SummaryCardsProps) {
                   <span className="text-muted-foreground"> behind last week</span>
                 </p>
                 <p className="text-sm">
-                  <span className="font-bold text-green-600 dark:text-green-400">{aheadOfForecastCount}</span>
-                  <span className="text-muted-foreground"> ahead of forecast</span>
+                  <span className={`font-bold ${gradeColor}`}>{overallGrade}</span>
+                  <span className="text-muted-foreground"> overall execution</span>
                 </p>
               </div>
             </div>

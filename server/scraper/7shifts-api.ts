@@ -86,6 +86,25 @@ interface LaborByHour {
   byPosition: Record<string, number>; // e.g., { "Grill": 2.5, "Counter": 1.5 }
 }
 
+interface ScheduledShift {
+  id: number;
+  user_id: number;
+  location_id: number;
+  department_id: number;
+  role_id: number;
+  start: string;  // ISO timestamp
+  end: string;    // ISO timestamp
+}
+
+interface ShiftsResponse {
+  data: ScheduledShift[];
+  meta: {
+    cursor?: {
+      next?: string;
+    };
+  };
+}
+
 interface ApiConfig {
   accessToken: string;
   companyId?: number;
@@ -241,6 +260,56 @@ export class SevenShiftsAPI {
       console.error(`Error fetching roles for location ${locationId}:`, error);
       return roleMap;
     }
+  }
+
+  // Fetch scheduled shifts for a location on a specific date
+  // Returns scheduled shifts with role information to check for operators
+  async getScheduledShifts(locationId: number, date: string): Promise<ScheduledShift[]> {
+    if (!this.companyId) {
+      await this.getCompany();
+    }
+
+    const allShifts: ScheduledShift[] = [];
+    
+    try {
+      // Fetch shifts for the target date
+      const startDate = `${date}T00:00:00`;
+      const endDate = `${date}T23:59:59`;
+      
+      const response = await this.request<ShiftsResponse>(
+        `/v2/company/${this.companyId}/shifts?location_id=${locationId}&start[gte]=${startDate}&end[lte]=${endDate}&limit=500`
+      );
+      
+      allShifts.push(...(response.data || []));
+      
+      return allShifts;
+    } catch (error) {
+      console.error(`Error fetching scheduled shifts for location ${locationId}:`, error);
+      return allShifts;
+    }
+  }
+
+  // Check if an operator is scheduled for a specific hour
+  // Operators don't punch in, so we check the schedule instead
+  hasOperatorScheduledForHour(shifts: ScheduledShift[], roleMap: Map<number, string>, hour: number, timezone: string, date: string): boolean {
+    for (const shift of shifts) {
+      const roleName = roleMap.get(shift.role_id)?.toLowerCase() || '';
+      if (roleName.includes('operator')) {
+        // Check if this shift covers the given hour
+        const shiftStart = new Date(shift.start);
+        const shiftEnd = new Date(shift.end);
+        
+        // Convert hour to the same timezone for comparison
+        const hourStart = fromZonedTime(`${date}T${hour.toString().padStart(2, '0')}:00:00`, timezone);
+        const hourEnd = fromZonedTime(`${date}T${hour.toString().padStart(2, '0')}:59:59`, timezone);
+        
+        // Check if shift overlaps with this hour
+        if (shiftStart <= hourEnd && shiftEnd >= hourStart) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Calculate total labor hours worked for each hour based on time punches
@@ -671,6 +740,9 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       // Fetch roles to map role_id to position names
       const roleMap = await api.getRoles(location.id);
       
+      // Fetch scheduled shifts to check for operators (they don't punch in)
+      const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
+      
       // Get labor hours WITH position breakdown
       const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
       
@@ -699,6 +771,13 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
             const roundedPositions: Record<string, number> = {};
             for (const [pos, hrs] of Object.entries(hourLabor.byPosition)) {
               roundedPositions[pos] = Math.round(hrs * 100) / 100;
+            }
+            
+            // Check if an operator is scheduled for this hour (they don't punch in)
+            const hasOperator = api.hasOperatorScheduledForHour(scheduledShifts, roleMap, hour, locationTimezone, dateStr);
+            if (hasOperator) {
+              // Store operator presence as a special flag in position breakdown
+              roundedPositions['_operatorScheduled'] = 1;
             }
             
             await tx.insert(hourlySales).values({

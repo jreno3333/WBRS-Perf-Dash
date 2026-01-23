@@ -685,12 +685,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 </div>
               </div>
               <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
-                {processedHours.map((hour) => {
-                  // Early Bird hours are excluded from staffing display - not meaningful
-                  // Eastern units: hours 0-8, Central units: hours 0-6
-                  const isEarlyBirdHour = hour.label === "Early Bird" || hour.hour <= earlyBirdEndHour;
+                {activeHours.map((hour) => {
+                  // Early Bird hours are combined - staffing data isn't meaningful
+                  const isEarlyBird = hour.label === "Early Bird";
                   
-                  if (isEarlyBirdHour) {
+                  if (isEarlyBird) {
                     return (
                       <div
                         key={`staff-${hour.hour}`}
@@ -738,11 +737,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       : "bg-yellow-500 dark:bg-yellow-400";
                   
                   // Check for missing manager/shift supervisor
+                  // Operators don't punch in but are considered leaders if scheduled
                   const positions = hour.positionBreakdown || {};
                   const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
                   const hasManager = positionKeys.some(p => p.includes("manager"));
                   const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
-                  const missingLeadership = !hasManager && !hasShiftSupervisor && laborHours > 0;
+                  const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
+                  const missingLeadership = !hasManager && !hasShiftSupervisor && !hasOperatorScheduled && laborHours > 0;
                   
                   return (
                     <div
