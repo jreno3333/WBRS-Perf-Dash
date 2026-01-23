@@ -222,7 +222,16 @@ export async function registerRoutes(
   // Get map data with restaurant locations and weather
   app.get("/api/map-data", async (req, res) => {
     try {
-      const targetDate = new Date();
+      // Use date parameter if provided, otherwise use today in Central timezone
+      const { date } = req.query;
+      let targetDate: Date;
+      if (date) {
+        targetDate = new Date(date as string);
+      } else {
+        // Get today's date in Central timezone for consistent business day
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+        targetDate = new Date(`${todayStr}T12:00:00Z`);
+      }
       const leaderboard = await storage.getLeaderboard(targetDate);
       const restaurantList = await storage.getRestaurants();
       
