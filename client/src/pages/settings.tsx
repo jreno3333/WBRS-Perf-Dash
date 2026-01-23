@@ -482,24 +482,28 @@ function HMESyncCard() {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/hme/sync", {});
+      const response = await apiRequest("POST", "/api/hme/sync", {});
+      return response.json() as Promise<{ message: string; status: string; saved: number; errors: string[] }>;
     },
-    onSuccess: () => {
-      setLastSyncResult("success");
+    onSuccess: (data) => {
+      setLastSyncResult(data.saved > 0 ? "success" : "warning");
       toast({
-        title: "HME Sync Started",
-        description: "Drive-thru timer data sync has been triggered. Data will update shortly.",
+        title: data.saved > 0 ? "HME Sync Completed" : "Sync Completed - No Data",
+        description: data.saved > 0 
+          ? `Successfully synced ${data.saved} hourly records.${data.errors.length > 0 ? ` (${data.errors.length} warnings)` : ""}`
+          : data.errors.length > 0 
+            ? `No data saved. Issues: ${data.errors.slice(0, 3).join(", ")}${data.errors.length > 3 ? "..." : ""}`
+            : "No drive-thru data available for the last 6 hours.",
+        variant: data.saved > 0 ? "default" : "destructive",
       });
-      setTimeout(() => {
-        refetchStatus();
-        queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
-      }, 5000);
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
     },
     onError: (error) => {
       setLastSyncResult("error");
       toast({
         title: "Sync Failed",
-        description: error instanceof Error ? error.message : "Failed to trigger HME sync.",
+        description: error instanceof Error ? error.message : "Failed to sync HME data.",
         variant: "destructive",
       });
     },

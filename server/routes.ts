@@ -841,17 +841,19 @@ export async function registerRoutes(
       const { date } = req.body || {};
       const targetDate = date ? new Date(date) : undefined;
 
-      res.json({ message: "HME sync started", status: "running" });
-
       const { syncHMETimerData } = await import("./scraper/hme-api");
-      syncHMETimerData(targetDate).then(result => {
-        console.log("[HME] Sync completed:", result);
-      }).catch(err => {
-        console.error("[HME] Sync error:", err);
+      const result = await syncHMETimerData(targetDate);
+      console.log("[HME] Sync completed:", result);
+      
+      res.json({ 
+        message: result.saved > 0 ? "HME sync completed successfully" : "HME sync completed but no data saved",
+        status: "completed",
+        saved: result.saved,
+        errors: result.errors 
       });
-    } catch (error) {
-      console.error("Error starting HME sync:", error);
-      res.status(500).json({ error: "Failed to start HME sync" });
+    } catch (error: any) {
+      console.error("Error during HME sync:", error);
+      res.status(500).json({ error: error.message || "Failed to sync HME data" });
     }
   });
 
