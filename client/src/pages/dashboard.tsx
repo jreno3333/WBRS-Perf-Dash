@@ -210,7 +210,7 @@ export default function Dashboard() {
                 <Trophy className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">MWB Unit Ticker</h1>
+                <h1 className="text-xl font-bold">MWB Executive</h1>
                 <div className="flex items-center gap-2">
                   <Button 
                     variant="ghost" 
