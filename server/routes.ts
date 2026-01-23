@@ -254,6 +254,12 @@ export async function registerRoutes(
           }
         }
         
+        // Get sales values
+        const todaySales = salesData?.todaySales || 0;
+        const lastWeekSales = salesData?.lastWeekSales || 0;
+        // Calculate isAheadOfPace directly from sales values for consistency
+        const isAheadOfPace = todaySales >= lastWeekSales;
+        
         mapData.push({
           id: restaurant.id,
           name: restaurant.name,
@@ -261,9 +267,9 @@ export async function registerRoutes(
           address: restaurant.address || "",
           latitude: parseFloat(restaurant.latitude as string),
           longitude: parseFloat(restaurant.longitude as string),
-          todaySales: salesData?.todaySales || 0,
-          lastWeekSales: salesData?.lastWeekSales || 0,
-          isAheadOfPace: salesData?.isAheadOfPace || false,
+          todaySales,
+          lastWeekSales,
+          isAheadOfPace,
           status,
           weather: null,
         });
