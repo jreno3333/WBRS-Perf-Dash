@@ -138,6 +138,9 @@ export interface HourlySalesData {
   employeeCount: number; // Number of employees on clock during this hour
   positionBreakdown?: Record<string, number>; // Hours by position: { "Manager": 1.5, "Team Member": 3.0 }
   label: string;
+  // HME drive-thru data
+  avgServiceTime?: number; // Window time in seconds (SOS)
+  carCount?: number; // Number of cars in that hour
 }
 
 export interface LeaderboardData {

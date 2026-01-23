@@ -13,7 +13,8 @@ import {
   hourlySales,
   scraperRuns,
   posOrders,
-  dailyWeather
+  dailyWeather,
+  hmeTimerData
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt, lte, desc, sql } from "drizzle-orm";
@@ -582,6 +583,9 @@ export class DatabaseStorage implements IStorage {
       return saleDate === lastWeekStr;
     }));
     
+    // Fetch HME timer data for the selected date
+    const allHmeData = await db.select().from(hmeTimerData).where(eq(hmeTimerData.date, selectedDateStr));
+    
     const result: Record<string, HourlySalesData[]> = {};
     
     for (const restaurant of restaurantList) {
@@ -589,6 +593,7 @@ export class DatabaseStorage implements IStorage {
       
       const restaurantSelectedHourly = selectedDateHourly.filter(s => s.restaurantId === restaurant.id);
       const restaurantLastWeekHourly = lastWeekHourly.filter(s => s.restaurantId === restaurant.id);
+      const restaurantHmeData = allHmeData.filter(h => h.restaurantId === restaurant.id);
       
       const selectedByHour: Map<number, number> = new Map();
       const lastWeekByHour: Map<number, number> = new Map();
@@ -597,6 +602,12 @@ export class DatabaseStorage implements IStorage {
       const actualLaborByHour: Map<number, number> = new Map();
       const employeeCountByHour: Map<number, number> = new Map();
       const positionByHour: Map<number, Record<string, number>> = new Map();
+      const hmeByHour: Map<number, { avgServiceTime: number; carCount: number }> = new Map();
+      
+      // HME drive-thru data by hour
+      restaurantHmeData.forEach(h => {
+        hmeByHour.set(h.hour, { avgServiceTime: h.avgServiceTime, carCount: h.carCount });
+      });
       
       // Use 7shifts data for sales
       restaurantSelectedHourly.forEach(s => {
@@ -637,6 +648,7 @@ export class DatabaseStorage implements IStorage {
         // Include hours with any data (sales, forecast, or labor)
         // Hours 0-4 often have labor but no sales - needed for Early Bird labor totals
         if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0 || projectedLabor > 0 || actualLabor > 0) {
+          const hmeHourData = hmeByHour.get(hour);
           hourlyData.push({
             hour,
             todaySales,
@@ -647,6 +659,8 @@ export class DatabaseStorage implements IStorage {
             employeeCount,
             positionBreakdown,
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
+            avgServiceTime: hmeHourData?.avgServiceTime,
+            carCount: hmeHourData?.carCount,
           });
         }
       }
