@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture } from "date-fns";
 import { Link } from "wouter";
@@ -300,6 +300,8 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <HMESyncCard />
         </div>
       </main>
     </div>
@@ -456,5 +458,123 @@ function RestaurantRow({
         </div>
       </div>
     </div>
+  );
+}
+
+interface HMEStatus {
+  credentialsConfigured: boolean;
+  missingCredentials: string[];
+  dateChecked: string;
+  restaurantsWithData: number;
+  totalCarsToday: number;
+  environment: string;
+  isDeployment: boolean;
+}
+
+function HMESyncCard() {
+  const { toast } = useToast();
+  const [lastSyncResult, setLastSyncResult] = useState<string | null>(null);
+
+  const { data: hmeStatus, isLoading: statusLoading, refetch: refetchStatus } = useQuery<HMEStatus>({
+    queryKey: ["/api/hme/status"],
+    refetchInterval: 30000,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/hme/sync", {});
+    },
+    onSuccess: () => {
+      setLastSyncResult("success");
+      toast({
+        title: "HME Sync Started",
+        description: "Drive-thru timer data sync has been triggered. Data will update shortly.",
+      });
+      setTimeout(() => {
+        refetchStatus();
+        queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      }, 5000);
+    },
+    onError: (error) => {
+      setLastSyncResult("error");
+      toast({
+        title: "Sync Failed",
+        description: error instanceof Error ? error.message : "Failed to trigger HME sync.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Timer className="h-5 w-5 text-primary" />
+          <CardTitle>Drive-Thru Timer Sync (HME)</CardTitle>
+        </div>
+        <CardDescription>
+          Manually sync drive-thru timing data from HME ZOOM timers. Data is also synced automatically every 5 minutes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {statusLoading ? (
+          <div className="text-muted-foreground text-sm">Loading HME status...</div>
+        ) : hmeStatus ? (
+          <div className="grid gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Credentials:</span>
+              {hmeStatus.credentialsConfigured ? (
+                <Badge className="bg-green-500 hover:bg-green-600">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Configured
+                </Badge>
+              ) : (
+                <Badge variant="destructive">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Missing: {hmeStatus.missingCredentials.join(", ")}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Today's Data:</span>
+              <span className="text-sm text-muted-foreground">
+                {hmeStatus.restaurantsWithData} restaurants with data, {hmeStatus.totalCarsToday} cars tracked
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Environment:</span>
+              <Badge variant="outline">
+                {hmeStatus.isDeployment ? "Production" : "Development"}
+              </Badge>
+            </div>
+          </div>
+        ) : (
+          <div className="text-muted-foreground text-sm">Unable to fetch HME status</div>
+        )}
+
+        <div className="flex items-center gap-3 pt-2 border-t">
+          <Button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending || !hmeStatus?.credentialsConfigured}
+            data-testid="button-hme-sync"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            {syncMutation.isPending ? "Syncing..." : "Sync Drive-Thru Data"}
+          </Button>
+          {lastSyncResult === "success" && (
+            <span className="text-sm text-green-600 flex items-center gap-1">
+              <CheckCircle className="h-4 w-4" />
+              Sync triggered successfully
+            </span>
+          )}
+          {lastSyncResult === "error" && (
+            <span className="text-sm text-red-600 flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" />
+              Sync failed
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
