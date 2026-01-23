@@ -796,6 +796,45 @@ export async function registerRoutes(
 
   // ===== HME DRIVE-THRU TIMER ENDPOINTS =====
 
+  // Check HME configuration status (for debugging production issues)
+  app.get("/api/hme/status", async (req, res) => {
+    try {
+      const { checkHMECredentials, getDailyDriveThruSummary } = await import("./scraper/hme-api");
+      const credentials = checkHMECredentials();
+      
+      // Get count of HME data in database for today
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      let dataCount = 0;
+      let restaurantsWithData = 0;
+      
+      try {
+        const summary = await getDailyDriveThruSummary(todayStr);
+        restaurantsWithData = summary.size;
+        Array.from(summary.values()).forEach(data => {
+          dataCount += data.carCount;
+        });
+      } catch (e) {
+        // Ignore errors getting summary
+      }
+      
+      res.json({
+        credentialsConfigured: credentials.configured,
+        missingCredentials: credentials.missing,
+        dateChecked: todayStr,
+        restaurantsWithData,
+        totalCarsToday: dataCount,
+        environment: process.env.NODE_ENV || "development",
+        isDeployment: process.env.REPLIT_DEPLOYMENT === "1",
+      });
+    } catch (error) {
+      console.error("Error checking HME status:", error);
+      res.status(500).json({ 
+        error: "Failed to check HME status",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Sync HME timer data
   app.post("/api/hme/sync", async (req, res) => {
     try {

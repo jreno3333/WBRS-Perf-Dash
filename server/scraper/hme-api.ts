@@ -66,16 +66,32 @@ function getHMEHeaders() {
   const authKey = process.env.HME_AUTH_KEY;
   const accountEmail = process.env.HME_ACCOUNT_EMAIL;
 
-  if (!serviceAccount || !authKey || !accountEmail) {
-    throw new Error("HME API credentials not configured");
+  // Log which credentials are missing for debugging
+  const missing: string[] = [];
+  if (!serviceAccount) missing.push("HME_SERVICE_ACCOUNT");
+  if (!authKey) missing.push("HME_AUTH_KEY");
+  if (!accountEmail) missing.push("HME_ACCOUNT_EMAIL");
+  
+  if (missing.length > 0) {
+    console.error(`[HME] Missing credentials: ${missing.join(", ")}`);
+    throw new Error(`HME API credentials not configured: missing ${missing.join(", ")}`);
   }
 
   return {
     "accept": "application/json; charset=utf-8",
-    "service-account": serviceAccount,
-    "auth-key": authKey,
-    "account-email": accountEmail,
+    "service-account": serviceAccount as string,
+    "auth-key": authKey as string,
+    "account-email": accountEmail as string,
   };
+}
+
+// Check if HME credentials are configured (for diagnostics)
+export function checkHMECredentials(): { configured: boolean; missing: string[] } {
+  const missing: string[] = [];
+  if (!process.env.HME_SERVICE_ACCOUNT) missing.push("HME_SERVICE_ACCOUNT");
+  if (!process.env.HME_AUTH_KEY) missing.push("HME_AUTH_KEY");
+  if (!process.env.HME_ACCOUNT_EMAIL) missing.push("HME_ACCOUNT_EMAIL");
+  return { configured: missing.length === 0, missing };
 }
 
 export async function fetchHMEStores(): Promise<HMEStore[]> {
