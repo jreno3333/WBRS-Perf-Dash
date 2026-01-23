@@ -7,6 +7,7 @@ import { scraperRuns, posOrders, hourlySales, restaurants } from "@shared/schema
 import { desc, sql, gte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
+import { getDailyDriveThruSummary } from "./scraper/hme-api";
 
 // Weather code to condition mapping
 function getWeatherCondition(weatherCode: number): string {
@@ -94,8 +95,9 @@ export async function registerRoutes(
       // Fetch HME timer data for drive-thru speed metrics
       // Use Central timezone for consistent date handling with HME data
       const dateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-      const { getDailyDriveThruSummary } = await import("./scraper/hme-api");
+      console.log('[HME] Fetching drive-thru summary for date:', dateStr);
       const hmeSummary = await getDailyDriveThruSummary(dateStr);
+      console.log('[HME] Got summary for', hmeSummary.size, 'restaurants');
       
       // Add HME data to each restaurant
       for (const r of restaurantsWithWeather) {

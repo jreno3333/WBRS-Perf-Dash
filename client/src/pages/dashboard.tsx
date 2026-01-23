@@ -30,7 +30,11 @@ export default function Dashboard() {
     queryFn: async () => {
       const res = await fetch(`/api/leaderboard?date=${dateStr}`);
       if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
+      const data = await res.json();
+      // Debug: log driveThru data presence
+      const withDT = data.restaurants?.filter((r: any) => r.driveThru)?.length || 0;
+      console.log(`[Dashboard] Loaded ${data.restaurants?.length || 0} restaurants, ${withDT} with driveThru data`);
+      return data;
     },
     refetchInterval: isToday ? 60 * 1000 : false, // Refresh every 1 minute for real-time updates
   });
