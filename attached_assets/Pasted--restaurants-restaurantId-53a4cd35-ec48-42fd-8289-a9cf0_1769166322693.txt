@@ -1,0 +1,77 @@
+{
+    "restaurants": [
+        {
+            "restaurantId": "53a4cd35-ec48-42fd-8289-a9cf031aeab7",
+            "restaurantName": "1309 - Hazel Green",
+            "timezone": "America/Chicago",
+            "todaySales": 0,
+            "actualSales": 0,
+            "lastWeekSales": 0,
+            "actualLastWeekSales": 0,
+            "forecastSales": 5036.13,
+            "pacePercentage": 20.833333333333336,
+            "isAheadOfPace": true,
+            "rank": 1,
+            "normalizedHour": 4,
+            "projectedLaborCost": 163.74,
+            "projectedEndOfDaySales": 5036.13,
+            "projectedLaborPercent": 3.3,
+            "laborTarget": 30.2,
+            "willHitLaborTarget": true,
+            "status": "established",
+            "openDate": null,
+            "revenuePorts": [
+                "dine_in",
+                "drive_thru",
+                "app",
+                "3pd"
+            ],
+            "weather": {
+                "temp": 34.3,
+                "condition": "partly cloudy",
+                "humidity": 54,
+                "windSpeed": 8.2
+            }
+        },
+        {
+            "restaurantId": "a8fc9a80-8b8d-40c4-a336-a91aede334a4",
+            "restaurantName": "1273 - Scottsboro",
+            "timezone": "America/Chicago",
+            "todaySales": 0,
+            "actualSales": 0,
+            "lastWeekSales": 0,
+            "actualLastWeekSales": 0,
+            "forecastSales": 7691.649999999999,
+            "pacePercentage": 20.833333333333336,
+            "isAheadOfPace": true,
+            "rank": 2,
+            "normalizedHour": 4,
+            "projectedLaborCost": 162.3,
+            "projectedEndOfDaySales": 7691.65,
+            "projectedLaborPercent": 2.1,
+            "laborTarget": 24.9,
+            "willHitLaborTarget": true,
+            "status": "established",
+            "openDate": null,
+            "revenuePorts": [
+                "dine_in",
+                "drive_thru",
+                "app",
+                "3pd"
+            ],
+            "weather": {
+                "temp": 36.3,
+                "condition": "partly cloudy",
+                "humidity": 68,
+                "windSpeed": 3.9
+            }
+        },
+        {
+            "restaurantId": "6efde4fe-aa70-488d-8391-2d0bf27dc982",
+            "restaurantName": "1491 - Pell City",
+            "timezone": "America/Chicago",
+            "todaySales": 0,
+            "actualSales": 0,
+            "lastWeekSales": 0,
+            "actualLastWeekSales": 0,
+            "forecastSales": 5722.410000000001,
