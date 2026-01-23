@@ -95,8 +95,10 @@ export async function registerRoutes(
       const restaurantMap = new Map(restaurantList.map(r => [r.id, r]));
       
       // Check if viewing historical data (not today)
+      // Compare date strings directly to avoid timezone parsing issues
       const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-      const targetDateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      // Use the input date string directly if provided, otherwise use today
+      const targetDateStr = date ? (date as string) : todayStr;
       const isHistorical = targetDateStr !== todayStr;
       
       const restaurantsWithWeather = [...leaderboard.restaurants];
