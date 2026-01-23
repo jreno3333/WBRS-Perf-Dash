@@ -207,6 +207,31 @@ export const insertHmeTimerDataSchema = createInsertSchema(hmeTimerData).omit({
 export type InsertHmeTimerData = z.infer<typeof insertHmeTimerDataSchema>;
 export type HmeTimerData = typeof hmeTimerData.$inferSelect;
 
+// Daily weather data for historical reference
+export const dailyWeather = pgTable("daily_weather", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  highTemp: decimal("high_temp", { precision: 5, scale: 2 }),
+  lowTemp: decimal("low_temp", { precision: 5, scale: 2 }),
+  avgTemp: decimal("avg_temp", { precision: 5, scale: 2 }),
+  condition: text("condition"), // Most common condition of the day
+  humidity: integer("humidity"), // Average humidity
+  windSpeed: decimal("wind_speed", { precision: 5, scale: 2 }),
+  savedAt: timestamp("saved_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("daily_weather_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
+
+export const insertDailyWeatherSchema = createInsertSchema(dailyWeather).omit({
+  id: true,
+  savedAt: true,
+});
+
+export type InsertDailyWeather = z.infer<typeof insertDailyWeatherSchema>;
+export type DailyWeather = typeof dailyWeather.$inferSelect;
+
 // Users table (keeping for compatibility)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

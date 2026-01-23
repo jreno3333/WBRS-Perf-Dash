@@ -1,8 +1,9 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales } from "./scraper/7shifts-api";
 import { syncHMETimerData } from "./scraper/hme-api";
 import { db } from "./db";
-import { dailySales, hourlySales } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { dailySales, hourlySales, restaurants } from "@shared/schema";
+import { sql, isNotNull } from "drizzle-orm";
+import { storage } from "./storage";
 
 // Set to true to pause scheduled syncs (for historical data loading)
 let schedulerPaused = false; // Historical data loaded - scheduler active
@@ -102,6 +103,9 @@ async function runScheduledSync() {
       log(`HME sync failed: ${hmeError instanceof Error ? hmeError.message : 'Unknown error'}`);
     }
     
+    // Save end-of-day weather snapshot (at 11 PM Central)
+    await saveEndOfDayWeatherIfNeeded();
+    
     // Check if we should also sync yesterday's data (after midnight Central to capture hours 22-23)
     await syncYesterdayIfNeeded();
   } catch (error) {
@@ -111,6 +115,107 @@ async function runScheduledSync() {
 
 // Track last yesterday resync to avoid doing it too frequently
 let lastYesterdaySync: string | null = null;
+let lastWeatherSave: string | null = null;
+
+// Fetch weather for a location (helper function)
+async function fetchWeatherForLocation(latitude: number, longitude: number): Promise<{ temp: number; condition: string; humidity: number; windSpeed: number } | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+    const weatherRes = await fetch(weatherUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (weatherRes.ok) {
+      const weatherData = await weatherRes.json();
+      const current = weatherData.current;
+      const weatherCode = current.weather_code;
+      let condition = "clear";
+      if (weatherCode >= 0 && weatherCode <= 1) condition = "clear";
+      else if (weatherCode >= 2 && weatherCode <= 3) condition = "partly cloudy";
+      else if (weatherCode >= 45 && weatherCode <= 48) condition = "foggy";
+      else if (weatherCode >= 51 && weatherCode <= 57) condition = "showers";
+      else if (weatherCode >= 61 && weatherCode <= 67) condition = "rain";
+      else if (weatherCode >= 71 && weatherCode <= 77) condition = "snow";
+      else if (weatherCode >= 80 && weatherCode <= 82) condition = "showers";
+      else if (weatherCode >= 85 && weatherCode <= 86) condition = "snow";
+      else if (weatherCode >= 95 && weatherCode <= 99) condition = "thunderstorm";
+      
+      return {
+        temp: current.temperature_2m,
+        condition,
+        humidity: current.relative_humidity_2m,
+        windSpeed: current.wind_speed_10m,
+      };
+    }
+  } catch (e) {
+    // Silently handle timeout/network errors
+  }
+  return null;
+}
+
+// Save daily weather snapshot for all restaurants
+async function saveDailyWeatherSnapshot(date: string): Promise<number> {
+  const allRestaurants = await db.select().from(restaurants).where(isNotNull(restaurants.latitude));
+  let saved = 0;
+  
+  for (const restaurant of allRestaurants) {
+    if (restaurant.latitude && restaurant.longitude) {
+      const weather = await fetchWeatherForLocation(
+        parseFloat(String(restaurant.latitude)),
+        parseFloat(String(restaurant.longitude))
+      );
+      
+      if (weather) {
+        await storage.saveDailyWeather({
+          restaurantId: restaurant.id,
+          date,
+          highTemp: String(weather.temp),
+          lowTemp: String(weather.temp),
+          avgTemp: String(weather.temp),
+          condition: weather.condition,
+          humidity: weather.humidity,
+          windSpeed: String(weather.windSpeed),
+        });
+        saved++;
+      }
+      
+      // Small delay to avoid rate limiting
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+  
+  return saved;
+}
+
+// Save weather at end of day (11 PM Central)
+async function saveEndOfDayWeatherIfNeeded() {
+  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    hour12: false
+  }).format(new Date()));
+  
+  const todayCentral = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
+  
+  // Save weather at 11 PM Central, once per day
+  if (centralHour === 23 && lastWeatherSave !== todayCentral) {
+    log("Saving end-of-day weather snapshot...");
+    try {
+      const saved = await saveDailyWeatherSnapshot(todayCentral);
+      log(`Weather snapshot saved: ${saved} restaurants`);
+      lastWeatherSave = todayCentral;
+    } catch (error) {
+      log(`Weather save error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+}
 
 async function syncYesterdayIfNeeded() {
   // Get current hour in Central timezone

@@ -6,11 +6,14 @@ import {
   type RestaurantSales,
   type HourlySalesData,
   type LeaderboardData,
+  type InsertDailyWeather,
+  type DailyWeather,
   restaurants,
   dailySales,
   hourlySales,
   scraperRuns,
-  posOrders
+  posOrders,
+  dailyWeather
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt, lte, desc, sql } from "drizzle-orm";
@@ -652,6 +655,46 @@ export class DatabaseStorage implements IStorage {
     }
     
     return result;
+  }
+
+  // Save daily weather for a restaurant
+  async saveDailyWeather(data: InsertDailyWeather): Promise<void> {
+    await db
+      .insert(dailyWeather)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [dailyWeather.restaurantId, dailyWeather.date],
+        set: {
+          highTemp: data.highTemp,
+          lowTemp: data.lowTemp,
+          avgTemp: data.avgTemp,
+          condition: data.condition,
+          humidity: data.humidity,
+          windSpeed: data.windSpeed,
+          savedAt: sql`now()`,
+        },
+      });
+  }
+
+  // Get daily weather for a restaurant and date
+  async getDailyWeather(restaurantId: string, date: string): Promise<DailyWeather | null> {
+    const result = await db
+      .select()
+      .from(dailyWeather)
+      .where(and(
+        eq(dailyWeather.restaurantId, restaurantId),
+        eq(dailyWeather.date, date)
+      ))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  // Get all daily weather for a date
+  async getAllDailyWeather(date: string): Promise<DailyWeather[]> {
+    return await db
+      .select()
+      .from(dailyWeather)
+      .where(eq(dailyWeather.date, date));
   }
 }
 

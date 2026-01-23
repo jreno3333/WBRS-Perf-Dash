@@ -65,30 +65,53 @@ export async function registerRoutes(
       const restaurantList = await storage.getRestaurants();
       const restaurantMap = new Map(restaurantList.map(r => [r.id, r]));
       
-      // Fetch weather for each restaurant in batches of 5 to avoid rate limiting
-      const batchSize = 5;
+      // Check if viewing historical data (not today)
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const targetDateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const isHistorical = targetDateStr !== todayStr;
+      
       const restaurantsWithWeather = [...leaderboard.restaurants];
       
-      for (let i = 0; i < restaurantsWithWeather.length; i += batchSize) {
-        const batch = restaurantsWithWeather.slice(i, i + batchSize);
-        const weatherResults = await Promise.all(
-          batch.map(async (r) => {
-            const restaurant = restaurantMap.get(r.restaurantId);
-            if (restaurant?.latitude && restaurant?.longitude) {
-              return await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
-            }
-            return null;
-          })
-        );
+      if (isHistorical) {
+        // For historical dates, use stored weather
+        const storedWeather = await storage.getAllDailyWeather(targetDateStr);
+        const weatherMap = new Map(storedWeather.map(w => [w.restaurantId, w]));
         
-        // Assign weather results back to restaurants
-        for (let j = 0; j < batch.length; j++) {
-          (restaurantsWithWeather[i + j] as any).weather = weatherResults[j];
+        for (const r of restaurantsWithWeather) {
+          const weather = weatherMap.get(r.restaurantId);
+          if (weather) {
+            (r as any).weather = {
+              temp: parseFloat(String(weather.avgTemp || 0)),
+              condition: weather.condition || "clear",
+              humidity: weather.humidity || 0,
+              windSpeed: parseFloat(String(weather.windSpeed || 0)),
+            };
+          }
         }
-        
-        // Small delay between batches to avoid rate limiting
-        if (i + batchSize < restaurantsWithWeather.length) {
-          await delay(100);
+      } else {
+        // For today, fetch live weather in batches
+        const batchSize = 5;
+        for (let i = 0; i < restaurantsWithWeather.length; i += batchSize) {
+          const batch = restaurantsWithWeather.slice(i, i + batchSize);
+          const weatherResults = await Promise.all(
+            batch.map(async (r) => {
+              const restaurant = restaurantMap.get(r.restaurantId);
+              if (restaurant?.latitude && restaurant?.longitude) {
+                return await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
+              }
+              return null;
+            })
+          );
+          
+          // Assign weather results back to restaurants
+          for (let j = 0; j < batch.length; j++) {
+            (restaurantsWithWeather[i + j] as any).weather = weatherResults[j];
+          }
+          
+          // Small delay between batches to avoid rate limiting
+          if (i + batchSize < restaurantsWithWeather.length) {
+            await delay(100);
+          }
         }
       }
       
