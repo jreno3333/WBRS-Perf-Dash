@@ -290,11 +290,18 @@ export async function syncHMETimerData(targetDate?: Date): Promise<{ saved: numb
     const storeMap = new Map<string, string>();
     
     for (const r of allRestaurants) {
-      // Match by unit number
+      // Match by unit number first
       if (r.unitNumber) {
         storeMap.set(r.unitNumber, r.id);
       }
+      // Fallback: extract unit number from name (e.g., "1237 - Athens" -> "1237")
+      const nameMatch = r.name.match(/^(\d{4})\s*-/);
+      if (nameMatch && !storeMap.has(nameMatch[1])) {
+        storeMap.set(nameMatch[1], r.id);
+      }
     }
+    
+    console.log(`[HME] Store mapping: ${storeMap.size} stores mapped`);
 
     let saved = 0;
     for (const m of metrics) {
