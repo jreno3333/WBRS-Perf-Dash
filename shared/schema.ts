@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, integer, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -119,6 +119,11 @@ export interface RestaurantSales {
     humidity: number;
     windSpeed: number;
   } | null;
+  driveThru?: {
+    carCount: number;
+    avgTotalTime: number; // seconds
+    avgServiceTime: number; // seconds
+  } | null;
 }
 
 export interface HourlySalesData {
@@ -174,6 +179,33 @@ export const insertLocationMappingSchema = createInsertSchema(locationMapping).o
 
 export type InsertLocationMapping = z.infer<typeof insertLocationMappingSchema>;
 export type LocationMapping = typeof locationMapping.$inferSelect;
+
+// HME drive-thru timer data (hourly aggregates)
+export const hmeTimerData = pgTable("hme_timer_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  hour: integer("hour").notNull(), // 0-23
+  carCount: integer("car_count").notNull().default(0),
+  avgTotalTime: integer("avg_total_time").notNull().default(0), // seconds
+  avgMenuBoardTime: integer("avg_menu_board_time").notNull().default(0), // seconds
+  avgServiceTime: integer("avg_service_time").notNull().default(0), // seconds
+  avgQueueTime: integer("avg_queue_time").notNull().default(0), // seconds
+  maxTotalTime: integer("max_total_time").notNull().default(0),
+  minTotalTime: integer("min_total_time").notNull().default(0),
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDateHour: uniqueIndex("hme_timer_restaurant_date_hour_idx")
+    .on(table.restaurantId, table.date, table.hour),
+}));
+
+export const insertHmeTimerDataSchema = createInsertSchema(hmeTimerData).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertHmeTimerData = z.infer<typeof insertHmeTimerDataSchema>;
+export type HmeTimerData = typeof hmeTimerData.$inferSelect;
 
 // Users table (keeping for compatibility)
 export const users = pgTable("users", {

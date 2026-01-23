@@ -48,6 +48,21 @@ Preferred communication style: Simple, everyday language.
 - **Data**: Includes order ID, store number, total, business date, closed time, and source.
 - **Mapping**: Xenial store numbers are mapped to internal restaurant IDs.
 
+### HME Drive-Thru Timer Integration
+- **Purpose**: Fetches drive-thru timing data from HME CLOUD-connected timers (ZOOM Nitro).
+- **API**: HME DXS RCD API (https://api.hmecloud.com)
+- **Authentication**: Uses 3 secrets - `HME_SERVICE_ACCOUNT`, `HME_AUTH_KEY`, `HME_ACCOUNT_EMAIL`
+- **Data Fetched**:
+  - Per-car timing records with detector breakdowns (Menu Board, Greet, Cashier, Service)
+  - Total time in lane, queue time, cars in queue
+  - Hourly aggregates stored in `hme_timer_data` table
+- **API Endpoints**:
+  - `POST /api/hme/sync` - Triggers sync of last 6 hours of timer data
+  - `GET /api/hme/daily-summary` - Returns daily drive-thru metrics by restaurant
+  - `GET /api/hme/metrics/:restaurantId` - Returns hourly timer data for a restaurant
+  - `GET /api/hme/stores` - Lists HME stores for validation
+- **Display**: Drive-thru speed badge on leaderboard cards showing avg total time with color coding (green <5min, amber 5-7min, red >7min)
+
 ## External Dependencies
 
 ### Database

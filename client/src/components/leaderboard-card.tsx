@@ -262,6 +262,39 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   </div>
                 </div>
               )}
+              {/* Drive-Thru Speed Badge */}
+              {restaurant.driveThru && (
+                <div className="relative group">
+                  <Badge 
+                    variant="secondary" 
+                    className={`flex-shrink-0 text-xs cursor-help gap-1 ${
+                      restaurant.driveThru.avgTotalTime > 420 
+                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" 
+                        : restaurant.driveThru.avgTotalTime > 300 
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                          : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    }`}
+                    data-testid={`badge-drivethru-${restaurant.restaurantId}`}
+                  >
+                    <Clock className="w-3 h-3" />
+                    <span>{Math.floor(restaurant.driveThru.avgTotalTime / 60)}:{(restaurant.driveThru.avgTotalTime % 60).toString().padStart(2, '0')}</span>
+                  </Badge>
+                  <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Drive-Thru Speed</div>
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      Avg total: {Math.floor(restaurant.driveThru.avgTotalTime / 60)}:{(restaurant.driveThru.avgTotalTime % 60).toString().padStart(2, '0')}
+                    </div>
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Car className="w-3 h-3" />
+                      Service: {Math.floor(restaurant.driveThru.avgServiceTime / 60)}:{(restaurant.driveThru.avgServiceTime % 60).toString().padStart(2, '0')}
+                    </div>
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      Cars today: {restaurant.driveThru.carCount}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
               <span className="text-xs">

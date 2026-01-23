@@ -91,6 +91,24 @@ export async function registerRoutes(
         }
       }
       
+      // Fetch HME timer data for drive-thru speed metrics
+      // Use Central timezone for consistent date handling with HME data
+      const dateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const { getDailyDriveThruSummary } = await import("./scraper/hme-api");
+      const hmeSummary = await getDailyDriveThruSummary(dateStr);
+      
+      // Add HME data to each restaurant
+      for (const r of restaurantsWithWeather) {
+        const hmeData = hmeSummary.get(r.restaurantId);
+        if (hmeData) {
+          (r as any).driveThru = {
+            carCount: hmeData.carCount,
+            avgTotalTime: hmeData.avgTotalTime,
+            avgServiceTime: hmeData.avgServiceTime,
+          };
+        }
+      }
+      
       res.json({
         ...leaderboard,
         restaurants: restaurantsWithWeather,
@@ -688,6 +706,84 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching POS status:", error);
       res.status(500).json({ error: "Failed to fetch POS status" });
+    }
+  });
+
+  // ===== HME DRIVE-THRU TIMER ENDPOINTS =====
+
+  // Sync HME timer data
+  app.post("/api/hme/sync", async (req, res) => {
+    try {
+      const { date } = req.body || {};
+      const targetDate = date ? new Date(date) : undefined;
+
+      res.json({ message: "HME sync started", status: "running" });
+
+      const { syncHMETimerData } = await import("./scraper/hme-api");
+      syncHMETimerData(targetDate).then(result => {
+        console.log("[HME] Sync completed:", result);
+      }).catch(err => {
+        console.error("[HME] Sync error:", err);
+      });
+    } catch (error) {
+      console.error("Error starting HME sync:", error);
+      res.status(500).json({ error: "Failed to start HME sync" });
+    }
+  });
+
+  // Get HME timer metrics for a restaurant
+  app.get("/api/hme/metrics/:restaurantId", async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+      const { date } = req.query;
+      
+      // Use Central timezone for today's date
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const dateStr = date ? String(date) : todayStr;
+      
+      const { getHMETimerMetrics } = await import("./scraper/hme-api");
+      const metrics = await getHMETimerMetrics(restaurantId, dateStr);
+      
+      res.json({ date: dateStr, metrics });
+    } catch (error) {
+      console.error("Error fetching HME metrics:", error);
+      res.status(500).json({ error: "Failed to fetch HME metrics" });
+    }
+  });
+
+  // Get HME daily summary for all restaurants
+  app.get("/api/hme/daily-summary", async (req, res) => {
+    try {
+      const { date } = req.query;
+      
+      // Use Central timezone for today's date
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const dateStr = date ? String(date) : todayStr;
+      
+      const { getDailyDriveThruSummary } = await import("./scraper/hme-api");
+      const summary = await getDailyDriveThruSummary(dateStr);
+      
+      const result: Record<string, { carCount: number; avgTotalTime: number; avgServiceTime: number }> = {};
+      summary.forEach((value, key) => {
+        result[key] = value;
+      });
+      
+      res.json({ date: dateStr, summary: result });
+    } catch (error) {
+      console.error("Error fetching HME daily summary:", error);
+      res.status(500).json({ error: "Failed to fetch HME daily summary" });
+    }
+  });
+
+  // Get HME stores list (for validation/debugging)
+  app.get("/api/hme/stores", async (req, res) => {
+    try {
+      const { fetchHMEStores } = await import("./scraper/hme-api");
+      const stores = await fetchHMEStores();
+      res.json({ total: stores.length, stores });
+    } catch (error) {
+      console.error("Error fetching HME stores:", error);
+      res.status(500).json({ error: "Failed to fetch HME stores" });
     }
   });
 
