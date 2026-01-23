@@ -379,12 +379,26 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
 
           <div className="flex-shrink-0 text-right">
             <div 
-              className="text-xl font-bold mb-1"
+              className="text-xl font-bold"
               data-testid={`text-sales-${restaurant.restaurantId}`}
             >
               {formatCurrency(restaurant.todaySales)}
             </div>
-            <div className="flex items-center justify-end gap-1">
+            {restaurant.driveThru && (
+              <div 
+                className={`text-xs font-medium ${
+                  restaurant.driveThru.avgTotalTime > 420 
+                    ? "text-red-600 dark:text-red-400" 
+                    : restaurant.driveThru.avgTotalTime > 300 
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-green-600 dark:text-green-400"
+                }`}
+                data-testid={`text-drivethru-${restaurant.restaurantId}`}
+              >
+                DT: {Math.floor(restaurant.driveThru.avgTotalTime / 60)}:{(restaurant.driveThru.avgTotalTime % 60).toString().padStart(2, '0')}
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-1 mt-1">
               {restaurant.isAheadOfPace ? (
                 <Badge 
                   className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
