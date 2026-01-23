@@ -42,13 +42,15 @@ function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, s
 
 function calculateXScore(hourlyData: HourlySalesData[] | undefined): number {
   if (!hourlyData || hourlyData.length === 0) return 0;
-  const scores = hourlyData.map(hour => {
-    const isAhead = hour.todaySales >= hour.lastWeekSales;
-    const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-    const actualStaff = hour.employeeCount || 0;
-    const staffingDiff = actualStaff - staffing.total;
-    return getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
-  }).filter(s => s > 0);
+  const scores = hourlyData
+    .filter(hour => hour.label !== "Early Bird")
+    .map(hour => {
+      const isAhead = hour.todaySales >= hour.lastWeekSales;
+      const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+      const actualStaff = Number(hour.employeeCount) || 0;
+      const staffingDiff = actualStaff - staffing.total;
+      return getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+    }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 }
 

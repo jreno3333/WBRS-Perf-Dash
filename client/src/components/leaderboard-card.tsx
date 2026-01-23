@@ -233,15 +233,17 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     1
   );
   
-  // Calculate overall execution grade from hourly grades
-  const hourlyGradeScores = activeHours.map(hour => {
-    const isAhead = hour.todaySales >= hour.lastWeekSales;
-    const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-    const actualStaff = hour.employeeCount || 0;
-    const staffingDiff = actualStaff - staffing.total;
-    const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
-    return gradeToScore(gradeInfo.grade);
-  }).filter(score => score > 0);
+  // Calculate overall execution grade from hourly grades (excluding Early Bird)
+  const hourlyGradeScores = activeHours
+    .filter(hour => hour.label !== "Early Bird")
+    .map(hour => {
+      const isAhead = hour.todaySales >= hour.lastWeekSales;
+      const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+      const actualStaff = Number(hour.employeeCount) || 0;
+      const staffingDiff = actualStaff - staffing.total;
+      const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+      return gradeToScore(gradeInfo.grade);
+    }).filter(score => score > 0);
   
   const overallScore = hourlyGradeScores.length > 0 
     ? hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length 
@@ -544,9 +546,17 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             {/* Execution Grades Row */}
             <div className="flex gap-0.5 mb-1">
               {activeHours.map((hour) => {
+                const isEarlyBird = hour.label === "Early Bird";
+                if (isEarlyBird) {
+                  return (
+                    <div key={`grade-${hour.hour}`} className="flex-1 text-center">
+                      <span className="text-[10px] font-bold text-muted-foreground">-</span>
+                    </div>
+                  );
+                }
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-                const actualStaff = hour.employeeCount || 0;
+                const actualStaff = Number(hour.employeeCount) || 0;
                 const staffingDiff = actualStaff - staffing.total;
                 const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
                 
@@ -567,10 +577,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
+                const isEarlyBird = hour.label === "Early Bird";
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-                const actualStaff = hour.employeeCount || 0;
-                const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+                const actualStaff = Number(hour.employeeCount) || 0;
+                const staffingDiff = isEarlyBird ? 0 : actualStaff - staffing.total;
+                const gradeInfo = isEarlyBird 
+                  ? { grade: '-', color: 'text-muted-foreground' }
+                  : getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
                 
                 return (
                   <div
