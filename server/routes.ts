@@ -87,7 +87,14 @@ export async function registerRoutes(
   app.get("/api/leaderboard", async (req, res) => {
     try {
       const { date } = req.query;
-      const targetDate = date ? new Date(date as string) : new Date();
+      // Parse date string as local date, not UTC - "2026-01-23" should stay Jan 23, not become Jan 22
+      let targetDate: Date;
+      if (date) {
+        const parts = (date as string).split('-');
+        targetDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+      } else {
+        targetDate = new Date();
+      }
       const leaderboard = await storage.getLeaderboard(targetDate);
       
       // Get all restaurants to fetch coordinates for weather
