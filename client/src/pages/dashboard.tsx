@@ -20,7 +20,7 @@ import type { LeaderboardData, HourlySalesData } from "@shared/schema";
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager">("variance");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time">("variance");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
@@ -163,6 +163,9 @@ export default function Dashboard() {
             case "missing_manager":
               // Only units missing manager
               return hasMissingManager(r.restaurantId);
+            case "dt_time":
+              // Only units with drive-thru data
+              return r.driveThru != null;
             default:
               return true; // No filter for sales/variance
           }
@@ -184,6 +187,11 @@ export default function Dashboard() {
             case "understaffed":
               // Sort by projected labor % ascending (lowest labor % first)
               return (a.projectedLaborPercent || 0) - (b.projectedLaborPercent || 0);
+            case "dt_time":
+              // Sort by drive-thru service time ascending (fastest first)
+              const aTime = a.driveThru?.avgServiceTime ?? Infinity;
+              const bTime = b.driveThru?.avgServiceTime ?? Infinity;
+              return aTime - bTime;
             default:
               // Default sort by sales
               return b.todaySales - a.todaySales;
@@ -361,6 +369,7 @@ export default function Dashboard() {
                         <SelectItem value="overstaffed">Overstaffed</SelectItem>
                         <SelectItem value="understaffed">Understaffed</SelectItem>
                         <SelectItem value="missing_manager">Missing Mgr</SelectItem>
+                        <SelectItem value="dt_time">DT Time</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
