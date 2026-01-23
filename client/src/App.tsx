@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import SettingsPage from "@/pages/settings";
 import MapPage from "@/pages/map";
+import HMETest from "@/pages/hme-test";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -14,6 +15,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/map" component={MapPage} />
+      <Route path="/hme-test" component={HMETest} />
       <Route component={NotFound} />
     </Switch>
   );
