@@ -1,4 +1,5 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales } from "./scraper/7shifts-api";
+import { syncHMETimerData } from "./scraper/hme-api";
 import { db } from "./db";
 import { dailySales, hourlySales } from "@shared/schema";
 import { sql } from "drizzle-orm";
@@ -91,6 +92,14 @@ async function runScheduledSync() {
       log(`Hourly sync completed: ${hourlyResult.recordsScraped} hourly records updated`);
     } else {
       log(`Hourly sync failed: ${hourlyResult.error}`);
+    }
+    
+    // Sync HME drive-thru timer data
+    try {
+      const hmeResult = await syncHMETimerData();
+      log(`HME sync completed: ${hmeResult.saved} timer records updated`);
+    } catch (hmeError) {
+      log(`HME sync failed: ${hmeError instanceof Error ? hmeError.message : 'Unknown error'}`);
     }
     
     // Check if we should also sync yesterday's data (after midnight Central to capture hours 22-23)
