@@ -118,8 +118,34 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
     remainingForecast: Math.max(0, totalForecastSales - totalTodaySales)
   };
 
+  // Grade background color for the large display
+  const gradeBgColor = overallGrade === 'A+' || overallGrade === 'A' ? 'bg-green-500/20 border-green-500/50' 
+    : overallGrade === 'B' ? 'bg-blue-500/20 border-blue-500/50' 
+    : overallGrade === 'C' ? 'bg-yellow-500/20 border-yellow-500/50'
+    : 'bg-red-500/20 border-red-500/50';
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Execution Score - Prominent Display */}
+      <Card data-testid="card-summary-execution" className={`border-2 ${gradeBgColor}`}>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-4">
+            <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${gradeBgColor} border-2`}>
+              <span className={`text-4xl font-bold ${gradeColor}`} data-testid="text-execution-grade">
+                {overallGrade}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-muted-foreground">X-Score</p>
+              <p className="text-lg font-semibold">Daily Execution</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {allHourlyScores.length} hours graded
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Total Sales with vs LW */}
       <Card data-testid="card-summary-sales">
         <CardContent className="p-4">
@@ -140,7 +166,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         </CardContent>
       </Card>
 
-      {/* Restaurants Ahead */}
+      {/* Store Performance */}
       <Card data-testid="card-summary-ahead">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
@@ -155,12 +181,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                   <span className="text-muted-foreground"> ahead of last week</span>
                 </p>
                 <p className="text-sm">
-                  <span className="font-bold text-red-600 dark:text-red-400">{restaurants.length - aheadOfPaceCount}</span>
+                  <span className="font-bold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
                   <span className="text-muted-foreground"> behind last week</span>
-                </p>
-                <p className="text-sm">
-                  <span className={`font-bold ${gradeColor}`}>{overallGrade}</span>
-                  <span className="text-muted-foreground"> overall execution</span>
                 </p>
               </div>
             </div>
@@ -168,7 +190,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         </CardContent>
       </Card>
 
-      {/* Projected Daily Sales - shows N/A when day is complete (no remaining forecast) */}
+      {/* Projected Daily Sales */}
       <Card data-testid="card-summary-projected">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
@@ -180,11 +202,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               {projectedData.remainingForecast <= 0 ? (
                 <>
                   <p className="text-xl font-bold" data-testid="text-projected-daily">N/A</p>
-                  <div className="mt-1 space-y-0.5">
-                    <p className="text-xs text-muted-foreground">
-                      Day complete - no forecast needed
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">Day complete</p>
                 </>
               ) : (
                 <>
@@ -204,11 +222,9 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                       )
                     )}
                   </p>
-                  <div className="mt-1 space-y-0.5">
-                    <p className="text-xs text-muted-foreground">
-                      {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} forecast
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatCurrency(projectedData.actualSoFar)} + {formatCurrency(projectedData.remainingForecast)} forecast
+                  </p>
                 </>
               )}
             </div>
