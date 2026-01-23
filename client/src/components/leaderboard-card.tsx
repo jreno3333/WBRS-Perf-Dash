@@ -36,6 +36,51 @@ function WeatherIcon({ condition }: { condition: string }) {
   }
 }
 
+// Execution Grade Calculator
+// Sales: UP/DOWN, Speed: GREEN(<300s)/YELLOW(300-420s)/RED(>420s), Staffing: PROPER/UNDER/OVER
+function getExecutionGrade(
+  salesUp: boolean,
+  speedSeconds: number | undefined,
+  staffingDiff: number
+): { grade: string; color: string } {
+  // Determine speed category
+  let speed: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
+  if (speedSeconds !== undefined) {
+    if (speedSeconds > 420) speed = 'RED';
+    else if (speedSeconds > 300) speed = 'YELLOW';
+  }
+  
+  // Determine staffing category (using ±1 threshold)
+  let staffing: 'PROPER' | 'UNDER' | 'OVER' = 'PROPER';
+  if (staffingDiff > 1) staffing = 'OVER';
+  else if (staffingDiff < -1) staffing = 'UNDER';
+  
+  // Grade lookup table
+  const gradeTable: Record<string, { grade: string; color: string }> = {
+    'UP-GREEN-PROPER': { grade: 'A+', color: 'text-green-600 dark:text-green-400' },
+    'UP-GREEN-UNDER': { grade: 'A', color: 'text-green-600 dark:text-green-400' },
+    'UP-GREEN-OVER': { grade: 'A', color: 'text-green-600 dark:text-green-400' },
+    'UP-YELLOW-PROPER': { grade: 'A', color: 'text-green-600 dark:text-green-400' },
+    'UP-YELLOW-UNDER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
+    'UP-YELLOW-OVER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
+    'UP-RED-PROPER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
+    'UP-RED-UNDER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
+    'UP-RED-OVER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
+    'DOWN-GREEN-PROPER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
+    'DOWN-GREEN-UNDER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
+    'DOWN-GREEN-OVER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
+    'DOWN-YELLOW-PROPER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
+    'DOWN-YELLOW-UNDER': { grade: 'D', color: 'text-orange-600 dark:text-orange-400' },
+    'DOWN-YELLOW-OVER': { grade: 'D', color: 'text-orange-600 dark:text-orange-400' },
+    'DOWN-RED-PROPER': { grade: 'D', color: 'text-orange-600 dark:text-orange-400' },
+    'DOWN-RED-UNDER': { grade: 'F', color: 'text-red-600 dark:text-red-400' },
+    'DOWN-RED-OVER': { grade: 'F', color: 'text-red-600 dark:text-red-400' },
+  };
+  
+  const key = `${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`;
+  return gradeTable[key] || { grade: '-', color: 'text-muted-foreground' };
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
@@ -454,11 +499,36 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 )}
               </div>
             </div>
+            {/* Execution Grades Row */}
+            <div className="flex gap-0.5 mb-1">
+              {activeHours.map((hour) => {
+                const isAhead = hour.todaySales >= hour.lastWeekSales;
+                const staffing = getStaffingBreakdown(hour.todaySales, hour.hour);
+                const actualStaff = hour.employeeCount || 0;
+                const staffingDiff = actualStaff - staffing.total;
+                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+                
+                return (
+                  <div
+                    key={`grade-${hour.hour}`}
+                    className="flex-1 text-center"
+                  >
+                    <span className={`text-[10px] font-bold ${gradeInfo.color}`}>
+                      {gradeInfo.grade}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
             <div className="relative flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
               {activeHours.map((hour) => {
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
+                const staffing = getStaffingBreakdown(hour.todaySales, hour.hour);
+                const actualStaff = hour.employeeCount || 0;
+                const staffingDiff = actualStaff - staffing.total;
+                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
                 
                 return (
                   <div
@@ -474,8 +544,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
-                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                      <div className="font-medium">{hour.label}</div>
+                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                      <div className="font-medium">{hour.label} - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></div>
                       <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
                       <div className="text-blue-600 dark:text-blue-400">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
                       {hour.avgServiceTime && (
@@ -483,6 +553,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                           SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
                         </div>
                       )}
+                      <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
+                        Staff: {actualStaff.toFixed(1)} / {staffing.total.toFixed(1)}
+                      </div>
                     </div>
                   </div>
                 );
