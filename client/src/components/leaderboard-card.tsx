@@ -213,31 +213,30 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 <Clock className="w-3 h-3 mr-1" />
                 {getTimezoneDisplay(restaurant.timezone, restaurant.normalizedHour)}
               </Badge>
-              {/* Revenue Port Badges - Show all with enabled/disabled state */}
-              <div className="flex items-center gap-1">
-                {ALL_REVENUE_PORTS.map(port => {
-                  const config = REVENUE_PORT_CONFIG[port];
-                  const isEnabled = restaurant.revenuePorts?.includes(port) ?? false;
-                  const Icon = config.icon;
-                  return (
-                    <div key={port} className="relative group">
-                      <Badge 
-                        className={`${isEnabled ? config.color : config.disabledColor} border-0 flex-shrink-0 text-xs px-1.5 cursor-help relative`}
-                        data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
-                      >
-                        <Icon className="w-3 h-3" />
-                        {!isEnabled && (
-                          <Ban className="w-4 h-4 absolute -top-0.5 -right-0.5 text-red-500 dark:text-red-400" strokeWidth={2.5} />
-                        )}
-                      </Badge>
-                      <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                        <div className="font-medium">{config.label}</div>
-                        <div className="text-muted-foreground">{isEnabled ? config.description : config.disabledDesc}</div>
+              {/* Revenue Port Badges - Only show enabled ports */}
+              {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {restaurant.revenuePorts.map(port => {
+                    const config = REVENUE_PORT_CONFIG[port as keyof typeof REVENUE_PORT_CONFIG];
+                    if (!config) return null;
+                    const Icon = config.icon;
+                    return (
+                      <div key={port} className="relative group">
+                        <Badge 
+                          className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5 cursor-help`}
+                          data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                        >
+                          <Icon className="w-3 h-3" />
+                        </Badge>
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                          <div className="font-medium">{config.label}</div>
+                          <div className="text-muted-foreground">{config.description}</div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
               {/* Weather Badge */}
               {restaurant.weather && (
                 <div className="relative group">
