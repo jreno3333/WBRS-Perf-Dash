@@ -121,6 +121,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         });
       });
       
+      // Calculate weighted average SOS for Early Bird (weighted by car count)
+      const sosHours = earlyBirdHours.filter(h => h.avgServiceTime && h.carCount);
+      const totalCars = sosHours.reduce((sum, h) => sum + (h.carCount || 0), 0);
+      const weightedSosSum = sosHours.reduce((sum, h) => sum + ((h.avgServiceTime || 0) * (h.carCount || 0)), 0);
+      const avgEarlyBirdSos = totalCars > 0 ? Math.round(weightedSosSum / totalCars) : undefined;
+      const totalEarlyBirdCars = totalCars > 0 ? totalCars : undefined;
+      
       // Push combined Early Bird data with summed sales
       acc.push({
         hour: 5,
@@ -132,6 +139,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         actualLabor: cumulativeLabor.actualLabor,
         employeeCount: totalLaborHours,
         positionBreakdown: combinedPositionBreakdown,
+        avgServiceTime: avgEarlyBirdSos,
+        carCount: totalEarlyBirdCars,
       });
       return acc;
     }
