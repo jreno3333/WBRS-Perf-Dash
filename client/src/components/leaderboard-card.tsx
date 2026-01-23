@@ -546,8 +546,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     />
                     <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                       <div className="font-medium">{hour.label} - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></div>
-                      <div className="text-primary">Today: ${hour.todaySales.toLocaleString()}</div>
-                      <div className="text-blue-600 dark:text-blue-400">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
+                      <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                        Today: ${hour.todaySales.toLocaleString()}
+                      </div>
+                      <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
                       {hour.avgServiceTime && (
                         <div className={
                           hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
