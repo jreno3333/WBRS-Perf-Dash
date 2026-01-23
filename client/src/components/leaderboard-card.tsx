@@ -220,6 +220,44 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     const config = REVENUE_PORT_CONFIG[port as keyof typeof REVENUE_PORT_CONFIG];
                     if (!config) return null;
                     const Icon = config.icon;
+                    
+                    // Special handling for drive_thru with HME timer data
+                    if (port === "drive_thru" && restaurant.driveThru) {
+                      const avgTime = restaurant.driveThru.avgTotalTime;
+                      const timeColor = avgTime > 420 
+                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        : avgTime > 300 
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                          : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+                      const timeStr = `${Math.floor(avgTime / 60)}:${(avgTime % 60).toString().padStart(2, '0')}`;
+                      
+                      return (
+                        <div key={port} className="relative group">
+                          <Badge 
+                            className={`${timeColor} border-0 flex-shrink-0 text-xs px-1.5 cursor-help gap-1`}
+                            data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                          >
+                            <Icon className="w-3 h-3" />
+                            <span>{timeStr}</span>
+                          </Badge>
+                          <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                            <div className="font-medium">Drive-Thru Speed</div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Clock className="w-3 h-3" />
+                              Avg total: {timeStr}
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Car className="w-3 h-3" />
+                              Window: {Math.floor(restaurant.driveThru.avgServiceTime / 60)}:{(restaurant.driveThru.avgServiceTime % 60).toString().padStart(2, '0')}
+                            </div>
+                            <div className="text-muted-foreground">
+                              Cars today: {restaurant.driveThru.carCount}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
                     return (
                       <div key={port} className="relative group">
                         <Badge 
@@ -273,8 +311,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   </div>
                 </div>
               )}
-              {/* Drive-Thru Speed Badge */}
-              {restaurant.driveThru && (
+              {/* Drive-Thru Speed Badge - Only show if not already shown in revenue ports */}
+              {restaurant.driveThru && (!restaurant.revenuePorts || !restaurant.revenuePorts.includes("drive_thru")) && (
                 <div className="relative group">
                   <Badge 
                     variant="secondary" 
@@ -652,4 +690,3 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     </Card>
   );
 }
-// Force rebuild 1769182377
