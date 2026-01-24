@@ -275,23 +275,27 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   EXC: {overallGrade.grade}
                 </Badge>
               )}
-              {/* Google Reviews Badge - Shows new reviews count today */}
+              {/* Google Reviews Badge - Shows overall rating */}
               {restaurant.googleReviews && (
                 <div className="relative group">
                   <Badge 
                     className={`flex-shrink-0 text-xs px-1.5 cursor-help gap-1 ${
-                      (restaurant.googleReviews.newReviewsToday || 0) > 0
+                      restaurant.googleReviews.rating >= 4.5
                         ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                        : "bg-muted text-muted-foreground"
+                        : restaurant.googleReviews.rating >= 4.0
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                          : restaurant.googleReviews.rating >= 3.5
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                     } border-0`}
                     data-testid={`badge-reviews-${restaurant.restaurantId}`}
                   >
                     <Star className="w-3 h-3" />
-                    <span className="font-medium">+{restaurant.googleReviews.newReviewsToday || 0}</span>
+                    <span className="font-medium">{restaurant.googleReviews.rating.toFixed(1)}</span>
                   </Badge>
-                  <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                    <div className="font-medium">Google Reviews Today</div>
-                    <div className="text-muted-foreground">{restaurant.googleReviews.rating.toFixed(1)}★ ({restaurant.googleReviews.reviewCount.toLocaleString()} total)</div>
+                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Google Reviews</div>
+                    <div className="text-muted-foreground">{restaurant.googleReviews.reviewCount.toLocaleString()} total reviews</div>
                   </div>
                 </div>
               )}
