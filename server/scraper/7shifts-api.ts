@@ -908,9 +908,11 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
         const endOfDay = new Date(posDateStr + 'T23:59:59.999Z');
         
         // Extract hour in restaurant's local timezone using AT TIME ZONE
+        // Use sql.raw for the timezone string since it's a known safe value from our database
+        const tzLiteral = sql.raw(`'${locationTimezone}'`);
         const posResults = await db
           .select({
-            hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${locationTimezone})::int`,
+            hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})::int`,
             totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
           })
           .from(posOrders)
@@ -921,7 +923,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
               lt(posOrders.businessDate, endOfDay)
             )
           )
-          .groupBy(sql`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${locationTimezone})`);
+          .groupBy(sql`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})`);
         
         for (const row of posResults) {
           restaurantSales.set(row.hour, Number(row.totalSales) || 0);
