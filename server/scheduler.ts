@@ -298,12 +298,12 @@ async function checkAndSeedHistoricalData() {
       pauseScheduler();
       
       try {
-        log("Fetching historical daily sales (8 days)...");
-        await fetchHistoricalSales(8);
+        log("Fetching historical daily sales (9 days)...");
+        await fetchHistoricalSales(9);
         log("Historical daily sales loaded");
         
-        log("Fetching historical hourly sales (8 days)...");
-        await fetchHistoricalHourlySales(8);
+        log("Fetching historical hourly sales (9 days)...");
+        await fetchHistoricalHourlySales(9);
         log("Historical hourly sales loaded");
         
         log("Historical data seeding complete!");

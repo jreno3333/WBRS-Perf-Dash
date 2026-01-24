@@ -612,7 +612,7 @@ export async function registerRoutes(
   // Fetch historical data (last N days)
   app.post("/api/scraper/historical", async (req, res) => {
     try {
-      const { days = 7 } = req.body;
+      const days = Number(req.query.days) || (req.body && req.body.days) || 9;
       
       res.json({ message: `Starting historical fetch for ${days} days`, status: "running" });
       
@@ -630,7 +630,7 @@ export async function registerRoutes(
   // Fetch historical hourly data (last N days)
   app.post("/api/scraper/historical-hourly", async (req, res) => {
     try {
-      const { days = 8 } = req.body;
+      const days = Number(req.query.days) || (req.body && req.body.days) || 9;
       
       res.json({ message: `Starting historical hourly fetch for ${days} days`, status: "running" });
       
