@@ -31,78 +31,47 @@ export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps)
     }).format(value);
   };
 
-  // Combine 5am and 6am into "Early Bird" and filter out hours 0-4
-  // Early Bird labor includes ALL labor from midnight (hours 0-6) to match cumulative sales methodology
-  const processedData = data.reduce((acc: HourlySalesData[], item) => {
-    // Skip hours 0-4 (no sales, but labor is included in Early Bird)
-    if (item.hour < 5) return acc;
-    
-    // Combine 5am and 6am into "Early Bird" with cumulative labor from midnight
-    if (item.hour === 5) {
-      const hour6 = data.find(d => d.hour === 6);
-      // Sum labor from hours 0-6 (midnight through 6am) for Early Bird
-      const cumulativeLabor = data
-        .filter(h => h.hour <= 6)
-        .reduce((sum, h) => ({
-          projectedLabor: sum.projectedLabor + (h.projectedLabor || 0),
-          actualLabor: sum.actualLabor + (h.actualLabor || 0),
-        }), { projectedLabor: 0, actualLabor: 0 });
-      
-      // Peak employee count across hours 0-6
-      const peakEmployees = Math.max(
-        ...data.filter(h => h.hour <= 6).map(h => h.employeeCount || 0)
-      );
-      
-      // Sales values are cumulative (running total), so use hour6's cumulative value
-      // which already includes all sales from open through 6am
-      acc.push({
-        hour: 5,
-        label: "Early Bird",
-        todaySales: hour6?.todaySales || item.todaySales,
-        lastWeekSales: hour6?.lastWeekSales || item.lastWeekSales,
-        forecastSales: hour6?.forecastSales || item.forecastSales,
-        projectedLabor: cumulativeLabor.projectedLabor,
-        actualLabor: cumulativeLabor.actualLabor,
-        employeeCount: peakEmployees,
-      });
-      return acc;
+  // Show all 24 hours individually, filling in zeros for missing hours
+  const getHourLabel = (h: number) => 
+    h === 0 ? '12am' : h === 12 ? '12pm' : h > 12 ? `${h-12}pm` : `${h}am`;
+  
+  // Create map of existing data
+  const dataMap = new Map<number, HourlySalesData>();
+  data.forEach(item => dataMap.set(item.hour, item));
+  
+  // Generate all 24 hours (0-23)
+  const processedData: HourlySalesData[] = [];
+  for (let h = 0; h < 24; h++) {
+    const existing = dataMap.get(h);
+    if (existing) {
+      processedData.push(existing);
+    } else {
+      processedData.push({
+        hour: h,
+        todaySales: 0,
+        lastWeekSales: 0,
+        forecastSales: 0,
+        employeeCount: 0,
+        projectedLabor: 0,
+        actualLabor: 0,
+        label: getHourLabel(h),
+      } as HourlySalesData);
     }
-    
-    // Skip 6am since it's combined with 5am
-    if (item.hour === 6) return acc;
-    
-    // Keep all other hours as-is
-    acc.push(item);
-    return acc;
-  }, []);
+  }
 
   // Use server-provided current hour to determine in-progress indicator
-  // This ensures the correct hour is shown regardless of data patterns
   let inProgressLabel: string | null = null;
   let inProgressSales = 0;
   
   if (currentHour !== null && currentHour !== undefined) {
-    // Map the current hour to a label
-    const hourLabel = currentHour === 0 ? "12am" : currentHour < 12 ? `${currentHour}am` : currentHour === 12 ? "12pm" : `${currentHour - 12}pm`;
-    
-    // Find matching entry in processedData (accounting for "Early Bird" combining hours 5-6)
-    if (currentHour <= 6) {
-      // Early Bird covers hours 5 and 6
-      const earlyBird = processedData.find(d => d.label === "Early Bird");
-      if (earlyBird) {
-        inProgressLabel = "Early Bird";
-        inProgressSales = earlyBird.todaySales;
-      }
+    const hourLabel = getHourLabel(currentHour);
+    const matchingHour = processedData.find(d => d.hour === currentHour);
+    if (matchingHour) {
+      inProgressLabel = matchingHour.label;
+      inProgressSales = matchingHour.todaySales;
     } else {
-      const matchingHour = processedData.find(d => d.hour === currentHour);
-      if (matchingHour) {
-        inProgressLabel = matchingHour.label;
-        inProgressSales = matchingHour.todaySales;
-      } else {
-        // If no data for current hour yet, still show the label
-        inProgressLabel = hourLabel;
-        inProgressSales = 0;
-      }
+      inProgressLabel = hourLabel;
+      inProgressSales = 0;
     }
   }
 

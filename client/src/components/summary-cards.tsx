@@ -86,8 +86,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
       if (!restaurant) continue;
       
       for (const hour of hours) {
-        // Skip Early Bird hours
-        if (hour.label === "Early Bird") continue;
+        // Include all hours with sales data
+        if (!hour.todaySales && !hour.lastWeekSales) continue;
         
         const isAhead = hour.todaySales >= hour.lastWeekSales;
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);

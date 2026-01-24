@@ -43,7 +43,7 @@ function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, s
 function calculateXScore(hourlyData: HourlySalesData[] | undefined): number {
   if (!hourlyData || hourlyData.length === 0) return 0;
   const scores = hourlyData
-    .filter(hour => hour.label !== "Early Bird")
+    .filter(hour => hour.todaySales > 0 || hour.lastWeekSales > 0)
     .map(hour => {
       const isAhead = hour.todaySales >= hour.lastWeekSales;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
@@ -503,7 +503,7 @@ export default function Dashboard() {
       <footer className="border-t mt-8">
         <div className="container mx-auto px-4 py-4">
           <p className="text-center text-sm text-muted-foreground">
-            Sales data updated hourly from 7shifts
+            Sales data synced every 5 minutes
           </p>
         </div>
       </footer>

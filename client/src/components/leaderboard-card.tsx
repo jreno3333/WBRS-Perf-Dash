@@ -143,99 +143,47 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
     : 0;
 
-  // Eastern timezone units have data issues with Early Bird extending through 8am
-  // Central units use the standard 0-6 Early Bird range
-  const isEasternTimezone = restaurant.timezone?.includes("New_York") || restaurant.timezone?.includes("Eastern");
-  const earlyBirdEndHour = isEasternTimezone ? 8 : 6;
-  
-  // Combine early morning hours into "Early Bird" bucket
-  // For Eastern: hours 0-8, For Central: hours 0-6
-  const processedHours = (hourlyData || []).reduce((acc: HourlySalesData[], item) => {
-    // Skip hours before 5am (no sales displayed, but labor is included in Early Bird)
-    if (item.hour < 5) return acc;
-    
-    // Combine hours into "Early Bird" with summed sales and labor from midnight
-    if (item.hour === 5) {
-      // Get all hours within Early Bird range
-      const earlyBirdHours = (hourlyData || []).filter(h => h.hour <= earlyBirdEndHour);
-      
-      // SUM sales for all Early Bird hours (data is per-hour, not cumulative)
-      const totalSales = earlyBirdHours.reduce((sum, h) => ({
-        todaySales: sum.todaySales + (h.todaySales || 0),
-        lastWeekSales: sum.lastWeekSales + (h.lastWeekSales || 0),
-        forecastSales: sum.forecastSales + (h.forecastSales || 0),
-      }), { todaySales: 0, lastWeekSales: 0, forecastSales: 0 });
-      
-      // Sum labor from hours 0 through earlyBirdEndHour for Early Bird
-      const cumulativeLabor = earlyBirdHours.reduce((sum, h) => ({
-        projectedLabor: sum.projectedLabor + (h.projectedLabor || 0),
-        actualLabor: sum.actualLabor + (h.actualLabor || 0),
-      }), { projectedLabor: 0, actualLabor: 0 });
-      
-      // Sum labor hours across the Early Bird period
-      const totalLaborHours = earlyBirdHours.reduce((sum, h) => sum + (Number(h.employeeCount) || 0), 0);
-      
-      // Combine position breakdowns from all Early Bird hours
-      const combinedPositionBreakdown: Record<string, number> = {};
-      earlyBirdHours.forEach(h => {
-        const breakdown = h.positionBreakdown || {};
-        Object.entries(breakdown).forEach(([pos, hours]) => {
-          combinedPositionBreakdown[pos] = (combinedPositionBreakdown[pos] || 0) + (hours as number);
-        });
-      });
-      
-      // Calculate weighted average SOS for Early Bird (weighted by car count)
-      const sosHours = earlyBirdHours.filter(h => h.avgServiceTime && h.carCount);
-      const totalCars = sosHours.reduce((sum, h) => sum + (h.carCount || 0), 0);
-      const weightedSosSum = sosHours.reduce((sum, h) => sum + ((h.avgServiceTime || 0) * (h.carCount || 0)), 0);
-      const avgEarlyBirdSos = totalCars > 0 ? Math.round(weightedSosSum / totalCars) : undefined;
-      const totalEarlyBirdCars = totalCars > 0 ? totalCars : undefined;
-      
-      // Push combined Early Bird data with summed sales
-      acc.push({
-        hour: 5,
-        label: "Early Bird",
-        todaySales: totalSales.todaySales,
-        lastWeekSales: totalSales.lastWeekSales,
-        forecastSales: totalSales.forecastSales,
-        projectedLabor: cumulativeLabor.projectedLabor,
-        actualLabor: cumulativeLabor.actualLabor,
-        employeeCount: totalLaborHours,
-        positionBreakdown: combinedPositionBreakdown,
-        avgServiceTime: avgEarlyBirdSos,
-        carCount: totalEarlyBirdCars,
-      });
-      return acc;
-    }
-    
-    // Skip hours that are combined into Early Bird
-    if (item.hour <= earlyBirdEndHour) return acc;
-    
-    // Keep all other hours as-is
-    acc.push(item);
-    return acc;
-  }, []);
-
-  // Filter to only show hours up to the normalized cutoff (used for ranking)
-  // This keeps the chart consistent with the sales figures displayed
+  // Show all 24 hours individually (no Early Bird combining since we have full POS data)
+  // Generate all 24 hours, filling in zeros for missing hours
   const normalizedCutoff = restaurant.normalizedHour;
-  const activeHours = processedHours.filter(h => {
-    // Early Bird (hour 5) represents hours 0 through earlyBirdEndHour
-    // Show it if the normalized cutoff is at or past the Early Bird end
-    if (h.hour === 5 && h.label === "Early Bird") {
-      return normalizedCutoff >= earlyBirdEndHour;
-    }
-    // For other hours, only show if within the normalized cutoff
-    return h.hour <= normalizedCutoff && (h.todaySales > 0 || h.lastWeekSales > 0 || h.forecastSales > 0);
+  const currentHour = (normalizedCutoff + 1) % 24;
+  
+  // Create a map of existing hourly data
+  const hourlyDataMap = new Map<number, HourlySalesData>();
+  (hourlyData || []).forEach(item => {
+    hourlyDataMap.set(item.hour, item);
   });
+  
+  // Generate all 24 hours (0-23)
+  const allHours: HourlySalesData[] = [];
+  for (let h = 0; h < 24; h++) {
+    const existing = hourlyDataMap.get(h);
+    if (existing) {
+      allHours.push(existing);
+    } else {
+      // Create placeholder for missing hour
+      allHours.push({
+        hour: h,
+        todaySales: 0,
+        lastWeekSales: 0,
+        forecastSales: 0,
+        employeeCount: 0,
+        projectedLabor: 0,
+        actualLabor: 0,
+        label: h === 0 ? '12am' : h === 12 ? '12pm' : h > 12 ? `${h-12}pm` : `${h}am`,
+      } as HourlySalesData);
+    }
+  }
+  
+  const activeHours = allHours;
   const maxSales = Math.max(
     ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
     1
   );
   
-  // Calculate overall execution grade from hourly grades (excluding Early Bird)
+  // Calculate overall execution grade from completed hourly grades only
   const hourlyGradeScores = activeHours
-    .filter(hour => hour.label !== "Early Bird")
+    .filter(hour => hour.hour <= normalizedCutoff) // Only completed hours
     .map(hour => {
       const isAhead = hour.todaySales >= hour.lastWeekSales;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
@@ -543,14 +491,15 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 )}
               </div>
             </div>
-            {/* Execution Grades Row */}
+            {/* Execution Grades Row - Only show for completed hours */}
             <div className="flex gap-0.5 mb-1">
               {activeHours.map((hour) => {
-                const isEarlyBird = hour.label === "Early Bird";
-                if (isEarlyBird) {
+                const isCurrentHour = hour.hour === currentHour;
+                // Current hour: show dash (grade not yet determined)
+                if (isCurrentHour) {
                   return (
                     <div key={`grade-${hour.hour}`} className="flex-1 text-center">
-                      <span className="text-[10px] font-bold text-muted-foreground">-</span>
+                      <span className="text-[10px] font-bold text-orange-500 animate-pulse">...</span>
                     </div>
                   );
                 }
@@ -574,15 +523,15 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="relative flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
               {activeHours.map((hour) => {
+                const isCurrentHour = hour.hour === currentHour;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
-                const isEarlyBird = hour.label === "Early Bird";
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
-                const staffingDiff = isEarlyBird ? 0 : actualStaff - staffing.total;
-                const gradeInfo = isEarlyBird 
-                  ? { grade: '-', color: 'text-muted-foreground' }
+                const staffingDiff = isCurrentHour ? 0 : actualStaff - staffing.total;
+                const gradeInfo = isCurrentHour 
+                  ? { grade: '...', color: 'text-orange-500' }
                   : getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
                 
                 return (
@@ -592,31 +541,53 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   >
                     <div
                       className={`w-full rounded-t-sm transition-all ${
-                        isAhead 
-                          ? "bg-green-500 dark:bg-green-400" 
-                          : "bg-red-500 dark:bg-red-400"
+                        isCurrentHour
+                          ? "bg-orange-400 dark:bg-orange-500 animate-pulse"
+                          : isAhead 
+                            ? "bg-green-500 dark:bg-green-400" 
+                            : "bg-red-500 dark:bg-red-400"
                       }`}
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
                     <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                      <div className="font-medium">{hour.label} - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></div>
-                      <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
-                        Today: ${hour.todaySales.toLocaleString()}
-                      </div>
-                      <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
-                      {hour.avgServiceTime && (
-                        <div className={
-                          hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
-                          hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
-                          "text-green-600 dark:text-green-400"
-                        }>
-                          SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
-                        </div>
+                      {isCurrentHour ? (
+                        <>
+                          <div className="font-medium text-orange-500">{hour.label} - In Progress</div>
+                          <div className="text-foreground">
+                            Sales: ${hour.todaySales.toLocaleString()}
+                          </div>
+                          {hour.avgServiceTime && (
+                            <div className={
+                              hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
+                              hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
+                              "text-green-600 dark:text-green-400"
+                            }>
+                              Speed: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="font-medium">{hour.label} - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></div>
+                          <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                            Today: ${hour.todaySales.toLocaleString()}
+                          </div>
+                          <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
+                          {hour.avgServiceTime && (
+                            <div className={
+                              hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
+                              hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
+                              "text-green-600 dark:text-green-400"
+                            }>
+                              SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
+                            </div>
+                          )}
+                          <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
+                            Staff: {staffingDiff > 1 ? "Over" : staffingDiff < -1 ? "Under" : "Proper"}
+                          </div>
+                        </>
                       )}
-                      <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
-                        Staff: {staffingDiff > 1 ? "Over" : staffingDiff < -1 ? "Under" : "Proper"}
-                      </div>
                     </div>
                   </div>
                 );
@@ -686,24 +657,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </div>
               <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
                 {activeHours.map((hour) => {
-                  // Early Bird hours are combined - staffing data isn't meaningful
-                  const isEarlyBird = hour.label === "Early Bird";
-                  
-                  if (isEarlyBird) {
-                    return (
-                      <div
-                        key={`staff-${hour.hour}`}
-                        className="flex-1 flex items-end group relative h-full"
-                      >
-                        <div className="w-full h-1 bg-gray-300 dark:bg-gray-600 rounded-sm" />
-                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                          <div className="font-medium">{hour.label}</div>
-                          <div className="text-muted-foreground">Staffing: N/A</div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  
+                  const isCurrentHour = hour.hour === currentHour;
                   const laborHours = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;
                   
@@ -808,13 +762,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 })}
               </div>
               
-              {/* Total Staffing Summary for the Day - excludes Early Bird hours */}
+              {/* Total Staffing Summary for the Day */}
               {(() => {
-                const totals = processedHours.reduce((acc, hour) => {
-                  // Skip Early Bird hours - labor data not meaningful
-                  // Eastern units: hours 0-8, Central units: hours 0-6
-                  const isEarlyBirdHour = hour.label === "Early Bird" || hour.hour <= earlyBirdEndHour;
-                  if (isEarlyBirdHour) return acc;
+                const totals = activeHours.reduce((acc, hour) => {
+                  // Only include completed hours (not current hour)
+                  if (hour.hour === currentHour) return acc;
                   
                   const laborHrs = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;

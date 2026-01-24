@@ -45,7 +45,8 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
       const hours = hourlyByRestaurant[restaurantId];
       if (!hours) continue;
       for (const hour of hours) {
-        if (hour.label === "Early Bird") continue;
+        // Include all hours with sales data
+        if (!hour.todaySales && !hour.lastWeekSales) continue;
         const isAhead = hour.todaySales >= hour.lastWeekSales;
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
         const actualStaff = Number(hour.employeeCount) || 0;
