@@ -314,7 +314,16 @@ export async function syncHMETimerData(targetDate?: Date): Promise<{ saved: numb
       }
 
       try {
-        // Upsert the timer data
+        // First, check if record exists and delete it (to handle databases without unique constraint)
+        await db.delete(hmeTimerData).where(
+          and(
+            eq(hmeTimerData.restaurantId, restaurantId),
+            eq(hmeTimerData.date, m.date),
+            eq(hmeTimerData.hour, m.hour)
+          )
+        );
+        
+        // Then insert the new data
         await db.insert(hmeTimerData).values({
           restaurantId,
           date: m.date,
@@ -326,17 +335,6 @@ export async function syncHMETimerData(targetDate?: Date): Promise<{ saved: numb
           avgQueueTime: m.avgQueueTime,
           maxTotalTime: m.maxTotalTime,
           minTotalTime: m.minTotalTime,
-        }).onConflictDoUpdate({
-          target: [hmeTimerData.restaurantId, hmeTimerData.date, hmeTimerData.hour],
-          set: {
-            carCount: m.carCount,
-            avgTotalTime: m.avgTotalTime,
-            avgMenuBoardTime: m.avgMenuBoardTime,
-            avgServiceTime: m.avgServiceTime,
-            avgQueueTime: m.avgQueueTime,
-            maxTotalTime: m.maxTotalTime,
-            minTotalTime: m.minTotalTime,
-          },
         });
         saved++;
       } catch (err: any) {
