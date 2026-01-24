@@ -267,43 +267,67 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // First, get all POS orders grouped by store number and hour (from posDb which may be separate)
-  const posResults = await posDb
-    .select({
-      storeNumber: posOrders.storeNumber,
-      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
-      totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
-    })
-    .from(posOrders)
-    .where(
-      and(
-        gte(posOrders.businessDate, startOfDay),
-        lt(posOrders.businessDate, endOfDay)
-      )
-    )
-    .groupBy(posOrders.storeNumber, sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
-
-  // Get all restaurants to build dynamic store number -> restaurant ID mapping
+  // Get all restaurants to build store number -> restaurant mapping with timezones
   const allRestaurants = await db.select().from(restaurants);
   
-  // Build mapping from store number to restaurant ID by parsing restaurant names
-  // Restaurant names are like "1237 - Athens", so we extract the store number prefix
-  const storeToRestaurantId = new Map<string, string>();
+  // Build mapping from store number to restaurant info (ID and timezone)
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
   for (const restaurant of allRestaurants) {
     const match = restaurant.name.match(/^(\d{4})\s*-/);
     if (match) {
-      storeToRestaurantId.set(match[1], restaurant.id);
+      storeToRestaurant.set(match[1], { 
+        id: restaurant.id, 
+        timezone: restaurant.timezone || 'America/Chicago' 
+      });
     }
   }
 
+  // Get unique timezones to query separately (can't use restaurant timezone in SQL across DBs)
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+  const timezones = Array.from(timezoneSet);
+  
   const allHourlySales = new Map<string, Map<number, number>>();
-  for (const row of posResults) {
-    const restaurantId = storeToRestaurantId.get(row.storeNumber);
-    if (restaurantId) {
-      if (!allHourlySales.has(restaurantId)) {
-        allHourlySales.set(restaurantId, new Map());
+  
+  // Query POS data for each timezone separately to ensure correct hour bucketing
+  for (const tz of timezones) {
+    // Get store numbers that use this timezone
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) {
+        storesInTz.push(storeNum);
       }
-      allHourlySales.get(restaurantId)!.set(row.hour, Number(row.totalSales) || 0);
+    });
+    
+    if (storesInTz.length === 0) continue;
+    
+    // Query POS orders for stores in this timezone, converting to their local time
+    // Use sql.raw for the timezone literal since it's a known safe value from our database
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const posResults = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        hour: sql<number>`${hourExpr}`,
+        totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startOfDay),
+          lt(posOrders.businessDate, endOfDay),
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${hourExpr}`);
+    
+    for (const row of posResults) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (restaurantInfo) {
+        if (!allHourlySales.has(restaurantInfo.id)) {
+          allHourlySales.set(restaurantInfo.id, new Map());
+        }
+        allHourlySales.get(restaurantInfo.id)!.set(row.hour, Number(row.totalSales) || 0);
+      }
     }
   }
 
