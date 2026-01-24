@@ -1122,6 +1122,40 @@ export async function registerRoutes(
     }
   });
 
+  // Get Google Reviews sync status
+  app.get("/api/google-reviews/status", async (req, res) => {
+    try {
+      const restaurants = await storage.getRestaurants();
+      const configuredRestaurants = restaurants.filter(r => r.googlePlaceId);
+      
+      // Get today's date in Central timezone
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      
+      // Count restaurants with synced data today
+      const { getGoogleReviewsForAllRestaurants } = await import("./google-places");
+      const reviewsMap = await getGoogleReviewsForAllRestaurants(todayStr);
+      
+      let totalReviewsToday = 0;
+      let restaurantsWithData = 0;
+      reviewsMap.forEach((value) => {
+        restaurantsWithData++;
+        totalReviewsToday += value.reviewCount;
+      });
+      
+      res.json({
+        credentialsConfigured: !!process.env.GOOGLE_PLACES_API_KEY,
+        configuredCount: configuredRestaurants.length,
+        totalRestaurants: restaurants.filter(r => r.isActive).length,
+        restaurantsWithData,
+        totalReviewsToday,
+        dateChecked: todayStr,
+      });
+    } catch (error) {
+      console.error("Error fetching Google reviews status:", error);
+      res.status(500).json({ error: "Failed to fetch Google reviews status" });
+    }
+  });
+
   // Sync Google reviews for all restaurants
   app.post("/api/google-reviews/sync", async (req, res) => {
     try {

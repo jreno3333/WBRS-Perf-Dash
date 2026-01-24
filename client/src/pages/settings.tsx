@@ -352,6 +352,8 @@ export default function SettingsPage() {
           <XenialSyncCard />
 
           <HMESyncCard />
+
+          <GoogleReviewsSyncCard />
         </div>
       </main>
     </div>
@@ -960,6 +962,127 @@ function HMESyncCard() {
             <span className="text-sm text-green-600 flex items-center gap-1">
               <CheckCircle className="h-4 w-4" />
               Sync triggered successfully
+            </span>
+          )}
+          {lastSyncResult === "error" && (
+            <span className="text-sm text-red-600 flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" />
+              Sync failed
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface GoogleReviewsStatus {
+  credentialsConfigured: boolean;
+  configuredCount: number;
+  totalRestaurants: number;
+  restaurantsWithData: number;
+  totalReviewsToday: number;
+  dateChecked: string;
+}
+
+function GoogleReviewsSyncCard() {
+  const { toast } = useToast();
+  const [lastSyncResult, setLastSyncResult] = useState<string | null>(null);
+
+  const { data: status, isLoading: statusLoading, refetch: refetchStatus } = useQuery<GoogleReviewsStatus>({
+    queryKey: ["/api/google-reviews/status"],
+    refetchInterval: 30000,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/google-reviews/sync", {});
+      return response.json() as Promise<{ message: string; success: number; failed: number }>;
+    },
+    onSuccess: (data) => {
+      setLastSyncResult(data.success > 0 ? "success" : "warning");
+      toast({
+        title: data.success > 0 ? "Google Reviews Synced" : "Sync Completed - No Data",
+        description: data.success > 0 
+          ? `Successfully synced ${data.success} restaurants.${data.failed > 0 ? ` (${data.failed} failed)` : ""}`
+          : data.failed > 0 
+            ? `No data synced. ${data.failed} restaurants failed.`
+            : "No restaurants configured with Place IDs.",
+        variant: data.success > 0 ? "default" : "destructive",
+      });
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+    },
+    onError: (error) => {
+      setLastSyncResult("error");
+      toast({
+        title: "Sync Failed",
+        description: error instanceof Error ? error.message : "Failed to sync Google reviews.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Star className="h-5 w-5 text-primary" />
+          <CardTitle>Google Reviews Sync</CardTitle>
+        </div>
+        <CardDescription>
+          Review data is synced automatically every hour. Shows rating and review count for each restaurant.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {statusLoading ? (
+          <div className="text-muted-foreground text-sm">Loading Google Reviews status...</div>
+        ) : status ? (
+          <div className="grid gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">API Key:</span>
+              {status.credentialsConfigured ? (
+                <Badge className="bg-green-500 hover:bg-green-600">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Configured
+                </Badge>
+              ) : (
+                <Badge variant="destructive">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Missing GOOGLE_PLACES_API_KEY
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Place IDs:</span>
+              <span className="text-sm text-muted-foreground">
+                {status.configuredCount} of {status.totalRestaurants} restaurants configured
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Today's Data:</span>
+              <span className="text-sm text-muted-foreground">
+                {status.restaurantsWithData} restaurants synced, {status.totalReviewsToday.toLocaleString()} total reviews
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-muted-foreground text-sm">Unable to fetch Google Reviews status</div>
+        )}
+
+        <div className="flex items-center gap-3 pt-2 border-t">
+          <Button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending || !status?.credentialsConfigured}
+            data-testid="button-google-sync"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            {syncMutation.isPending ? "Syncing..." : "Sync Reviews Now"}
+          </Button>
+          {lastSyncResult === "success" && (
+            <span className="text-sm text-green-600 flex items-center gap-1">
+              <CheckCircle className="h-4 w-4" />
+              Sync completed
             </span>
           )}
           {lastSyncResult === "error" && (
