@@ -1,5 +1,6 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, syncSalesWithXenialPOS } from "./scraper/7shifts-api";
 import { syncHMETimerData } from "./scraper/hme-api";
+import { syncAllGoogleReviews, markEndOfDaySnapshots } from "./google-places";
 import { db } from "./db";
 import { dailySales, hourlySales, restaurants } from "@shared/schema";
 import { sql, isNotNull } from "drizzle-orm";
@@ -109,6 +110,9 @@ async function runScheduledSync() {
       log(`HME sync failed: ${hmeError instanceof Error ? hmeError.message : 'Unknown error'}`);
     }
     
+    // Sync Google reviews (once per hour at the top of the hour)
+    await syncGoogleReviewsIfNeeded();
+    
     // Save end-of-day weather snapshot (at 11 PM Central)
     await saveEndOfDayWeatherIfNeeded();
     
@@ -193,6 +197,48 @@ async function saveDailyWeatherSnapshot(date: string): Promise<number> {
   }
   
   return saved;
+}
+
+// Track last Google reviews sync to avoid syncing too frequently
+let lastGoogleReviewsSync: string | null = null;
+
+// Sync Google reviews once per hour
+async function syncGoogleReviewsIfNeeded() {
+  const now = new Date();
+  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    hour12: false
+  }).format(now));
+  
+  const currentMinute = now.getMinutes();
+  
+  // Only sync at the top of each hour (minute 0)
+  if (currentMinute !== 0) {
+    return;
+  }
+  
+  const syncKey = `${now.toISOString().split('T')[0]}-${centralHour}`;
+  
+  // Don't sync more than once per hour
+  if (lastGoogleReviewsSync === syncKey) {
+    return;
+  }
+  
+  log("Syncing Google reviews...");
+  try {
+    const result = await syncAllGoogleReviews();
+    log(`Google reviews sync completed: ${result.success} success, ${result.failed} failed`);
+    lastGoogleReviewsSync = syncKey;
+    
+    // Mark end-of-day snapshots at 11 PM Central
+    if (centralHour === 23) {
+      await markEndOfDaySnapshots();
+      log("Google reviews end-of-day snapshots marked");
+    }
+  } catch (error) {
+    log(`Google reviews sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 // Save weather at end of day (11 PM Central)
