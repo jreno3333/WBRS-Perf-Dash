@@ -151,6 +151,10 @@ export class DatabaseStorage implements IStorage {
     // Get all hourly sales from 7shifts for comparison data
     const allHourlySales = await db.select().from(hourlySales);
     
+    // Fetch Xenial POS data - prioritize over 7shifts for sales (real transactions)
+    const posHourlySales = await getAllHourlyPosSales(selectedDate);
+    const posLastWeekHourlySales = await getAllHourlyPosSales(lastWeek);
+    
     // Get daily_sales as fallback for last week data when hourly data is not available
     // 7shifts API only returns hourly intervals for ~3 days, so we need daily_sales for week-over-week
     const allDailySales = await db.select().from(dailySales);
@@ -227,37 +231,66 @@ export class DatabaseStorage implements IStorage {
         s => s.restaurantId === restaurant.id && s.hour <= restaurantCompletedHour
       );
       
-      // Use 7shifts hourly data for sales (works for both today and historical)
-      // Normalized sales (capped at normalized hour for fair ranking)
-      const selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
-        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
-      );
+      // Get POS data for this restaurant (prioritize over 7shifts)
+      const posSalesForRestaurant = posHourlySales.get(restaurant.id);
+      const posLastWeekSalesForRestaurant = posLastWeekHourlySales.get(restaurant.id);
       
-      // Actual current sales (all available hours, matches 7shifts display)
-      const actualSalesAmount = allSelectedDateHours.reduce(
-        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
-      );
+      // Calculate sales - prioritize POS data over 7shifts
+      let selectedDateSalesAmount = 0;
+      let actualSalesAmount = 0;
       
-      // Normalized last week (for ranking)
-      // Use hourly data if available, otherwise fall back to daily_sales
-      // 7shifts API only returns hourly intervals for ~3 days, so daily_sales is used for older dates
-      let lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
-        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
-      );
-      let actualLastWeekAmount = lastWeekHoursForComparison.reduce(
-        (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
-      );
+      if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
+        // Use POS data - sum sales up to normalized hour for ranking
+        posSalesForRestaurant.forEach((sales, hour) => {
+          if (hour <= normalizedHourCutoff) {
+            selectedDateSalesAmount += sales;
+          }
+          actualSalesAmount += sales;
+        });
+      } else {
+        // Fallback to 7shifts data
+        selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
+          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+        );
+        actualSalesAmount = allSelectedDateHours.reduce(
+          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+        );
+      }
       
-      // Fallback to daily_sales if hourly data not available for last week
-      if (lastWeekSalesAmount === 0 && lastWeekDailySalesMap.has(restaurant.id)) {
-        const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
-        // For ranking: use proportional amount based on normalized hour
-        // (e.g., if normalized hour is 19/23 = 83% of day, use 83% of daily total)
-        const dayProgress = (normalizedHourCutoff + 1) / 24;
-        lastWeekSalesAmount = dailyTotal * dayProgress;
-        // For display: use actual daily total for full day, or proportional for today
-        const displayProgress = (restaurantCompletedHour + 1) / 24;
-        actualLastWeekAmount = dailyTotal * displayProgress;
+      // Last week sales - prioritize POS data, then 7shifts, then daily_sales fallback
+      let lastWeekSalesAmount = 0;
+      let actualLastWeekAmount = 0;
+      
+      if (posLastWeekSalesForRestaurant && posLastWeekSalesForRestaurant.size > 0) {
+        // Use POS data for last week
+        posLastWeekSalesForRestaurant.forEach((sales, hour) => {
+          if (hour <= normalizedHourCutoff) {
+            lastWeekSalesAmount += sales;
+          }
+          if (hour <= restaurantCompletedHour) {
+            actualLastWeekAmount += sales;
+          }
+        });
+      } else {
+        // Fallback to 7shifts hourly data
+        lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
+          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+        );
+        actualLastWeekAmount = lastWeekHoursForComparison.reduce(
+          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+        );
+        
+        // Secondary fallback to daily_sales if hourly data not available for last week
+        if (lastWeekSalesAmount === 0 && lastWeekDailySalesMap.has(restaurant.id)) {
+          const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
+          // For ranking: use proportional amount based on normalized hour
+          // (e.g., if normalized hour is 19/23 = 83% of day, use 83% of daily total)
+          const dayProgress = (normalizedHourCutoff + 1) / 24;
+          lastWeekSalesAmount = dailyTotal * dayProgress;
+          // For display: use actual daily total for full day, or proportional for today
+          const displayProgress = (restaurantCompletedHour + 1) / 24;
+          actualLastWeekAmount = dailyTotal * displayProgress;
+        }
       }
       
       // Calculate forecast: current actual sales + last week's remaining hours

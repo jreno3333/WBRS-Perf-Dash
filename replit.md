@@ -49,10 +49,16 @@ Preferred communication style: Simple, everyday language.
 - **Week-over-Week Limitation**: 7shifts daily_stats API only returns hourly intervals for ~3 days. For older dates, the system falls back to daily_sales proportional calculation: `lastWeekSales = dailyTotal × (normalizedHour + 1) / 24`.
 
 ### Xenial POS Integration
-- **Purpose**: Receives real-time order pushes from Xenial POS.
+- **Purpose**: Receives real-time order pushes from Xenial POS - the primary source of sales data.
 - **Webhook**: `POST /api/xenial/order` for receiving order data.
 - **Data**: Includes order ID, store number, total, business date, closed time, and source.
-- **Mapping**: Xenial store numbers are mapped to internal restaurant IDs.
+- **Mapping**: Xenial store numbers are mapped to internal restaurant IDs via `location_mapping` table.
+- **Data Priority**: 
+  1. Xenial POS hourly data (most accurate - real transactions)
+  2. 7shifts hourly data (fallback when no POS data)
+  3. 7shifts daily_sales estimates (secondary fallback for week-over-week)
+- **Display**: Card shows `actualSales` (total POS transactions so far), ranking uses `todaySales` (normalized for fair timezone comparison).
+- **Hourly Chart**: All 24 hours displayed individually with actual POS transaction data per hour.
 
 ### HME Drive-Thru Timer Integration
 - **Purpose**: Fetches drive-thru timing data from HME CLOUD-connected timers (ZOOM Nitro).

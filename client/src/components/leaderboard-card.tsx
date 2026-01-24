@@ -139,8 +139,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     return `${timeStr}`;
   };
 
-  const paceVariance = restaurant.lastWeekSales > 0 
-    ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
+  // Use actual sales for pace variance comparison (matches what's displayed on card)
+  const paceVariance = restaurant.actualLastWeekSales > 0 
+    ? ((restaurant.actualSales / restaurant.actualLastWeekSales) - 1) * 100 
     : 0;
 
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
@@ -435,7 +436,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               className="text-xl font-bold"
               data-testid={`text-sales-${restaurant.restaurantId}`}
             >
-              {formatCurrency(restaurant.todaySales)}
+              {formatCurrency(restaurant.actualSales)}
             </div>
             <div className="flex items-center justify-end gap-1 mt-1">
               {restaurant.isAheadOfPace ? (
