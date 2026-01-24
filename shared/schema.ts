@@ -26,6 +26,7 @@ export type InsertRestaurant = z.infer<typeof insertRestaurantSchema>;
 export type Restaurant = typeof restaurants.$inferSelect;
 
 // Daily sales snapshot from 7shifts scraping
+// NOTE: This table is for SALES data only. Labor data is stored separately in daily_labor.
 export const dailySales = pgTable("daily_sales", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull(),
@@ -33,11 +34,23 @@ export const dailySales = pgTable("daily_sales", {
   salesDate: timestamp("sales_date").notNull(),
   totalSales: decimal("total_sales", { precision: 10, scale: 2 }).notNull(),
   vsProjected: decimal("vs_projected", { precision: 10, scale: 2 }), // Difference from projected
-  laborPercent: decimal("labor_percent", { precision: 5, scale: 2 }),
-  projectedLaborCost: decimal("projected_labor_cost", { precision: 10, scale: 2 }), // Total scheduled labor for the day
-  laborTarget: decimal("labor_target", { precision: 5, scale: 2 }).default("25.00"), // Target labor % (default 25%)
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
+
+// Daily labor data from 7shifts - stored separately to keep sales tables clean
+export const dailyLabor = pgTable("daily_labor", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  laborPercent: decimal("labor_percent", { precision: 5, scale: 2 }),
+  projectedLaborCost: decimal("projected_labor_cost", { precision: 10, scale: 2 }), // Total scheduled labor for the day
+  actualLaborCost: decimal("actual_labor_cost", { precision: 10, scale: 2 }), // Actual labor cost from punched hours
+  laborTarget: decimal("labor_target", { precision: 5, scale: 2 }).default("25.00"), // Target labor % (default 25%)
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("daily_labor_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
 
 export const insertDailySalesSchema = createInsertSchema(dailySales).omit({
   id: true,
@@ -47,7 +60,16 @@ export const insertDailySalesSchema = createInsertSchema(dailySales).omit({
 export type InsertDailySales = z.infer<typeof insertDailySalesSchema>;
 export type DailySales = typeof dailySales.$inferSelect;
 
+export const insertDailyLaborSchema = createInsertSchema(dailyLabor).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertDailyLabor = z.infer<typeof insertDailyLaborSchema>;
+export type DailyLabor = typeof dailyLabor.$inferSelect;
+
 // Hourly sales data for timezone-normalized comparisons
+// NOTE: This table is for SALES data only. Labor data is stored separately in hourly_labor.
 export const hourlySales = pgTable("hourly_sales", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull(),
@@ -56,12 +78,24 @@ export const hourlySales = pgTable("hourly_sales", {
   actualSales: decimal("actual_sales", { precision: 10, scale: 2 }).notNull(),
   projectedSales: decimal("projected_sales", { precision: 10, scale: 2 }),
   pastActualSales: decimal("past_actual_sales", { precision: 10, scale: 2 }), // Last week same hour
-  projectedLabor: decimal("projected_labor", { precision: 10, scale: 2 }), // Scheduled labor cost for this hour
-  actualLabor: decimal("actual_labor", { precision: 10, scale: 2 }), // Actual labor cost from punched hours
-  employeeCount: decimal("employee_count", { precision: 10, scale: 2 }), // Total labor hours deployed during this hour (sum of fractional hours worked)
-  positionBreakdown: jsonb("position_breakdown").$type<Record<string, number>>(), // Hours by position: { "Server": 2.5, "Cook": 3.0, ... }
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
+
+// Hourly labor data from 7shifts - stored separately to keep sales tables clean
+export const hourlyLabor = pgTable("hourly_labor", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  hour: integer("hour").notNull(), // 0-23
+  projectedLabor: decimal("projected_labor", { precision: 10, scale: 2 }), // Scheduled labor cost for this hour
+  actualLabor: decimal("actual_labor", { precision: 10, scale: 2 }), // Actual labor cost from punched hours
+  employeeCount: decimal("employee_count", { precision: 10, scale: 2 }), // Total labor hours deployed during this hour
+  positionBreakdown: jsonb("position_breakdown").$type<Record<string, number>>(), // Hours by position: { "Manager": 1.5, "Team Member": 3.0 }
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDateHour: uniqueIndex("hourly_labor_restaurant_date_hour_idx")
+    .on(table.restaurantId, table.date, table.hour),
+}));
 
 export const insertHourlySalesSchema = createInsertSchema(hourlySales).omit({
   id: true,
@@ -70,6 +104,14 @@ export const insertHourlySalesSchema = createInsertSchema(hourlySales).omit({
 
 export type InsertHourlySales = z.infer<typeof insertHourlySalesSchema>;
 export type HourlySales = typeof hourlySales.$inferSelect;
+
+export const insertHourlyLaborSchema = createInsertSchema(hourlyLabor).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertHourlyLabor = z.infer<typeof insertHourlyLaborSchema>;
+export type HourlyLabor = typeof hourlyLabor.$inferSelect;
 
 // Scraper run log for tracking automation
 export const scraperRuns = pgTable("scraper_runs", {

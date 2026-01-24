@@ -8,9 +8,15 @@ import {
   type LeaderboardData,
   type InsertDailyWeather,
   type DailyWeather,
+  type InsertHourlyLabor,
+  type HourlyLabor,
+  type InsertDailyLabor,
+  type DailyLabor,
   restaurants,
   dailySales,
+  dailyLabor,
   hourlySales,
+  hourlyLabor,
   scraperRuns,
   posOrders,
   dailyWeather,
@@ -150,6 +156,16 @@ export class DatabaseStorage implements IStorage {
     
     // Get all hourly sales from 7shifts for comparison data
     const allHourlySales = await db.select().from(hourlySales);
+    
+    // Get all hourly labor data from separate table
+    const allHourlyLabor = await db.select().from(hourlyLabor);
+    
+    // Build hourly labor lookup by restaurant+date+hour
+    const laborByKey = new Map<string, HourlyLabor>();
+    allHourlyLabor.forEach(l => {
+      const key = `${l.restaurantId}-${l.date}-${l.hour}`;
+      laborByKey.set(key, l);
+    });
     
     // Fetch Xenial POS data - prioritize over 7shifts for sales (real transactions)
     const posHourlySales = await getAllHourlyPosSales(selectedDate);
@@ -331,15 +347,18 @@ export class DatabaseStorage implements IStorage {
       let projectedLaborRemaining = 0;
       
       // Sum actual labor for completed hours (0 through normalizedHourCutoff)
+      // Labor data is now in a separate table (hourly_labor)
       for (let hour = 0; hour <= normalizedHourCutoff; hour++) {
-        const hourData = allSelectedDateHours.find(s => s.hour === hour);
-        actualLaborCompleted += parseFloat(hourData?.actualLabor || '0');
+        const laborKey = `${restaurant.id}-${selectedDateStr}-${hour}`;
+        const laborData = laborByKey.get(laborKey);
+        actualLaborCompleted += parseFloat(laborData?.actualLabor || '0');
       }
       
       // Sum projected labor for remaining hours
       for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
-        const hourData = allSelectedDateHours.find(s => s.hour === hour);
-        projectedLaborRemaining += parseFloat(hourData?.projectedLabor || '0');
+        const laborKey = `${restaurant.id}-${selectedDateStr}-${hour}`;
+        const laborData = laborByKey.get(laborKey);
+        projectedLaborRemaining += parseFloat(laborData?.projectedLabor || '0');
       }
       
       // Total projected labor = actual so far + projected for remaining hours
@@ -496,6 +515,14 @@ export class DatabaseStorage implements IStorage {
     
     const allHourlySales = await db.select().from(hourlySales);
     
+    // Get hourly labor data from separate table
+    const allHourlyLabor = await db.select().from(hourlyLabor);
+    const laborByKey = new Map<string, HourlyLabor>();
+    allHourlyLabor.forEach(l => {
+      const key = `${l.restaurantId}-${l.date}-${l.hour}`;
+      laborByKey.set(key, l);
+    });
+    
     // Helper function to deduplicate hourly data - only keep one record per restaurant+hour
     const deduplicateHourly = (hourlyData: typeof allHourlySales) => {
       const uniqueMap = new Map<string, typeof allHourlySales[0]>();
@@ -516,10 +543,13 @@ export class DatabaseStorage implements IStorage {
       return saleDate === lastWeekStr;
     }));
     
+    // Get hourly labor for selected date and filter by restaurant
+    const selectedDateLabor = allHourlyLabor.filter(l => l.date === selectedDateStr);
+    
     const selectedByHour: Map<number, number> = new Map();
     const lastWeekByHour: Map<number, number> = new Map();
     const forecastByHour: Map<number, number> = new Map();
-    const laborByHour: Map<number, number> = new Map();
+    const laborByHourMap: Map<number, number> = new Map();
     const actualLaborByHour: Map<number, number> = new Map();
     const employeeCountByHour: Map<number, number> = new Map();
     const positionByHour: Map<number, Record<string, number>> = new Map();
@@ -528,7 +558,7 @@ export class DatabaseStorage implements IStorage {
       selectedByHour.set(h, 0);
       lastWeekByHour.set(h, 0);
       forecastByHour.set(h, 0);
-      laborByHour.set(h, 0);
+      laborByHourMap.set(h, 0);
       actualLaborByHour.set(h, 0);
       employeeCountByHour.set(h, 0);
     }
@@ -538,19 +568,17 @@ export class DatabaseStorage implements IStorage {
       selectedDateHourly.forEach(s => {
         const current = selectedByHour.get(s.hour) || 0;
         selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
-      });
-      // Forecast and labor from 7shifts (but NOT employee count - doesn't make sense to sum)
-      selectedDateHourly.forEach(s => {
+        // Forecast from sales table
         const currentForecast = forecastByHour.get(s.hour) || 0;
         forecastByHour.set(s.hour, currentForecast + parseFloat(s.projectedSales || '0'));
-        // Projected labor for this hour
-        const currentLabor = laborByHour.get(s.hour) || 0;
-        laborByHour.set(s.hour, currentLabor + parseFloat(s.projectedLabor || '0'));
-        // Actual labor for this hour
-        const currentActualLabor = actualLaborByHour.get(s.hour) || 0;
-        actualLaborByHour.set(s.hour, currentActualLabor + parseFloat(s.actualLabor || '0'));
+      });
+      // Labor from separate labor table
+      selectedDateLabor.forEach(l => {
+        const currentLabor = laborByHourMap.get(l.hour) || 0;
+        laborByHourMap.set(l.hour, currentLabor + parseFloat(l.projectedLabor || '0'));
+        const currentActualLabor = actualLaborByHour.get(l.hour) || 0;
+        actualLaborByHour.set(l.hour, currentActualLabor + parseFloat(l.actualLabor || '0'));
         // Employee count is NOT aggregated for "all" view - leave at 0
-        // Summing employee counts across all stores is not meaningful
       });
       // Last week from 7shifts
       lastWeekHourly.forEach(s => {
@@ -561,15 +589,15 @@ export class DatabaseStorage implements IStorage {
       // Use 7shifts data for the specific restaurant
       selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
-      });
-      // Forecast, labor, employee count, and position breakdown from 7shifts
-      selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
-        laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
-        actualLaborByHour.set(s.hour, parseFloat(s.actualLabor || '0'));
-        employeeCountByHour.set(s.hour, Number(s.employeeCount) || 0);
-        if (s.positionBreakdown) {
-          positionByHour.set(s.hour, s.positionBreakdown as Record<string, number>);
+      });
+      // Labor from separate labor table
+      selectedDateLabor.filter(l => l.restaurantId === restaurantId).forEach(l => {
+        laborByHourMap.set(l.hour, parseFloat(l.projectedLabor || '0'));
+        actualLaborByHour.set(l.hour, parseFloat(l.actualLabor || '0'));
+        employeeCountByHour.set(l.hour, Number(l.employeeCount) || 0);
+        if (l.positionBreakdown) {
+          positionByHour.set(l.hour, l.positionBreakdown as Record<string, number>);
         }
       });
       // Last week from 7shifts
@@ -614,7 +642,7 @@ export class DatabaseStorage implements IStorage {
         cumulativeForecast += forecastByHour.get(hour) || 0;
       }
       
-      const projectedLabor = Math.round((laborByHour.get(hour) || 0) * 100) / 100;
+      const projectedLabor = Math.round((laborByHourMap.get(hour) || 0) * 100) / 100;
       const actualLabor = Math.round((actualLaborByHour.get(hour) || 0) * 100) / 100;
       const employeeCount = employeeCountByHour.get(hour) || 0;
       const positionBreakdown = positionByHour.get(hour);
@@ -695,6 +723,9 @@ export class DatabaseStorage implements IStorage {
     // Fetch HME timer data for the selected date
     const allHmeData = await db.select().from(hmeTimerData).where(eq(hmeTimerData.date, selectedDateStr));
     
+    // Fetch hourly labor data from separate table
+    const allHourlyLaborData = await db.select().from(hourlyLabor).where(eq(hourlyLabor.date, selectedDateStr));
+    
     // Fetch Xenial POS hourly data - prioritize over 7shifts for any date
     // POS data is more accurate when available (real transactions vs 7shifts estimates)
     const posHourlySales = await getAllHourlyPosSales(selectedDate);
@@ -710,6 +741,7 @@ export class DatabaseStorage implements IStorage {
       const restaurantSelectedHourly = selectedDateHourly.filter(s => s.restaurantId === restaurant.id);
       const restaurantLastWeekHourly = lastWeekHourly.filter(s => s.restaurantId === restaurant.id);
       const restaurantHmeData = allHmeData.filter(h => h.restaurantId === restaurant.id);
+      const restaurantLaborData = allHourlyLaborData.filter(l => l.restaurantId === restaurant.id);
       
       const selectedByHour: Map<number, number> = new Map();
       const lastWeekByHour: Map<number, number> = new Map();
@@ -752,14 +784,17 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Forecast, labor, employee count, and position breakdown from 7shifts
+      // Forecast from sales data
       restaurantSelectedHourly.forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
-        laborByHour.set(s.hour, parseFloat(s.projectedLabor || '0'));
-        actualLaborByHour.set(s.hour, parseFloat(s.actualLabor || '0'));
-        employeeCountByHour.set(s.hour, Number(s.employeeCount) || 0);
-        if (s.positionBreakdown) {
-          positionByHour.set(s.hour, s.positionBreakdown as Record<string, number>);
+      });
+      // Labor, employee count, and position breakdown from separate labor table
+      restaurantLaborData.forEach(l => {
+        laborByHour.set(l.hour, parseFloat(l.projectedLabor || '0'));
+        actualLaborByHour.set(l.hour, parseFloat(l.actualLabor || '0'));
+        employeeCountByHour.set(l.hour, Number(l.employeeCount) || 0);
+        if (l.positionBreakdown) {
+          positionByHour.set(l.hour, l.positionBreakdown as Record<string, number>);
         }
       });
       // Last week: prioritize Xenial POS data, fallback to 7shifts
