@@ -884,8 +884,9 @@ export async function registerRoutes(
 
       res.json({
         status: "operational",
+        version: "2.1.0", // Force rebuild
         webhookEndpoint: "/api/xenial/order",
-        webhookEnabled: true, // Auth no longer required
+        webhookEnabled: true,
         serverTime: now.toISOString(),
         today: {
           date: today.toISOString().split('T')[0],
