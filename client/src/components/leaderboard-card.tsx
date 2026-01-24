@@ -127,17 +127,23 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
   };
 
   const getTimezoneDisplay = (tz: string) => {
-    // Show actual local time for the restaurant's timezone
+    // Show compact time format: "5P-EST"
     const now = new Date();
-    const localTimeStr = now.toLocaleTimeString('en-US', { 
+    const hour = parseInt(now.toLocaleTimeString('en-US', { 
       timeZone: tz, 
       hour: 'numeric', 
       hour12: true 
-    });
+    }));
+    const isPM = now.toLocaleTimeString('en-US', { 
+      timeZone: tz, 
+      hour: 'numeric', 
+      hour12: true 
+    }).includes('PM');
+    const ampm = isPM ? 'P' : 'A';
     
-    if (tz.includes("New_York") || tz.includes("Eastern")) return `${localTimeStr} EST`;
-    if (tz.includes("Chicago") || tz.includes("Central")) return `${localTimeStr} CST`;
-    return localTimeStr;
+    if (tz.includes("New_York") || tz.includes("Eastern")) return `${hour}${ampm}-EST`;
+    if (tz.includes("Chicago") || tz.includes("Central")) return `${hour}${ampm}-CST`;
+    return `${hour}${ampm}`;
   };
 
   // Use normalized sales for pace variance comparison (fair timezone comparison for rankings)
@@ -252,7 +258,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               )}
               {restaurant.status === "new" && (
                 <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
-                  NEW UNIT ({restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w ${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`})
+                  NU {restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`}
                 </Badge>
               )}
               <Badge variant="secondary" className="flex-shrink-0 text-xs">
@@ -266,7 +272,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   className={`flex-shrink-0 text-xs font-bold ${overallGrade.color} border-current`}
                   data-testid={`badge-grade-${restaurant.restaurantId}`}
                 >
-                  X-Score {overallGrade.grade}
+                  EXC: {overallGrade.grade}
                 </Badge>
               )}
               {/* Google Reviews Badge - Shows current rating */}
