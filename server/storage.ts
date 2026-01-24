@@ -151,6 +151,17 @@ export class DatabaseStorage implements IStorage {
     // Get all hourly sales from 7shifts for comparison data
     const allHourlySales = await db.select().from(hourlySales);
     
+    // Get daily_sales as fallback for last week data when hourly data is not available
+    // 7shifts API only returns hourly intervals for ~3 days, so we need daily_sales for week-over-week
+    const allDailySales = await db.select().from(dailySales);
+    const lastWeekDailySalesMap = new Map<string, number>();
+    allDailySales.forEach(d => {
+      const saleDate = new Date(d.salesDate).toISOString().split('T')[0];
+      if (saleDate === lastWeekStr) {
+        lastWeekDailySalesMap.set(d.restaurantId, parseFloat(d.totalSales || '0'));
+      }
+    });
+    
     // Helper function to deduplicate hourly data - only keep one record per restaurant+hour
     // Takes the last record if there are duplicates (most recent data)
     const deduplicateHourly = (hourlyData: typeof allHourlySales) => {
@@ -175,8 +186,9 @@ export class DatabaseStorage implements IStorage {
     
     console.log(`[Leaderboard Debug] selectedDateStr: ${selectedDateStr}, lastWeekStr: ${lastWeekStr}`);
     console.log(`[Leaderboard Debug] allHourlySales count: ${allHourlySales.length}, selectedDateHourly: ${selectedDateHourly.length}, lastWeekHourly: ${lastWeekHourly.length}`);
+    console.log(`[Leaderboard Debug] lastWeekDailySalesMap size: ${lastWeekDailySalesMap.size}`);
     if (allHourlySales.length > 0) {
-      const uniqueDates = [...new Set(allHourlySales.map(s => new Date(s.salesDate).toISOString().split('T')[0]))].sort();
+      const uniqueDates = Array.from(new Set(allHourlySales.map(s => new Date(s.salesDate).toISOString().split('T')[0]))).sort();
       console.log(`[Leaderboard Debug] Available dates in hourly_sales: ${uniqueDates.join(', ')}`);
     }
     
@@ -217,13 +229,26 @@ export class DatabaseStorage implements IStorage {
       );
       
       // Normalized last week (for ranking)
-      const lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
+      // Use hourly data if available, otherwise fall back to daily_sales
+      // 7shifts API only returns hourly intervals for ~3 days, so daily_sales is used for older dates
+      let lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
-      // Last week sales up to current hour in restaurant's timezone (for display)
-      const actualLastWeekAmount = lastWeekHoursForComparison.reduce(
+      let actualLastWeekAmount = lastWeekHoursForComparison.reduce(
         (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
       );
+      
+      // Fallback to daily_sales if hourly data not available for last week
+      if (lastWeekSalesAmount === 0 && lastWeekDailySalesMap.has(restaurant.id)) {
+        const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
+        // For ranking: use proportional amount based on normalized hour
+        // (e.g., if normalized hour is 19/23 = 83% of day, use 83% of daily total)
+        const dayProgress = (normalizedHourCutoff + 1) / 24;
+        lastWeekSalesAmount = dailyTotal * dayProgress;
+        // For display: use actual daily total for full day, or proportional for today
+        const displayProgress = (restaurantCompletedHour + 1) / 24;
+        actualLastWeekAmount = dailyTotal * displayProgress;
+      }
       
       // Calculate forecast: current actual sales + last week's remaining hours
       // For historical dates: no remaining hours (day is complete), forecast = actual
@@ -234,9 +259,17 @@ export class DatabaseStorage implements IStorage {
       let lastWeekRemainingHoursSales = 0;
       // Only calculate remaining hours for today (historical has no remaining hours)
       if (isToday) {
-        for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
-          const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
-          lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+        // Check if we have hourly data for last week
+        if (lastWeekAllHoursForForecast.length > 0) {
+          for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
+            const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
+            lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+          }
+        } else if (lastWeekDailySalesMap.has(restaurant.id)) {
+          // Fallback: use daily_sales to estimate remaining hours
+          const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
+          const remainingProgress = (24 - restaurantCompletedHour - 1) / 24;
+          lastWeekRemainingHoursSales = dailyTotal * remainingProgress;
         }
       }
       // Forecast = today's actual sales so far + last week's remaining hours
@@ -283,15 +316,24 @@ export class DatabaseStorage implements IStorage {
         // Remaining hours' forecasted sales
         // Use 7shifts projectedSales if available, otherwise use last week's actual as estimate
         let remainingForecastSales = 0;
-        for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
-          const todayHour = allSelectedDateHours.find(s => s.hour === hour);
-          const lastWeekHour = lastWeekAllHours.find(s => s.hour === hour);
-          
-          // Prefer 7shifts projected, fallback to last week's actual
-          const forecastValue = parseFloat(todayHour?.projectedSales || '0') > 0 
-            ? parseFloat(todayHour?.projectedSales || '0')
-            : parseFloat(lastWeekHour?.actualSales || '0');
-          remainingForecastSales += forecastValue;
+        
+        // Check if we have hourly data for last week
+        if (lastWeekAllHours.length > 0) {
+          for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
+            const todayHour = allSelectedDateHours.find(s => s.hour === hour);
+            const lastWeekHour = lastWeekAllHours.find(s => s.hour === hour);
+            
+            // Prefer 7shifts projected, fallback to last week's actual
+            const forecastValue = parseFloat(todayHour?.projectedSales || '0') > 0 
+              ? parseFloat(todayHour?.projectedSales || '0')
+              : parseFloat(lastWeekHour?.actualSales || '0');
+            remainingForecastSales += forecastValue;
+          }
+        } else if (lastWeekDailySalesMap.has(restaurant.id)) {
+          // Fallback: use daily_sales to estimate remaining hours
+          const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
+          const remainingProgress = (24 - normalizedHourCutoff - 1) / 24;
+          remainingForecastSales = dailyTotal * remainingProgress;
         }
         
         projectedEndOfDaySales = selectedDateSalesAmount + remainingForecastSales;
