@@ -666,6 +666,9 @@ export class DatabaseStorage implements IStorage {
     // POS data is more accurate when available (real transactions vs 7shifts estimates)
     const posHourlySales = await getAllHourlyPosSales(selectedDate);
     
+    // Also fetch last week's POS data for accurate week-over-week comparison
+    const posLastWeekHourlySales = await getAllHourlyPosSales(lastWeek);
+    
     const result: Record<string, HourlySalesData[]> = {};
     
     for (const restaurant of restaurantList) {
@@ -691,6 +694,7 @@ export class DatabaseStorage implements IStorage {
       
       // Get Xenial POS data for this restaurant (prioritize over 7shifts)
       const posSalesForRestaurant = posHourlySales.get(restaurant.id);
+      const posLastWeekSalesForRestaurant = posLastWeekHourlySales.get(restaurant.id);
       
       // Use 7shifts data as base for sales
       restaurantSelectedHourly.forEach(s => {
@@ -725,26 +729,34 @@ export class DatabaseStorage implements IStorage {
           positionByHour.set(s.hour, s.positionBreakdown as Record<string, number>);
         }
       });
-      // Last week from 7shifts hourly data
-      restaurantLastWeekHourly.forEach(s => {
-        lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
-      });
-      
-      // Fallback: if no hourly data for last week, estimate from daily_sales
-      // This handles the case when 7shifts API doesn't provide detailed intervals for older dates
-      if (restaurantLastWeekHourly.length === 0 && lastWeekDailyMap.has(restaurant.id)) {
-        const dailyTotal = lastWeekDailyMap.get(restaurant.id) || 0;
-        // Use a typical restaurant hourly distribution (approximate based on QSR patterns)
-        // Peak hours: 11am-1pm (lunch), 5pm-8pm (dinner)
-        const hourlyDistribution: Record<number, number> = {
-          5: 0.01, 6: 0.02, 7: 0.03, 8: 0.04, 9: 0.05, 10: 0.06,
-          11: 0.09, 12: 0.11, 13: 0.09, 14: 0.06, 15: 0.05, 16: 0.05,
-          17: 0.07, 18: 0.08, 19: 0.07, 20: 0.05, 21: 0.04, 22: 0.02, 23: 0.01
-        };
-        for (let h = 0; h < 24; h++) {
-          const pct = hourlyDistribution[h] || 0;
-          if (pct > 0) {
-            lastWeekByHour.set(h, Math.round(dailyTotal * pct));
+      // Last week: prioritize Xenial POS data, fallback to 7shifts
+      if (posLastWeekSalesForRestaurant && posLastWeekSalesForRestaurant.size > 0) {
+        // Use POS data for last week - actual transaction data
+        posLastWeekSalesForRestaurant.forEach((sales, hour) => {
+          lastWeekByHour.set(hour, sales);
+        });
+      } else {
+        // Fallback to 7shifts hourly data
+        restaurantLastWeekHourly.forEach(s => {
+          lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+        });
+        
+        // Secondary fallback: if no 7shifts hourly data, estimate from daily_sales
+        // This handles the case when 7shifts API doesn't provide detailed intervals for older dates
+        if (restaurantLastWeekHourly.length === 0 && lastWeekDailyMap.has(restaurant.id)) {
+          const dailyTotal = lastWeekDailyMap.get(restaurant.id) || 0;
+          // Use a typical restaurant hourly distribution (approximate based on QSR patterns)
+          // Peak hours: 11am-1pm (lunch), 5pm-8pm (dinner)
+          const hourlyDistribution: Record<number, number> = {
+            5: 0.01, 6: 0.02, 7: 0.03, 8: 0.04, 9: 0.05, 10: 0.06,
+            11: 0.09, 12: 0.11, 13: 0.09, 14: 0.06, 15: 0.05, 16: 0.05,
+            17: 0.07, 18: 0.08, 19: 0.07, 20: 0.05, 21: 0.04, 22: 0.02, 23: 0.01
+          };
+          for (let h = 0; h < 24; h++) {
+            const pct = hourlyDistribution[h] || 0;
+            if (pct > 0) {
+              lastWeekByHour.set(h, Math.round(dailyTotal * pct));
+            }
           }
         }
       }
