@@ -37,24 +37,41 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
   const dataMap = new Map<number, HourlySalesData>();
   data.forEach(item => dataMap.set(item.hour, item));
   
-  // Generate all 24 hours (0-23)
-  const processedData: HourlySalesData[] = [];
+  // Generate all 24 hours (0-23) with CUMULATIVE values
+  // This allows fair comparison of running totals: Today vs Last Week at same hour
+  const processedData: (HourlySalesData & { 
+    cumulativeToday: number; 
+    cumulativeLastWeek: number; 
+    cumulativeForecast: number;
+  })[] = [];
+  
+  let cumulativeToday = 0;
+  let cumulativeLastWeek = 0;
+  let cumulativeForecast = 0;
+  
   for (let h = 0; h < 24; h++) {
     const existing = dataMap.get(h);
-    if (existing) {
-      processedData.push(existing);
-    } else {
-      processedData.push({
-        hour: h,
-        todaySales: 0,
-        lastWeekSales: 0,
-        forecastSales: 0,
-        employeeCount: 0,
-        projectedLabor: 0,
-        actualLabor: 0,
-        label: getHourLabel(h),
-      } as HourlySalesData);
-    }
+    const hourlyToday = existing?.todaySales || 0;
+    const hourlyLastWeek = existing?.lastWeekSales || 0;
+    const hourlyForecast = existing?.forecastSales || 0;
+    
+    cumulativeToday += hourlyToday;
+    cumulativeLastWeek += hourlyLastWeek;
+    cumulativeForecast += hourlyForecast;
+    
+    processedData.push({
+      hour: h,
+      todaySales: hourlyToday,
+      lastWeekSales: hourlyLastWeek,
+      forecastSales: hourlyForecast,
+      employeeCount: existing?.employeeCount || 0,
+      projectedLabor: existing?.projectedLabor || 0,
+      actualLabor: existing?.actualLabor || 0,
+      label: getHourLabel(h),
+      cumulativeToday,
+      cumulativeLastWeek,
+      cumulativeForecast,
+    } as HourlySalesData & { cumulativeToday: number; cumulativeLastWeek: number; cumulativeForecast: number });
   }
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -142,7 +159,7 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
               />
               <Area
                 type="monotone"
-                dataKey="forecastSales"
+                dataKey="cumulativeForecast"
                 name="Forecast"
                 stroke="hsl(142, 71%, 45%)"
                 strokeWidth={2}
@@ -151,7 +168,7 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
               />
               <Area
                 type="monotone"
-                dataKey="lastWeekSales"
+                dataKey="cumulativeLastWeek"
                 name="Last Week"
                 stroke="hsl(221, 83%, 53%)"
                 strokeWidth={2}
@@ -160,7 +177,7 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
               />
               <Area
                 type="monotone"
-                dataKey="todaySales"
+                dataKey="cumulativeToday"
                 name="Today"
                 stroke="hsl(24, 91%, 53%)"
                 strokeWidth={2.5}
