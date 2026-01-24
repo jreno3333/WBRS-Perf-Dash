@@ -26,7 +26,7 @@ export type InsertRestaurant = z.infer<typeof insertRestaurantSchema>;
 export type Restaurant = typeof restaurants.$inferSelect;
 
 // Daily sales snapshot from 7shifts scraping
-// NOTE: This table is for SALES data only. Labor data is stored separately in daily_labor.
+// NOTE: Labor data is also stored in daily_labor table, but these columns are kept for backward compatibility
 export const dailySales = pgTable("daily_sales", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull(),
@@ -34,6 +34,10 @@ export const dailySales = pgTable("daily_sales", {
   salesDate: timestamp("sales_date").notNull(),
   totalSales: decimal("total_sales", { precision: 10, scale: 2 }).notNull(),
   vsProjected: decimal("vs_projected", { precision: 10, scale: 2 }), // Difference from projected
+  // Legacy labor columns (kept for backward compatibility with existing data)
+  laborPercent: decimal("labor_percent", { precision: 5, scale: 2 }),
+  projectedLaborCost: decimal("projected_labor_cost", { precision: 10, scale: 2 }),
+  laborTarget: decimal("labor_target", { precision: 5, scale: 2 }),
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
 
@@ -69,7 +73,7 @@ export type InsertDailyLabor = z.infer<typeof insertDailyLaborSchema>;
 export type DailyLabor = typeof dailyLabor.$inferSelect;
 
 // Hourly sales data for timezone-normalized comparisons
-// NOTE: This table is for SALES data only. Labor data is stored separately in hourly_labor.
+// NOTE: Labor data is also stored in hourly_labor table, but these columns are kept for backward compatibility
 export const hourlySales = pgTable("hourly_sales", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull(),
@@ -78,6 +82,11 @@ export const hourlySales = pgTable("hourly_sales", {
   actualSales: decimal("actual_sales", { precision: 10, scale: 2 }).notNull(),
   projectedSales: decimal("projected_sales", { precision: 10, scale: 2 }),
   pastActualSales: decimal("past_actual_sales", { precision: 10, scale: 2 }), // Last week same hour
+  // Legacy labor columns (kept for backward compatibility with existing data)
+  projectedLabor: decimal("projected_labor", { precision: 10, scale: 2 }),
+  actualLabor: decimal("actual_labor", { precision: 10, scale: 2 }),
+  employeeCount: decimal("employee_count", { precision: 10, scale: 2 }),
+  positionBreakdown: jsonb("position_breakdown").$type<Record<string, number>>(),
   scrapedAt: timestamp("scraped_at").defaultNow(),
 });
 
