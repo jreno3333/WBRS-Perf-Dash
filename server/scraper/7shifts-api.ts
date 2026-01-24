@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { restaurants, dailySales, hourlySales, scraperRuns, locationMapping, posOrders } from '@shared/schema';
+import { restaurants, dailySales, dailyLabor, hourlySales, hourlyLabor, scraperRuns, locationMapping, posOrders } from '@shared/schema';
 import { eq, and, gte, lt, sql } from 'drizzle-orm';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
@@ -590,8 +590,6 @@ export async function fetchSalesFromAPI(date?: Date): Promise<{ success: boolean
             .set({
               totalSales: dayData.actual_sales.toString(),
               vsProjected: (dayData.actual_sales - dayData.projected_sales).toString(),
-              laborPercent: (dayData.labor_percent * 100).toString(),
-              projectedLaborCost: (dayData.projected_labor_cost / 100).toFixed(2), // Convert from cents
               scrapedAt: new Date(),
             })
             .where(eq(dailySales.id, existing.id));
@@ -602,8 +600,32 @@ export async function fetchSalesFromAPI(date?: Date): Promise<{ success: boolean
             salesDate: targetDate,
             totalSales: dayData.actual_sales.toString(),
             vsProjected: (dayData.actual_sales - dayData.projected_sales).toString(),
+          });
+        }
+        
+        // Store labor data in separate dailyLabor table
+        const laborDateStr = targetDate.toISOString().split('T')[0];
+        const existingLabor = await db.select().from(dailyLabor).where(
+          and(
+            eq(dailyLabor.restaurantId, restaurant.id),
+            eq(dailyLabor.date, laborDateStr),
+          )
+        ).limit(1);
+        
+        if (existingLabor.length > 0) {
+          await db.update(dailyLabor)
+            .set({
+              laborPercent: (dayData.labor_percent * 100).toString(),
+              projectedLaborCost: (dayData.projected_labor_cost / 100).toFixed(2),
+              syncedAt: new Date(),
+            })
+            .where(eq(dailyLabor.id, existingLabor[0].id));
+        } else {
+          await db.insert(dailyLabor).values({
+            restaurantId: restaurant.id,
+            date: laborDateStr,
             laborPercent: (dayData.labor_percent * 100).toString(),
-            projectedLaborCost: (dayData.projected_labor_cost / 100).toFixed(2), // Convert from cents
+            projectedLaborCost: (dayData.projected_labor_cost / 100).toFixed(2),
           });
         }
         
@@ -796,6 +818,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               roundedPositions['_operatorScheduled'] = 1;
             }
             
+            // Insert sales data to hourlySales
             await tx.insert(hourlySales).values({
               restaurantId: restaurant.id,
               salesDate: targetDate,
@@ -803,6 +826,21 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               actualSales: (interval.actual_sales / 100).toFixed(2),
               projectedSales: (interval.projected_sales / 100).toFixed(2),
               pastActualSales: (interval.past_actual_sales / 100).toFixed(2),
+            });
+            
+            // Insert labor data to separate hourlyLabor table
+            const dateStr2 = targetDate.toISOString().split('T')[0];
+            await tx.delete(hourlyLabor).where(
+              and(
+                eq(hourlyLabor.restaurantId, restaurant.id),
+                eq(hourlyLabor.date, dateStr2),
+                eq(hourlyLabor.hour, hour)
+              )
+            );
+            await tx.insert(hourlyLabor).values({
+              restaurantId: restaurant.id,
+              date: dateStr2,
+              hour,
               projectedLabor: (interval.projected_labor / 100).toFixed(2),
               actualLabor: (interval.actual_labor / 100).toFixed(2),
               employeeCount: (Math.round(hourLabor.totalHours * 100) / 100).toFixed(2),
@@ -1021,6 +1059,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
               roundedPositions['_operatorScheduled'] = 1;
             }
             
+            // Insert sales data to hourlySales
             await tx.insert(hourlySales).values({
               restaurantId: restaurant.id,
               salesDate: targetDate,
@@ -1028,6 +1067,21 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
               actualSales: finalSales.toFixed(2),
               projectedSales: projected.projectedSales.toFixed(2),
               pastActualSales: '0.00',
+            });
+            
+            // Insert labor data to separate hourlyLabor table
+            const laborDateStr = targetDate.toISOString().split('T')[0];
+            await tx.delete(hourlyLabor).where(
+              and(
+                eq(hourlyLabor.restaurantId, restaurant.id),
+                eq(hourlyLabor.date, laborDateStr),
+                eq(hourlyLabor.hour, hour)
+              )
+            );
+            await tx.insert(hourlyLabor).values({
+              restaurantId: restaurant.id,
+              date: laborDateStr,
+              hour,
               projectedLabor: projected.projectedLabor.toFixed(2),
               actualLabor: projected.actualLabor.toFixed(2),
               employeeCount: (Math.round(hourLabor.totalHours * 100) / 100).toFixed(2),
