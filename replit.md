@@ -71,6 +71,7 @@ Preferred communication style: Simple, everyday language.
   3. 7shifts daily_sales estimates (secondary fallback for week-over-week)
 - **Display**: Card shows `actualSales` (total POS transactions so far), ranking uses `actualSales` (normalized for fair timezone comparison).
 - **Hourly Chart**: All 24 hours displayed individually with actual POS transaction data per hour.
+- **Timezone-Aware Partial Hours**: Each restaurant's hourly chart shows data up to its own current hour based on its timezone. Eastern stores (Tennessee) show their current partial hour data, while Central stores (Alabama) show theirs. This ensures all stores display real-time partial sales regardless of timezone.
 
 ### HME Drive-Thru Timer Integration
 - **Purpose**: Fetches drive-thru timing data from HME CLOUD-connected timers (ZOOM Nitro).

@@ -680,10 +680,6 @@ export class DatabaseStorage implements IStorage {
     const isToday = selectedDateStr === todayStr;
     
     const restaurantList = await this.getRestaurants();
-    // For display: use current hour (shows in-progress data), not last completed hour
-    const timezones = Array.from(new Set(restaurantList.map(r => r.timezone)));
-    const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
-    const displayHourCutoff = isToday ? Math.min(...currentHours) : 23;
     
     const allHourlySales = await db.select().from(hourlySales);
     
@@ -843,7 +839,11 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      for (let hour = 0; hour <= displayHourCutoff; hour++) {
+      // Use per-restaurant hour cutoff based on each restaurant's timezone
+      // This ensures Eastern stores show their current hour's partial data (not limited to Central time)
+      const restaurantCurrentHour = isToday ? getCurrentHourInTimezone(restaurant.timezone) : 23;
+      
+      for (let hour = 0; hour <= restaurantCurrentHour; hour++) {
         const todaySales = Math.round(selectedByHour.get(hour) || 0);
         const lastWeekSales = Math.round(lastWeekByHour.get(hour) || 0);
         const forecastSales = Math.round(forecastByHour.get(hour) || 0);
