@@ -328,5 +328,7 @@ export async function startScheduler() {
   
   scheduleNextSync();
   
-  runScheduledSync();
+  // Run initial sync immediately and wait for it to complete
+  // This ensures data (including HME) is available when the app starts
+  await runScheduledSync();
 }
