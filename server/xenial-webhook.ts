@@ -7,11 +7,24 @@ interface XenialOrderData {
   origin?: string;
   store_number?: string;
   net_sales?: number | string;
+  gross_sales?: number | string;
   net_amount?: number | string;
   total?: number | string;
+  subtotal?: number | string;
   business_date?: string;
-  closed?: string;
+  closed?: string; // Legacy flat format
+  time?: {
+    closed?: string;
+    created?: string;
+    open?: string;
+    first_item_added?: string;
+  };
+  state?: string;
   order_source?: string;
+  destination?: {
+    name?: string;
+    short_name?: string;
+  };
   payments?: Array<{ amount?: number | string }>;
 }
 
@@ -38,19 +51,24 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
       return { success: false, error: "Missing store number" };
     }
 
-    // Parse net sales - prioritize net_sales/net_amount (excludes tax/fees), fallback to total
-    const rawAmount = data.net_sales ?? data.net_amount ?? data.total ?? 0;
+    // Parse net sales - prioritize net_sales (excludes tax), then subtotal, then total
+    const rawAmount = data.net_sales ?? data.subtotal ?? data.net_amount ?? data.total ?? 0;
     const orderTotal = typeof rawAmount === 'string' ? parseFloat(rawAmount) : Number(rawAmount);
     
     if (isNaN(orderTotal) || orderTotal <= 0) {
-      return { success: false, error: "Invalid order amount" };
+      return { success: false, error: `Invalid order amount: ${rawAmount}` };
     }
 
     const businessDateStr = data.business_date;
-    const closedStr = data.closed;
+    // Handle nested time.closed or flat closed field
+    const closedStr = data.time?.closed || data.closed;
     
-    if (!businessDateStr || !closedStr) {
-      return { success: false, error: "Missing date information" };
+    if (!businessDateStr) {
+      return { success: false, error: "Missing business_date" };
+    }
+    
+    if (!closedStr) {
+      return { success: false, error: "Missing closed time (expected time.closed or closed field)" };
     }
 
     // Parse dates - handle ISO string format
@@ -65,25 +83,28 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
       return { success: false, error: "Invalid closed date format" };
     }
 
+    // Determine order source from destination or use POS as default
+    const orderSource = data.order_source || data.destination?.short_name || data.destination?.name || "POS";
+
     await db.insert(posOrders).values({
       xenialOrderId: orderId,
       storeNumber: storeNumber,
       orderTotal: orderTotal.toFixed(2),
       businessDate: businessDate,
       orderClosedAt: orderClosedAt,
-      orderSource: data.order_source || "POS",
+      orderSource: orderSource,
       rawJson: JSON.stringify(payload),
     }).onConflictDoUpdate({
       target: posOrders.xenialOrderId,
       set: {
         orderTotal: orderTotal.toFixed(2),
         orderClosedAt: orderClosedAt,
-        orderSource: data.order_source || "POS",
+        orderSource: orderSource,
         rawJson: JSON.stringify(payload),
       },
     });
 
-    console.log(`Processed Xenial order ${orderId} from store ${storeNumber}: $${orderTotal}`);
+    console.log(`[Xenial] Saved order ${orderId} | Store ${storeNumber} | $${orderTotal.toFixed(2)} | Source: ${orderSource}`);
     return { success: true, orderId };
   } catch (error) {
     console.error("Error processing Xenial order:", error);

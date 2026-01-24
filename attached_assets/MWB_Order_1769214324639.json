@@ -1,0 +1,852 @@
+{
+	"entityName": "Order",
+	"data": {
+		"_id": "DC86D2D4-8777-430E-AC1D-7B5C47827E40",
+		"additional_properties": {
+			"iris": {
+				"application": "XenialSync",
+				"iris_version": "5.0.440.600 RC",
+				"order_type": "pos",
+				"order_state": 1,
+				"order_substate": 0,
+				"order_destination": 32
+			}
+		},
+		"business_date": "2026-01-23",
+		"comment": "",
+		"company_id": "5aafe11e854bdf2600767304",
+		"contributors": [
+			{
+				"employee": {
+					"id": "5",
+					"title": "employee",
+					"name": " "
+				},
+				"terminal": {
+					"id": "5",
+					"terminal_number": "5",
+					"title": "xsREG5"
+				},
+				"time": "2026-01-23T17:02:02Z"
+			},
+			{
+				"employee": {
+					"id": "5",
+					"title": "employee",
+					"name": " "
+				},
+				"terminal": {
+					"id": "5",
+					"terminal_number": "5",
+					"title": "xsReg5"
+				},
+				"time": "2026-01-23T17:03:07Z"
+			},
+			{
+				"employee": {
+					"id": "57922",
+					"title": "employee",
+					"name": "janiah Griffin"
+				},
+				"terminal": {
+					"id": "6",
+					"terminal_number": "6",
+					"title": "xsReg6"
+				},
+				"time": "2026-01-23T17:03:07Z"
+			}
+		],
+		"creator": {
+			"employee": {
+				"id": "5",
+				"title": "employee",
+				"name": " "
+			},
+			"terminal": {
+				"id": "5",
+				"terminal_number": "5",
+				"title": "xsREG5"
+			},
+			"time": "2026-01-23T17:02:02Z"
+		},
+		"creation_point": {
+			"entity_id": "",
+			"service_point_id": "0",
+			"name": ""
+		},
+		"customer": {
+			"first_name": "",
+			"last_name": "",
+			"loyalty_info": {
+				"customer": {
+					"identification_method": "code"
+				}
+			},
+			"table_tent": ""
+		},
+		"deleted_items": [
+			{
+				"discount_info": {
+					"discounts": [],
+					"total": 0,
+					"total_unrounded": 0
+				},
+				"fractional_quantity": {
+					"numerator": 0,
+					"denominator": 0
+				},
+				"item_count_quantity": 1,
+				"item_type": "standard",
+				"tags": "",
+				"name": "Order Confirmation",
+				"order_item_id": "5FA90DC7-E479-4011-82F0-DF16CA053C25",
+				"order_item_status": {
+					"status": "deleted"
+				},
+				"payment_status": "open",
+				"price": 0,
+				"price_adjustment": 0,
+				"product_id": "11111",
+				"quantity": 1,
+				"reporting_category": {
+					"major_reporting_category": {
+						"name": "Modifiers",
+						"is_major": true,
+						"external_category_id": "400"
+					},
+					"minor_reporting_category": {
+						"name": "Others",
+						"is_major": false,
+						"external_category_id": "491"
+					}
+				},
+				"state": "deleted",
+				"tax_inclusive": false,
+				"tax_inclusive_price": 0,
+				"tax_info": {
+					"taxes": [],
+					"total": 0,
+					"total_unrounded": 0,
+					"total_exclusive": 0,
+					"total_exclusive_unrounded": 0,
+					"total_marketplace_liable": 0,
+					"total_marketplace_liable_unrounded": 0,
+					"total_inclusive": 0,
+					"total_inclusive_unrounded": 0
+				},
+				"time": {
+					"added": "2026-01-23T17:02:18Z",
+					"first_item_added": "2026-01-23T17:02:02Z",
+					"created": "2026-01-23T17:02:18Z",
+					"last_modified": "2026-01-23T17:02:18Z"
+				},
+				"timestamp": "2026-01-23T17:02:18Z",
+				"unit_price": 0,
+				"itempriority": 0,
+				"child_items": []
+			}
+		],
+		"day_part_info": {
+			"day_part_type_name": "Lunch",
+			"external_id": "3"
+		},
+		"destination": {
+			"external_id": "32",
+			"id": "32",
+			"name": "2 Drive Thru",
+			"short_name": "DT2",
+			"consumption_type": "OnPremises"
+		},
+		"discount_info": {
+			"discounts": [],
+			"total": 0,
+			"total_unrounded": 0
+		},
+		"discount_total": 0,
+		"expo_number": "5533",
+		"fulfillment_status": "pending",
+		"guest_count": 1,
+		"items": [
+			{
+				"discount_info": {
+					"discounts": [],
+					"total": 0,
+					"total_unrounded": 0
+				},
+				"fractional_quantity": {
+					"numerator": 0,
+					"denominator": 0
+				},
+				"item_count_quantity": 1,
+				"item_type": "standard",
+				"tags": "251,551,561,943,2001,2022,2032,2043,10000,251,551,561,943,2001,2022,2032,2043,10000,251,551,561,943,2001,2022,2032,2043,10000,251,551,561,943,2001,2022,2032,2043,10000,251,551,561,943,2001,2022,2032,2043,10000",
+				"name": "JUSTABURGER KIDS MEAL",
+				"order_item_id": "8D83DFD5-F3B7-4F2A-9AB8-9DBAEED6A681",
+				"payment_status": "paid",
+				"price": 0,
+				"price_adjustment": 0,
+				"product_id": "130414",
+				"quantity": 1,
+				"reporting_category": {
+					"major_reporting_category": {
+						"name": "Kids Meal",
+						"is_major": true,
+						"external_category_id": "551"
+					},
+					"minor_reporting_category": {
+						"name": "KM Burger",
+						"is_major": false,
+						"external_category_id": "561"
+					}
+				},
+				"state": "pending",
+				"tax_inclusive": false,
+				"tax_inclusive_price": 0,
+				"tax_info": {
+					"taxes": [],
+					"total": 0,
+					"total_unrounded": 0,
+					"total_exclusive": 0,
+					"total_exclusive_unrounded": 0,
+					"total_marketplace_liable": 0,
+					"total_marketplace_liable_unrounded": 0,
+					"total_inclusive": 0,
+					"total_inclusive_unrounded": 0
+				},
+				"time": {
+					"added": "2026-01-23T17:02:02Z",
+					"first_item_added": "2026-01-23T17:02:02Z",
+					"created": "2026-01-23T17:02:02Z",
+					"kitchen_sent": "2026-01-23T17:02:16Z",
+					"last_modified": "2026-01-23T17:02:02Z"
+				},
+				"timestamp": "2026-01-23T17:02:02Z",
+				"unit_price": 0,
+				"itempriority": 80,
+				"child_items": [
+					{
+						"discount_info": {
+							"discounts": [],
+							"total": 0,
+							"total_unrounded": 0
+						},
+						"fractional_quantity": {
+							"numerator": 0,
+							"denominator": 0
+						},
+						"item_count_quantity": 1,
+						"item_type": "standard",
+						"tags": "1,11,961,2001,2022,2032,2043,2050,10000",
+						"name": "JUSTABURGER",
+						"order_item_id": "34CAE955-4577-4A7E-89DC-644290F9A35F",
+						"payment_status": "paid",
+						"price": 1.01,
+						"price_adjustment": 0,
+						"product_id": "130354",
+						"quantity": 1,
+						"reporting_category": {
+							"major_reporting_category": {
+								"name": "Sandwiches",
+								"is_major": true,
+								"external_category_id": "1"
+							},
+							"minor_reporting_category": {
+								"name": "Burgers",
+								"is_major": false,
+								"external_category_id": "11"
+							}
+						},
+						"state": "pending",
+						"tax_inclusive": false,
+						"tax_inclusive_price": 1.01,
+						"tax_info": {
+							"taxes": [],
+							"total": 0.1,
+							"total_unrounded": 0,
+							"total_exclusive": 0.1,
+							"total_exclusive_unrounded": 0,
+							"total_marketplace_liable": 0,
+							"total_marketplace_liable_unrounded": 0,
+							"total_inclusive": 0,
+							"total_inclusive_unrounded": 0
+						},
+						"time": {
+							"added": "2026-01-23T17:02:02Z",
+							"first_item_added": "2026-01-23T17:02:02Z",
+							"created": "2026-01-23T17:02:02Z",
+							"kitchen_sent": "2026-01-23T17:02:16Z",
+							"last_modified": "2026-01-23T17:02:02Z"
+						},
+						"timestamp": "2026-01-23T17:02:02Z",
+						"unit_price": 1.01,
+						"itempriority": 80,
+						"child_items": [
+							{
+								"discount_info": {
+									"discounts": [],
+									"total": 0,
+									"total_unrounded": 0
+								},
+								"fractional_quantity": {
+									"numerator": 0,
+									"denominator": 0
+								},
+								"item_count_quantity": 1,
+								"item_type": "modifier",
+								"tags": "10000",
+								"name": "PLAIN",
+								"order_item_id": "1F31AD10-7CA3-4DE6-A956-FFDCA3547BB3",
+								"payment_status": "paid",
+								"price": 0,
+								"price_adjustment": 0,
+								"product_id": "146460",
+								"quantity": 1,
+								"reporting_category": {
+									"major_reporting_category": {
+										"name": "Modifiers",
+										"is_major": true,
+										"external_category_id": "400"
+									},
+									"minor_reporting_category": {
+										"name": "Others",
+										"is_major": false,
+										"external_category_id": "491"
+									}
+								},
+								"state": "pending",
+								"tax_inclusive": false,
+								"tax_inclusive_price": 0,
+								"tax_info": {
+									"taxes": [],
+									"total": 0,
+									"total_unrounded": 0,
+									"total_exclusive": 0,
+									"total_exclusive_unrounded": 0,
+									"total_marketplace_liable": 0,
+									"total_marketplace_liable_unrounded": 0,
+									"total_inclusive": 0,
+									"total_inclusive_unrounded": 0
+								},
+								"time": {
+									"added": "2026-01-23T17:02:03Z",
+									"first_item_added": "2026-01-23T17:02:02Z",
+									"created": "2026-01-23T17:02:03Z",
+									"kitchen_sent": "2026-01-23T17:02:16Z",
+									"last_modified": "2026-01-23T17:02:03Z"
+								},
+								"timestamp": "2026-01-23T17:02:03Z",
+								"unit_price": 0,
+								"itempriority": 40,
+								"child_items": []
+							},
+							{
+								"discount_info": {
+									"discounts": [],
+									"total": 0,
+									"total_unrounded": 0
+								},
+								"fractional_quantity": {
+									"numerator": 0,
+									"denominator": 0
+								},
+								"item_count_quantity": 1,
+								"item_type": "modifier",
+								"tags": "10000",
+								"name": "DRY",
+								"order_item_id": "F40FF4E1-E7EE-4626-A431-39A814EEC804",
+								"payment_status": "paid",
+								"price": 0,
+								"price_adjustment": 0,
+								"product_id": "146471",
+								"quantity": 1,
+								"reporting_category": {
+									"major_reporting_category": {
+										"name": "Modifiers",
+										"is_major": true,
+										"external_category_id": "400"
+									},
+									"minor_reporting_category": {
+										"name": "Others",
+										"is_major": false,
+										"external_category_id": "491"
+									}
+								},
+								"state": "pending",
+								"tax_inclusive": false,
+								"tax_inclusive_price": 0,
+								"tax_info": {
+									"taxes": [],
+									"total": 0,
+									"total_unrounded": 0,
+									"total_exclusive": 0,
+									"total_exclusive_unrounded": 0,
+									"total_marketplace_liable": 0,
+									"total_marketplace_liable_unrounded": 0,
+									"total_inclusive": 0,
+									"total_inclusive_unrounded": 0
+								},
+								"time": {
+									"added": "2026-01-23T17:02:03Z",
+									"first_item_added": "2026-01-23T17:02:02Z",
+									"created": "2026-01-23T17:02:03Z",
+									"kitchen_sent": "2026-01-23T17:02:16Z",
+									"last_modified": "2026-01-23T17:02:03Z"
+								},
+								"timestamp": "2026-01-23T17:02:03Z",
+								"unit_price": 0,
+								"itempriority": 30,
+								"child_items": []
+							},
+							{
+								"discount_info": {
+									"discounts": [],
+									"total": 0,
+									"total_unrounded": 0
+								},
+								"fractional_quantity": {
+									"numerator": 0,
+									"denominator": 0
+								},
+								"item_count_quantity": 1,
+								"item_type": "modifier",
+								"tags": "400,411,2001,2022,2032,2041,2050,10000",
+								"name": "SMALL CHEESE SLICE",
+								"order_item_id": "6741174A-83A9-4F57-A57A-AB7B53D2ED87",
+								"payment_status": "paid",
+								"price": 0.29,
+								"price_adjustment": 0,
+								"product_id": "130016",
+								"quantity": 1,
+								"reporting_category": {
+									"major_reporting_category": {
+										"name": "Modifiers",
+										"is_major": true,
+										"external_category_id": "400"
+									},
+									"minor_reporting_category": {
+										"name": "Cheese",
+										"is_major": false,
+										"external_category_id": "411"
+									}
+								},
+								"state": "pending",
+								"tax_inclusive": false,
+								"tax_inclusive_price": 0.29,
+								"tax_info": {
+									"taxes": [],
+									"total": 0.03,
+									"total_unrounded": 0,
+									"total_exclusive": 0.03,
+									"total_exclusive_unrounded": 0,
+									"total_marketplace_liable": 0,
+									"total_marketplace_liable_unrounded": 0,
+									"total_inclusive": 0,
+									"total_inclusive_unrounded": 0
+								},
+								"time": {
+									"added": "2026-01-23T17:02:04Z",
+									"first_item_added": "2026-01-23T17:02:02Z",
+									"created": "2026-01-23T17:02:04Z",
+									"kitchen_sent": "2026-01-23T17:02:16Z",
+									"last_modified": "2026-01-23T17:02:04Z"
+								},
+								"timestamp": "2026-01-23T17:02:04Z",
+								"unit_price": 0.29,
+								"itempriority": 15,
+								"child_items": []
+							}
+						]
+					},
+					{
+						"discount_info": {
+							"discounts": [],
+							"total": 0,
+							"total_unrounded": 0
+						},
+						"fractional_quantity": {
+							"numerator": 0,
+							"denominator": 0
+						},
+						"item_count_quantity": 1,
+						"item_type": "standard",
+						"tags": "151,161,501,947,10000",
+						"name": "SM FRIES",
+						"order_item_id": "E593BE85-2BF2-43E6-B217-C12042ECF821",
+						"payment_status": "paid",
+						"price": 2.29,
+						"price_adjustment": 0,
+						"product_id": "130338",
+						"quantity": 1,
+						"reporting_category": {
+							"major_reporting_category": {
+								"name": "Sides",
+								"is_major": true,
+								"external_category_id": "151"
+							},
+							"minor_reporting_category": {
+								"name": "Fries",
+								"is_major": false,
+								"external_category_id": "161"
+							}
+						},
+						"state": "pending",
+						"tax_inclusive": false,
+						"tax_inclusive_price": 2.29,
+						"tax_info": {
+							"taxes": [],
+							"total": 0.23,
+							"total_unrounded": 0,
+							"total_exclusive": 0.23,
+							"total_exclusive_unrounded": 0,
+							"total_marketplace_liable": 0,
+							"total_marketplace_liable_unrounded": 0,
+							"total_inclusive": 0,
+							"total_inclusive_unrounded": 0
+						},
+						"time": {
+							"added": "2026-01-23T17:02:05Z",
+							"first_item_added": "2026-01-23T17:02:02Z",
+							"created": "2026-01-23T17:02:05Z",
+							"kitchen_sent": "2026-01-23T17:02:16Z",
+							"last_modified": "2026-01-23T17:02:05Z"
+						},
+						"timestamp": "2026-01-23T17:02:05Z",
+						"unit_price": 2.29,
+						"itempriority": 80,
+						"child_items": []
+					},
+					{
+						"discount_info": {
+							"discounts": [],
+							"total": 0,
+							"total_unrounded": 0
+						},
+						"fractional_quantity": {
+							"numerator": 0,
+							"denominator": 0
+						},
+						"item_count_quantity": 1,
+						"item_type": "standard",
+						"tags": "21,31,291,951,10000,17100",
+						"name": "KID COKE",
+						"order_item_id": "B1ED8CBB-E16C-46A3-B97C-4A11A8517CA1",
+						"payment_status": "paid",
+						"price": 1.69,
+						"price_adjustment": 0,
+						"product_id": "130033",
+						"quantity": 1,
+						"reporting_category": {
+							"major_reporting_category": {
+								"name": "Beverages",
+								"is_major": true,
+								"external_category_id": "21"
+							},
+							"minor_reporting_category": {
+								"name": "Sodas",
+								"is_major": false,
+								"external_category_id": "31"
+							}
+						},
+						"state": "pending",
+						"tax_inclusive": false,
+						"tax_inclusive_price": 1.69,
+						"tax_info": {
+							"taxes": [],
+							"total": 0.17,
+							"total_unrounded": 0,
+							"total_exclusive": 0.17,
+							"total_exclusive_unrounded": 0,
+							"total_marketplace_liable": 0,
+							"total_marketplace_liable_unrounded": 0,
+							"total_inclusive": 0,
+							"total_inclusive_unrounded": 0
+						},
+						"time": {
+							"added": "2026-01-23T17:02:08Z",
+							"first_item_added": "2026-01-23T17:02:02Z",
+							"created": "2026-01-23T17:02:08Z",
+							"kitchen_sent": "2026-01-23T17:02:16Z",
+							"last_modified": "2026-01-23T17:02:08Z"
+						},
+						"timestamp": "2026-01-23T17:02:08Z",
+						"unit_price": 1.69,
+						"itempriority": 80,
+						"child_items": [
+							{
+								"discount_info": {
+									"discounts": [],
+									"total": 0,
+									"total_unrounded": 0
+								},
+								"fractional_quantity": {
+									"numerator": 0,
+									"denominator": 0
+								},
+								"item_count_quantity": 1,
+								"item_type": "modifier",
+								"tags": "26,10000",
+								"name": "NO ICE",
+								"order_item_id": "C52B8304-DE0A-4540-AD65-5FAFC84DAF24",
+								"payment_status": "paid",
+								"price": 0,
+								"price_adjustment": 0,
+								"product_id": "146242",
+								"quantity": 1,
+								"state": "pending",
+								"tax_inclusive": false,
+								"tax_inclusive_price": 0,
+								"tax_info": {
+									"taxes": [],
+									"total": 0,
+									"total_unrounded": 0,
+									"total_exclusive": 0,
+									"total_exclusive_unrounded": 0,
+									"total_marketplace_liable": 0,
+									"total_marketplace_liable_unrounded": 0,
+									"total_inclusive": 0,
+									"total_inclusive_unrounded": 0
+								},
+								"time": {
+									"added": "2026-01-23T17:02:16Z",
+									"first_item_added": "2026-01-23T17:02:02Z",
+									"created": "2026-01-23T17:02:16Z",
+									"kitchen_sent": "2026-01-23T17:02:18Z",
+									"last_modified": "2026-01-23T17:02:16Z"
+								},
+								"timestamp": "2026-01-23T17:02:16Z",
+								"unit_price": 0,
+								"itempriority": 80,
+								"child_items": []
+							}
+						]
+					},
+					{
+						"discount_info": {
+							"discounts": [],
+							"total": 0,
+							"total_unrounded": 0
+						},
+						"fractional_quantity": {
+							"numerator": 0,
+							"denominator": 0
+						},
+						"item_count_quantity": 1,
+						"item_type": "standard",
+						"tags": "151,451,581,936,10000",
+						"name": "HONEY MAID GRAHAM SQUARE",
+						"order_item_id": "FA72F7BD-F5FA-4B50-AD6C-9A747F4D7D69",
+						"payment_status": "paid",
+						"price": 0,
+						"price_adjustment": 0,
+						"product_id": "131704",
+						"quantity": 1,
+						"reporting_category": {
+							"major_reporting_category": {
+								"name": "Dessert",
+								"is_major": true,
+								"external_category_id": "451"
+							},
+							"minor_reporting_category": {
+								"name": "Cookie",
+								"is_major": false,
+								"external_category_id": "581"
+							}
+						},
+						"state": "pending",
+						"tax_inclusive": false,
+						"tax_inclusive_price": 0,
+						"tax_info": {
+							"taxes": [],
+							"total": 0,
+							"total_unrounded": 0,
+							"total_exclusive": 0,
+							"total_exclusive_unrounded": 0,
+							"total_marketplace_liable": 0,
+							"total_marketplace_liable_unrounded": 0,
+							"total_inclusive": 0,
+							"total_inclusive_unrounded": 0
+						},
+						"time": {
+							"added": "2026-01-23T17:02:14Z",
+							"first_item_added": "2026-01-23T17:02:02Z",
+							"created": "2026-01-23T17:02:14Z",
+							"kitchen_sent": "2026-01-23T17:02:16Z",
+							"last_modified": "2026-01-23T17:02:14Z"
+						},
+						"timestamp": "2026-01-23T17:02:14Z",
+						"unit_price": 0,
+						"itempriority": 80,
+						"child_items": []
+					}
+				]
+			}
+		],
+		"kitchen_timing": [
+			{
+				"screen": "FRY",
+				"screen_external_id": "5",
+				"time": "2026-01-23T17:02:17Z",
+				"type": "arrival"
+			},
+			{
+				"screen": "FRY",
+				"screen_external_id": "5",
+				"time": "2026-01-23T17:04:52Z",
+				"type": "bump"
+			},
+			{
+				"screen": "DT A DRINKS split",
+				"screen_external_id": "7",
+				"time": "2026-01-23T17:02:17Z",
+				"type": "arrival"
+			},
+			{
+				"screen": "DT A DRINKS split",
+				"screen_external_id": "7",
+				"time": "2026-01-23T17:04:52Z",
+				"type": "bump"
+			},
+			{
+				"screen": "DT A",
+				"screen_external_id": "10",
+				"time": "2026-01-23T17:02:17Z",
+				"type": "arrival"
+			},
+			{
+				"screen": "DT A",
+				"screen_external_id": "10",
+				"time": "2026-01-23T17:04:52Z",
+				"type": "bump"
+			},
+			{
+				"screen": "DT GRILL DT OPEN/DI CLOSED",
+				"screen_external_id": "31",
+				"time": "2026-01-23T17:02:17Z",
+				"type": "arrival"
+			},
+			{
+				"screen": "DT GRILL DT OPEN/DI CLOSED",
+				"screen_external_id": "31",
+				"time": "2026-01-23T17:04:52Z",
+				"type": "bump"
+			},
+			{
+				"screen": "DT MUT DT OPEN/DI CLOSED",
+				"screen_external_id": "32",
+				"time": "2026-01-23T17:02:17Z",
+				"type": "arrival"
+			},
+			{
+				"screen": "DT MUT DT OPEN/DI CLOSED",
+				"screen_external_id": "32",
+				"time": "2026-01-23T17:04:52Z",
+				"type": "bump"
+			},
+			{
+				"screen": "DT GATOR full screen, DT OPEN/DI CLOSED",
+				"screen_external_id": "38",
+				"time": "2026-01-23T17:02:17Z",
+				"type": "arrival"
+			},
+			{
+				"screen": "DT GATOR full screen, DT OPEN/DI CLOSED",
+				"screen_external_id": "38",
+				"time": "2026-01-23T17:04:52Z",
+				"type": "bump"
+			}
+		],
+		"notification_status": "paid",
+		"order_number": "559868",
+		"order_point": "xsREG5",
+		"order_source": "",
+		"order_source_ext": {
+			"name": "",
+			"order_source_id": ""
+		},
+		"order_status": {
+			"status": "closed"
+		},
+		"order_type": "order",
+		"origin": "1508",
+		"owner": {
+			"id": "5",
+			"title": "employee",
+			"name": " "
+		},
+		"payment_info": {
+			"change_info": [],
+			"payments": [
+				{
+					"amount": 5.81,
+					"code": "credit",
+					"host_reference_id": "",
+					"id": "C14BBF33-5E8D-474F-A8B9-C595735B3183",
+					"pay_type_id": "201",
+					"pay_type_name": "Visa",
+					"payment_id": "201",
+					"status": "PAID",
+					"tip_amount": 0,
+					"transaction_type": "SALE"
+				}
+			],
+			"change": 0,
+			"tips": 0,
+			"total": 5.81
+		},
+		"payment_status": "paid",
+		"sequential_order_number": "59868",
+		"site_info": {
+			"address": "563 East Meighan Blvd",
+			"address2": "Operating Partner - Meza, Andres",
+			"city": "Gadsden",
+			"company": {
+				"id": "5aafe11e854bdf2600767304"
+			},
+			"id": "66a9283938bac66d6ea77db7",
+			"name": "Whataburger",
+			"phone": "(256)399-0152",
+			"store_number": "1508",
+			"state": "AL",
+			"zip": "35903",
+			"timezone": "US/Central"
+		},
+		"state": "closed",
+		"store_number": "1508",
+		"subtotal": 5.28,
+		"tax_inclusive_subtotal": 5.28,
+		"tax_info": {
+			"taxes": [
+				{
+					"name": "Main",
+					"amount": 0.53,
+					"amount_unrounded": 0.53,
+					"external_id": "1",
+					"marketplace_liable": false
+				}
+			],
+			"total": 0.53,
+			"total_unrounded": 0.53,
+			"total_exclusive": 0.53,
+			"total_exclusive_unrounded": 0.53,
+			"total_marketplace_liable": 0,
+			"total_marketplace_liable_unrounded": 0,
+			"total_inclusive": 0,
+			"total_inclusive_unrounded": 0
+		},
+		"time": {
+			"first_item_added": "2026-01-23T17:02:02Z",
+			"closed": "2026-01-23T17:03:07Z",
+			"created": "2026-01-23T16:54:19Z",
+			"kitchen_bump": "2026-01-23T17:04:52Z",
+			"kitchen_sent": "2026-01-23T17:02:19Z",
+			"last_modified": "2026-01-23T17:05:40.587Z",
+			"notification_committed": "2026-01-23T17:02:19Z",
+			"notification_open": "2026-01-23T17:02:02Z",
+			"open": "2026-01-23T17:02:02Z"
+		},
+		"total": 5.81,
+		"version": "IRIS",
+		"net_sales": 5.279999999999999,
+		"gross_sales": 5.8100000000000005
+	}
+}
