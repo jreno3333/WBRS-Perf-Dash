@@ -289,8 +289,8 @@ export async function registerRoutes(
       
       const updates: Record<string, any> = {};
       if (openDate !== undefined) {
-        // Parse date at noon UTC to avoid timezone boundary issues
-        updates.openDate = openDate ? new Date(`${openDate}T12:00:00Z`) : null;
+        // Store date as string (PostgreSQL date type)
+        updates.openDate = openDate || null;
       }
       if (laborTarget !== undefined) {
         updates.laborTarget = laborTarget;
