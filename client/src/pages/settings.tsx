@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture } from "date-fns";
 import { Link } from "wouter";
@@ -301,6 +301,8 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          <XenialSyncCard />
+
           <HMESyncCard />
         </div>
       </main>
@@ -458,6 +460,162 @@ function RestaurantRow({
         </div>
       </div>
     </div>
+  );
+}
+
+interface XenialStatus {
+  status: string;
+  webhookEndpoint: string;
+  webhookEnabled: boolean;
+  serverTime: string;
+  today: {
+    date: string;
+    orderCount: number;
+    salesTotal: number;
+  };
+  lastHour: {
+    orderCount: number;
+    salesTotal: number;
+  };
+  allTime: {
+    orderCount: number;
+    salesTotal: number;
+  };
+  lastOrderReceived: string | null;
+  lastOrderStore: string | null;
+  lastOrderAmount: number | null;
+  storeBreakdown: Array<{ store: string; orders: number; total: number }>;
+  recentOrders: Array<{ store: string; amount: number; source: string; receivedAt: string }>;
+}
+
+function XenialSyncCard() {
+  const { data: xenialStatus, isLoading: statusLoading, refetch: refetchStatus } = useQuery<XenialStatus>({
+    queryKey: ["/api/pos/status"],
+    refetchInterval: 30000,
+  });
+
+  const formatTime = (isoString: string | null) => {
+    if (!isoString) return "Never";
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+    return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Receipt className="h-5 w-5 text-primary" />
+          <CardTitle>Xenial POS Orders</CardTitle>
+        </div>
+        <CardDescription>
+          Real-time order feed from Xenial POS systems. Orders are received via webhook and update sales data automatically.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {statusLoading ? (
+          <div className="text-muted-foreground text-sm">Loading POS status...</div>
+        ) : xenialStatus ? (
+          <div className="grid gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Webhook:</span>
+              {xenialStatus.webhookEnabled ? (
+                <Badge className="bg-green-500 hover:bg-green-600">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Enabled
+                </Badge>
+              ) : (
+                <Badge variant="destructive">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Not Configured
+                </Badge>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Today</div>
+                <div className="text-2xl font-bold">{xenialStatus.today.orderCount}</div>
+                <div className="text-sm text-muted-foreground">
+                  orders ({formatCurrency(xenialStatus.today.salesTotal)})
+                </div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Last Hour</div>
+                <div className="text-2xl font-bold">{xenialStatus.lastHour.orderCount}</div>
+                <div className="text-sm text-muted-foreground">
+                  orders ({formatCurrency(xenialStatus.lastHour.salesTotal)})
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap pt-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Last Order:</span>
+              <span className="text-sm text-muted-foreground">
+                {xenialStatus.lastOrderReceived ? (
+                  <>
+                    Store {xenialStatus.lastOrderStore} - {formatCurrency(xenialStatus.lastOrderAmount || 0)} ({formatTime(xenialStatus.lastOrderReceived)})
+                  </>
+                ) : (
+                  "No orders received yet"
+                )}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">All Time:</span>
+              <span className="text-sm text-muted-foreground">
+                {xenialStatus.allTime.orderCount.toLocaleString()} orders ({formatCurrency(xenialStatus.allTime.salesTotal)})
+              </span>
+            </div>
+
+            {xenialStatus.storeBreakdown.length > 0 && (
+              <div className="pt-2 border-t">
+                <span className="text-sm font-medium">Today's Orders by Store:</span>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {xenialStatus.storeBreakdown.slice(0, 6).map((store) => (
+                    <Badge key={store.store} variant="outline" className="text-xs">
+                      {store.store}: {store.orders} ({formatCurrency(store.total)})
+                    </Badge>
+                  ))}
+                  {xenialStatus.storeBreakdown.length > 6 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{xenialStatus.storeBreakdown.length - 6} more
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-muted-foreground text-sm">Unable to fetch POS status</div>
+        )}
+
+        <div className="flex items-center gap-3 pt-2 border-t">
+          <Button
+            onClick={() => refetchStatus()}
+            variant="outline"
+            data-testid="button-xenial-refresh"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh Status
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
