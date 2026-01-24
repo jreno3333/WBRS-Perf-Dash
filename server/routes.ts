@@ -760,15 +760,19 @@ export async function registerRoutes(
     }
   });
 
-  // POS webhook status
+  // POS webhook status - comprehensive order flow monitoring
   app.get("/api/pos/status", async (req, res) => {
     try {
+      const now = new Date();
       const today = new Date();
       today.setUTCHours(0, 0, 0, 0);
       
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
+      // Today's orders
       const todayOrders = await db
         .select({
           count: sql<number>`count(*)::int`,
@@ -782,23 +786,96 @@ export async function registerRoutes(
           )
         );
 
-      const lastOrder = await db
-        .select()
+      // Last hour orders
+      const lastHourOrders = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+          total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+        })
+        .from(posOrders)
+        .where(gte(posOrders.receivedAt, oneHourAgo));
+
+      // Total all-time orders
+      const totalOrders = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+          total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+        })
+        .from(posOrders);
+
+      // Today's orders by store
+      const storeBreakdown = await db
+        .select({
+          storeNumber: posOrders.storeNumber,
+          count: sql<number>`count(*)::int`,
+          total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+        })
+        .from(posOrders)
+        .where(
+          and(
+            gte(posOrders.businessDate, today),
+            lt(posOrders.businessDate, tomorrow)
+          )
+        )
+        .groupBy(posOrders.storeNumber)
+        .orderBy(desc(sql`count(*)`));
+
+      // Last 5 orders received
+      const recentOrders = await db
+        .select({
+          storeNumber: posOrders.storeNumber,
+          orderTotal: posOrders.orderTotal,
+          orderSource: posOrders.orderSource,
+          receivedAt: posOrders.receivedAt,
+        })
         .from(posOrders)
         .orderBy(desc(posOrders.receivedAt))
-        .limit(1);
+        .limit(5);
+
+      const lastOrder = recentOrders[0];
 
       res.json({
+        status: "operational",
+        webhookEndpoint: "/api/xenial/order",
         webhookEnabled: !!process.env.MWBURGER_POS_TOKEN,
-        todayOrderCount: todayOrders[0]?.count || 0,
-        todaySalesTotal: Number(todayOrders[0]?.total) || 0,
-        lastOrderReceived: lastOrder[0]?.receivedAt || null,
-        lastOrderStore: lastOrder[0]?.storeNumber || null,
+        serverTime: now.toISOString(),
+        today: {
+          date: today.toISOString().split('T')[0],
+          orderCount: todayOrders[0]?.count || 0,
+          salesTotal: Number(todayOrders[0]?.total) || 0,
+        },
+        lastHour: {
+          orderCount: lastHourOrders[0]?.count || 0,
+          salesTotal: Number(lastHourOrders[0]?.total) || 0,
+        },
+        allTime: {
+          orderCount: totalOrders[0]?.count || 0,
+          salesTotal: Number(totalOrders[0]?.total) || 0,
+        },
+        lastOrderReceived: lastOrder?.receivedAt || null,
+        lastOrderStore: lastOrder?.storeNumber || null,
+        lastOrderAmount: lastOrder ? Number(lastOrder.orderTotal) : null,
+        storeBreakdown: storeBreakdown.map(s => ({
+          store: s.storeNumber,
+          orders: s.count,
+          total: Number(s.total),
+        })),
+        recentOrders: recentOrders.map(o => ({
+          store: o.storeNumber,
+          amount: Number(o.orderTotal),
+          source: o.orderSource,
+          receivedAt: o.receivedAt,
+        })),
       });
     } catch (error) {
       console.error("Error fetching POS status:", error);
       res.status(500).json({ error: "Failed to fetch POS status" });
     }
+  });
+
+  // Simple alias for Xenial status
+  app.get("/api/xenial/status", async (req, res) => {
+    res.redirect("/api/pos/status");
   });
 
   // ===== HME DRIVE-THRU TIMER ENDPOINTS =====
