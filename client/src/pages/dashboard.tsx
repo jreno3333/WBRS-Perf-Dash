@@ -65,7 +65,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined): number {
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time" | "xscore">("variance");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time" | "xscore">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
