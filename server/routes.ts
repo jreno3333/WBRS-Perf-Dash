@@ -885,7 +885,7 @@ export async function registerRoutes(
       res.json({
         status: "operational",
         webhookEndpoint: "/api/xenial/order",
-        webhookEnabled: !!process.env.MWBURGER_POS_TOKEN,
+        webhookEnabled: true, // Auth no longer required
         serverTime: now.toISOString(),
         today: {
           date: today.toISOString().split('T')[0],
