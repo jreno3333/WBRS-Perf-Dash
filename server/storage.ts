@@ -662,6 +662,10 @@ export class DatabaseStorage implements IStorage {
     // Fetch HME timer data for the selected date
     const allHmeData = await db.select().from(hmeTimerData).where(eq(hmeTimerData.date, selectedDateStr));
     
+    // Fetch Xenial POS hourly data - prioritize over 7shifts for any date
+    // POS data is more accurate when available (real transactions vs 7shifts estimates)
+    const posHourlySales = await getAllHourlyPosSales(selectedDate);
+    
     const result: Record<string, HourlySalesData[]> = {};
     
     for (const restaurant of restaurantList) {
@@ -685,10 +689,31 @@ export class DatabaseStorage implements IStorage {
         hmeByHour.set(h.hour, { avgServiceTime: h.avgTotalTime, carCount: h.carCount });
       });
       
-      // Use 7shifts data for sales
+      // Get Xenial POS data for this restaurant (prioritize over 7shifts)
+      const posSalesForRestaurant = posHourlySales.get(restaurant.id);
+      
+      // Use 7shifts data as base for sales
       restaurantSelectedHourly.forEach(s => {
         selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
+      
+      // Override with Xenial POS data when available - this is more accurate real-time data
+      if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
+        // POS data exists - use it for hours where we have data
+        // This overwrites any 7shifts estimates with actual POS transactions
+        posSalesForRestaurant.forEach((sales, hour) => {
+          selectedByHour.set(hour, sales);
+        });
+        // Clear 7shifts data for hours before the first POS hour that have no POS data
+        // This prevents showing inflated 7shifts estimates for early morning
+        const firstPosHour = Math.min(...Array.from(posSalesForRestaurant.keys()));
+        for (let h = 0; h < firstPosHour; h++) {
+          // Only clear if we have no POS data for this hour
+          if (!posSalesForRestaurant.has(h)) {
+            selectedByHour.set(h, 0);
+          }
+        }
+      }
       
       // Forecast, labor, employee count, and position breakdown from 7shifts
       restaurantSelectedHourly.forEach(s => {
