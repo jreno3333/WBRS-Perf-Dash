@@ -37,8 +37,8 @@ Preferred communication style: Simple, everyday language.
 - **Sales Display & Ranking**: Uses `todaySales` (normalized, timezone-fair) for ranking and `actualSales` (sum of all available hourly sales) for display to ensure fair comparisons while matching 7shifts totals.
 
 ### 7shifts Integration
-- **Purpose**: Fetches actual sales data, labor data, and position/role information from 7shifts.
-- **Data Sync**: Hourly data updates, timezone-aware sync (Central timezone for data cutoff), and historical data seeding.
+- **Purpose**: Fetches sales data, labor data, and position/role information from 7shifts (fallback for when Xenial POS data is unavailable).
+- **Data Sync**: Sales data synced every 5 minutes, timezone-aware (Central timezone for business day determination), and historical data seeding (9 days for week-over-week comparisons).
 - **Labor Forecast**: Calculates projected end-of-day labor percentage using actual and projected data.
 - **Labor Deployment Guide**: Utilizes time punch data to compare actual employees on clock against a multi-component labor model (non-production and sales-based production staff).
 
