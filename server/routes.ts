@@ -83,6 +83,33 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Debug endpoint to check database connection
+  app.get("/api/db-status", async (req, res) => {
+    const xposSharedDbUrl = process.env.XPOSSHARED_DATABASE_URL?.trim() || '';
+    const sharedDbUrl = process.env.SHARED_DATABASE_URL?.trim() || '';
+    const defaultDbUrl = process.env.DATABASE_URL?.trim() || '';
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    let dbSource = 'DATABASE_URL';
+    if (isProduction) {
+      dbSource = xposSharedDbUrl ? 'XPOSSHARED_DATABASE_URL' : (sharedDbUrl ? 'SHARED_DATABASE_URL' : 'DATABASE_URL');
+    } else {
+      dbSource = defaultDbUrl ? 'DATABASE_URL' : (xposSharedDbUrl ? 'XPOSSHARED_DATABASE_URL' : 'SHARED_DATABASE_URL');
+    }
+    
+    // Count POS orders to verify database
+    const posCount = await db.select({ count: sql<number>`count(*)` }).from(posOrders);
+    
+    res.json({
+      environment: process.env.NODE_ENV || 'development',
+      selectedDatabase: dbSource,
+      xposSharedSet: !!xposSharedDbUrl,
+      sharedSet: !!sharedDbUrl,
+      databaseUrlSet: !!defaultDbUrl,
+      posOrdersCount: posCount[0]?.count || 0
+    });
+  });
+
   // Get leaderboard data
   app.get("/api/leaderboard", async (req, res) => {
     try {
