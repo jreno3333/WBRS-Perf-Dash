@@ -173,6 +173,13 @@ export class DatabaseStorage implements IStorage {
       return saleDate === lastWeekStr;
     }));
     
+    console.log(`[Leaderboard Debug] selectedDateStr: ${selectedDateStr}, lastWeekStr: ${lastWeekStr}`);
+    console.log(`[Leaderboard Debug] allHourlySales count: ${allHourlySales.length}, selectedDateHourly: ${selectedDateHourly.length}, lastWeekHourly: ${lastWeekHourly.length}`);
+    if (allHourlySales.length > 0) {
+      const uniqueDates = [...new Set(allHourlySales.map(s => new Date(s.salesDate).toISOString().split('T')[0]))].sort();
+      console.log(`[Leaderboard Debug] Available dates in hourly_sales: ${uniqueDates.join(', ')}`);
+    }
+    
     const restaurantSales: RestaurantSales[] = restaurantList.map(restaurant => {
       // All hourly data for the selected date (used for completed hours comparison)
       const selectedDateRestaurantHours = selectedDateHourly.filter(

@@ -731,6 +731,11 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       
       const intervals = await api.getHourlySales(location.id, dateStr);
       
+      // Debug: Log interval count for historical debugging
+      if (intervals.length === 0) {
+        console.log(`No intervals returned for ${location.name} on ${dateStr}`);
+      }
+      
       // Fetch time punches to calculate total labor hours deployed per hour
       // Use restaurant.timezone from our database (not 7shifts API) for proper timezone-aware hour boundary calculations
       // 7shifts API returns America/Chicago for all locations regardless of actual timezone
