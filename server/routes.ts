@@ -233,6 +233,21 @@ export async function registerRoutes(
         }
       }
       
+      // Fetch Google Reviews data for all restaurants
+      const { getGoogleReviewsForAllRestaurants } = await import("./google-places");
+      const googleReviews = await getGoogleReviewsForAllRestaurants(targetDateStr);
+      
+      // Add Google Reviews data to each restaurant
+      for (const r of restaurantsWithWeather) {
+        const reviews = googleReviews.get(r.restaurantId);
+        if (reviews) {
+          (r as any).googleReviews = {
+            rating: reviews.rating,
+            reviewCount: reviews.reviewCount,
+          };
+        }
+      }
+      
       res.json({
         ...leaderboard,
         restaurants: restaurantsWithWeather,
