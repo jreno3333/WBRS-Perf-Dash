@@ -88,6 +88,26 @@ Preferred communication style: Simple, everyday language.
   - `GET /api/hme/stores` - Lists HME stores for validation
 - **Display**: Drive-thru speed badge on leaderboard cards showing avg total time with color coding (green <5min, amber 5-7min, red >7min)
 
+### Google Reviews Integration
+- **Purpose**: Tracks Google business reviews ratings for each restaurant location.
+- **API**: Google Places API (Places Details endpoint)
+- **Authentication**: Requires `GOOGLE_PLACES_API_KEY` secret
+- **Data Storage**: 
+  - `daily_google_reviews` table stores rating snapshots
+  - Each restaurant needs `google_place_id` column configured
+  - Stores rating (1.0-5.0) and review count
+- **Sync Schedule**: Every hour at :00 minutes, end-of-day snapshot at 11 PM Central
+- **API Endpoints**:
+  - `POST /api/google/sync` - Triggers manual sync of all restaurant reviews
+  - `GET /api/google/reviews/:restaurantId` - Returns review data for a restaurant
+- **Display**: Star badge on leaderboard cards with color coding:
+  - Green: 4.5+ rating (excellent)
+  - Blue: 4.0-4.4 rating (good)
+  - Amber: 3.5-3.9 rating (needs attention)
+  - Red: Below 3.5 (critical)
+- **Tooltip**: Shows total review count on hover
+- **Future**: Rating may be integrated into X-Score calculation
+
 ## External Dependencies
 
 ### Database
