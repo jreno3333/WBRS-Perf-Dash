@@ -856,8 +856,8 @@ export async function registerRoutes(
       
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
-      // Today's orders
-      const todayOrders = await db
+      // Today's orders - use posDb for POS data in production (separate database)
+      const todayOrders = await posDb
         .select({
           count: sql<number>`count(*)::int`,
           total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
@@ -871,7 +871,7 @@ export async function registerRoutes(
         );
 
       // Last hour orders
-      const lastHourOrders = await db
+      const lastHourOrders = await posDb
         .select({
           count: sql<number>`count(*)::int`,
           total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
@@ -880,7 +880,7 @@ export async function registerRoutes(
         .where(gte(posOrders.receivedAt, oneHourAgo));
 
       // Total all-time orders
-      const totalOrders = await db
+      const totalOrders = await posDb
         .select({
           count: sql<number>`count(*)::int`,
           total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
@@ -888,7 +888,7 @@ export async function registerRoutes(
         .from(posOrders);
 
       // Today's orders by store
-      const storeBreakdown = await db
+      const storeBreakdown = await posDb
         .select({
           storeNumber: posOrders.storeNumber,
           count: sql<number>`count(*)::int`,
@@ -905,7 +905,7 @@ export async function registerRoutes(
         .orderBy(desc(sql`count(*)`));
 
       // Last 5 orders received
-      const recentOrders = await db
+      const recentOrders = await posDb
         .select({
           storeNumber: posOrders.storeNumber,
           orderTotal: posOrders.orderTotal,
