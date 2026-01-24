@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
@@ -104,6 +104,27 @@ export default function SettingsPage() {
       toast({
         title: "Error",
         description: "Failed to update revenue ports.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const googlePlaceIdMutation = useMutation({
+    mutationFn: async ({ id, googlePlaceId }: { id: string; googlePlaceId: string | null }) => {
+      return apiRequest("PATCH", `/api/restaurants/${id}`, { googlePlaceId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/restaurants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      toast({
+        title: "Google Place ID updated",
+        description: "Changes saved successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update Google Place ID.",
         variant: "destructive",
       });
     },
@@ -322,6 +343,12 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          <GoogleReviewsCard 
+            restaurants={restaurants || []}
+            onUpdatePlaceId={(id, placeId) => googlePlaceIdMutation.mutate({ id, googlePlaceId: placeId })}
+            isPending={googlePlaceIdMutation.isPending}
+          />
+
           <XenialSyncCard />
 
           <HMESyncCard />
@@ -515,6 +542,186 @@ interface XenialStatus {
   lastOrderAmount?: number | null;
   storeBreakdown?: Array<{ store: string; orders: number; total: number }>;
   recentOrders?: Array<{ store: string; amount: number; source: string; receivedAt: string }>;
+}
+
+function GoogleReviewsCard({ 
+  restaurants, 
+  onUpdatePlaceId,
+  isPending 
+}: { 
+  restaurants: Restaurant[];
+  onUpdatePlaceId: (id: string, placeId: string | null) => void;
+  isPending: boolean;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const { toast } = useToast();
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/google/sync");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      toast({
+        title: "Google Reviews synced",
+        description: "Review data has been updated for all restaurants.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Sync failed",
+        description: "Make sure GOOGLE_PLACES_API_KEY is configured.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const startEditing = (restaurant: Restaurant) => {
+    setEditingId(restaurant.id);
+    setEditValue(restaurant.googlePlaceId || "");
+  };
+
+  const handleSave = (id: string) => {
+    onUpdatePlaceId(id, editValue.trim() || null);
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  // Sort restaurants by name for easier finding
+  const sortedRestaurants = [...restaurants].sort((a, b) => a.name.localeCompare(b.name));
+  const configuredCount = restaurants.filter(r => r.googlePlaceId).length;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Star className="h-5 w-5 text-amber-500" />
+            <CardTitle>Google Reviews</CardTitle>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            data-testid="button-sync-google-reviews"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            Sync Now
+          </Button>
+        </div>
+        <CardDescription>
+          Configure Google Place IDs to track review ratings for each restaurant.
+          Reviews sync automatically every hour.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {/* Instructions */}
+        <div className="bg-muted/50 rounded-lg p-4 text-sm">
+          <p className="font-medium mb-2">How to find a Google Place ID:</p>
+          <ol className="list-decimal list-inside space-y-1 text-muted-foreground mb-3">
+            <li>Visit the Google Place ID Finder tool</li>
+            <li>Search for the restaurant by name and location</li>
+            <li>Click on the correct result on the map</li>
+            <li>Copy the Place ID (starts with "ChIJ...")</li>
+            <li>Paste it into the field below</li>
+          </ol>
+          <a
+            href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+            data-testid="link-place-id-finder"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open Google Place ID Finder
+          </a>
+        </div>
+
+        {/* Status */}
+        <div className="flex items-center gap-2">
+          <Badge variant={configuredCount > 0 ? "default" : "secondary"}>
+            {configuredCount} of {restaurants.length} configured
+          </Badge>
+        </div>
+
+        {/* Restaurant list */}
+        <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
+          {sortedRestaurants.map(restaurant => (
+            <div 
+              key={restaurant.id} 
+              className="flex items-center justify-between gap-3 p-3 hover-elevate"
+              data-testid={`row-google-${restaurant.id}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-sm truncate">{restaurant.name}</div>
+                {restaurant.googlePlaceId && !editingId && (
+                  <div className="text-xs text-muted-foreground truncate">
+                    {restaurant.googlePlaceId}
+                  </div>
+                )}
+              </div>
+              
+              {editingId === restaurant.id ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    placeholder="ChIJ..."
+                    className="w-48 h-8 text-xs"
+                    data-testid={`input-place-id-${restaurant.id}`}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => handleSave(restaurant.id)}
+                    disabled={isPending}
+                    data-testid={`button-save-place-id-${restaurant.id}`}
+                  >
+                    <Save className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancel}
+                    data-testid={`button-cancel-place-id-${restaurant.id}`}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {restaurant.googlePlaceId ? (
+                    <Badge variant="outline" className="text-green-600 border-green-600">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Configured
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-muted-foreground">
+                      Not configured
+                    </Badge>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => startEditing(restaurant)}
+                    data-testid={`button-edit-place-id-${restaurant.id}`}
+                  >
+                    Edit
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function XenialSyncCard() {

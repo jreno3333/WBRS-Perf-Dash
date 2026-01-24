@@ -336,7 +336,7 @@ export async function registerRoutes(
   app.patch("/api/restaurants/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { openDate, laborTarget, isActive, revenuePorts } = req.body;
+      const { openDate, laborTarget, isActive, revenuePorts, googlePlaceId } = req.body;
       
       console.log(`[Restaurant Update] ID: ${id}, Body:`, JSON.stringify(req.body));
       
@@ -353,6 +353,9 @@ export async function registerRoutes(
       }
       if (revenuePorts !== undefined) {
         updates.revenuePorts = revenuePorts;
+      }
+      if (googlePlaceId !== undefined) {
+        updates.googlePlaceId = googlePlaceId || null;
       }
       
       if (Object.keys(updates).length === 0) {
