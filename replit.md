@@ -30,12 +30,13 @@ Preferred communication style: Simple, everyday language.
 - **Validation**: Zod schemas via drizzle-zod
 - **Migrations**: Drizzle Kit
 - **Data Separation Architecture** (for multi-app compatibility):
-  - `pos_orders`: POS transaction data only (Xenial orders)
-  - `hourly_sales` / `daily_sales`: Sales data only (7shifts and POS aggregates)
-  - `hourly_labor` / `daily_labor`: Labor data only (7shifts time punches, scheduled labor)
-  - `hme_timer_data`: Drive-thru timing metrics
-  - `daily_weather`: Weather data for map display
-  - This separation allows other apps sharing the same database to use pos_orders without labor columns
+  - `pos_orders`: POS transaction data only (Xenial orders) - completely isolated
+  - `hourly_sales` / `daily_sales`: Sales data only (7shifts and POS aggregates) - no labor columns
+  - `hourly_labor` / `daily_labor`: Labor data only (7shifts time punches, scheduled labor) - separate tables
+  - `hme_timer_data`: Drive-thru timing metrics - completely isolated
+  - `daily_weather`: Weather data for map display - completely isolated
+  - `location_mapping`: Xenial store number to restaurant ID mapping
+  - **IMPORTANT**: This separation ensures other apps sharing the database can query `pos_orders` or other tables independently without encountering unrelated data columns. Each data domain (POS, sales, labor, HME, weather) is stored in its own dedicated table(s).
 
 ### Key Features
 - **Map Page**: Interactive map displaying restaurant locations with sales performance indicators (red/green markers for week-over-week performance), pop-up details, and real-time weather data.
