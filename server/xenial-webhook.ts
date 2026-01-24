@@ -154,7 +154,7 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date): 
 
   const results = await db
     .select({
-      hour: sql<number>`extract(hour from ${posOrders.orderClosedAt})::int`,
+      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
@@ -165,7 +165,7 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date): 
         lt(posOrders.businessDate, endOfDay)
       )
     )
-    .groupBy(sql`extract(hour from ${posOrders.orderClosedAt})`);
+    .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
 
   const hourlyData = new Map<number, number>();
   for (const row of results) {
@@ -215,7 +215,7 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
 
   const results = await db
     .select({
-      hour: sql<number>`extract(hour from ${posOrders.orderClosedAt})::int`,
+      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
@@ -227,7 +227,7 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
         lt(posOrders.businessDate, endOfDay)
       )
     )
-    .groupBy(sql`extract(hour from ${posOrders.orderClosedAt})`);
+    .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
 
   const hourlyData = new Map<number, number>();
   for (const row of results) {
@@ -246,7 +246,7 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
   const results = await db
     .select({
       restaurantId: locationMapping.restaurantId,
-      hour: sql<number>`extract(hour from ${posOrders.orderClosedAt})::int`,
+      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
@@ -257,7 +257,7 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
         lt(posOrders.businessDate, endOfDay)
       )
     )
-    .groupBy(locationMapping.restaurantId, sql`extract(hour from ${posOrders.orderClosedAt})`);
+    .groupBy(locationMapping.restaurantId, sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
 
   const allHourlySales = new Map<string, Map<number, number>>();
   for (const row of results) {
