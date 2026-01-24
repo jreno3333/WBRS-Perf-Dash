@@ -147,6 +147,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
 
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
   // Generate all 24 hours, filling in zeros for missing hours
+  // Use localCurrentHour for grade display (restaurant's own timezone)
+  // Fall back to normalizedHour if not available (for backward compatibility)
+  const localGradeCutoff = (restaurant as any).localCurrentHour ?? restaurant.normalizedHour;
   const normalizedCutoff = restaurant.normalizedHour;
   
   // Create a map of existing hourly data
@@ -182,9 +185,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     1
   );
   
-  // Calculate overall execution grade from completed hourly grades only
+  // Calculate overall execution grade from completed hourly grades only (using restaurant's local hour)
   const hourlyGradeScores = activeHours
-    .filter(hour => hour.hour <= normalizedCutoff) // Only completed hours
+    .filter(hour => hour.hour <= localGradeCutoff) // Only completed hours for this restaurant
     .map(hour => {
       const isAhead = hour.todaySales >= hour.lastWeekSales;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
@@ -461,10 +464,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 )}
               </div>
             </div>
-            {/* Execution Grades Row - only show grades for completed hours */}
+            {/* Execution Grades Row - only show grades for completed hours (using restaurant's local hour) */}
             <div className="flex gap-0.5 mb-1">
               {activeHours.map((hour) => {
-                const isCompleted = hour.hour <= normalizedCutoff;
+                const isCompleted = hour.hour <= localGradeCutoff;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
@@ -489,7 +492,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="relative flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
               {activeHours.map((hour) => {
-                const isCompleted = hour.hour <= normalizedCutoff;
+                const isCompleted = hour.hour <= localGradeCutoff;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);

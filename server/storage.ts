@@ -433,7 +433,8 @@ export class DatabaseStorage implements IStorage {
         pacePercentage,
         isAheadOfPace,
         rank: 0,
-        normalizedHour: normalizedHourCutoff,
+        normalizedHour: normalizedHourCutoff, // Global cutoff for fair ranking
+        localCurrentHour: isToday ? getCurrentHourInTimezone(restaurant.timezone) - 1 : 23, // Restaurant's own completed hour for grade display
         // Labor forecast fields
         projectedLaborCost: Math.round(projectedLaborCost * 100) / 100,
         projectedEndOfDaySales: Math.round(projectedEndOfDaySales * 100) / 100,
