@@ -22,7 +22,7 @@ import {
   dailyWeather,
   hmeTimerData
 } from "@shared/schema";
-import { db } from "./db";
+import { db, posDb } from "./db";
 import { eq, and, gte, lt, lte, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getPosSalesByRestaurant, getAllHourlyPosSales } from "./xenial-webhook";
@@ -469,9 +469,10 @@ export class DatabaseStorage implements IStorage {
     const sortedRestaurantSales = [...rankedUnits, ...trainingUnits];
     
     // Get the last POS order time for "last updated" when viewing today
+    // Use posDb for pos_orders queries (may be separate shared database)
     let lastUpdated: string;
     if (isToday) {
-      const lastPosOrder = await db.select()
+      const lastPosOrder = await posDb.select()
         .from(posOrders)
         .orderBy(desc(posOrders.receivedAt))
         .limit(1);

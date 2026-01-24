@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
-import { db } from "./db";
+import { db, posDb } from "./db";
 import { scraperRuns, posOrders, hourlySales, restaurants } from "@shared/schema";
 import { desc, sql, gte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "./xenial-webhook";
@@ -88,25 +88,30 @@ export async function registerRoutes(
     const xposSharedDbUrl = process.env.XPOSSHARED_DATABASE_URL?.trim() || '';
     const sharedDbUrl = process.env.SHARED_DATABASE_URL?.trim() || '';
     const defaultDbUrl = process.env.DATABASE_URL?.trim() || '';
-    const isProduction = process.env.NODE_ENV === 'production';
     
-    let dbSource = 'DATABASE_URL';
-    if (isProduction) {
-      dbSource = xposSharedDbUrl ? 'XPOSSHARED_DATABASE_URL' : (sharedDbUrl ? 'SHARED_DATABASE_URL' : 'DATABASE_URL');
-    } else {
-      dbSource = defaultDbUrl ? 'DATABASE_URL' : (xposSharedDbUrl ? 'XPOSSHARED_DATABASE_URL' : 'SHARED_DATABASE_URL');
-    }
+    // Main DB: DATABASE_URL for all app tables (restaurants, sales, labor)
+    const mainDbSource = defaultDbUrl ? 'DATABASE_URL' : (xposSharedDbUrl ? 'XPOSSHARED_DATABASE_URL' : 'SHARED_DATABASE_URL');
     
-    // Count POS orders to verify database
-    const posCount = await db.select({ count: sql<number>`count(*)` }).from(posOrders);
+    // POS DB: XPOSSHARED_DATABASE_URL for pos_orders (shared between apps)
+    const posDbSource = xposSharedDbUrl ? 'XPOSSHARED_DATABASE_URL' : (defaultDbUrl ? 'DATABASE_URL' : 'SHARED_DATABASE_URL');
+    
+    // Check if POS DB is separate from main DB
+    const posDbIsSeparate = xposSharedDbUrl && xposSharedDbUrl !== (defaultDbUrl || sharedDbUrl);
+    
+    // Count POS orders from posDb and restaurants from main db
+    const posCount = await posDb.select({ count: sql<number>`count(*)` }).from(posOrders);
+    const restaurantCount = await db.select({ count: sql<number>`count(*)` }).from(restaurants);
     
     res.json({
       environment: process.env.NODE_ENV || 'development',
-      selectedDatabase: dbSource,
+      mainDatabase: mainDbSource,
+      posDatabase: posDbSource,
+      posDbSeparate: posDbIsSeparate,
       xposSharedSet: !!xposSharedDbUrl,
       sharedSet: !!sharedDbUrl,
       databaseUrlSet: !!defaultDbUrl,
-      posOrdersCount: posCount[0]?.count || 0
+      posOrdersCount: posCount[0]?.count || 0,
+      restaurantsCount: restaurantCount[0]?.count || 0
     });
   });
 

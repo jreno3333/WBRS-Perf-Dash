@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, posDb } from "./db";
 import { posOrders, locationMapping, restaurants } from "@shared/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
 
@@ -86,7 +86,7 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
     // Determine order source from destination or use POS as default
     const orderSource = data.order_source || data.destination?.short_name || data.destination?.name || "POS";
 
-    await db.insert(posOrders).values({
+    await posDb.insert(posOrders).values({
       xenialOrderId: orderId,
       storeNumber: storeNumber,
       orderTotal: orderTotal.toFixed(2),
@@ -119,7 +119,7 @@ export async function getPosOrdersSummary(targetDate: Date): Promise<Map<string,
   const endOfDay = new Date(targetDate);
   endOfDay.setUTCHours(23, 59, 59, 999);
 
-  const results = await db
+  const results = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
       orderCount: sql<number>`count(*)::int`,
@@ -152,7 +152,7 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date): 
   const endOfDay = new Date(targetDate);
   endOfDay.setUTCHours(23, 59, 59, 999);
 
-  const results = await db
+  const results = await posDb
     .select({
       hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
@@ -181,26 +181,36 @@ export async function getPosSalesByRestaurant(targetDate: Date): Promise<Map<str
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // Join pos_orders with location_mapping to get restaurant IDs
-  const results = await db
+  // First, get location mappings from main database
+  const mappings = await db.select().from(locationMapping);
+  const storeToRestaurantId = new Map<string, string>();
+  for (const mapping of mappings) {
+    if (mapping.restaurantId) {
+      storeToRestaurantId.set(mapping.xenialStoreNumber, mapping.restaurantId);
+    }
+  }
+
+  // Query POS orders from posDb (may be separate database)
+  const results = await posDb
     .select({
-      restaurantId: locationMapping.restaurantId,
+      storeNumber: posOrders.storeNumber,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
-    .innerJoin(locationMapping, eq(posOrders.storeNumber, locationMapping.xenialStoreNumber))
     .where(
       and(
         gte(posOrders.businessDate, startOfDay),
         lt(posOrders.businessDate, endOfDay)
       )
     )
-    .groupBy(locationMapping.restaurantId);
+    .groupBy(posOrders.storeNumber);
 
+  // Map store numbers to restaurant IDs in application code
   const salesByRestaurant = new Map<string, number>();
   for (const row of results) {
-    if (row.restaurantId) {
-      salesByRestaurant.set(row.restaurantId, Number(row.totalSales) || 0);
+    const restaurantId = storeToRestaurantId.get(row.storeNumber);
+    if (restaurantId) {
+      salesByRestaurant.set(restaurantId, Number(row.totalSales) || 0);
     }
   }
 
@@ -213,16 +223,28 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  const results = await db
+  // First, get the store number for this restaurant from location_mapping
+  const mapping = await db.select()
+    .from(locationMapping)
+    .where(eq(locationMapping.restaurantId, restaurantId))
+    .limit(1);
+  
+  if (mapping.length === 0) {
+    return new Map<number, number>();
+  }
+
+  const storeNumber = mapping[0].xenialStoreNumber;
+
+  // Query POS orders from posDb (may be separate database)
+  const results = await posDb
     .select({
       hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
-    .innerJoin(locationMapping, eq(posOrders.storeNumber, locationMapping.xenialStoreNumber))
     .where(
       and(
-        eq(locationMapping.restaurantId, restaurantId),
+        eq(posOrders.storeNumber, storeNumber),
         gte(posOrders.businessDate, startOfDay),
         lt(posOrders.businessDate, endOfDay)
       )
@@ -245,8 +267,8 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // First, get all POS orders grouped by store number and hour
-  const posResults = await db
+  // First, get all POS orders grouped by store number and hour (from posDb which may be separate)
+  const posResults = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
       hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
