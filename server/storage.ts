@@ -403,9 +403,9 @@ export class DatabaseStorage implements IStorage {
         restaurantId: restaurant.id.toString(),
         restaurantName: restaurant.name,
         timezone: restaurant.timezone,
-        todaySales: selectedDateSalesAmount, // Normalized for fair ranking
-        actualSales: actualSalesAmount, // Current sales matching 7shifts
-        lastWeekSales: lastWeekSalesAmount, // Normalized for ranking
+        todaySales: selectedDateSalesAmount, // Legacy normalized (kept for compatibility)
+        actualSales: actualSalesAmount, // Used for ranking and display
+        lastWeekSales: lastWeekSalesAmount, // Legacy normalized (kept for compatibility)
         actualLastWeekSales: actualLastWeekAmount, // Full last week for display
         forecastSales: forecastSalesAmount,
         pacePercentage,
@@ -430,8 +430,8 @@ export class DatabaseStorage implements IStorage {
     const rankedUnits = restaurantSales.filter(r => r.status !== "training");
     const trainingUnits = restaurantSales.filter(r => r.status === "training");
     
-    // Sort ranked units by sales
-    rankedUnits.sort((a, b) => b.todaySales - a.todaySales);
+    // Sort ranked units by actual sales (not normalized)
+    rankedUnits.sort((a, b) => b.actualSales - a.actualSales);
     
     // Assign ranks only to non-training units
     rankedUnits.forEach((r, idx) => {

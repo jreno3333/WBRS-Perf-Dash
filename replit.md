@@ -34,7 +34,7 @@ Preferred communication style: Simple, everyday language.
 - **Map Page**: Interactive map displaying restaurant locations with sales performance indicators (red/green markers for week-over-week performance), pop-up details, and real-time weather data.
 - **Holiday Context**: Displays US Federal Holiday information on the dashboard and map to contextualize sales performance.
 - **Settings/Admin Page**: Manages restaurant open dates and unit statuses (Training, New Unit, Established) affecting ranking and display.
-- **Sales Display & Ranking**: Uses `todaySales` (normalized, timezone-fair) for ranking and `actualSales` (sum of all available hourly sales) for display to ensure fair comparisons while matching 7shifts totals.
+- **Sales Display & Ranking**: Uses `actualSales` (sum of all available hourly sales) for both ranking and display. This ensures consistent data between deployments sharing the same database.
 
 ### 7shifts Integration
 - **Purpose**: Fetches sales data, labor data, and position/role information from 7shifts (fallback for when Xenial POS data is unavailable).
@@ -57,7 +57,7 @@ Preferred communication style: Simple, everyday language.
   1. Xenial POS hourly data (most accurate - real transactions)
   2. 7shifts hourly data (fallback when no POS data)
   3. 7shifts daily_sales estimates (secondary fallback for week-over-week)
-- **Display**: Card shows `actualSales` (total POS transactions so far), ranking uses `todaySales` (normalized for fair timezone comparison).
+- **Display**: Card shows `actualSales` (total POS transactions so far), ranking uses `actualSales` (normalized for fair timezone comparison).
 - **Hourly Chart**: All 24 hours displayed individually with actual POS transaction data per hour.
 
 ### HME Drive-Thru Timer Integration
