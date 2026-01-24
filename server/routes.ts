@@ -666,13 +666,58 @@ export async function registerRoutes(
 
   // ===== XENIAL POS WEBHOOK ENDPOINTS =====
 
+  // Test endpoint to verify webhook connectivity (no auth required)
+  app.get("/api/xenial/ping", async (req, res) => {
+    res.json({
+      status: "ok",
+      message: "Xenial webhook endpoint is reachable",
+      timestamp: new Date().toISOString(),
+      webhookUrl: "/api/xenial/order",
+      authRequired: !!process.env.MWBURGER_POS_TOKEN,
+    });
+  });
+
+  // Test endpoint to send a sample order (for debugging)
+  app.post("/api/xenial/test-order", async (req, res) => {
+    try {
+      const testPayload = {
+        entityName: "Order",
+        data: {
+          _id: `test-${Date.now()}`,
+          origin: "1237",
+          net_sales: 9.99,
+          business_date: new Date().toISOString().split('T')[0],
+          closed: new Date().toISOString(),
+          order_source: "TEST",
+        }
+      };
+      
+      const result = await processXenialOrder(testPayload);
+      res.json({
+        message: "Test order processed",
+        result,
+        payload: testPayload,
+      });
+    } catch (error) {
+      console.error("Test order error:", error);
+      res.status(500).json({ error: "Failed to process test order" });
+    }
+  });
+
   // Receive order from Xenial POS (webhook endpoint)
   app.post("/api/xenial/order", async (req, res) => {
+    const receivedAt = new Date().toISOString();
+    console.log(`[Xenial] Webhook received at ${receivedAt}`);
+    
     try {
       const authHeader = req.headers.authorization as string | undefined;
       
+      // Log request details for debugging (without exposing sensitive data)
+      console.log(`[Xenial] Headers: content-type=${req.headers['content-type']}, auth=${authHeader ? 'present' : 'missing'}`);
+      console.log(`[Xenial] Body preview: ${JSON.stringify(req.body).substring(0, 200)}`);
+      
       if (!validateWebhookToken(authHeader)) {
-        console.warn("Xenial webhook: Invalid or missing auth token");
+        console.warn("[Xenial] REJECTED: Invalid or missing auth token");
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
@@ -680,6 +725,7 @@ export async function registerRoutes(
       const payload = req.body;
       
       if (!payload || !payload.data) {
+        console.warn("[Xenial] REJECTED: Invalid payload structure");
         res.status(400).json({ error: "Invalid payload" });
         return;
       }
@@ -687,8 +733,10 @@ export async function registerRoutes(
       const result = await processXenialOrder(payload);
       
       if (result.success) {
+        console.log(`[Xenial] SUCCESS: Order ${result.orderId} saved`);
         res.json({ success: true, orderId: result.orderId });
       } else {
+        console.warn(`[Xenial] FAILED: ${result.error}`);
         res.status(400).json({ success: false, error: result.error });
       }
     } catch (error) {
