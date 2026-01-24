@@ -234,7 +234,11 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
-      res.status(500).json({ error: "Failed to fetch leaderboard data" });
+      res.status(500).json({ 
+        error: "Failed to fetch leaderboard data",
+        details: error instanceof Error ? error.message : String(error),
+        stack: process.env.NODE_ENV !== 'production' ? (error instanceof Error ? error.stack : undefined) : undefined
+      });
     }
   });
 
