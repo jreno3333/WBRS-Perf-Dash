@@ -95,7 +95,6 @@ export default function Dashboard() {
     enabled: !!selectedRestaurant,
   });
   const paceData = paceResponse?.data;
-  const currentHour = paceResponse?.currentHour ?? null;
 
   // Always fetch aggregate pace data for the summary cards (independent of sidebar selection)
   const { data: aggregatePaceResponse } = useQuery<{ data: HourlySalesData[]; currentHour: number | null; isToday: boolean }>({
@@ -494,7 +493,6 @@ export default function Dashboard() {
                   <PaceChart 
                     data={paceData} 
                     restaurantName={getSelectedRestaurantName()}
-                    currentHour={currentHour}
                   />
                 ) : (
                   <Card>

@@ -10,18 +10,16 @@ import {
   Legend,
   Area,
   AreaChart,
-  ReferenceLine,
-  ReferenceDot
+  ReferenceLine
 } from "recharts";
 import type { HourlySalesData } from "@shared/schema";
 
 interface PaceChartProps {
   data: HourlySalesData[];
   restaurantName: string;
-  currentHour?: number | null;
 }
 
-export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps) {
+export function PaceChart({ data, restaurantName }: PaceChartProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -59,22 +57,6 @@ export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps)
     }
   }
 
-  // Use server-provided current hour to determine in-progress indicator
-  let inProgressLabel: string | null = null;
-  let inProgressSales = 0;
-  
-  if (currentHour !== null && currentHour !== undefined) {
-    const hourLabel = getHourLabel(currentHour);
-    const matchingHour = processedData.find(d => d.hour === currentHour);
-    if (matchingHour) {
-      inProgressLabel = matchingHour.label;
-      inProgressSales = matchingHour.todaySales;
-    } else {
-      inProgressLabel = hourLabel;
-      inProgressSales = 0;
-    }
-  }
-
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -102,12 +84,6 @@ export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps)
         <CardTitle className="text-base font-medium flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span>Daily Overview</span>
-            {inProgressLabel && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300" data-testid="badge-in-progress">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-                {inProgressLabel} In Progress
-              </span>
-            )}
           </div>
           <span className="text-sm font-normal text-muted-foreground">
             {restaurantName}
@@ -190,17 +166,6 @@ export function PaceChart({ data, restaurantName, currentHour }: PaceChartProps)
                 strokeWidth={2.5}
                 fill="url(#todayGradient)"
               />
-              {inProgressLabel && (
-                <ReferenceDot
-                  x={inProgressLabel}
-                  y={inProgressSales}
-                  r={6}
-                  fill="hsl(24, 91%, 53%)"
-                  stroke="white"
-                  strokeWidth={2}
-                  isFront={true}
-                />
-              )}
             </AreaChart>
           </ResponsiveContainer>
         </div>
