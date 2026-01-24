@@ -244,6 +244,7 @@ export async function registerRoutes(
           (r as any).googleReviews = {
             rating: reviews.rating,
             reviewCount: reviews.reviewCount,
+            newReviewsToday: reviews.newReviewsToday,
           };
         }
       }

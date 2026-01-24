@@ -151,20 +151,42 @@ export async function getGoogleReviewsForRestaurant(restaurantId: string, date?:
   };
 }
 
-export async function getGoogleReviewsForAllRestaurants(date?: string): Promise<Map<string, { rating: number; reviewCount: number }>> {
+export async function getGoogleReviewsForAllRestaurants(date?: string): Promise<Map<string, { rating: number; reviewCount: number; newReviewsToday: number }>> {
   const targetDate = date || new Date().toISOString().split('T')[0];
   
-  const results = await db.select()
+  // Get yesterday's date for comparison
+  const yesterday = new Date(targetDate);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  
+  // Get today's reviews
+  const todayResults = await db.select()
     .from(dailyGoogleReviews)
     .where(eq(dailyGoogleReviews.date, targetDate));
   
-  const reviewsMap = new Map<string, { rating: number; reviewCount: number }>();
+  // Get yesterday's reviews for comparison
+  const yesterdayResults = await db.select()
+    .from(dailyGoogleReviews)
+    .where(eq(dailyGoogleReviews.date, yesterdayStr));
   
-  for (const row of results) {
+  // Build yesterday's count map
+  const yesterdayMap = new Map<string, number>();
+  for (const row of yesterdayResults) {
+    yesterdayMap.set(row.restaurantId, row.reviewCount || 0);
+  }
+  
+  const reviewsMap = new Map<string, { rating: number; reviewCount: number; newReviewsToday: number }>();
+  
+  for (const row of todayResults) {
     if (row.rating) {
+      const todayCount = row.reviewCount || 0;
+      const yesterdayCount = yesterdayMap.get(row.restaurantId) || todayCount; // If no yesterday data, assume no change
+      const newReviews = Math.max(0, todayCount - yesterdayCount);
+      
       reviewsMap.set(row.restaurantId, {
         rating: parseFloat(row.rating),
-        reviewCount: row.reviewCount || 0,
+        reviewCount: todayCount,
+        newReviewsToday: newReviews,
       });
     }
   }

@@ -286,10 +286,14 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   >
                     <Star className="w-3 h-3 fill-current" />
                     <span>{restaurant.googleReviews.rating.toFixed(1)}</span>
+                    {(restaurant.googleReviews.newReviewsToday || 0) > 0 && (
+                      <span className="text-green-600 dark:text-green-400 font-bold">+{restaurant.googleReviews.newReviewsToday}</span>
+                    )}
                   </Badge>
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
                     <div className="font-medium">Google Reviews</div>
-                    <div className="text-muted-foreground">{restaurant.googleReviews.reviewCount.toLocaleString()} reviews</div>
+                    <div className="text-muted-foreground">{restaurant.googleReviews.reviewCount.toLocaleString()} total reviews</div>
+                    <div className="text-green-600 dark:text-green-400 font-medium">+{restaurant.googleReviews.newReviewsToday || 0} today</div>
                   </div>
                 </div>
               )}

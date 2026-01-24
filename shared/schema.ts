@@ -203,6 +203,7 @@ export interface RestaurantSales {
   googleReviews?: {
     rating: number; // 1.0-5.0
     reviewCount: number;
+    newReviewsToday: number; // New reviews received today (compared to yesterday)
   } | null;
 }
 
