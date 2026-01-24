@@ -18,6 +18,14 @@ import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
+// Get current date in Central timezone (business day)
+function getCentralDate(): Date {
+  const now = new Date();
+  const centralStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const [year, month, day] = centralStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
 // X-Score calculation helpers (same as leaderboard-card)
 function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, staffingDiff: number): number {
   let speed: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
@@ -56,11 +64,12 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined): number {
 
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time" | "xscore">("variance");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
-  const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
+  const centralToday = getCentralDate();
+  const isToday = format(centralToday, "yyyy-MM-dd") === dateStr;
 
   const { data: leaderboardData, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard", dateStr],

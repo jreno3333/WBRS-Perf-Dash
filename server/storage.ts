@@ -642,6 +642,16 @@ export class DatabaseStorage implements IStorage {
       return saleDate === lastWeekStr;
     }));
     
+    // Fallback: get daily_sales for last week when hourly data is missing
+    // (7shifts daily_stats API only provides detailed intervals for ~3 days)
+    const lastWeekNoon = lastWeekStr + 'T12:00:00.000Z';
+    const lastWeekDailyData = await db.select().from(dailySales).where(eq(dailySales.salesDate, new Date(lastWeekNoon)));
+    const lastWeekDailyMap = new Map<string, number>();
+    for (const d of lastWeekDailyData) {
+      // daily_sales.totalSales is stored in cents, convert to dollars
+      lastWeekDailyMap.set(d.restaurantId, parseFloat(String(d.totalSales)) / 100);
+    }
+    
     // Fetch HME timer data for the selected date
     const allHmeData = await db.select().from(hmeTimerData).where(eq(hmeTimerData.date, selectedDateStr));
     
@@ -683,10 +693,29 @@ export class DatabaseStorage implements IStorage {
           positionByHour.set(s.hour, s.positionBreakdown as Record<string, number>);
         }
       });
-      // Last week from 7shifts
+      // Last week from 7shifts hourly data
       restaurantLastWeekHourly.forEach(s => {
         lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
       });
+      
+      // Fallback: if no hourly data for last week, estimate from daily_sales
+      // This handles the case when 7shifts API doesn't provide detailed intervals for older dates
+      if (restaurantLastWeekHourly.length === 0 && lastWeekDailyMap.has(restaurant.id)) {
+        const dailyTotal = lastWeekDailyMap.get(restaurant.id) || 0;
+        // Use a typical restaurant hourly distribution (approximate based on QSR patterns)
+        // Peak hours: 11am-1pm (lunch), 5pm-8pm (dinner)
+        const hourlyDistribution: Record<number, number> = {
+          5: 0.01, 6: 0.02, 7: 0.03, 8: 0.04, 9: 0.05, 10: 0.06,
+          11: 0.09, 12: 0.11, 13: 0.09, 14: 0.06, 15: 0.05, 16: 0.05,
+          17: 0.07, 18: 0.08, 19: 0.07, 20: 0.05, 21: 0.04, 22: 0.02, 23: 0.01
+        };
+        for (let h = 0; h < 24; h++) {
+          const pct = hourlyDistribution[h] || 0;
+          if (pct > 0) {
+            lastWeekByHour.set(h, Math.round(dailyTotal * pct));
+          }
+        }
+      }
       
       // For hours without forecast data (future hours), use last week's actual as forecast
       for (let h = 0; h < 24; h++) {
