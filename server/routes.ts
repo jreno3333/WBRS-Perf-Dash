@@ -1004,6 +1004,22 @@ export async function registerRoutes(
     }
   });
 
+  // Sync restaurant coordinates from 7shifts
+  app.post("/api/sync-restaurants", async (req, res) => {
+    try {
+      console.log("[Sync] Starting restaurant sync from 7shifts...");
+      const count = await syncLocationsFromAPI();
+      console.log(`[Sync] Synced ${count} restaurants`);
+      res.json({ 
+        message: "Restaurant sync completed",
+        synced: count 
+      });
+    } catch (error: any) {
+      console.error("[Sync] Error syncing restaurants:", error);
+      res.status(500).json({ error: error.message || "Failed to sync restaurants" });
+    }
+  });
+
   // Sync HME timer data
   app.post("/api/hme/sync", async (req, res) => {
     try {

@@ -481,8 +481,13 @@ export async function syncLocationsFromAPI(): Promise<number> {
       });
       console.log(`Created restaurant: ${location.name}`);
     } else {
-      // Update existing restaurant with lat/lng if missing
-      if (!existingRestaurant.latitude || !existingRestaurant.longitude) {
+      // Always update lat/lng and address from 7shifts if available
+      const needsUpdate = 
+        (location.lat && String(location.lat) !== existingRestaurant.latitude) ||
+        (location.lng && String(location.lng) !== existingRestaurant.longitude) ||
+        (location.formatted_address && location.formatted_address !== existingRestaurant.address);
+      
+      if (needsUpdate) {
         await db.update(restaurants)
           .set({
             latitude: location.lat ? String(location.lat) : existingRestaurant.latitude,
