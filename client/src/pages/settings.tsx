@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture } from "date-fns";
 import { Link } from "wouter";
@@ -526,7 +526,7 @@ function XenialSyncCard() {
           <CardTitle>Xenial POS Orders</CardTitle>
         </div>
         <CardDescription>
-          Real-time order feed from Xenial POS systems. Orders are received via webhook and update sales data automatically.
+          Live order data from Xenial POS systems. Data is synced from the shared production database.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -535,18 +535,11 @@ function XenialSyncCard() {
         ) : xenialStatus ? (
           <div className="grid gap-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium">Webhook:</span>
-              {xenialStatus.webhookEnabled ? (
-                <Badge className="bg-green-500 hover:bg-green-600">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Enabled
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Not Configured
-                </Badge>
-              )}
+              <span className="text-sm font-medium">Data Source:</span>
+              <Badge className="bg-blue-500 hover:bg-blue-600">
+                <Database className="h-3 w-3 mr-1" />
+                Shared Database
+              </Badge>
             </div>
             
             <div className="grid grid-cols-2 gap-4 pt-2">
