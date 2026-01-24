@@ -126,17 +126,18 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     return `${sign}${value.toFixed(1)}%`;
   };
 
-  const getTimezoneDisplay = (tz: string, normalizedHour: number) => {
-    // Show "up to X" time - the next hour after the last completed hour
-    // If normalizedHour is 19 (7pm completed), show "up to 8pm"
-    const upToHour = (normalizedHour + 1) % 24;
-    const displayHour = upToHour === 0 ? 12 : upToHour > 12 ? upToHour - 12 : upToHour;
-    const ampm = upToHour >= 12 ? 'pm' : 'am';
-    const timeStr = `${displayHour}${ampm}`;
+  const getTimezoneDisplay = (tz: string) => {
+    // Show actual local time for the restaurant's timezone
+    const now = new Date();
+    const localTimeStr = now.toLocaleTimeString('en-US', { 
+      timeZone: tz, 
+      hour: 'numeric', 
+      hour12: true 
+    });
     
-    if (tz.includes("New_York") || tz.includes("Eastern")) return `${timeStr} EST`;
-    if (tz.includes("Chicago") || tz.includes("Central")) return `${timeStr} CST`;
-    return `${timeStr}`;
+    if (tz.includes("New_York") || tz.includes("Eastern")) return `${localTimeStr} EST`;
+    if (tz.includes("Chicago") || tz.includes("Central")) return `${localTimeStr} CST`;
+    return localTimeStr;
   };
 
   // Use normalized sales for pace variance comparison (fair timezone comparison for rankings)
@@ -254,7 +255,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               )}
               <Badge variant="secondary" className="flex-shrink-0 text-xs">
                 <Clock className="w-3 h-3 mr-1" />
-                {getTimezoneDisplay(restaurant.timezone, restaurant.normalizedHour)}
+                {getTimezoneDisplay(restaurant.timezone)}
               </Badge>
               {/* Overall Execution Grade - Always visible */}
               {overallGrade && (
