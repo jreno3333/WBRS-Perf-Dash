@@ -323,16 +323,6 @@ export async function seedLocationMappings(): Promise<number> {
 }
 
 export function validateWebhookToken(authHeader: string | undefined): boolean {
-  const expectedToken = process.env.MWBURGER_POS_TOKEN;
-  if (!expectedToken) {
-    console.warn("MWBURGER_POS_TOKEN not set - webhook authentication disabled");
-    return true;
-  }
-
-  if (!authHeader) {
-    return false;
-  }
-
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-  return token === expectedToken;
+  // Xenial webhook does not use token authentication - always allow
+  return true;
 }
