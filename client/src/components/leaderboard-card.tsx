@@ -139,9 +139,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     return `${timeStr}`;
   };
 
-  // Use actual sales for pace variance comparison (matches what's displayed on card)
-  const paceVariance = restaurant.actualLastWeekSales > 0 
-    ? ((restaurant.actualSales / restaurant.actualLastWeekSales) - 1) * 100 
+  // Use normalized sales for pace variance comparison (fair timezone comparison for rankings)
+  const paceVariance = restaurant.lastWeekSales > 0 
+    ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
     : 0;
 
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
@@ -823,7 +823,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   paceVariance >= 0 ? "bg-green-500" : "bg-red-500"
                 }`}
                 style={{ 
-                  width: `${Math.min(100, (restaurant.actualSales / Math.max(restaurant.actualLastWeekSales, 1)) * 100)}%` 
+                  width: `${Math.min(100, (restaurant.todaySales / Math.max(restaurant.lastWeekSales, 1)) * 100)}%` 
                 }}
                 data-testid={`progress-${restaurant.restaurantId}`}
               />
