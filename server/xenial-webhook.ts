@@ -238,34 +238,50 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
 }
 
 // Get all hourly POS sales for all restaurants on a given date
+// This dynamically matches store numbers to restaurants by name pattern
+// (e.g., store "1237" matches restaurant "1237 - Athens")
 export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string, Map<number, number>>> {
   const dateStr = targetDate.toISOString().split('T')[0];
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  const results = await db
+  // First, get all POS orders grouped by store number and hour
+  const posResults = await db
     .select({
-      restaurantId: locationMapping.restaurantId,
+      storeNumber: posOrders.storeNumber,
       hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
-    .innerJoin(locationMapping, eq(posOrders.storeNumber, locationMapping.xenialStoreNumber))
     .where(
       and(
         gte(posOrders.businessDate, startOfDay),
         lt(posOrders.businessDate, endOfDay)
       )
     )
-    .groupBy(locationMapping.restaurantId, sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
+    .groupBy(posOrders.storeNumber, sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
+
+  // Get all restaurants to build dynamic store number -> restaurant ID mapping
+  const allRestaurants = await db.select().from(restaurants);
+  
+  // Build mapping from store number to restaurant ID by parsing restaurant names
+  // Restaurant names are like "1237 - Athens", so we extract the store number prefix
+  const storeToRestaurantId = new Map<string, string>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurantId.set(match[1], restaurant.id);
+    }
+  }
 
   const allHourlySales = new Map<string, Map<number, number>>();
-  for (const row of results) {
-    if (row.restaurantId) {
-      if (!allHourlySales.has(row.restaurantId)) {
-        allHourlySales.set(row.restaurantId, new Map());
+  for (const row of posResults) {
+    const restaurantId = storeToRestaurantId.get(row.storeNumber);
+    if (restaurantId) {
+      if (!allHourlySales.has(restaurantId)) {
+        allHourlySales.set(restaurantId, new Map());
       }
-      allHourlySales.get(row.restaurantId)!.set(row.hour, Number(row.totalSales) || 0);
+      allHourlySales.get(restaurantId)!.set(row.hour, Number(row.totalSales) || 0);
     }
   }
 
@@ -309,13 +325,29 @@ export async function seedLocationMappings(): Promise<number> {
       .limit(1);
 
     if (existingRestaurant.length > 0) {
-      await db.insert(locationMapping).values({
-        xenialStoreNumber: mapping.xenialStore,
-        restaurantId: existingRestaurant[0].id,
-        sevenShiftsLocationId: mapping.sevenShifts,
-      }).onConflictDoNothing();
+      // First check if mapping exists and needs update
+      const existingMapping = await db
+        .select()
+        .from(locationMapping)
+        .where(eq(locationMapping.xenialStoreNumber, mapping.xenialStore))
+        .limit(1);
+      
+      if (existingMapping.length > 0) {
+        // Update existing mapping with current restaurant ID
+        await db.update(locationMapping)
+          .set({ restaurantId: existingRestaurant[0].id })
+          .where(eq(locationMapping.xenialStoreNumber, mapping.xenialStore));
+        console.log(`Updated Xenial store ${mapping.xenialStore} -> ${existingRestaurant[0].name} (ID: ${existingRestaurant[0].id})`);
+      } else {
+        // Insert new mapping
+        await db.insert(locationMapping).values({
+          xenialStoreNumber: mapping.xenialStore,
+          restaurantId: existingRestaurant[0].id,
+          sevenShiftsLocationId: mapping.sevenShifts,
+        });
+        console.log(`Mapped Xenial store ${mapping.xenialStore} -> ${existingRestaurant[0].name} (ID: ${existingRestaurant[0].id})`);
+      }
       count++;
-      console.log(`Mapped Xenial store ${mapping.xenialStore} to ${existingRestaurant[0].name}`);
     }
   }
 
