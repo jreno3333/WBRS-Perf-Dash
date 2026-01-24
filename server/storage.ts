@@ -764,26 +764,29 @@ export class DatabaseStorage implements IStorage {
       const posSalesForRestaurant = posHourlySales.get(restaurant.id);
       const posLastWeekSalesForRestaurant = posLastWeekHourlySales.get(restaurant.id);
       
-      // Use 7shifts data as base for sales
-      restaurantSelectedHourly.forEach(s => {
-        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
-      });
-      
-      // Override with Xenial POS data when available - this is more accurate real-time data
-      if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
-        // POS data exists - use it for hours where we have data
-        // This overwrites any 7shifts estimates with actual POS transactions
-        posSalesForRestaurant.forEach((sales, hour) => {
-          selectedByHour.set(hour, sales);
+      // For TODAY: Use POS data ONLY (no 7shifts fallback) to surface integration issues
+      // For HISTORICAL: Allow 7shifts fallback when no POS data available
+      if (isToday) {
+        // Today: POS data only - any gaps show as $0 to highlight POS issues
+        if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
+          posSalesForRestaurant.forEach((sales, hour) => {
+            selectedByHour.set(hour, sales);
+          });
+        }
+        // If no POS data, selectedByHour stays empty (all $0)
+      } else {
+        // Historical: Use 7shifts data as base, then overlay POS
+        restaurantSelectedHourly.forEach(s => {
+          selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
         });
-        // Clear 7shifts data for hours before the first POS hour that have no POS data
-        // This prevents showing inflated 7shifts estimates for early morning
-        const firstPosHour = Math.min(...Array.from(posSalesForRestaurant.keys()));
-        for (let h = 0; h < firstPosHour; h++) {
-          // Only clear if we have no POS data for this hour
-          if (!posSalesForRestaurant.has(h)) {
-            selectedByHour.set(h, 0);
-          }
+        
+        // Override with Xenial POS data when available - this is more accurate real-time data
+        if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
+          // POS data exists - use it for hours where we have data
+          // This overwrites any 7shifts estimates with actual POS transactions
+          posSalesForRestaurant.forEach((sales, hour) => {
+            selectedByHour.set(hour, sales);
+          });
         }
       }
       
