@@ -226,8 +226,8 @@ export default function Dashboard() {
           
           switch (sortBy) {
             case "sales":
-              // Sort by todaySales (normalized for fair timezone comparison)
-              return b.todaySales - a.todaySales;
+              // Sort by actualSales (total sales so far today)
+              return b.actualSales - a.actualSales;
             case "variance":
               // Sort by week-over-week variance using normalized sales
               const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
@@ -250,8 +250,8 @@ export default function Dashboard() {
               const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId]);
               return bScore - aScore;
             default:
-              // Default sort by todaySales (normalized for fair timezone comparison)
-              return b.todaySales - a.todaySales;
+              // Default sort by actualSales (total sales so far today)
+              return b.actualSales - a.actualSales;
           }
         })
     : [];
