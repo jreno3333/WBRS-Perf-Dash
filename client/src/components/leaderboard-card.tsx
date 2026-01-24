@@ -275,7 +275,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   EXC: {overallGrade.grade}
                 </Badge>
               )}
-              {/* Google Reviews Badge - Shows overall rating */}
+              {/* Google Reviews Badge - Shows overall rating + new reviews today */}
               {restaurant.googleReviews && (
                 <div className="relative group">
                   <Badge 
@@ -291,7 +291,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     data-testid={`badge-reviews-${restaurant.restaurantId}`}
                   >
                     <Star className="w-3 h-3" />
-                    <span className="font-medium">{restaurant.googleReviews.rating.toFixed(1)}</span>
+                    <span className="font-medium">
+                      {restaurant.googleReviews.rating.toFixed(1)}
+                      {(restaurant.googleReviews.newReviewsToday || 0) > 0 && (
+                        <span className="ml-1 text-green-600 dark:text-green-400">+{restaurant.googleReviews.newReviewsToday}</span>
+                      )}
+                    </span>
                   </Badge>
                   <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
                     <div className="font-medium">Google Reviews</div>
