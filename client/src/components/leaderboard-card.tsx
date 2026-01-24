@@ -461,9 +461,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 )}
               </div>
             </div>
-            {/* Execution Grades Row */}
+            {/* Execution Grades Row - only show grades for completed hours */}
             <div className="flex gap-0.5 mb-1">
               {activeHours.map((hour) => {
+                const isCompleted = hour.hour <= normalizedCutoff;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
@@ -475,15 +476,20 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     key={`grade-${hour.hour}`}
                     className="flex-1 text-center"
                   >
-                    <span className={`text-[10px] font-bold ${gradeInfo.color}`}>
-                      {gradeInfo.grade}
-                    </span>
+                    {isCompleted ? (
+                      <span className={`text-[10px] font-bold ${gradeInfo.color}`}>
+                        {gradeInfo.grade}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">-</span>
+                    )}
                   </div>
                 );
               })}
             </div>
             <div className="relative flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
               {activeHours.map((hour) => {
+                const isCompleted = hour.hour <= normalizedCutoff;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
@@ -507,12 +513,16 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
                     <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                      <div className="font-medium">{hour.label} - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></div>
+                      <div className="font-medium">
+                        {hour.label}
+                        {isCompleted && <> - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></>}
+                        {!isCompleted && <span className="text-muted-foreground"> (pending)</span>}
+                      </div>
                       <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                         Today: ${hour.todaySales.toLocaleString()}
                       </div>
                       <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
-                      {hour.avgServiceTime && (
+                      {isCompleted && hour.avgServiceTime && (
                         <div className={
                           hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
                           hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
@@ -521,9 +531,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                           SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
                         </div>
                       )}
-                      <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
-                        Staff: {staffingDiff > 1 ? "Over" : staffingDiff < -1 ? "Under" : "Proper"}
-                      </div>
+                      {isCompleted && (
+                        <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
+                          Staff: {staffingDiff > 1 ? "Over" : staffingDiff < -1 ? "Under" : "Proper"}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
