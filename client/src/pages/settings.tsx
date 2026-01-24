@@ -464,28 +464,33 @@ function RestaurantRow({
 }
 
 interface XenialStatus {
-  status: string;
-  webhookEndpoint: string;
+  status?: string;
+  webhookEndpoint?: string;
   webhookEnabled: boolean;
-  serverTime: string;
-  today: {
-    date: string;
+  serverTime?: string;
+  // New nested format
+  today?: {
+    date?: string;
     orderCount: number;
     salesTotal: number;
   };
-  lastHour: {
+  lastHour?: {
     orderCount: number;
     salesTotal: number;
   };
-  allTime: {
+  allTime?: {
     orderCount: number;
     salesTotal: number;
   };
+  // Old flat format (backwards compatibility)
+  todayOrderCount?: number;
+  todaySalesTotal?: number;
+  // Common fields
   lastOrderReceived: string | null;
   lastOrderStore: string | null;
-  lastOrderAmount: number | null;
-  storeBreakdown: Array<{ store: string; orders: number; total: number }>;
-  recentOrders: Array<{ store: string; amount: number; source: string; receivedAt: string }>;
+  lastOrderAmount?: number | null;
+  storeBreakdown?: Array<{ store: string; orders: number; total: number }>;
+  recentOrders?: Array<{ store: string; amount: number; source: string; receivedAt: string }>;
 }
 
 function XenialSyncCard() {
@@ -547,16 +552,20 @@ function XenialSyncCard() {
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="bg-muted/50 rounded-lg p-3">
                 <div className="text-xs text-muted-foreground uppercase tracking-wide">Today</div>
-                <div className="text-2xl font-bold">{xenialStatus.today.orderCount}</div>
+                <div className="text-2xl font-bold">
+                  {(xenialStatus.today?.orderCount ?? xenialStatus.todayOrderCount ?? 0).toLocaleString()}
+                </div>
                 <div className="text-sm text-muted-foreground">
-                  orders ({formatCurrency(xenialStatus.today.salesTotal)})
+                  orders ({formatCurrency(xenialStatus.today?.salesTotal ?? xenialStatus.todaySalesTotal ?? 0)})
                 </div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3">
                 <div className="text-xs text-muted-foreground uppercase tracking-wide">Last Hour</div>
-                <div className="text-2xl font-bold">{xenialStatus.lastHour.orderCount}</div>
+                <div className="text-2xl font-bold">
+                  {(xenialStatus.lastHour?.orderCount ?? 0).toLocaleString()}
+                </div>
                 <div className="text-sm text-muted-foreground">
-                  orders ({formatCurrency(xenialStatus.lastHour.salesTotal)})
+                  orders ({formatCurrency(xenialStatus.lastHour?.salesTotal ?? 0)})
                 </div>
               </div>
             </div>
@@ -578,11 +587,11 @@ function XenialSyncCard() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-medium">All Time:</span>
               <span className="text-sm text-muted-foreground">
-                {xenialStatus.allTime.orderCount.toLocaleString()} orders ({formatCurrency(xenialStatus.allTime.salesTotal)})
+                {(xenialStatus.allTime?.orderCount ?? xenialStatus.todayOrderCount ?? 0).toLocaleString()} orders ({formatCurrency(xenialStatus.allTime?.salesTotal ?? xenialStatus.todaySalesTotal ?? 0)})
               </span>
             </div>
 
-            {xenialStatus.storeBreakdown.length > 0 && (
+            {xenialStatus.storeBreakdown && xenialStatus.storeBreakdown.length > 0 && (
               <div className="pt-2 border-t">
                 <span className="text-sm font-medium">Today's Orders by Store:</span>
                 <div className="flex flex-wrap gap-2 mt-2">
