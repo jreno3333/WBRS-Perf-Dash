@@ -41,6 +41,12 @@ Preferred communication style: Simple, everyday language.
 - **Data Sync**: Sales data synced every 5 minutes, timezone-aware (Central timezone for business day determination), and historical data seeding (9 days for week-over-week comparisons).
 - **Labor Forecast**: Calculates projected end-of-day labor percentage using actual and projected data.
 - **Labor Deployment Guide**: Utilizes time punch data to compare actual employees on clock against a multi-component labor model (non-production and sales-based production staff).
+- **Data Format**: 
+  - `hourly_sales.actualSales`: Stored in dollars (e.g., 5249.70)
+  - `daily_sales.totalSales`: Stored in cents (e.g., 524970 = $5,249.70)
+  - Week-over-week fallback divides daily_sales by 100 to normalize
+- **Date Normalization**: All timestamps are normalized to noon UTC (e.g., `2026-01-23T12:00:00.000Z`) to prevent timezone-related date shifting in PostgreSQL.
+- **Week-over-Week Limitation**: 7shifts daily_stats API only returns hourly intervals for ~3 days. For older dates, the system falls back to daily_sales proportional calculation: `lastWeekSales = dailyTotal × (normalizedHour + 1) / 24`.
 
 ### Xenial POS Integration
 - **Purpose**: Receives real-time order pushes from Xenial POS.

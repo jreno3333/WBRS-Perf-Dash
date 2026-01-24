@@ -663,14 +663,24 @@ export async function fetchHistoricalHourlySales(days: number = 8): Promise<void
   console.log(`Fetching ${days} days of historical hourly sales data...`);
   
   for (let i = 0; i < days; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
+    // Get date string in Central timezone
+    const now = new Date();
+    now.setDate(now.getDate() - i);
+    const dateStr = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(now);
     
-    console.log(`Fetching hourly data for ${date.toISOString().split('T')[0]}...`);
-    const result = await fetchHourlySalesFromAPI(date);
+    // Create date at noon UTC to ensure consistent date matching
+    const normalizedDate = new Date(dateStr + 'T12:00:00.000Z');
+    
+    console.log(`Fetching hourly data for ${dateStr}...`);
+    const result = await fetchHourlySalesFromAPI(normalizedDate);
     
     if (!result.success) {
-      console.error(`Failed to fetch hourly ${date.toISOString().split('T')[0]}: ${result.error}`);
+      console.error(`Failed to fetch hourly ${dateStr}: ${result.error}`);
     }
     
     await new Promise(resolve => setTimeout(resolve, 500)); // Reduced delay for faster seeding
@@ -702,8 +712,9 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
     let dateStr: string;
     
     if (date) {
-      targetDate = date;
+      // Normalize incoming date to noon UTC for consistent date matching
       dateStr = date.toISOString().split('T')[0];
+      targetDate = new Date(dateStr + 'T12:00:00.000Z');
     } else {
       // Get today's date in Central timezone (handles DST automatically)
       dateStr = new Intl.DateTimeFormat('en-CA', { 
@@ -752,10 +763,10 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
       
       if (intervals.length > 0) {
-        const startOfDay = new Date(targetDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(targetDate);
-        endOfDay.setHours(23, 59, 59, 999);
+        // Use UTC-based date range to match noon-normalized dates in database
+        // targetDate should be at noon UTC, so we create start/end of day in UTC
+        const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+        const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
         
         // Use transaction to ensure atomic delete + insert (prevents race conditions with queries)
         await db.transaction(async (tx) => {
@@ -840,8 +851,9 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
     let dateStr: string;
     
     if (date) {
-      targetDate = date;
+      // Normalize incoming date to noon UTC for consistent date matching
       dateStr = date.toISOString().split('T')[0];
+      targetDate = new Date(dateStr + 'T12:00:00.000Z');
     } else {
       dateStr = new Intl.DateTimeFormat('en-CA', { 
         timeZone: 'America/Chicago',
@@ -975,10 +987,9 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       Array.from(projectedByHour.keys()).forEach(h => hoursWithData.add(h));
       
       if (hoursWithData.size > 0) {
-        const dayStart = new Date(targetDate);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(targetDate);
-        dayEnd.setHours(23, 59, 59, 999);
+        // Use UTC-based date range to match noon-normalized dates in database
+        const dayStart = new Date(dateStr + 'T00:00:00.000Z');
+        const dayEnd = new Date(dateStr + 'T23:59:59.999Z');
         
         await db.transaction(async (tx) => {
           // Delete existing hourly sales for this restaurant/date

@@ -158,7 +158,8 @@ export class DatabaseStorage implements IStorage {
     allDailySales.forEach(d => {
       const saleDate = new Date(d.salesDate).toISOString().split('T')[0];
       if (saleDate === lastWeekStr) {
-        lastWeekDailySalesMap.set(d.restaurantId, parseFloat(d.totalSales || '0'));
+        // daily_sales stores values in cents, convert to dollars for consistency with hourly_sales
+        lastWeekDailySalesMap.set(d.restaurantId, parseFloat(d.totalSales || '0') / 100);
       }
     });
     
@@ -188,6 +189,15 @@ export class DatabaseStorage implements IStorage {
     console.log(`[Leaderboard Debug] allHourlySales count: ${allHourlySales.length}, selectedDateHourly: ${selectedDateHourly.length}, lastWeekHourly: ${lastWeekHourly.length}`);
     console.log(`[Leaderboard Debug] lastWeekDailySalesMap size: ${lastWeekDailySalesMap.size}`);
     if (allHourlySales.length > 0) {
+      // Debug: Show raw salesDate values and how they're being parsed
+      const sampleDates = allHourlySales.slice(0, 3).map(s => ({
+        raw: s.salesDate,
+        type: typeof s.salesDate,
+        parsed: new Date(s.salesDate).toISOString(),
+        dateOnly: new Date(s.salesDate).toISOString().split('T')[0]
+      }));
+      console.log(`[Leaderboard Debug] Sample date parsing:`, JSON.stringify(sampleDates));
+      
       const uniqueDates = Array.from(new Set(allHourlySales.map(s => new Date(s.salesDate).toISOString().split('T')[0]))).sort();
       console.log(`[Leaderboard Debug] Available dates in hourly_sales: ${uniqueDates.join(', ')}`);
     }
