@@ -126,7 +126,7 @@ export class DatabaseStorage implements IStorage {
     const normalizedHourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
     
     // Helper to calculate restaurant status from openDate
-    const getRestaurantStatus = (openDate: Date | null | undefined): { status: "training" | "new" | "established"; daysOpen?: number } => {
+    const getRestaurantStatus = (openDate: string | Date | null | undefined): { status: "training" | "new" | "established"; daysOpen?: number } => {
       if (!openDate) return { status: "established" };
       
       const today = new Date();
@@ -644,8 +644,15 @@ export class DatabaseStorage implements IStorage {
     
     // Fallback: get daily_sales for last week when hourly data is missing
     // (7shifts daily_stats API only provides detailed intervals for ~3 days)
-    const lastWeekNoon = lastWeekStr + 'T12:00:00.000Z';
-    const lastWeekDailyData = await db.select().from(dailySales).where(eq(dailySales.salesDate, new Date(lastWeekNoon)));
+    // Use date range to match since timestamps aren't normalized
+    const lastWeekStart = new Date(lastWeekStr + 'T00:00:00.000Z');
+    const lastWeekEnd = new Date(lastWeekStr + 'T23:59:59.999Z');
+    const lastWeekDailyData = await db.select().from(dailySales).where(
+      and(
+        gte(dailySales.salesDate, lastWeekStart),
+        lte(dailySales.salesDate, lastWeekEnd)
+      )
+    );
     const lastWeekDailyMap = new Map<string, number>();
     for (const d of lastWeekDailyData) {
       // daily_sales.totalSales is stored in cents, convert to dollars
