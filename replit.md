@@ -58,10 +58,14 @@ Preferred communication style: Simple, everyday language.
 
 ### Xenial POS Integration
 - **Purpose**: Receives real-time order pushes from Xenial POS - the primary source of sales data.
-- **Webhook**: `POST /api/xenial/order` for receiving order data.
+- **Webhook**: `POST /api/xenial/order` for receiving order data (via xt-sales-mwb.replit.app).
 - **Data**: Includes order ID, store number, total, business date, closed time, and source.
 - **Mapping**: Xenial store numbers are mapped to internal restaurant IDs via `location_mapping` table.
-- **Data Priority**: 
+- **Data Priority (TODAY)**: 
+  - **POS data ONLY** - No 7shifts fallback for current day sales
+  - If no POS data exists, sales show as $0 to immediately surface any integration issues
+  - This prevents 7shifts early-morning gaps from masking POS problems
+- **Data Priority (HISTORICAL)**: 
   1. Xenial POS hourly data (most accurate - real transactions)
   2. 7shifts hourly data (fallback when no POS data)
   3. 7shifts daily_sales estimates (secondary fallback for week-over-week)

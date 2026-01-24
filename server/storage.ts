@@ -251,7 +251,8 @@ export class DatabaseStorage implements IStorage {
       const posSalesForRestaurant = posHourlySales.get(restaurant.id);
       const posLastWeekSalesForRestaurant = posLastWeekHourlySales.get(restaurant.id);
       
-      // Calculate sales - prioritize POS data over 7shifts
+      // Calculate sales - POS data only for today (no 7shifts fallback to surface issues)
+      // For historical dates, allow 7shifts fallback when no POS data
       let selectedDateSalesAmount = 0;
       let actualSalesAmount = 0;
       
@@ -263,8 +264,9 @@ export class DatabaseStorage implements IStorage {
           }
           actualSalesAmount += sales;
         });
-      } else {
-        // Fallback to 7shifts data
+      } else if (!isToday) {
+        // Only fallback to 7shifts for historical dates, NOT for today
+        // This ensures any POS data issues for today are immediately visible
         selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
           (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
         );
@@ -272,6 +274,7 @@ export class DatabaseStorage implements IStorage {
           (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
         );
       }
+      // For today with no POS data: sales remain 0 to highlight the gap
       
       // Last week sales - prioritize POS data, then 7shifts, then daily_sales fallback
       let lastWeekSalesAmount = 0;
