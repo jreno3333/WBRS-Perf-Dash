@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { format, differenceInDays, isFuture } from "date-fns";
+import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -28,11 +28,23 @@ type RestaurantWithStatus = Restaurant & {
   daysOpen?: number;
 };
 
-function getRestaurantStatus(openDate: Date | null | undefined): { status: "training" | "new" | "established"; daysOpen?: number } {
+// Parse date string as local date to avoid timezone issues
+function parseLocalDate(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getRestaurantStatus(openDateStr: string | null | undefined): { status: "training" | "new" | "established"; daysOpen?: number } {
+  if (!openDateStr) return { status: "established" };
+  
+  const openDate = parseLocalDate(openDateStr);
   if (!openDate) return { status: "established" };
   
   const today = new Date();
-  if (isFuture(openDate)) {
+  today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
+  
+  if (openDate > today) {
     return { status: "training" };
   }
   
@@ -55,6 +67,7 @@ export default function SettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, openDate }: { id: string; openDate: string | null }) => {
+      console.log('[Settings] Sending PATCH:', { id, openDate });
       return apiRequest("PATCH", `/api/restaurants/${id}`, { openDate });
     },
     onSuccess: () => {
@@ -97,6 +110,7 @@ export default function SettingsPage() {
   });
 
   const handleSave = (id: string) => {
+    console.log('[Settings] handleSave called:', { id, editDate, formatted: editDate ? format(editDate, "yyyy-MM-dd") : null });
     updateMutation.mutate({
       id,
       openDate: editDate ? format(editDate, "yyyy-MM-dd") : null,
@@ -120,7 +134,14 @@ export default function SettingsPage() {
 
   const startEditing = (restaurant: Restaurant) => {
     setEditingId(restaurant.id);
-    setEditDate(restaurant.openDate ? new Date(restaurant.openDate) : undefined);
+    // Parse date string as local date (not UTC) to avoid off-by-one day issues
+    // "2026-01-24" should be January 24th in local time, not UTC midnight
+    if (restaurant.openDate) {
+      const [year, month, day] = restaurant.openDate.split('-').map(Number);
+      setEditDate(new Date(year, month - 1, day)); // month is 0-indexed
+    } else {
+      setEditDate(undefined);
+    }
   };
 
   const cancelEditing = () => {
@@ -130,7 +151,7 @@ export default function SettingsPage() {
 
   const restaurantsWithStatus: RestaurantWithStatus[] = (restaurants || []).map(r => ({
     ...r,
-    ...getRestaurantStatus(r.openDate ? new Date(r.openDate) : null),
+    ...getRestaurantStatus(r.openDate),
   }));
 
   const trainingUnits = restaurantsWithStatus.filter(r => r.status === "training");
@@ -333,7 +354,8 @@ function RestaurantRow({
   isPending: boolean;
   onToggleRevenuePort: (portId: string) => void;
 }) {
-  const openDate = restaurant.openDate ? new Date(restaurant.openDate) : null;
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const openDate = parseLocalDate(restaurant.openDate);
   const revenuePorts = restaurant.revenuePorts || [];
 
   return (
@@ -357,7 +379,7 @@ function RestaurantRow({
       <div className="flex items-center gap-2 flex-wrap">
         {isEditing ? (
           <>
-            <Popover>
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -373,11 +395,13 @@ function RestaurantRow({
                 <Calendar
                   mode="single"
                   selected={editDate}
-                  onSelect={setEditDate}
+                  onSelect={(date) => {
+                    console.log('[Settings] Calendar onSelect called:', date);
+                    setEditDate(date);
+                    setCalendarOpen(false);
+                  }}
                   initialFocus
-                  captionLayout="dropdown-buttons"
-                  fromYear={2022}
-                  toYear={new Date().getFullYear() + 2}
+                  defaultMonth={editDate}
                 />
               </PopoverContent>
             </Popover>

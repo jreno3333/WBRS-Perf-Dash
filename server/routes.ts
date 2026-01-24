@@ -323,6 +323,8 @@ export async function registerRoutes(
       const { id } = req.params;
       const { openDate, laborTarget, isActive, revenuePorts } = req.body;
       
+      console.log(`[Restaurant Update] ID: ${id}, Body:`, JSON.stringify(req.body));
+      
       const updates: Record<string, any> = {};
       if (openDate !== undefined) {
         // Store date as string (PostgreSQL date type)
@@ -339,12 +341,15 @@ export async function registerRoutes(
       }
       
       if (Object.keys(updates).length === 0) {
+        console.log(`[Restaurant Update] No valid fields to update`);
         return res.status(400).json({ error: "No valid fields to update" });
       }
       
+      console.log(`[Restaurant Update] Applying updates:`, JSON.stringify(updates));
       await db.update(restaurants).set(updates).where(eq(restaurants.id, id));
       
       const updatedRestaurant = await db.select().from(restaurants).where(eq(restaurants.id, id));
+      console.log(`[Restaurant Update] Result:`, JSON.stringify(updatedRestaurant[0]));
       res.json(updatedRestaurant[0]);
     } catch (error) {
       console.error("Error updating restaurant:", error);
