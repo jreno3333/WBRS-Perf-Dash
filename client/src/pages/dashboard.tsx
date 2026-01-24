@@ -48,9 +48,14 @@ function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, s
   return scores[`${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`] ?? 0;
 }
 
-function calculateXScore(hourlyData: HourlySalesData[] | undefined): number {
-  if (!hourlyData || hourlyData.length === 0) return 0;
-  const scores = hourlyData
+function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number): number {
+  if (!hourlyData || hourlyData.length === 0) return -1; // No data = -1 to sort to bottom
+  
+  // Filter to completed hours only (matching leaderboard-card logic)
+  const cutoff = localCutoff ?? 23;
+  const completedHours = hourlyData.filter(hour => hour.hour <= cutoff);
+  
+  const scores = completedHours
     .filter(hour => hour.todaySales > 0 || hour.lastWeekSales > 0)
     .map(hour => {
       const isAhead = hour.todaySales >= hour.lastWeekSales;
@@ -59,7 +64,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined): number {
       const staffingDiff = actualStaff - staffing.total;
       return getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
     }).filter(s => s > 0);
-  return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }
 
 export default function Dashboard() {
@@ -245,8 +250,11 @@ export default function Dashboard() {
               return aTime - bTime;
             case "xscore":
               // Sort by X-Score descending (highest first)
-              const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId]);
-              const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId]);
+              // Use each restaurant's localCurrentHour for consistent scoring with display
+              const aLocalCutoff = (a as any).localCurrentHour ?? a.normalizedHour;
+              const bLocalCutoff = (b as any).localCurrentHour ?? b.normalizedHour;
+              const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId], aLocalCutoff);
+              const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId], bLocalCutoff);
               return bScore - aScore;
             default:
               // Default sort by actualSales (total sales so far today)
