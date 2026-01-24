@@ -112,10 +112,17 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
   // Calculate projected daily: sum of all restaurant forecast sales
   // Each restaurant's forecastSales = actual + LW remaining hours (same methodology)
   // This gives us the total projected daily sales using consistent logic
+  // Determine if day is complete by checking the normalized hour (23 = end of day)
+  const maxNormalizedHour = activeRestaurants.length > 0 
+    ? Math.max(...activeRestaurants.map(r => r.normalizedHour ?? -1))
+    : -1;
+  const isDayComplete = maxNormalizedHour >= 23;
+  
   const projectedData = {
     projected: totalForecastSales,
     actualSoFar: totalTodaySales,
-    remainingForecast: Math.max(0, totalForecastSales - totalTodaySales)
+    remainingForecast: Math.max(0, totalForecastSales - totalTodaySales),
+    isDayComplete
   };
 
   // Grade background color for the large display
@@ -199,9 +206,24 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-muted-foreground">Projected Daily Total</p>
-              {projectedData.remainingForecast <= 0 ? (
+              {projectedData.isDayComplete ? (
                 <>
-                  <p className="text-xl font-bold" data-testid="text-projected-daily">N/A</p>
+                  <p className="text-xl font-bold flex items-center gap-2" data-testid="text-projected-daily">
+                    {formatCurrency(projectedData.actualSoFar)}
+                    {totalLastWeekFullDay > 0 && (
+                      projectedData.actualSoFar >= totalLastWeekFullDay ? (
+                        <span className="text-green-600 dark:text-green-400 flex items-center text-sm font-medium">
+                          <TrendingUp className="w-4 h-4 mr-0.5" />
+                          vs LW
+                        </span>
+                      ) : (
+                        <span className="text-red-600 dark:text-red-400 flex items-center text-sm font-medium">
+                          <TrendingDown className="w-4 h-4 mr-0.5" />
+                          vs LW
+                        </span>
+                      )
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">Day complete</p>
                 </>
               ) : (
@@ -223,7 +245,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatCurrency(projectedData.actualSoFar)} + {formatCurrency(projectedData.remainingForecast)} forecast
+                    {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
                   </p>
                 </>
               )}
