@@ -16,6 +16,7 @@ export const restaurants = pgTable("restaurants", {
   latitude: decimal("latitude", { precision: 10, scale: 7 }), // GPS latitude
   longitude: decimal("longitude", { precision: 10, scale: 7 }), // GPS longitude
   unitNumber: text("unit_number"), // Store unit number (e.g., "1237")
+  googlePlaceId: text("google_place_id"), // Google Places API ID for fetching reviews
 });
 
 export const insertRestaurantSchema = createInsertSchema(restaurants).omit({
@@ -139,6 +140,28 @@ export const insertScraperRunSchema = createInsertSchema(scraperRuns).omit({
 export type InsertScraperRun = z.infer<typeof insertScraperRunSchema>;
 export type ScraperRun = typeof scraperRuns.$inferSelect;
 
+// Daily Google reviews snapshot - stores review score per restaurant per day
+export const dailyGoogleReviews = pgTable("daily_google_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  rating: decimal("rating", { precision: 2, scale: 1 }), // Google rating 1.0-5.0
+  reviewCount: integer("review_count"), // Total number of reviews
+  lastSyncedAt: timestamp("last_synced_at").defaultNow(),
+  isFinalSnapshot: boolean("is_final_snapshot").default(false), // True if this is end-of-day snapshot
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("daily_google_reviews_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
+
+export const insertDailyGoogleReviewsSchema = createInsertSchema(dailyGoogleReviews).omit({
+  id: true,
+  lastSyncedAt: true,
+});
+
+export type InsertDailyGoogleReviews = z.infer<typeof insertDailyGoogleReviewsSchema>;
+export type DailyGoogleReviews = typeof dailyGoogleReviews.$inferSelect;
+
 // Types for API responses
 export interface RestaurantSales {
   restaurantId: string;
@@ -176,6 +199,10 @@ export interface RestaurantSales {
     carCount: number;
     avgTotalTime: number; // seconds
     avgServiceTime: number; // seconds
+  } | null;
+  googleReviews?: {
+    rating: number; // 1.0-5.0
+    reviewCount: number;
   } | null;
 }
 
