@@ -225,9 +225,13 @@ export default function Dashboard() {
           if (a.status !== "training" && b.status === "training") return -1;
           
           switch (sortBy) {
+            case "sales":
+              // Sort by actualSales (displayed value) descending
+              return (b.actualSales || 0) - (a.actualSales || 0);
             case "variance":
-              const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
-              const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
+              // Sort by week-over-week variance using actual sales values
+              const aVariance = a.actualLastWeekSales > 0 ? ((a.actualSales / a.actualLastWeekSales) - 1) * 100 : 0;
+              const bVariance = b.actualLastWeekSales > 0 ? ((b.actualSales / b.actualLastWeekSales) - 1) * 100 : 0;
               return bVariance - aVariance;
             case "overstaffed":
               // Sort by projected labor % descending (highest labor % first)
@@ -246,8 +250,8 @@ export default function Dashboard() {
               const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId]);
               return bScore - aScore;
             default:
-              // Default sort by sales
-              return b.todaySales - a.todaySales;
+              // Default sort by actualSales (displayed value)
+              return (b.actualSales || 0) - (a.actualSales || 0);
           }
         })
     : [];

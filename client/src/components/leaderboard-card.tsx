@@ -439,7 +439,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               {formatCurrency(restaurant.actualSales)}
             </div>
             <div className="flex items-center justify-end gap-1 mt-1">
-              {restaurant.isAheadOfPace ? (
+              {paceVariance >= 0 ? (
                 <Badge 
                   className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
                   data-testid={`badge-pace-${restaurant.restaurantId}`}
@@ -820,10 +820,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             <div className="h-2 bg-muted rounded-full overflow-hidden">
               <div 
                 className={`h-full rounded-full transition-all duration-500 ${
-                  restaurant.isAheadOfPace ? "bg-green-500" : "bg-red-500"
+                  paceVariance >= 0 ? "bg-green-500" : "bg-red-500"
                 }`}
                 style={{ 
-                  width: `${Math.min(100, (restaurant.todaySales / Math.max(restaurant.lastWeekSales, 1)) * 100)}%` 
+                  width: `${Math.min(100, (restaurant.actualSales / Math.max(restaurant.actualLastWeekSales, 1)) * 100)}%` 
                 }}
                 data-testid={`progress-${restaurant.restaurantId}`}
               />
