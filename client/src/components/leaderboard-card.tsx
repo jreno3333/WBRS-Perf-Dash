@@ -148,7 +148,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
   // Generate all 24 hours, filling in zeros for missing hours
   const normalizedCutoff = restaurant.normalizedHour;
-  const currentHour = (normalizedCutoff + 1) % 24;
   
   // Create a map of existing hourly data
   const hourlyDataMap = new Map<number, HourlySalesData>();
@@ -462,18 +461,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 )}
               </div>
             </div>
-            {/* Execution Grades Row - Only show for completed hours */}
+            {/* Execution Grades Row */}
             <div className="flex gap-0.5 mb-1">
               {activeHours.map((hour) => {
-                const isCurrentHour = hour.hour === currentHour;
-                // Current hour: show dash (grade not yet determined)
-                if (isCurrentHour) {
-                  return (
-                    <div key={`grade-${hour.hour}`} className="flex-1 text-center">
-                      <span className="text-[10px] font-bold text-orange-500 animate-pulse">...</span>
-                    </div>
-                  );
-                }
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
@@ -494,16 +484,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             </div>
             <div className="relative flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
               {activeHours.map((hour) => {
-                const isCurrentHour = hour.hour === currentHour;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
-                const staffingDiff = isCurrentHour ? 0 : actualStaff - staffing.total;
-                const gradeInfo = isCurrentHour 
-                  ? { grade: '...', color: 'text-orange-500' }
-                  : getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+                const staffingDiff = actualStaff - staffing.total;
+                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
                 
                 return (
                   <div
@@ -512,53 +499,31 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   >
                     <div
                       className={`w-full rounded-t-sm transition-all ${
-                        isCurrentHour
-                          ? "bg-orange-400 dark:bg-orange-500 animate-pulse"
-                          : isAhead 
-                            ? "bg-green-500 dark:bg-green-400" 
-                            : "bg-red-500 dark:bg-red-400"
+                        isAhead 
+                          ? "bg-green-500 dark:bg-green-400" 
+                          : "bg-red-500 dark:bg-red-400"
                       }`}
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
                     <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
-                      {isCurrentHour ? (
-                        <>
-                          <div className="font-medium text-orange-500">{hour.label} - In Progress</div>
-                          <div className="text-foreground">
-                            Sales: ${hour.todaySales.toLocaleString()}
-                          </div>
-                          {hour.avgServiceTime && (
-                            <div className={
-                              hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
-                              hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
-                              "text-green-600 dark:text-green-400"
-                            }>
-                              Speed: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div className="font-medium">{hour.label} - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></div>
-                          <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
-                            Today: ${hour.todaySales.toLocaleString()}
-                          </div>
-                          <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
-                          {hour.avgServiceTime && (
-                            <div className={
-                              hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
-                              hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
-                              "text-green-600 dark:text-green-400"
-                            }>
-                              SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
-                            </div>
-                          )}
-                          <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
-                            Staff: {staffingDiff > 1 ? "Over" : staffingDiff < -1 ? "Under" : "Proper"}
-                          </div>
-                        </>
+                      <div className="font-medium">{hour.label} - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></div>
+                      <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                        Today: ${hour.todaySales.toLocaleString()}
+                      </div>
+                      <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
+                      {hour.avgServiceTime && (
+                        <div className={
+                          hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
+                          hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
+                          "text-green-600 dark:text-green-400"
+                        }>
+                          SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
+                        </div>
                       )}
+                      <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
+                        Staff: {staffingDiff > 1 ? "Over" : staffingDiff < -1 ? "Under" : "Proper"}
+                      </div>
                     </div>
                   </div>
                 );
@@ -628,7 +593,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               </div>
               <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
                 {activeHours.map((hour) => {
-                  const isCurrentHour = hour.hour === currentHour;
                   const laborHours = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;
                   
@@ -736,9 +700,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               {/* Total Staffing Summary for the Day */}
               {(() => {
                 const totals = activeHours.reduce((acc, hour) => {
-                  // Only include completed hours (not current hour)
-                  if (hour.hour === currentHour) return acc;
-                  
                   const laborHrs = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;
                   const hasData = laborHrs > 0 || sales > 0;
