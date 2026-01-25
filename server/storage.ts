@@ -569,26 +569,65 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (restaurantId === "all") {
-      // Use 7shifts data for all sales
-      selectedDateHourly.forEach(s => {
-        const current = selectedByHour.get(s.hour) || 0;
-        selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
-        // Forecast from sales table
-        const currentForecast = forecastByHour.get(s.hour) || 0;
-        forecastByHour.set(s.hour, currentForecast + parseFloat(s.projectedSales || '0'));
-      });
-      // Labor from separate labor table
+      // For TODAY: Use POS data for actual sales (real transactions)
+      // For HISTORICAL: Use 7shifts data from hourly_sales table
+      if (isToday) {
+        // Fetch Xenial POS data for today's sales
+        const posHourlySales = await getAllHourlyPosSales(selectedDate);
+        const posLastWeekSales = await getAllHourlyPosSales(lastWeek);
+        
+        // Aggregate POS sales across all restaurants by hour
+        posHourlySales.forEach((hourlyMap, restaurantId) => {
+          hourlyMap.forEach((sales, hour) => {
+            const current = selectedByHour.get(hour) || 0;
+            selectedByHour.set(hour, current + sales);
+          });
+        });
+        
+        // Last week POS data (if available) for consistent comparison
+        posLastWeekSales.forEach((hourlyMap, restaurantId) => {
+          hourlyMap.forEach((sales, hour) => {
+            const current = lastWeekByHour.get(hour) || 0;
+            lastWeekByHour.set(hour, current + sales);
+          });
+        });
+        
+        // If no POS last week data, fall back to 7shifts
+        if (posLastWeekSales.size === 0) {
+          lastWeekHourly.forEach(s => {
+            const current = lastWeekByHour.get(s.hour) || 0;
+            lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+          });
+        }
+        
+        // Forecast from 7shifts (use last week as forecast baseline)
+        lastWeekHourly.forEach(s => {
+          const currentForecast = forecastByHour.get(s.hour) || 0;
+          forecastByHour.set(s.hour, currentForecast + parseFloat(s.actualSales || '0'));
+        });
+      } else {
+        // Historical: Use 7shifts data from hourly_sales table
+        selectedDateHourly.forEach(s => {
+          const current = selectedByHour.get(s.hour) || 0;
+          selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+          // Forecast from sales table
+          const currentForecast = forecastByHour.get(s.hour) || 0;
+          forecastByHour.set(s.hour, currentForecast + parseFloat(s.projectedSales || '0'));
+        });
+        // Last week from 7shifts
+        lastWeekHourly.forEach(s => {
+          const current = lastWeekByHour.get(s.hour) || 0;
+          lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+        });
+      }
+      
+      // Labor from separate labor table (both today and historical)
       selectedDateLabor.forEach(l => {
         const currentLabor = laborByHourMap.get(l.hour) || 0;
         laborByHourMap.set(l.hour, currentLabor + parseFloat(l.projectedLabor || '0'));
         const currentActualLabor = actualLaborByHour.get(l.hour) || 0;
         actualLaborByHour.set(l.hour, currentActualLabor + parseFloat(l.actualLabor || '0'));
         // Employee count is NOT aggregated for "all" view - leave at 0
-      });
-      // Last week from 7shifts
-      lastWeekHourly.forEach(s => {
-        const current = lastWeekByHour.get(s.hour) || 0;
-        lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
       });
     } else {
       // Use 7shifts data for the specific restaurant
