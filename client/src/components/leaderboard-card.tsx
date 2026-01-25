@@ -41,44 +41,59 @@ function WeatherIcon({ condition }: { condition: string }) {
 function getExecutionGrade(
   salesUp: boolean,
   speedSeconds: number | undefined,
-  staffingDiff: number
-): { grade: string; color: string } {
-  // Determine speed category
-  let speed: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
-  if (speedSeconds !== undefined) {
-    if (speedSeconds > 420) speed = 'RED';
-    else if (speedSeconds > 300) speed = 'YELLOW';
+  staffingDiff: number,
+  hasComparableSales: boolean = true // Whether last week had sales to compare against
+): { grade: string; color: string; hasGrade: boolean } {
+  // Track which components are available for grading
+  const components: { name: string; score: number }[] = [];
+  
+  // Sales component (only if we have comparable data - last week had sales)
+  if (hasComparableSales) {
+    // Sales UP = 100, DOWN = 50
+    components.push({ name: 'sales', score: salesUp ? 100 : 50 });
   }
   
-  // Determine staffing category (using ±1 threshold)
-  let staffing: 'PROPER' | 'UNDER' | 'OVER' = 'PROPER';
-  if (staffingDiff > 1) staffing = 'OVER';
-  else if (staffingDiff < -1) staffing = 'UNDER';
+  // Speed component (only if we have drive-thru data)
+  if (speedSeconds !== undefined) {
+    // GREEN (<5min) = 100, YELLOW (5-7min) = 70, RED (>7min) = 40
+    let speedScore = 100;
+    if (speedSeconds > 420) speedScore = 40;
+    else if (speedSeconds > 300) speedScore = 70;
+    components.push({ name: 'speed', score: speedScore });
+  }
   
-  // Grade lookup table
-  const gradeTable: Record<string, { grade: string; color: string }> = {
-    'UP-GREEN-PROPER': { grade: 'A+', color: 'text-green-600 dark:text-green-400' },
-    'UP-GREEN-UNDER': { grade: 'A', color: 'text-green-600 dark:text-green-400' },
-    'UP-GREEN-OVER': { grade: 'A', color: 'text-green-600 dark:text-green-400' },
-    'UP-YELLOW-PROPER': { grade: 'A', color: 'text-green-600 dark:text-green-400' },
-    'UP-YELLOW-UNDER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
-    'UP-YELLOW-OVER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
-    'UP-RED-PROPER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
-    'UP-RED-UNDER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
-    'UP-RED-OVER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
-    'DOWN-GREEN-PROPER': { grade: 'B', color: 'text-blue-600 dark:text-blue-400' },
-    'DOWN-GREEN-UNDER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
-    'DOWN-GREEN-OVER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
-    'DOWN-YELLOW-PROPER': { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' },
-    'DOWN-YELLOW-UNDER': { grade: 'D', color: 'text-orange-600 dark:text-orange-400' },
-    'DOWN-YELLOW-OVER': { grade: 'D', color: 'text-orange-600 dark:text-orange-400' },
-    'DOWN-RED-PROPER': { grade: 'D', color: 'text-orange-600 dark:text-orange-400' },
-    'DOWN-RED-UNDER': { grade: 'F', color: 'text-red-600 dark:text-red-400' },
-    'DOWN-RED-OVER': { grade: 'F', color: 'text-red-600 dark:text-red-400' },
-  };
+  // Staffing component (always available)
+  // PROPER = 100, UNDER/OVER = 60
+  let staffingScore = 100;
+  if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
+  components.push({ name: 'staffing', score: staffingScore });
   
-  const key = `${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`;
-  return gradeTable[key] || { grade: '-', color: 'text-muted-foreground' };
+  // If no components to grade, return no grade
+  if (components.length === 0) {
+    return { grade: '-', color: 'text-muted-foreground', hasGrade: false };
+  }
+  
+  // Calculate weighted average (equal weights for available components)
+  const avgScore = components.reduce((sum, c) => sum + c.score, 0) / components.length;
+  
+  // Convert score to letter grade
+  let grade: string;
+  let color: string;
+  if (avgScore >= 95) {
+    grade = 'A+'; color = 'text-green-600 dark:text-green-400';
+  } else if (avgScore >= 85) {
+    grade = 'A'; color = 'text-green-600 dark:text-green-400';
+  } else if (avgScore >= 75) {
+    grade = 'B'; color = 'text-blue-600 dark:text-blue-400';
+  } else if (avgScore >= 65) {
+    grade = 'C'; color = 'text-yellow-600 dark:text-yellow-400';
+  } else if (avgScore >= 55) {
+    grade = 'D'; color = 'text-orange-600 dark:text-orange-400';
+  } else {
+    grade = 'F'; color = 'text-red-600 dark:text-red-400';
+  }
+  
+  return { grade, color, hasGrade: true };
 }
 
 // Convert letter grade to numeric score for averaging
@@ -198,11 +213,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     .filter(hour => hour.todaySales && hour.todaySales > 0) // No sales = no grade
     .map(hour => {
       const isAhead = hour.todaySales >= hour.lastWeekSales;
+      const hasComparableSales = hour.lastWeekSales > 0; // Only compare if LW had sales
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
       const actualStaff = Number(hour.employeeCount) || 0;
       const staffingDiff = actualStaff - staffing.total;
-      const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
-      return gradeToScore(gradeInfo.grade);
+      const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
+      return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
   const overallScore = hourlyGradeScores.length > 0 
@@ -506,10 +522,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               {activeHours.map((hour) => {
                 const isCompleted = hour.hour <= localGradeCutoff;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
+                const hasComparableSales = hour.lastWeekSales > 0;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
                 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -534,12 +551,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               {activeHours.map((hour) => {
                 const isCompleted = hour.hour <= localGradeCutoff;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
+                const hasComparableSales = hour.lastWeekSales > 0;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
                 
                 return (
                   <div

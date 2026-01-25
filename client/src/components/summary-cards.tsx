@@ -24,18 +24,48 @@ const scoreToGrade = (score: number): string => {
   return 'F';
 };
 
-function getExecutionGrade(salesUp: boolean, avgServiceTime: number | undefined, staffingDiff: number): string {
-  const speed = !avgServiceTime ? 'GREEN' : avgServiceTime <= 300 ? 'GREEN' : avgServiceTime <= 420 ? 'YELLOW' : 'RED';
-  const staffing = staffingDiff > 1 ? 'OVER' : staffingDiff < -1 ? 'UNDER' : 'PROPER';
-  const scores: Record<string, string> = {
-    'UP-GREEN-PROPER': 'A+', 'UP-GREEN-UNDER': 'A', 'UP-GREEN-OVER': 'B',
-    'UP-YELLOW-PROPER': 'A', 'UP-YELLOW-UNDER': 'B', 'UP-YELLOW-OVER': 'C',
-    'UP-RED-PROPER': 'B', 'UP-RED-UNDER': 'C', 'UP-RED-OVER': 'D',
-    'DOWN-GREEN-PROPER': 'B', 'DOWN-GREEN-UNDER': 'C', 'DOWN-GREEN-OVER': 'D',
-    'DOWN-YELLOW-PROPER': 'C', 'DOWN-YELLOW-UNDER': 'D', 'DOWN-YELLOW-OVER': 'F',
-    'DOWN-RED-PROPER': 'D', 'DOWN-RED-UNDER': 'F', 'DOWN-RED-OVER': 'F',
-  };
-  return scores[`${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`] ?? 'C';
+function getExecutionGrade(
+  salesUp: boolean, 
+  avgServiceTime: number | undefined, 
+  staffingDiff: number,
+  hasComparableSales: boolean = true
+): { grade: string; hasGrade: boolean } {
+  // Track which components are available for grading
+  const components: { name: string; score: number }[] = [];
+  
+  // Sales component (only if we have comparable data - last week had sales)
+  if (hasComparableSales) {
+    components.push({ name: 'sales', score: salesUp ? 100 : 50 });
+  }
+  
+  // Speed component (only if we have drive-thru data)
+  if (avgServiceTime !== undefined) {
+    let speedScore = 100;
+    if (avgServiceTime > 420) speedScore = 40;
+    else if (avgServiceTime > 300) speedScore = 70;
+    components.push({ name: 'speed', score: speedScore });
+  }
+  
+  // Staffing component (always available)
+  let staffingScore = 100;
+  if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
+  components.push({ name: 'staffing', score: staffingScore });
+  
+  if (components.length === 0) {
+    return { grade: '-', hasGrade: false };
+  }
+  
+  const avgScore = components.reduce((sum, c) => sum + c.score, 0) / components.length;
+  
+  let grade: string;
+  if (avgScore >= 95) grade = 'A+';
+  else if (avgScore >= 85) grade = 'A';
+  else if (avgScore >= 75) grade = 'B';
+  else if (avgScore >= 65) grade = 'C';
+  else if (avgScore >= 55) grade = 'D';
+  else grade = 'F';
+  
+  return { grade, hasGrade: true };
 }
 
 export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: SummaryCardsProps) {
@@ -99,14 +129,17 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         if (!hour.todaySales || hour.todaySales === 0) continue;
         
         const isAhead = hour.todaySales >= hour.lastWeekSales;
+        const hasComparableSales = hour.lastWeekSales > 0; // Only compare if LW had sales
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
         const actualStaff = Number(hour.employeeCount) || 0;
         const staffingDiff = actualStaff - staffing.total;
-        const grade = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
-        const score = gradeToScore(grade);
-        if (score > 0) {
-          allHourlyScores.push(score);
-          restaurantHourlyScores.push(score);
+        const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
+        if (gradeInfo.hasGrade) {
+          const score = gradeToScore(gradeInfo.grade);
+          if (score > 0) {
+            allHourlyScores.push(score);
+            restaurantHourlyScores.push(score);
+          }
         }
       }
       
