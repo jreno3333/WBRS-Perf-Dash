@@ -24,9 +24,12 @@ const scoreToGrade = (score: number): string => {
   return 'F';
 };
 
-function getExecutionGrade(salesUp: boolean, avgServiceTime: number | undefined, staffingDiff: number): string {
+// Sales within -5% still counts as "UP" for grading purposes
+function getExecutionGrade(salesVariancePct: number, avgServiceTime: number | undefined, staffingDiff: number): string {
   const speed = !avgServiceTime ? 'GREEN' : avgServiceTime <= 300 ? 'GREEN' : avgServiceTime <= 420 ? 'YELLOW' : 'RED';
   const staffing = staffingDiff > 1 ? 'OVER' : staffingDiff < -1 ? 'UNDER' : 'PROPER';
+  // Allow 5% variance to still count as "UP"
+  const salesStatus = salesVariancePct >= -5 ? 'UP' : 'DOWN';
   const scores: Record<string, string> = {
     'UP-GREEN-PROPER': 'A+', 'UP-GREEN-UNDER': 'A', 'UP-GREEN-OVER': 'B',
     'UP-YELLOW-PROPER': 'A', 'UP-YELLOW-UNDER': 'B', 'UP-YELLOW-OVER': 'C',
@@ -35,7 +38,7 @@ function getExecutionGrade(salesUp: boolean, avgServiceTime: number | undefined,
     'DOWN-YELLOW-PROPER': 'C', 'DOWN-YELLOW-UNDER': 'D', 'DOWN-YELLOW-OVER': 'F',
     'DOWN-RED-PROPER': 'D', 'DOWN-RED-UNDER': 'F', 'DOWN-RED-OVER': 'F',
   };
-  return scores[`${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`] ?? 'C';
+  return scores[`${salesStatus}-${speed}-${staffing}`] ?? 'C';
 }
 
 function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>): { grade: string; hoursGraded: number } {
@@ -47,11 +50,14 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
       for (const hour of hours) {
         // Include all hours with sales data
         if (!hour.todaySales && !hour.lastWeekSales) continue;
-        const isAhead = hour.todaySales >= hour.lastWeekSales;
+        const hasComparableSales = hour.lastWeekSales > 0;
+        const salesVariancePct = hasComparableSales 
+          ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+          : 0;
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
         const actualStaff = Number(hour.employeeCount) || 0;
         const staffingDiff = actualStaff - staffing.total;
-        const grade = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+        const grade = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff);
         const score = gradeToScore(grade);
         if (score > 0) allScores.push(score);
       }

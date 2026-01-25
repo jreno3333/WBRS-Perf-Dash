@@ -26,7 +26,7 @@ const scoreToGrade = (score: number): string => {
 };
 
 function getExecutionGrade(
-  salesUp: boolean, 
+  salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
   avgServiceTime: number | undefined, 
   staffingDiff: number,
   hasComparableSales: boolean = true
@@ -35,8 +35,10 @@ function getExecutionGrade(
   const components: { name: string; score: number }[] = [];
   
   // Sales component (only if we have comparable data - last week had sales)
+  // Allow 5% variance to still count as "meeting expectations" (score 100)
   if (hasComparableSales) {
-    components.push({ name: 'sales', score: salesUp ? 100 : 50 });
+    const salesScore = salesVariancePct >= -5 ? 100 : 50;
+    components.push({ name: 'sales', score: salesScore });
   }
   
   // Speed component (only if we have drive-thru data)
@@ -142,8 +144,10 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         // No sales today = no grade (don't penalize hours without transactions)
         if (!hour.todaySales || hour.todaySales === 0) continue;
         
-        const isAhead = hour.todaySales >= hour.lastWeekSales;
         const hasComparableSales = hour.lastWeekSales > 0; // Only compare if LW had sales
+        const salesVariancePct = hasComparableSales 
+          ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+          : 0;
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
         const actualStaff = Number(hour.employeeCount) || 0;
         const staffingDiff = actualStaff - staffing.total;
@@ -170,7 +174,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
           }
         }
         
-        const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
         if (gradeInfo.hasGrade) {
           const score = gradeToScore(gradeInfo.grade);
           if (score > 0) {

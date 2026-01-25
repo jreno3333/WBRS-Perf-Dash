@@ -37,9 +37,9 @@ function WeatherIcon({ condition }: { condition: string }) {
 }
 
 // Execution Grade Calculator
-// Sales: UP/DOWN, Speed: GREEN(<300s)/YELLOW(300-420s)/RED(>420s), Staffing: PROPER/UNDER/OVER
+// Sales: UP/DOWN (with 5% tolerance), Speed: GREEN(<300s)/YELLOW(300-420s)/RED(>420s), Staffing: PROPER/UNDER/OVER
 function getExecutionGrade(
-  salesUp: boolean,
+  salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
   speedSeconds: number | undefined,
   staffingDiff: number,
   hasComparableSales: boolean = true // Whether last week had sales to compare against
@@ -48,9 +48,11 @@ function getExecutionGrade(
   const components: { name: string; score: number }[] = [];
   
   // Sales component (only if we have comparable data - last week had sales)
+  // Allow 5% variance to still count as "meeting expectations" (score 100)
   if (hasComparableSales) {
-    // Sales UP = 100, DOWN = 50
-    components.push({ name: 'sales', score: salesUp ? 100 : 50 });
+    // Within -5% to +infinity = 100, Below -5% = 50
+    const salesScore = salesVariancePct >= -5 ? 100 : 50;
+    components.push({ name: 'sales', score: salesScore });
   }
   
   // Speed component (only if we have drive-thru data)
@@ -213,12 +215,14 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
     .filter(hour => hour.hour <= localGradeCutoff) // Only completed hours for this restaurant
     .filter(hour => hour.todaySales && hour.todaySales > 0) // No sales = no grade
     .map(hour => {
-      const isAhead = hour.todaySales >= hour.lastWeekSales;
       const hasComparableSales = hour.lastWeekSales > 0; // Only compare if LW had sales
+      const salesVariancePct = hasComparableSales 
+        ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+        : 0;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
       const actualStaff = Number(hour.employeeCount) || 0;
       const staffingDiff = actualStaff - staffing.total;
-      const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
+      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
@@ -522,12 +526,14 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             <div className="flex gap-0.5 mb-1">
               {activeHours.map((hour) => {
                 const isCompleted = hour.hour <= localGradeCutoff;
-                const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const hasComparableSales = hour.lastWeekSales > 0;
+                const salesVariancePct = hasComparableSales 
+                  ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+                  : 0;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
                 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -555,14 +561,16 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
             >
               {activeHours.map((hour, hourIndex) => {
                 const isCompleted = hour.hour <= localGradeCutoff;
-                const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const hasComparableSales = hour.lastWeekSales > 0;
+                const salesVariancePct = hasComparableSales 
+                  ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+                  : 0;
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 const actualStaff = Number(hour.employeeCount) || 0;
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
@@ -573,7 +581,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   >
                     <div
                       className={`w-full rounded-t-sm transition-all ${
-                        isAhead 
+                        salesVariancePct >= -5 
                           ? "bg-green-500 dark:bg-green-400" 
                           : "bg-red-500 dark:bg-red-400"
                       }`}
@@ -587,7 +595,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                         {isCompleted && (!hour.todaySales || hour.todaySales === 0) && <span className="text-muted-foreground"> (no sales)</span>}
                         {!isCompleted && <span className="text-muted-foreground"> (pending)</span>}
                       </div>
-                      <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                      <div className={salesVariancePct >= -5 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                         Today: ${hour.todaySales.toLocaleString()}
                       </div>
                       <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>

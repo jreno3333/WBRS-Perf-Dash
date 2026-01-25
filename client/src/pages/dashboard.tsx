@@ -27,7 +27,8 @@ function getCentralDate(): Date {
 }
 
 // X-Score calculation helpers (same as leaderboard-card)
-function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, staffingDiff: number): number {
+// Sales within -5% still counts as "UP" for grading purposes
+function getExecutionGrade(salesVariancePct: number, speedSeconds: number | undefined, staffingDiff: number): number {
   let speed: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
   if (speedSeconds !== undefined) {
     if (speedSeconds > 420) speed = 'RED';
@@ -37,6 +38,9 @@ function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, s
   if (staffingDiff > 1) staffing = 'OVER';
   else if (staffingDiff < -1) staffing = 'UNDER';
   
+  // Allow 5% variance to still count as "UP"
+  const salesStatus = salesVariancePct >= -5 ? 'UP' : 'DOWN';
+  
   const scores: Record<string, number> = {
     'UP-GREEN-PROPER': 100, 'UP-GREEN-UNDER': 90, 'UP-GREEN-OVER': 90,
     'UP-YELLOW-PROPER': 90, 'UP-YELLOW-UNDER': 80, 'UP-YELLOW-OVER': 80,
@@ -45,7 +49,7 @@ function getExecutionGrade(salesUp: boolean, speedSeconds: number | undefined, s
     'DOWN-YELLOW-PROPER': 70, 'DOWN-YELLOW-UNDER': 60, 'DOWN-YELLOW-OVER': 60,
     'DOWN-RED-PROPER': 60, 'DOWN-RED-UNDER': 50, 'DOWN-RED-OVER': 50,
   };
-  return scores[`${salesUp ? 'UP' : 'DOWN'}-${speed}-${staffing}`] ?? 0;
+  return scores[`${salesStatus}-${speed}-${staffing}`] ?? 0;
 }
 
 function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number): number {
@@ -58,11 +62,14 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
   const scores = completedHours
     .filter(hour => hour.todaySales > 0 || hour.lastWeekSales > 0)
     .map(hour => {
-      const isAhead = hour.todaySales >= hour.lastWeekSales;
+      const hasComparableSales = hour.lastWeekSales > 0;
+      const salesVariancePct = hasComparableSales 
+        ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+        : 0;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
       const actualStaff = Number(hour.employeeCount) || 0;
       const staffingDiff = actualStaff - staffing.total;
-      return getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
+      return getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff);
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }
