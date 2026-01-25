@@ -139,7 +139,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
 
   const formatPercentage = (value: number) => {
     const sign = value >= 0 ? "+" : "";
-    return `${sign}${value.toFixed(1)}%`;
+    return `${sign}${Math.round(value)}%`;
   };
 
   const getTimezoneDisplay = (tz: string) => {
