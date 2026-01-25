@@ -121,6 +121,7 @@ interface LeaderboardCardProps {
 
 export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
   // Debug: Log driveThru data for this restaurant
   if (restaurant.driveThru) {
@@ -547,8 +548,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 );
               })}
             </div>
-            <div className="relative flex items-end gap-0.5 h-12" data-testid={`hourly-chart-${restaurant.restaurantId}`}>
-              {activeHours.map((hour) => {
+            <div 
+              className="relative flex items-end gap-0.5 h-12" 
+              data-testid={`hourly-chart-${restaurant.restaurantId}`}
+              onMouseLeave={() => setHoveredHourIndex(null)}
+            >
+              {activeHours.map((hour, hourIndex) => {
                 const isCompleted = hour.hour <= localGradeCutoff;
                 const isAhead = hour.todaySales >= hour.lastWeekSales;
                 const hasComparableSales = hour.lastWeekSales > 0;
@@ -558,11 +563,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const actualStaff = Number(hour.employeeCount) || 0;
                 const staffingDiff = actualStaff - staffing.total;
                 const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
+                const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
                   <div
                     key={hour.hour}
-                    className="flex-1 flex items-end group relative h-full"
+                    className="flex-1 flex items-end relative h-full cursor-pointer"
+                    onMouseEnter={() => setHoveredHourIndex(hourIndex)}
                   >
                     <div
                       className={`w-full rounded-t-sm transition-all ${
@@ -573,7 +580,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
-                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                    <div className={`absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                       <div className="font-medium">
                         {hour.label}
                         {isCompleted && hour.todaySales > 0 && <> - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></>}
@@ -665,8 +672,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   </span>
                 </div>
               </div>
-              <div className="flex items-end gap-0.5 h-10" data-testid={`staffing-chart-${restaurant.restaurantId}`}>
-                {activeHours.map((hour) => {
+              <div 
+                className="flex items-end gap-0.5 h-10" 
+                data-testid={`staffing-chart-${restaurant.restaurantId}`}
+                onMouseLeave={() => setHoveredHourIndex(null)}
+              >
+                {activeHours.map((hour, hourIndex) => {
                   const laborHours = Number(hour.employeeCount) || 0;
                   const sales = hour.todaySales || 0;
                   
@@ -708,10 +719,13 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
                   const missingLeadership = !hasManager && !hasShiftSupervisor && !hasOperatorScheduled && laborHours > 0;
                   
+                  const isHovered = hoveredHourIndex === hourIndex;
+                  
                   return (
                     <div
                       key={`staff-${hour.hour}`}
-                      className="flex-1 flex items-end group relative h-full"
+                      className="flex-1 flex items-end relative h-full cursor-pointer"
+                      onMouseEnter={() => setHoveredHourIndex(hourIndex)}
                     >
                       {hasNoData ? (
                         <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
@@ -734,7 +748,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                           )}
                         </>
                       )}
-                      <div className={`absolute ${missingLeadership ? '-top-24' : '-top-20'} left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none z-10 min-w-[160px]`}>
+                      <div className={`absolute ${missingLeadership ? '-top-24' : '-top-20'} left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 min-w-[160px] transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                         <div className="font-medium">{hour.label} {staffingDetails.isBreakfast ? "(Breakfast)" : ""}</div>
                         {missingLeadership && (
                           <div className="text-orange-500 flex items-center gap-1 font-medium">
