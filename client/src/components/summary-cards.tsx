@@ -285,19 +285,19 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                 {formatCurrency(totalTodaySales)}
               </p>
               <p className={`text-xs font-medium mt-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                vs LW: {lwVariance >= 0 ? "+" : ""}{lwVariance.toFixed(1)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+                vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
               </p>
-              {/* 3-Hour Sales Trend */}
+              {/* 3-Hour Sales Trend - simple up/down indicators */}
               {hourlySales.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-1 text-xs flex-wrap">
                     <span className="text-muted-foreground">3hr:</span>
                     {hourlySales.map((h, i) => (
                       <span key={h.hour} className="flex items-center">
-                        <span className={`font-semibold ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {h.diff >= 0 ? '+' : ''}${Math.round(h.diff).toLocaleString()}
+                        <span className={`font-bold text-base ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {h.diff >= 0 ? '▲' : '▼'}
                         </span>
-                        {i < hourlySales.length - 1 && <span className="text-muted-foreground mx-0.5">→</span>}
+                        {i < hourlySales.length - 1 && <span className="text-muted-foreground mx-0.5"></span>}
                       </span>
                     ))}
                   </div>
