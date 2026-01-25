@@ -111,6 +111,9 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
   const allHourlyScores: number[] = [];
   const restaurantGrades: Record<string, string> = {}; // Store each restaurant's overall grade
   
+  // Track scores by hour for trend calculation
+  const scoresByHour: Record<number, number[]> = {};
+  
   if (hourlyByRestaurant) {
     for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
       // Skip training units
@@ -139,6 +142,9 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
           if (score > 0) {
             allHourlyScores.push(score);
             restaurantHourlyScores.push(score);
+            // Track by hour for trend calculation
+            if (!scoresByHour[hour.hour]) scoresByHour[hour.hour] = [];
+            scoresByHour[hour.hour].push(score);
           }
         }
       }
@@ -190,6 +196,61 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
     : overallGrade === 'C' ? 'bg-yellow-500/20 border-yellow-500/50'
     : 'bg-red-500/20 border-red-500/50';
 
+  // Calculate 3-hour execution trend
+  const hoursWithScores = Object.keys(scoresByHour)
+    .map(h => parseInt(h))
+    .filter(h => scoresByHour[h].length > 0)
+    .sort((a, b) => b - a); // Sort descending (most recent first)
+  
+  const last3Hours = hoursWithScores.slice(0, 3);
+  const hourlyAvgScores = last3Hours.map(h => ({
+    hour: h,
+    avgScore: scoresByHour[h].reduce((a, b) => a + b, 0) / scoresByHour[h].length,
+    grade: scoreToGrade(scoresByHour[h].reduce((a, b) => a + b, 0) / scoresByHour[h].length)
+  })).reverse(); // Reverse so oldest is first for trend display
+  
+  // Determine trend direction (compare first hour to last hour in the 3-hour window)
+  let executionTrend: 'up' | 'down' | 'flat' | null = null;
+  if (hourlyAvgScores.length >= 2) {
+    const firstScore = hourlyAvgScores[0].avgScore;
+    const lastScore = hourlyAvgScores[hourlyAvgScores.length - 1].avgScore;
+    if (lastScore > firstScore + 2) executionTrend = 'up';
+    else if (lastScore < firstScore - 2) executionTrend = 'down';
+    else executionTrend = 'flat';
+  }
+
+  // Calculate 3-hour sales trend (company-wide hourly totals)
+  const salesByHour: Record<number, { today: number; lastWeek: number }> = {};
+  if (hourlyByRestaurant) {
+    for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
+      const restaurant = activeRestaurants.find(r => r.restaurantId === restaurantId);
+      if (!restaurant) continue;
+      const localGradeCutoff = (restaurant as any).localCurrentHour ?? restaurant.normalizedHour;
+      
+      for (const hour of hours) {
+        if (hour.hour > localGradeCutoff) continue;
+        if (!hour.todaySales || hour.todaySales === 0) continue;
+        
+        if (!salesByHour[hour.hour]) salesByHour[hour.hour] = { today: 0, lastWeek: 0 };
+        salesByHour[hour.hour].today += hour.todaySales;
+        salesByHour[hour.hour].lastWeek += hour.lastWeekSales;
+      }
+    }
+  }
+  
+  const hoursWithSales = Object.keys(salesByHour)
+    .map(h => parseInt(h))
+    .filter(h => salesByHour[h].today > 0)
+    .sort((a, b) => b - a);
+  
+  const last3SalesHours = hoursWithSales.slice(0, 3);
+  const hourlySales = last3SalesHours.map(h => ({
+    hour: h,
+    today: salesByHour[h].today,
+    lastWeek: salesByHour[h].lastWeek,
+    diff: salesByHour[h].today - salesByHour[h].lastWeek
+  })).reverse();
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {/* Execution Score - Prominent Display */}
@@ -226,6 +287,22 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               <p className={`text-xs font-medium mt-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                 vs LW: {lwVariance >= 0 ? "+" : ""}{lwVariance.toFixed(1)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
               </p>
+              {/* 3-Hour Sales Trend */}
+              {hourlySales.length >= 2 && (
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  <div className="flex items-center gap-1 text-xs flex-wrap">
+                    <span className="text-muted-foreground">3hr:</span>
+                    {hourlySales.map((h, i) => (
+                      <span key={h.hour} className="flex items-center">
+                        <span className={`font-semibold ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {h.diff >= 0 ? '+' : ''}${Math.round(h.diff).toLocaleString()}
+                        </span>
+                        {i < hourlySales.length - 1 && <span className="text-muted-foreground mx-0.5">→</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
@@ -279,6 +356,29 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                 <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
                 <span className="text-muted-foreground"> behind LW</span>
               </div>
+              {/* 3-Hour Execution Trend */}
+              {hourlyAvgScores.length >= 2 && (
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  <div className="flex items-center gap-1 text-xs">
+                    <span className="text-muted-foreground">3hr trend:</span>
+                    <div className="flex items-center gap-0.5">
+                      {hourlyAvgScores.map((h, i) => (
+                        <span key={h.hour} className="flex items-center">
+                          <span className={`font-semibold ${
+                            h.grade === 'A+' || h.grade === 'A' ? 'text-green-600 dark:text-green-400' :
+                            h.grade === 'B' ? 'text-blue-600 dark:text-blue-400' :
+                            h.grade === 'C' ? 'text-yellow-600 dark:text-yellow-400' :
+                            'text-red-600 dark:text-red-400'
+                          }`}>{h.grade}</span>
+                          {i < hourlyAvgScores.length - 1 && <span className="text-muted-foreground mx-0.5">→</span>}
+                        </span>
+                      ))}
+                    </div>
+                    {executionTrend === 'up' && <TrendingUp className="w-3.5 h-3.5 text-green-600 dark:text-green-400 ml-1" />}
+                    {executionTrend === 'down' && <TrendingDown className="w-3.5 h-3.5 text-red-600 dark:text-red-400 ml-1" />}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
