@@ -442,7 +442,7 @@ export default function Dashboard() {
                         <SelectItem value="understaffed">Understaffed</SelectItem>
                         <SelectItem value="missing_manager">Missing Mgr</SelectItem>
                         <SelectItem value="dt_time">DT Time</SelectItem>
-                        <SelectItem value="xscore">X-Score</SelectItem>
+                        <SelectItem value="xscore">Exc Score</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
