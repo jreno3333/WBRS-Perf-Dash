@@ -354,7 +354,17 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               <Store className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Store Performance</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm text-muted-foreground">Store Performance</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[200px] text-xs">
+                    Number of stores at each grade level today
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {gradeCounts['A+'] > 0 && (
                   <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -391,7 +401,14 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               {hourlyAvgScores.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-1 text-xs">
-                    <span className="text-muted-foreground">4hr trend:</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-muted-foreground cursor-help">4hr trend:</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                        Average grade across all stores for each of the last 4 hours
+                      </TooltipContent>
+                    </Tooltip>
                     <div className="flex items-center gap-0.5">
                       {hourlyAvgScores.map((h, i) => (
                         <span key={h.hour} className="flex items-center">
@@ -423,18 +440,42 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               <DollarSign className="w-5 h-5 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Total Sales Today</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm text-muted-foreground">Total Sales Today</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[200px] text-xs">
+                    Combined sales across all stores so far today
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <p className="text-xl font-bold" data-testid="text-total-sales">
                 {formatCurrency(totalTodaySales)}
               </p>
-              <p className={`text-xs font-medium mt-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
-              </p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className={`text-xs font-medium mt-1 cursor-help ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                    vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                  Comparison to same day last week at this time
+                </TooltipContent>
+              </Tooltip>
               {/* 4-Hour Sales Trend - simple up/down indicators */}
               {hourlySales.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-1 text-xs flex-wrap">
-                    <span className="text-muted-foreground">4hr:</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-muted-foreground cursor-help">4hr:</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                        Each arrow shows if that hour beat last week (▲) or not (▼)
+                      </TooltipContent>
+                    </Tooltip>
                     {hourlySales.map((h, i) => (
                       <span key={h.hour} className="flex items-center">
                         <span className={`font-bold text-base ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -459,7 +500,17 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               <Target className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Projected Daily Total</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm text-muted-foreground">Projected Daily Total</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[220px] text-xs">
+                    Today's sales plus remaining hours from last week
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               {projectedData.isDayComplete ? (
                 <>
                   <p className="text-xl font-bold flex items-center gap-2" data-testid="text-projected-daily">
@@ -479,13 +530,20 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">Day complete</p>
-                  <div className="mt-1 text-xs">
-                    <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
-                    <span className="text-muted-foreground"> ahead</span>
-                    <span className="mx-1 text-muted-foreground">·</span>
-                    <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
-                    <span className="text-muted-foreground"> behind LW</span>
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="mt-1 text-xs cursor-help">
+                        <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
+                        <span className="text-muted-foreground"> ahead</span>
+                        <span className="mx-1 text-muted-foreground">·</span>
+                        <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
+                        <span className="text-muted-foreground"> behind LW</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                      Stores beating or trailing last week's pace
+                    </TooltipContent>
+                  </Tooltip>
                 </>
               ) : (
                 <>
@@ -505,16 +563,30 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                       )
                     )}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
-                  </p>
-                  <div className="mt-1 text-xs">
-                    <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
-                    <span className="text-muted-foreground"> ahead</span>
-                    <span className="mx-1 text-muted-foreground">·</span>
-                    <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
-                    <span className="text-muted-foreground"> behind LW</span>
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-xs text-muted-foreground cursor-help">
+                        {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[200px] text-xs">
+                      Uses last week's remaining hours to estimate today's total
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="mt-1 text-xs cursor-help">
+                        <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
+                        <span className="text-muted-foreground"> ahead</span>
+                        <span className="mx-1 text-muted-foreground">·</span>
+                        <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
+                        <span className="text-muted-foreground"> behind LW</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                      Stores beating or trailing last week's pace
+                    </TooltipContent>
+                  </Tooltip>
                 </>
               )}
             </div>
