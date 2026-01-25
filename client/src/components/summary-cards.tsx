@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, TrendingUp, TrendingDown, Store, Target } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Store, Target, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -300,20 +301,44 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-lg font-semibold">Daily Execution</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-lg font-semibold">Daily Execution</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[200px] text-xs">
+                    Overall grade based on sales vs LW, drive-thru speed, and staffing levels
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {allHourlyScores.length} hours graded
               </p>
               <div className="flex items-center gap-3 mt-1.5 text-xs">
                 {totalStaffingHours > 0 && (
-                  <span className={`font-medium ${staffingProperPct >= 70 ? 'text-green-600 dark:text-green-400' : staffingProperPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                    Staff: {staffingProperPct}%
-                  </span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className={`font-medium cursor-help ${staffingProperPct >= 70 ? 'text-green-600 dark:text-green-400' : staffingProperPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                        Staff: {staffingProperPct}%
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                      % of hours with proper staffing (within ±1 of target)
+                    </TooltipContent>
+                  </Tooltip>
                 )}
                 {totalSpeedHours > 0 && (
-                  <span className={`font-medium ${speedGreenPct >= 70 ? 'text-green-600 dark:text-green-400' : speedGreenPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                    Speed: {speedGreenPct}%
-                  </span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className={`font-medium cursor-help ${speedGreenPct >= 70 ? 'text-green-600 dark:text-green-400' : speedGreenPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                        Speed: {speedGreenPct}%
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                      % of hours with drive-thru time under 5 min
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             </div>
