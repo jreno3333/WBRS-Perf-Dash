@@ -349,13 +349,6 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                   </span>
                 )}
               </div>
-              <div className="mt-1.5 text-xs">
-                <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
-                <span className="text-muted-foreground"> ahead</span>
-                <span className="mx-1 text-muted-foreground">·</span>
-                <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
-                <span className="text-muted-foreground"> behind LW</span>
-              </div>
               {/* 3-Hour Execution Trend */}
               {hourlyAvgScores.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">
@@ -412,6 +405,13 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">Day complete</p>
+                  <div className="mt-1 text-xs">
+                    <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
+                    <span className="text-muted-foreground"> ahead</span>
+                    <span className="mx-1 text-muted-foreground">·</span>
+                    <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
+                    <span className="text-muted-foreground"> behind LW</span>
+                  </div>
                 </>
               ) : (
                 <>
@@ -434,6 +434,13 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                   <p className="text-xs text-muted-foreground">
                     {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
                   </p>
+                  <div className="mt-1 text-xs">
+                    <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
+                    <span className="text-muted-foreground"> ahead</span>
+                    <span className="mx-1 text-muted-foreground">·</span>
+                    <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
+                    <span className="text-muted-foreground"> behind LW</span>
+                  </div>
                 </>
               )}
             </div>
