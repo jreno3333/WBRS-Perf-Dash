@@ -95,7 +95,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
       for (const hour of hours) {
         // Only include completed hours (matching leaderboard card behavior)
         if (hour.hour > localGradeCutoff) continue;
-        if (!hour.todaySales && !hour.lastWeekSales) continue;
+        // No sales today = no grade (don't penalize hours without transactions)
+        if (!hour.todaySales || hour.todaySales === 0) continue;
         
         const isAhead = hour.todaySales >= hour.lastWeekSales;
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);

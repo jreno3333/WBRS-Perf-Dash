@@ -192,8 +192,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
   );
   
   // Calculate overall execution grade from completed hourly grades only (using restaurant's local hour)
+  // Only grade hours that have actual sales - no sales = no grade
   const hourlyGradeScores = activeHours
     .filter(hour => hour.hour <= localGradeCutoff) // Only completed hours for this restaurant
+    .filter(hour => hour.todaySales && hour.todaySales > 0) // No sales = no grade
     .map(hour => {
       const isAhead = hour.todaySales >= hour.lastWeekSales;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
