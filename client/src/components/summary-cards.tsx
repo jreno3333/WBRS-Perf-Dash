@@ -239,8 +239,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
     .filter(h => scoresByHour[h].length > 0)
     .sort((a, b) => b - a); // Sort descending (most recent first)
   
-  const last3Hours = hoursWithScores.slice(0, 3);
-  const hourlyAvgScores = last3Hours.map(h => ({
+  const last4Hours = hoursWithScores.slice(0, 4);
+  const hourlyAvgScores = last4Hours.map(h => ({
     hour: h,
     avgScore: scoresByHour[h].reduce((a, b) => a + b, 0) / scoresByHour[h].length,
     grade: scoreToGrade(scoresByHour[h].reduce((a, b) => a + b, 0) / scoresByHour[h].length)
@@ -280,8 +280,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
     .filter(h => salesByHour[h].today > 0)
     .sort((a, b) => b - a);
   
-  const last3SalesHours = hoursWithSales.slice(0, 3);
-  const hourlySales = last3SalesHours.map(h => ({
+  const last4SalesHours = hoursWithSales.slice(0, 4);
+  const hourlySales = last4SalesHours.map(h => ({
     hour: h,
     today: salesByHour[h].today,
     lastWeek: salesByHour[h].lastWeek,
@@ -321,43 +321,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         </CardContent>
       </Card>
 
-      {/* Total Sales with vs LW */}
-      <Card data-testid="card-summary-sales">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-lg bg-orange-100 dark:bg-orange-900/30">
-              <DollarSign className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Total Sales Today</p>
-              <p className="text-xl font-bold" data-testid="text-total-sales">
-                {formatCurrency(totalTodaySales)}
-              </p>
-              <p className={`text-xs font-medium mt-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
-              </p>
-              {/* 3-Hour Sales Trend - simple up/down indicators */}
-              {hourlySales.length >= 2 && (
-                <div className="mt-2 pt-2 border-t border-border/50">
-                  <div className="flex items-center gap-1 text-xs flex-wrap">
-                    <span className="text-muted-foreground">3hr:</span>
-                    {hourlySales.map((h, i) => (
-                      <span key={h.hour} className="flex items-center">
-                        <span className={`font-bold text-base ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {h.diff >= 0 ? '▲' : '▼'}
-                        </span>
-                        {i < hourlySales.length - 1 && <span className="text-muted-foreground mx-0.5"></span>}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Store Performance - Grades and vs Last Week */}
+      {/* Store Performance - Grades and Execution Trend */}
       <Card data-testid="card-summary-ahead">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
@@ -398,11 +362,11 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                   </span>
                 )}
               </div>
-              {/* 3-Hour Execution Trend */}
+              {/* 4-Hour Execution Trend */}
               {hourlyAvgScores.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-1 text-xs">
-                    <span className="text-muted-foreground">3hr trend:</span>
+                    <span className="text-muted-foreground">4hr trend:</span>
                     <div className="flex items-center gap-0.5">
                       {hourlyAvgScores.map((h, i) => (
                         <span key={h.hour} className="flex items-center">
@@ -418,6 +382,42 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     </div>
                     {executionTrend === 'up' && <TrendingUp className="w-3.5 h-3.5 text-green-600 dark:text-green-400 ml-1" />}
                     {executionTrend === 'down' && <TrendingDown className="w-3.5 h-3.5 text-red-600 dark:text-red-400 ml-1" />}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Total Sales Today */}
+      <Card data-testid="card-summary-sales">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg bg-orange-100 dark:bg-orange-900/30">
+              <DollarSign className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-muted-foreground">Total Sales Today</p>
+              <p className="text-xl font-bold" data-testid="text-total-sales">
+                {formatCurrency(totalTodaySales)}
+              </p>
+              <p className={`text-xs font-medium mt-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+              </p>
+              {/* 4-Hour Sales Trend - simple up/down indicators */}
+              {hourlySales.length >= 2 && (
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  <div className="flex items-center gap-1 text-xs flex-wrap">
+                    <span className="text-muted-foreground">4hr:</span>
+                    {hourlySales.map((h, i) => (
+                      <span key={h.hour} className="flex items-center">
+                        <span className={`font-bold text-base ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {h.diff >= 0 ? '▲' : '▼'}
+                        </span>
+                        {i < hourlySales.length - 1 && <span className="text-muted-foreground mx-0.5"></span>}
+                      </span>
+                    ))}
                   </div>
                 </div>
               )}
