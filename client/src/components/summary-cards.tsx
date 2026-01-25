@@ -114,6 +114,16 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
   // Track scores by hour for trend calculation
   const scoresByHour: Record<number, number[]> = {};
   
+  // Track overall staffing and speed metrics
+  let staffingProperCount = 0;
+  let staffingOverCount = 0;
+  let staffingUnderCount = 0;
+  let speedGreenCount = 0;
+  let speedYellowCount = 0;
+  let speedRedCount = 0;
+  let totalSpeedHours = 0;
+  let totalStaffingHours = 0;
+  
   if (hourlyByRestaurant) {
     for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
       // Skip training units
@@ -136,6 +146,29 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
         const actualStaff = Number(hour.employeeCount) || 0;
         const staffingDiff = actualStaff - staffing.total;
+        
+        // Track staffing metrics
+        totalStaffingHours++;
+        if (Math.abs(staffingDiff) <= 1) {
+          staffingProperCount++;
+        } else if (staffingDiff > 1) {
+          staffingOverCount++;
+        } else {
+          staffingUnderCount++;
+        }
+        
+        // Track speed metrics (only if drive-thru data exists)
+        if (hour.avgServiceTime !== undefined) {
+          totalSpeedHours++;
+          if (hour.avgServiceTime <= 300) {
+            speedGreenCount++;
+          } else if (hour.avgServiceTime <= 420) {
+            speedYellowCount++;
+          } else {
+            speedRedCount++;
+          }
+        }
+        
         const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff, hasComparableSales);
         if (gradeInfo.hasGrade) {
           const score = gradeToScore(gradeInfo.grade);
@@ -156,6 +189,10 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
       }
     }
   }
+  
+  // Calculate staffing and speed percentages
+  const staffingProperPct = totalStaffingHours > 0 ? Math.round((staffingProperCount / totalStaffingHours) * 100) : 0;
+  const speedGreenPct = totalSpeedHours > 0 ? Math.round((speedGreenCount / totalSpeedHours) * 100) : 0;
   
   // Count stores by execution grade
   const gradeCounts = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
@@ -267,6 +304,18 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               <p className="text-xs text-muted-foreground mt-0.5">
                 {allHourlyScores.length} hours graded
               </p>
+              <div className="flex items-center gap-3 mt-1.5 text-xs">
+                {totalStaffingHours > 0 && (
+                  <span className={`font-medium ${staffingProperPct >= 70 ? 'text-green-600 dark:text-green-400' : staffingProperPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                    Staff: {staffingProperPct}%
+                  </span>
+                )}
+                {totalSpeedHours > 0 && (
+                  <span className={`font-medium ${speedGreenPct >= 70 ? 'text-green-600 dark:text-green-400' : speedGreenPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                    Speed: {speedGreenPct}%
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </CardContent>
