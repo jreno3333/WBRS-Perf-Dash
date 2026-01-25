@@ -79,12 +79,15 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
 
   // Calculate overall execution score across all restaurants
   const allHourlyScores: number[] = [];
+  const restaurantGrades: Record<string, string> = {}; // Store each restaurant's overall grade
+  
   if (hourlyByRestaurant) {
     for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
       // Skip training units
       const restaurant = activeRestaurants.find(r => r.restaurantId === restaurantId);
       if (!restaurant) continue;
       
+      const restaurantHourlyScores: number[] = [];
       for (const hour of hours) {
         // Include all hours with sales data
         if (!hour.todaySales && !hour.lastWeekSales) continue;
@@ -95,10 +98,27 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         const staffingDiff = actualStaff - staffing.total;
         const grade = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
         const score = gradeToScore(grade);
-        if (score > 0) allHourlyScores.push(score);
+        if (score > 0) {
+          allHourlyScores.push(score);
+          restaurantHourlyScores.push(score);
+        }
+      }
+      
+      // Calculate this restaurant's overall grade
+      if (restaurantHourlyScores.length > 0) {
+        const avgScore = restaurantHourlyScores.reduce((a, b) => a + b, 0) / restaurantHourlyScores.length;
+        restaurantGrades[restaurantId] = scoreToGrade(avgScore);
       }
     }
   }
+  
+  // Count stores by execution grade
+  const gradeCounts = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
+  Object.values(restaurantGrades).forEach(grade => {
+    if (grade in gradeCounts) {
+      gradeCounts[grade as keyof typeof gradeCounts]++;
+    }
+  });
   
   const overallXScore = allHourlyScores.length > 0 
     ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length 
@@ -143,7 +163,6 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-muted-foreground">X-Score</p>
               <p className="text-lg font-semibold">Daily Execution</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {allHourlyScores.length} hours graded
@@ -173,7 +192,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         </CardContent>
       </Card>
 
-      {/* Store Performance */}
+      {/* Store Performance by Execution Grade */}
       <Card data-testid="card-summary-ahead">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
@@ -181,16 +200,41 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               <Store className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Store Performance</p>
-              <div className="mt-1 space-y-0.5">
-                <p className="text-sm">
-                  <span className="font-bold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
-                  <span className="text-muted-foreground"> ahead of last week</span>
-                </p>
-                <p className="text-sm">
-                  <span className="font-bold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
-                  <span className="text-muted-foreground"> behind last week</span>
-                </p>
+              <p className="text-sm text-muted-foreground">Execution by Store</p>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {gradeCounts['A+'] > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    A+ <span className="font-bold">{gradeCounts['A+']}</span>
+                  </span>
+                )}
+                {gradeCounts['A'] > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    A <span className="font-bold">{gradeCounts['A']}</span>
+                  </span>
+                )}
+                {gradeCounts['B'] > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                    B <span className="font-bold">{gradeCounts['B']}</span>
+                  </span>
+                )}
+                {gradeCounts['C'] > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                    C <span className="font-bold">{gradeCounts['C']}</span>
+                  </span>
+                )}
+                {gradeCounts['D'] > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                    D <span className="font-bold">{gradeCounts['D']}</span>
+                  </span>
+                )}
+                {gradeCounts['F'] > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                    F <span className="font-bold">{gradeCounts['F']}</span>
+                  </span>
+                )}
+                {Object.values(gradeCounts).every(c => c === 0) && (
+                  <span className="text-xs text-muted-foreground">No grades yet</span>
+                )}
               </div>
             </div>
           </div>

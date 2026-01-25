@@ -213,8 +213,8 @@ async function syncGoogleReviewsIfNeeded() {
   
   const currentMinute = now.getMinutes();
   
-  // Only sync at the top of each hour (minute 0)
-  if (currentMinute !== 0) {
+  // Sync within the first 5 minutes of each hour (scheduler runs every 5 minutes)
+  if (currentMinute > 4) {
     return;
   }
   
