@@ -192,7 +192,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         </CardContent>
       </Card>
 
-      {/* Store Performance by Execution Grade */}
+      {/* Store Performance - Grades and vs Last Week */}
       <Card data-testid="card-summary-ahead">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
@@ -200,41 +200,45 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               <Store className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Execution by Store</p>
-              <div className="mt-1.5 flex flex-wrap gap-2">
+              <p className="text-sm text-muted-foreground">Store Performance</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {gradeCounts['A+'] > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                     A+ <span className="font-bold">{gradeCounts['A+']}</span>
                   </span>
                 )}
                 {gradeCounts['A'] > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                     A <span className="font-bold">{gradeCounts['A']}</span>
                   </span>
                 )}
                 {gradeCounts['B'] > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                     B <span className="font-bold">{gradeCounts['B']}</span>
                   </span>
                 )}
                 {gradeCounts['C'] > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
                     C <span className="font-bold">{gradeCounts['C']}</span>
                   </span>
                 )}
                 {gradeCounts['D'] > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                     D <span className="font-bold">{gradeCounts['D']}</span>
                   </span>
                 )}
                 {gradeCounts['F'] > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     F <span className="font-bold">{gradeCounts['F']}</span>
                   </span>
                 )}
-                {Object.values(gradeCounts).every(c => c === 0) && (
-                  <span className="text-xs text-muted-foreground">No grades yet</span>
-                )}
+              </div>
+              <div className="mt-1.5 text-xs">
+                <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
+                <span className="text-muted-foreground"> ahead</span>
+                <span className="mx-1 text-muted-foreground">·</span>
+                <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
+                <span className="text-muted-foreground"> behind LW</span>
               </div>
             </div>
           </div>
