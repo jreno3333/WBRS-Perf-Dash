@@ -87,9 +87,14 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
       const restaurant = activeRestaurants.find(r => r.restaurantId === restaurantId);
       if (!restaurant) continue;
       
+      // Use restaurant's local hour cutoff to only count completed hours
+      // This matches the leaderboard card logic for consistent grading
+      const localGradeCutoff = (restaurant as any).localCurrentHour ?? restaurant.normalizedHour;
+      
       const restaurantHourlyScores: number[] = [];
       for (const hour of hours) {
-        // Include all hours with sales data
+        // Only include completed hours (matching leaderboard card behavior)
+        if (hour.hour > localGradeCutoff) continue;
         if (!hour.todaySales && !hour.lastWeekSales) continue;
         
         const isAhead = hour.todaySales >= hour.lastWeekSales;
