@@ -511,12 +511,15 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const staffingDiff = actualStaff - staffing.total;
                 const gradeInfo = getExecutionGrade(isAhead, hour.avgServiceTime, staffingDiff);
                 
+                // No sales = no grade displayed
+                const hasSales = hour.todaySales && hour.todaySales > 0;
+                
                 return (
                   <div
                     key={`grade-${hour.hour}`}
                     className="flex-1 text-center"
                   >
-                    {isCompleted ? (
+                    {isCompleted && hasSales ? (
                       <span className={`text-[10px] font-bold ${gradeInfo.color}`}>
                         {gradeInfo.grade}
                       </span>
@@ -555,7 +558,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
                       <div className="font-medium">
                         {hour.label}
-                        {isCompleted && <> - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></>}
+                        {isCompleted && hour.todaySales > 0 && <> - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></>}
+                        {isCompleted && (!hour.todaySales || hour.todaySales === 0) && <span className="text-muted-foreground"> (no sales)</span>}
                         {!isCompleted && <span className="text-muted-foreground"> (pending)</span>}
                       </div>
                       <div className={isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
