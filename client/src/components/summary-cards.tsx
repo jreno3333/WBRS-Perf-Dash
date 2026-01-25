@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, TrendingUp, TrendingDown, Store, Target, Info } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -303,42 +303,42 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-lg font-semibold">Daily Execution</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <Popover>
+                  <PopoverTrigger asChild>
                     <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[200px] text-xs">
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="w-auto max-w-[200px] p-2 text-xs">
                     Overall grade based on sales vs LW, drive-thru speed, and staffing levels
-                  </TooltipContent>
-                </Tooltip>
+                  </PopoverContent>
+                </Popover>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {allHourlyScores.length} hours graded
               </p>
               <div className="flex items-center gap-3 mt-1.5 text-xs">
                 {totalStaffingHours > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <span className={`font-medium cursor-help ${staffingProperPct >= 70 ? 'text-green-600 dark:text-green-400' : staffingProperPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
                         Staff: {staffingProperPct}%
                       </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                       % of hours with proper staffing (within ±1 of target)
-                    </TooltipContent>
-                  </Tooltip>
+                    </PopoverContent>
+                  </Popover>
                 )}
                 {totalSpeedHours > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <span className={`font-medium cursor-help ${speedGreenPct >= 70 ? 'text-green-600 dark:text-green-400' : speedGreenPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
                         Speed: {speedGreenPct}%
                       </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                       % of hours with drive-thru time under 5 min
-                    </TooltipContent>
-                  </Tooltip>
+                    </PopoverContent>
+                  </Popover>
                 )}
               </div>
             </div>
@@ -356,14 +356,14 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-sm text-muted-foreground">Store Performance</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <Popover>
+                  <PopoverTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[200px] text-xs">
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="w-auto max-w-[200px] p-2 text-xs">
                     Number of stores at each grade level today
-                  </TooltipContent>
-                </Tooltip>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {gradeCounts['A+'] > 0 && (
@@ -401,14 +401,14 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
               {hourlyAvgScores.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-1 text-xs">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <span className="text-muted-foreground cursor-help">4hr trend:</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                      </PopoverTrigger>
+                      <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                         Average grade across all stores for each of the last 4 hours
-                      </TooltipContent>
-                    </Tooltip>
+                      </PopoverContent>
+                    </Popover>
                     <div className="flex items-center gap-0.5">
                       {hourlyAvgScores.map((h, i) => (
                         <span key={h.hour} className="flex items-center">
@@ -442,40 +442,40 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-sm text-muted-foreground">Total Sales Today</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <Popover>
+                  <PopoverTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[200px] text-xs">
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="w-auto max-w-[200px] p-2 text-xs">
                     Combined sales across all stores so far today
-                  </TooltipContent>
-                </Tooltip>
+                  </PopoverContent>
+                </Popover>
               </div>
               <p className="text-xl font-bold" data-testid="text-total-sales">
                 {formatCurrency(totalTodaySales)}
               </p>
-              <Tooltip>
-                <TooltipTrigger asChild>
+              <Popover>
+                <PopoverTrigger asChild>
                   <p className={`text-xs font-medium mt-1 cursor-help ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                     vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
                   </p>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                </PopoverTrigger>
+                <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                   Comparison to same day last week at this time
-                </TooltipContent>
-              </Tooltip>
+                </PopoverContent>
+              </Popover>
               {/* 4-Hour Sales Trend - simple up/down indicators */}
               {hourlySales.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-1 text-xs flex-wrap">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <span className="text-muted-foreground cursor-help">4hr:</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                      </PopoverTrigger>
+                      <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                         Each arrow shows if that hour beat last week (▲) or not (▼)
-                      </TooltipContent>
-                    </Tooltip>
+                      </PopoverContent>
+                    </Popover>
                     {hourlySales.map((h, i) => (
                       <span key={h.hour} className="flex items-center">
                         <span className={`font-bold text-base ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -502,14 +502,14 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-sm text-muted-foreground">Projected Daily Total</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <Popover>
+                  <PopoverTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[220px] text-xs">
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="w-auto max-w-[220px] p-2 text-xs">
                     Today's sales plus remaining hours from last week
-                  </TooltipContent>
-                </Tooltip>
+                  </PopoverContent>
+                </Popover>
               </div>
               {projectedData.isDayComplete ? (
                 <>
@@ -530,8 +530,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">Day complete</p>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <div className="mt-1 text-xs cursor-help">
                         <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
                         <span className="text-muted-foreground"> ahead</span>
@@ -539,11 +539,11 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                         <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
                         <span className="text-muted-foreground"> behind LW</span>
                       </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                       Stores beating or trailing last week's pace
-                    </TooltipContent>
-                  </Tooltip>
+                    </PopoverContent>
+                  </Popover>
                 </>
               ) : (
                 <>
@@ -563,18 +563,18 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                       )
                     )}
                   </p>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <p className="text-xs text-muted-foreground cursor-help">
                         {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
                       </p>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[200px] text-xs">
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
                       Uses last week's remaining hours to estimate today's total
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                    </PopoverContent>
+                  </Popover>
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <div className="mt-1 text-xs cursor-help">
                         <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
                         <span className="text-muted-foreground"> ahead</span>
@@ -582,11 +582,11 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                         <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
                         <span className="text-muted-foreground"> behind LW</span>
                       </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[180px] text-xs">
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                       Stores beating or trailing last week's pace
-                    </TooltipContent>
-                  </Tooltip>
+                    </PopoverContent>
+                  </Popover>
                 </>
               )}
             </div>
