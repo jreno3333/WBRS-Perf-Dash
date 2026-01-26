@@ -460,7 +460,8 @@ export async function registerRoutes(
         const saleDate = new Date(sale.salesDate);
         const saleDateStr = saleDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
         
-        if (dateRange.includes(saleDateStr) && heatmapData[sale.restaurantId]) {
+        // Check that this date exists for this restaurant (may be filtered due to open date)
+        if (dateRange.includes(saleDateStr) && heatmapData[sale.restaurantId]?.[saleDateStr]) {
           heatmapData[sale.restaurantId][saleDateStr][sale.hour] = parseFloat(sale.actualSales as string) || 0;
         }
       }
@@ -472,7 +473,8 @@ export async function registerRoutes(
         
         // POS data is Map<restaurantId, Map<hour, sales>>
         posSales.forEach((hourlyData, restaurantId) => {
-          if (heatmapData[restaurantId]) {
+          // Check that this date exists for this restaurant (may be filtered due to open date)
+          if (heatmapData[restaurantId]?.[dateStr]) {
             hourlyData.forEach((sales, hour) => {
               // Only overlay if POS has sales data (don't zero out 7shifts data)
               if (sales > 0) {
@@ -486,9 +488,9 @@ export async function registerRoutes(
       // Calculate max sales for color scaling
       let maxSales = 0;
       for (const restaurantId of Object.keys(heatmapData)) {
-        for (const dateStr of dateRange) {
+        for (const dateStr of Object.keys(heatmapData[restaurantId])) {
           for (let hour = 0; hour < 24; hour++) {
-            const sales = heatmapData[restaurantId][dateStr][hour];
+            const sales = heatmapData[restaurantId][dateStr]?.[hour] ?? 0;
             if (sales > maxSales) maxSales = sales;
           }
         }
