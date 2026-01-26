@@ -220,7 +220,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
         ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
         : 0;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-      const actualStaff = Number(hour.employeeCount) || 0;
+      // Exclude operator from labor hours (not production/non-production)
+      const positions = hour.positionBreakdown || {};
+      const operatorHrs = positions['_operatorScheduled'] || 0;
+      const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
       const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
@@ -532,7 +535,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
                   : 0;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-                const actualStaff = Number(hour.employeeCount) || 0;
+                // Exclude operator from labor hours (not production/non-production)
+                const positions = hour.positionBreakdown || {};
+                const operatorHrs = positions['_operatorScheduled'] || 0;
+                const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
                 const staffingDiff = actualStaff - staffing.total;
                 const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
                 
@@ -569,7 +575,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
                 const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-                const actualStaff = Number(hour.employeeCount) || 0;
+                // Exclude operator from labor hours (not production/non-production)
+                const positions = hour.positionBreakdown || {};
+                const operatorHrs = positions['_operatorScheduled'] || 0;
+                const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
                 const staffingDiff = actualStaff - staffing.total;
                 const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
                 const isHovered = hoveredHourIndex === hourIndex;
@@ -687,7 +696,10 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 onMouseLeave={() => setHoveredHourIndex(null)}
               >
                 {activeHours.map((hour, hourIndex) => {
-                  const laborHours = Number(hour.employeeCount) || 0;
+                  // Exclude _operatorScheduled from labor hours (they are neither production nor non-production)
+                  const positions = hour.positionBreakdown || {};
+                  const operatorHours = positions['_operatorScheduled'] || 0;
+                  const laborHours = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHours);
                   const sales = hour.todaySales || 0;
                   
                   // Labor deployment model: Non-production + Production staff
@@ -701,7 +713,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   const isOverstaffed = staffingDiff > 1;
                   const isUnderstaffed = staffingDiff < -1;
                   
-                  const hasNoData = laborHours === 0 && sales === 0;
+                  const hasNoData = laborHours === 0 && sales === 0 && operatorHours === 0;
                   
                   // Bar height based on labor hours (cap at 15 for display)
                   const maxDisplayHours = 15;
@@ -721,7 +733,6 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   
                   // Check for missing manager/shift supervisor
                   // Operators don't punch in but are considered leaders if scheduled
-                  const positions = hour.positionBreakdown || {};
                   const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
                   const hasManager = positionKeys.some(p => p.includes("manager"));
                   const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
@@ -778,6 +789,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                           <div className="border-t border-border/50 mt-1 pt-1">
                             <div className="text-[10px] text-muted-foreground mb-0.5">By Position:</div>
                             {Object.entries(hour.positionBreakdown)
+                              .filter(([position]) => position !== '_operatorScheduled')
                               .sort(([,a], [,b]) => b - a)
                               .map(([position, hrs]) => (
                                 <div key={position} className="text-[10px] flex justify-between gap-2">
@@ -786,6 +798,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                                 </div>
                               ))
                             }
+                            {operatorHours > 0 && (
+                              <div className="text-[10px] flex justify-between gap-2 text-blue-500 dark:text-blue-400 mt-0.5">
+                                <span className="truncate italic">Operator (scheduled)</span>
+                                <span className="font-medium">✓</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -797,9 +815,12 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
               {/* Total Staffing Summary for the Day */}
               {(() => {
                 const totals = activeHours.reduce((acc, hour) => {
-                  const laborHrs = Number(hour.employeeCount) || 0;
+                  // Exclude operator from labor hours calculation
+                  const positions = hour.positionBreakdown || {};
+                  const operatorHrs = positions['_operatorScheduled'] || 0;
+                  const laborHrs = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
                   const sales = hour.todaySales || 0;
-                  const hasData = laborHrs > 0 || sales > 0;
+                  const hasData = laborHrs > 0 || sales > 0 || operatorHrs > 0;
                   
                   if (hasData) {
                     const staffingDetails = getStaffingBreakdown(hour.hour, sales);
