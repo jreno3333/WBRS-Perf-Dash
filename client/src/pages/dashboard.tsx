@@ -26,30 +26,37 @@ function getCentralDate(): Date {
   return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-// X-Score calculation helpers (same as leaderboard-card)
-// Sales within -5% still counts as "UP" for grading purposes
-function getExecutionGrade(salesVariancePct: number, speedSeconds: number | undefined, staffingDiff: number): number {
-  let speed: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN';
-  if (speedSeconds !== undefined) {
-    if (speedSeconds > 420) speed = 'RED';
-    else if (speedSeconds > 300) speed = 'YELLOW';
+// X-Score calculation helpers (matches leaderboard-card component-based approach)
+// Returns numeric score for sorting (higher = better)
+function getExecutionGrade(salesVariancePct: number, speedSeconds: number | undefined, staffingDiff: number, hasComparableSales: boolean = true): number {
+  const components: number[] = [];
+  
+  // Sales component (only if we have comparable data)
+  if (hasComparableSales) {
+    // Within -5% to +infinity = 100, Below -5% = 50
+    const salesScore = salesVariancePct >= -5 ? 100 : 50;
+    components.push(salesScore);
   }
-  let staffing: 'PROPER' | 'UNDER' | 'OVER' = 'PROPER';
-  if (staffingDiff > 1) staffing = 'OVER';
-  else if (staffingDiff < -1) staffing = 'UNDER';
   
-  // Allow 5% variance to still count as "UP"
-  const salesStatus = salesVariancePct >= -5 ? 'UP' : 'DOWN';
+  // Speed component (only if we have drive-thru data)
+  if (speedSeconds !== undefined) {
+    // GREEN (<5min) = 100, YELLOW (5-7min) = 70, RED (>7min) = 40
+    let speedScore = 100;
+    if (speedSeconds > 420) speedScore = 40;
+    else if (speedSeconds > 300) speedScore = 70;
+    components.push(speedScore);
+  }
   
-  const scores: Record<string, number> = {
-    'UP-GREEN-PROPER': 100, 'UP-GREEN-UNDER': 90, 'UP-GREEN-OVER': 90,
-    'UP-YELLOW-PROPER': 90, 'UP-YELLOW-UNDER': 80, 'UP-YELLOW-OVER': 80,
-    'UP-RED-PROPER': 80, 'UP-RED-UNDER': 70, 'UP-RED-OVER': 70,
-    'DOWN-GREEN-PROPER': 80, 'DOWN-GREEN-UNDER': 70, 'DOWN-GREEN-OVER': 70,
-    'DOWN-YELLOW-PROPER': 70, 'DOWN-YELLOW-UNDER': 60, 'DOWN-YELLOW-OVER': 60,
-    'DOWN-RED-PROPER': 60, 'DOWN-RED-UNDER': 50, 'DOWN-RED-OVER': 50,
-  };
-  return scores[`${salesStatus}-${speed}-${staffing}`] ?? 0;
+  // Staffing component (always included)
+  // PROPER = 100, UNDER = 60, OVER = 60
+  let staffingScore = 100;
+  if (staffingDiff > 1) staffingScore = 60; // OVER
+  else if (staffingDiff < -1) staffingScore = 60; // UNDER
+  components.push(staffingScore);
+  
+  // Return average of all available components
+  if (components.length === 0) return 0;
+  return components.reduce((a, b) => a + b, 0) / components.length;
 }
 
 function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number): number {
@@ -60,16 +67,19 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
   const completedHours = hourlyData.filter(hour => hour.hour <= cutoff);
   
   const scores = completedHours
-    .filter(hour => hour.todaySales > 0 || hour.lastWeekSales > 0)
+    .filter(hour => hour.todaySales > 0) // Only hours with sales
     .map(hour => {
       const hasComparableSales = hour.lastWeekSales > 0;
       const salesVariancePct = hasComparableSales 
         ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
         : 0;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-      const actualStaff = Number(hour.employeeCount) || 0;
+      // Exclude operator hours from labor count (same as leaderboard-card)
+      const positions = hour.positionBreakdown || {};
+      const operatorHrs = positions['_operatorScheduled'] || 0;
+      const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
-      return getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff);
+      return getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }
