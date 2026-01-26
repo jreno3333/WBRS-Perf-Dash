@@ -261,9 +261,21 @@ export default function HeatmapPage() {
                   
                   return restaurantDates.map((dateStr, dateIdx) => {
                     const dayData = data.heatmapData[restaurant.id]?.[dateStr];
+                    
+                    // Calculate zero count excluding future hours
+                    const now = new Date();
+                    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+                    const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+                    const isToday = dateStr === todayStr;
+                    
                     const zeroCount = dayData 
-                      ? Object.values(dayData).filter(v => v === 0).length 
-                      : 24;
+                      ? Object.entries(dayData).filter(([hourStr, v]) => {
+                          const hour = parseInt(hourStr);
+                          // For today, only count past/current hours
+                          if (isToday && hour > currentHour) return false;
+                          return v === 0;
+                        }).length 
+                      : 0;
                     
                     return (
                       <tr key={`${restaurant.id}-${dateStr}`} className="border-t border-border/50">
@@ -279,7 +291,7 @@ export default function HeatmapPage() {
                         )}
                         <td className="p-1 text-muted-foreground whitespace-nowrap">
                           {formatDate(dateStr)}
-                          {zeroCount > 12 && (
+                          {zeroCount > 4 && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <AlertTriangle className="inline-block ml-1 w-3 h-3 text-yellow-600 dark:text-yellow-400 cursor-help" />
