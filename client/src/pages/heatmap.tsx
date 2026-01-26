@@ -71,6 +71,11 @@ export default function HeatmapPage() {
   const stats = useMemo(() => {
     if (!data) return { totalZeroHours: 0, totalHours: 0 };
     
+    // Get current date/hour in Central timezone to exclude future hours
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+    
     let totalZeroHours = 0;
     let totalHours = 0;
     
@@ -78,7 +83,10 @@ export default function HeatmapPage() {
       for (const dateStr of activeDates) {
         const dayData = data.heatmapData[restaurant.id]?.[dateStr];
         if (dayData) {
-          for (let hour = 0; hour < 24; hour++) {
+          // Determine max hour to count for this date
+          const maxHour = dateStr === todayStr ? currentHour : 23;
+          
+          for (let hour = 0; hour <= maxHour; hour++) {
             totalHours++;
             if (dayData[hour] === 0) totalZeroHours++;
           }
