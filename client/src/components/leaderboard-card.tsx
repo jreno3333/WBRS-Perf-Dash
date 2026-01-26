@@ -609,8 +609,8 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                         </div>
                       )}
                       {isCompleted && (
-                        <div className={staffingDiff > 1 ? "text-red-600" : staffingDiff < -1 ? "text-yellow-600" : "text-green-600"}>
-                          Staff: {staffingDiff > 1 ? "Over" : staffingDiff < -1 ? "Under" : "Proper"}
+                        <div className={staffingDiff > 1 ? "text-red-600 dark:text-red-400" : staffingDiff < -1 ? "text-yellow-600 dark:text-yellow-400" : "text-green-600 dark:text-green-400"}>
+                          Staff: {staffingDiff > 0 ? '+' : ''}{staffingDiff.toFixed(1)}
                         </div>
                       )}
                     </div>
