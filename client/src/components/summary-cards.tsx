@@ -325,10 +325,18 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     <PopoverTrigger asChild>
                       <span className={`font-medium cursor-help ${staffingProperPct >= 70 ? 'text-green-600 dark:text-green-400' : staffingProperPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
                         Staff: {staffingProperPct}%
+                        {staffingProperPct < 70 && (staffingOverCount > staffingUnderCount ? ' ↑' : staffingUnderCount > staffingOverCount ? ' ↓' : '')}
                       </span>
                     </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
-                      % of hours with proper staffing (within ±1 of target)
+                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
+                      <div>% of hours with proper staffing (within ±1 of target)</div>
+                      {staffingProperPct < 100 && (
+                        <div className="mt-1 text-muted-foreground">
+                          {staffingOverCount > 0 && <span>Over: {staffingOverCount}h</span>}
+                          {staffingOverCount > 0 && staffingUnderCount > 0 && <span> · </span>}
+                          {staffingUnderCount > 0 && <span>Under: {staffingUnderCount}h</span>}
+                        </div>
+                      )}
                     </PopoverContent>
                   </Popover>
                 )}
