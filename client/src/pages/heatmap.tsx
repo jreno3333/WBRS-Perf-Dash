@@ -229,10 +229,9 @@ export default function HeatmapPage() {
               {data.dateRange.map(dateStr => (
                 <Button
                   key={dateStr}
-                  variant={selectedDates.includes(dateStr) || selectedDates.length === 0 ? "default" : "outline"}
+                  variant={selectedDates.includes(dateStr) ? "default" : "outline"}
                   size="sm"
                   onClick={() => toggleDate(dateStr)}
-                  className={selectedDates.length === 0 ? "opacity-70" : ""}
                   data-testid={`button-date-${dateStr}`}
                 >
                   {formatDate(dateStr)}
