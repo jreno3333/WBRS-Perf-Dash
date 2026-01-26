@@ -5,7 +5,7 @@ import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fe
 import { db, posDb } from "./db";
 import { scraperRuns, posOrders, hourlySales, restaurants } from "@shared/schema";
 import { desc, sql, gte, lte, lt, and, eq } from "drizzle-orm";
-import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "./xenial-webhook";
+import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getAllHourlyPosSales } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
 import { getDailyDriveThruSummary } from "./scraper/hme-api";
 
@@ -443,7 +443,7 @@ export async function registerRoutes(
         }
       }
       
-      // Populate with actual sales data - use Central timezone for date grouping
+      // First, populate with 7shifts hourly_sales data as baseline
       for (const sale of filteredHourlySales) {
         // Normalize the sale date to Central timezone for consistent grouping
         const saleDate = new Date(sale.salesDate);
@@ -452,6 +452,24 @@ export async function registerRoutes(
         if (dateRange.includes(saleDateStr) && heatmapData[sale.restaurantId]) {
           heatmapData[sale.restaurantId][saleDateStr][sale.hour] = parseFloat(sale.actualSales as string) || 0;
         }
+      }
+      
+      // Overlay with POS data (more accurate real transactions) for each date
+      for (const dateStr of dateRange) {
+        const targetDate = new Date(`${dateStr}T12:00:00Z`);
+        const posSales = await getAllHourlyPosSales(targetDate);
+        
+        // POS data is Map<restaurantId, Map<hour, sales>>
+        posSales.forEach((hourlyData, restaurantId) => {
+          if (heatmapData[restaurantId]) {
+            hourlyData.forEach((sales, hour) => {
+              // Only overlay if POS has sales data (don't zero out 7shifts data)
+              if (sales > 0) {
+                heatmapData[restaurantId][dateStr][hour] = sales;
+              }
+            });
+          }
+        });
       }
       
       // Calculate max sales for color scaling
