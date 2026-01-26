@@ -251,8 +251,15 @@ export default function HeatmapPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.restaurants.map(restaurant => (
-                  activeDates.map((dateStr, dateIdx) => {
+                {data.restaurants.map(restaurant => {
+                  // Filter dates to only those that exist for this restaurant (after open date)
+                  const restaurantDates = activeDates.filter(dateStr => 
+                    data.heatmapData[restaurant.id]?.[dateStr] !== undefined
+                  );
+                  
+                  if (restaurantDates.length === 0) return null;
+                  
+                  return restaurantDates.map((dateStr, dateIdx) => {
                     const dayData = data.heatmapData[restaurant.id]?.[dateStr];
                     const zeroCount = dayData 
                       ? Object.values(dayData).filter(v => v === 0).length 
@@ -263,7 +270,7 @@ export default function HeatmapPage() {
                         {dateIdx === 0 && (
                           <td 
                             className="p-1 font-medium sticky left-0 bg-background z-10"
-                            rowSpan={activeDates.length}
+                            rowSpan={restaurantDates.length}
                           >
                             <div className="truncate max-w-[120px]" title={restaurant.name}>
                               {restaurant.name}
@@ -334,8 +341,8 @@ export default function HeatmapPage() {
                         })}
                       </tr>
                     );
-                  })
-                ))}
+                  });
+                })}
               </tbody>
             </table>
           </CardContent>
