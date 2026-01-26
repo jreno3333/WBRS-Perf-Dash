@@ -93,6 +93,9 @@ export default function Dashboard() {
   const centralToday = getCentralDate();
   const isToday = format(centralToday, "yyyy-MM-dd") === dateStr;
 
+  // Auto-refresh every 5 minutes when viewing today's data
+  const refetchInterval = isToday ? 5 * 60 * 1000 : false;
+
   const { data: leaderboardData, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard", dateStr],
     queryFn: async () => {
@@ -104,7 +107,7 @@ export default function Dashboard() {
       console.log(`[Dashboard] Loaded ${data.restaurants?.length || 0} restaurants, ${withDT} with driveThru data`);
       return data;
     },
-    refetchInterval: isToday ? 60 * 1000 : false, // Refresh every 1 minute for real-time updates
+    refetchInterval,
   });
 
   const { data: paceResponse } = useQuery<{ data: HourlySalesData[]; currentHour: number | null; isToday: boolean }>({
@@ -115,6 +118,7 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: !!selectedRestaurant,
+    refetchInterval,
   });
   const paceData = paceResponse?.data;
 
@@ -126,6 +130,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    refetchInterval,
   });
   const aggregatePaceData = aggregatePaceResponse?.data;
 
@@ -136,9 +141,10 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    refetchInterval,
   });
 
-  // Fetch holiday data
+  // Fetch holiday data (no need to refresh frequently)
   const { data: holidayData } = useQuery<{
     todayHoliday: { name: string; date: string; dayOfWeek: string } | null;
     lastWeekHoliday: { name: string; date: string; dayOfWeek: string } | null;
