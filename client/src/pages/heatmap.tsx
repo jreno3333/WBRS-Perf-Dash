@@ -104,6 +104,34 @@ export default function HeatmapPage() {
     return { totalZeroHours, totalHours };
   }, [data, activeDates]);
   
+  // Calculate max sales based on currently visible/selected dates for dynamic color scaling
+  const visibleMaxSales = useMemo(() => {
+    if (!data) return 0;
+    
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+    
+    let maxSales = 0;
+    
+    for (const restaurant of data.restaurants) {
+      for (const dateStr of activeDates) {
+        const dayData = data.heatmapData[restaurant.id]?.[dateStr];
+        if (dayData) {
+          // Only count hours that have passed (not future hours)
+          const maxHour = dateStr === todayStr ? currentHour : 23;
+          
+          for (let hour = 0; hour <= maxHour; hour++) {
+            const sales = dayData[hour] ?? 0;
+            if (sales > maxSales) maxSales = sales;
+          }
+        }
+      }
+    }
+    
+    return maxSales;
+  }, [data, activeDates]);
+  
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-4">
@@ -288,7 +316,7 @@ export default function HeatmapPage() {
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <div 
-                                    className={`w-6 h-6 rounded ${getHeatColor(sales, data.maxSales)} flex items-center justify-center cursor-pointer`}
+                                    className={`w-6 h-6 rounded ${getHeatColor(sales, visibleMaxSales)} flex items-center justify-center cursor-pointer`}
                                   >
                                     {sales === 0 && (
                                       <span className="text-[8px] text-muted-foreground">-</span>
