@@ -257,6 +257,32 @@ export default function HeatmapPage() {
                         </td>
                         {Array.from({ length: 24 }, (_, hour) => {
                           const sales = dayData?.[hour] ?? 0;
+                          
+                          // Check if this is a future hour (today and hour > current hour)
+                          const now = new Date();
+                          const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+                          const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+                          const isFutureHour = dateStr === todayStr && hour > currentHour;
+                          
+                          if (isFutureHour) {
+                            return (
+                              <td key={hour} className="p-0.5">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="w-6 h-6 rounded bg-muted/30 flex items-center justify-center cursor-help border border-dashed border-muted-foreground/20">
+                                      <span className="text-[7px] text-muted-foreground/50">N/A</span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="text-xs">
+                                    <div className="font-medium">{restaurant.name}</div>
+                                    <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
+                                    <div className="text-muted-foreground">Future hour - not yet available</div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </td>
+                            );
+                          }
+                          
                           return (
                             <td key={hour} className="p-0.5">
                               <Tooltip>

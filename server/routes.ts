@@ -430,12 +430,23 @@ export async function registerRoutes(
           )
         );
       
-      // Group hourly data by restaurant and date
+      // Build restaurant open date map for filtering
+      const restaurantOpenDates: Record<string, string | null> = {};
+      for (const r of restaurantList) {
+        restaurantOpenDates[r.id] = r.openDate ? new Date(r.openDate).toISOString().split('T')[0] : null;
+      }
+      
+      // Group hourly data by restaurant and date (only include dates on or after open date)
       const heatmapData: Record<string, Record<string, Record<number, number>>> = {};
       
       for (const restaurant of restaurantList) {
         heatmapData[restaurant.id] = {};
+        const openDateStr = restaurantOpenDates[restaurant.id];
+        
         for (const dateStr of dateRange) {
+          // Skip dates before the restaurant opened
+          if (openDateStr && dateStr < openDateStr) continue;
+          
           heatmapData[restaurant.id][dateStr] = {};
           for (let hour = 0; hour < 24; hour++) {
             heatmapData[restaurant.id][dateStr][hour] = 0;
