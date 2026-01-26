@@ -317,7 +317,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     <span className="font-medium">
                       {restaurant.googleReviews.rating.toFixed(1)}
                       {(restaurant.googleReviews.newReviewsToday || 0) > 0 && (
-                        <span className="ml-1 text-green-600 dark:text-green-400">+{restaurant.googleReviews.newReviewsToday}</span>
+                        <span className="ml-1 text-muted-foreground">+{restaurant.googleReviews.newReviewsToday}</span>
                       )}
                     </span>
                   </Badge>
