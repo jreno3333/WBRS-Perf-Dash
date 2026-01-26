@@ -42,17 +42,22 @@ function getExecutionGrade(
   salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
   speedSeconds: number | undefined,
   staffingDiff: number,
-  hasComparableSales: boolean = true // Whether last week had sales to compare against
+  hasComparableSales: boolean = true, // Whether last week had sales to compare against
+  isFirstWeek: boolean = false // Whether restaurant is in first week (no historical data expected)
 ): { grade: string; color: string; hasGrade: boolean } {
   // Track which components are available for grading
   const components: { name: string; score: number }[] = [];
   
-  // Sales component (only if we have comparable data - last week had sales)
-  // Allow 5% variance to still count as "meeting expectations" (score 100)
+  // Sales component
+  // For first-week units with no comparable data, give them credit (score 100)
+  // For established units without comparable data, skip the sales component
   if (hasComparableSales) {
     // Within -5% to +infinity = 100, Below -5% = 50
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
     components.push({ name: 'sales', score: salesScore });
+  } else if (isFirstWeek) {
+    // First week units get neutral sales score since no historical data exists
+    components.push({ name: 'sales', score: 100 });
   }
   
   // Speed component (only if we have drive-thru data)
@@ -168,6 +173,9 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
   const paceVariance = restaurant.lastWeekSales > 0 
     ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
     : 0;
+  
+  // Check if restaurant is in first week (no historical data expected)
+  const isFirstWeek = (restaurant.daysOpen !== undefined && restaurant.daysOpen < 7);
 
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
   // Generate all 24 hours, filling in zeros for missing hours
@@ -225,7 +233,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
       const operatorHrs = positions['_operatorScheduled'] || 0;
       const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
-      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
+      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek);
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
@@ -540,7 +548,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const operatorHrs = positions['_operatorScheduled'] || 0;
                 const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek);
                 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -580,7 +588,7 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                 const operatorHrs = positions['_operatorScheduled'] || 0;
                 const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
