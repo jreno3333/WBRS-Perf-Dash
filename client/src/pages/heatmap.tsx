@@ -104,6 +104,37 @@ export default function HeatmapPage() {
     return { totalZeroHours, totalHours };
   }, [data, activeDates]);
   
+  // Calculate open stores per hour (stores with sales > 0 for each hour across active dates)
+  const openStoresPerHour = useMemo(() => {
+    if (!data) return Array(24).fill(0);
+    
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+    
+    const counts = Array(24).fill(0);
+    
+    for (let hour = 0; hour < 24; hour++) {
+      let openCount = 0;
+      for (const restaurant of data.restaurants) {
+        for (const dateStr of activeDates) {
+          const dayData = data.heatmapData[restaurant.id]?.[dateStr];
+          if (dayData) {
+            // For today, skip future hours
+            if (dateStr === todayStr && hour > currentHour) continue;
+            // Count if store had sales > 0 for this hour
+            if (dayData[hour] && dayData[hour] > 0) {
+              openCount++;
+            }
+          }
+        }
+      }
+      counts[hour] = openCount;
+    }
+    
+    return counts;
+  }, [data, activeDates]);
+  
   // Calculate max sales based on currently visible/selected dates for dynamic color scaling
   const visibleMaxSales = useMemo(() => {
     if (!data) return 0;
@@ -247,6 +278,15 @@ export default function HeatmapPage() {
                     <th key={i} className="p-1 text-center min-w-[28px]">
                       {formatHour(i)}
                     </th>
+                  ))}
+                </tr>
+                <tr className="border-b border-border bg-muted/30">
+                  <td className="p-1 sticky left-0 bg-muted/30 z-10 text-muted-foreground text-[10px]">Open</td>
+                  <td className="p-1 text-muted-foreground text-[10px]">stores</td>
+                  {openStoresPerHour.map((count, hour) => (
+                    <td key={hour} className="p-1 text-center text-[10px] text-muted-foreground font-medium">
+                      {count > 0 ? count : '-'}
+                    </td>
                   ))}
                 </tr>
               </thead>
