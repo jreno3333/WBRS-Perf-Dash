@@ -31,11 +31,18 @@ function getHeatColor(sales: number, maxSales: number): string {
   
   const intensity = Math.min(sales / maxSales, 1);
   
-  if (intensity < 0.2) return "bg-green-100 dark:bg-green-900/30";
-  if (intensity < 0.4) return "bg-green-300 dark:bg-green-800/50";
-  if (intensity < 0.6) return "bg-yellow-300 dark:bg-yellow-700/60";
-  if (intensity < 0.8) return "bg-orange-400 dark:bg-orange-600/70";
-  return "bg-red-500 dark:bg-red-500/80";
+  // Reversed: low sales = red (bad), high sales = green (good)
+  // More gradient steps for better distinction
+  if (intensity < 0.1) return "bg-red-600 dark:bg-red-600/80";
+  if (intensity < 0.2) return "bg-red-500 dark:bg-red-500/70";
+  if (intensity < 0.3) return "bg-orange-500 dark:bg-orange-500/70";
+  if (intensity < 0.4) return "bg-orange-400 dark:bg-orange-400/60";
+  if (intensity < 0.5) return "bg-yellow-500 dark:bg-yellow-500/60";
+  if (intensity < 0.6) return "bg-yellow-400 dark:bg-yellow-400/50";
+  if (intensity < 0.7) return "bg-lime-400 dark:bg-lime-500/50";
+  if (intensity < 0.8) return "bg-green-400 dark:bg-green-500/60";
+  if (intensity < 0.9) return "bg-green-500 dark:bg-green-500/70";
+  return "bg-green-600 dark:bg-green-600/80";
 }
 
 export default function HeatmapPage() {
@@ -189,15 +196,15 @@ export default function HeatmapPage() {
                 <span className="text-muted-foreground">$0</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded bg-green-300 dark:bg-green-800/50" />
+                <div className="w-4 h-4 rounded bg-red-500 dark:bg-red-500/70" />
                 <span className="text-muted-foreground">Low</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded bg-yellow-300 dark:bg-yellow-700/60" />
+                <div className="w-4 h-4 rounded bg-yellow-400 dark:bg-yellow-400/50" />
                 <span className="text-muted-foreground">Med</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded bg-red-500 dark:bg-red-500/80" />
+                <div className="w-4 h-4 rounded bg-green-500 dark:bg-green-500/70" />
                 <span className="text-muted-foreground">High</span>
               </div>
             </div>
