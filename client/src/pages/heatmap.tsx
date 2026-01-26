@@ -67,7 +67,9 @@ export default function HeatmapPage() {
   };
   
   const clearDates = () => {
-    setSelectedDates([]);
+    if (data) {
+      setSelectedDates([...data.dateRange]);
+    }
   };
   
   const activeDates = useMemo(() => {
