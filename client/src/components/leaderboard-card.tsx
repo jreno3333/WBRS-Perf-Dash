@@ -337,10 +337,11 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                     : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
                 const timeStr = `${Math.floor(avgTime / 60)}:${(avgTime % 60).toString().padStart(2, '0')}`;
                 
+                const isRed = avgTime > 420;
                 return (
                   <div className="relative group">
                     <Badge 
-                      className={`${timeColor} border-0 flex-shrink-0 text-xs px-1.5 cursor-help gap-1`}
+                      className={`${timeColor} border-0 flex-shrink-0 text-xs px-1.5 cursor-help gap-1 ${isRed ? 'animate-pulse' : ''}`}
                       data-testid={`badge-sos-${restaurant.restaurantId}`}
                     >
                       <Car className="w-3 h-3" />
