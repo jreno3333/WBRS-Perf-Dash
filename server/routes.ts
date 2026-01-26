@@ -410,7 +410,16 @@ export async function registerRoutes(
         dateRange.push(date.toISOString().split('T')[0]);
       }
       
-      const restaurantList = await storage.getRestaurants();
+      const allRestaurants = await storage.getRestaurants();
+      // Exclude training units from heatmap (status calculated from openDate)
+      const nowForFilter = new Date();
+      nowForFilter.setHours(0, 0, 0, 0);
+      const restaurantList = allRestaurants.filter(r => {
+        if (!r.openDate) return true; // No open date = established
+        const openDate = new Date(r.openDate);
+        openDate.setHours(0, 0, 0, 0);
+        return openDate <= nowForFilter; // Exclude future open dates (training)
+      });
       
       // Filter hourly sales at DB level by date range
       const filteredHourlySales = await db.select().from(hourlySales)

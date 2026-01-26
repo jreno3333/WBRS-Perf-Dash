@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link } from "wouter";
 import { ArrowLeft, Calendar, Clock, AlertTriangle } from "lucide-react";
 
@@ -229,23 +230,36 @@ export default function HeatmapPage() {
                         <td className="p-1 text-muted-foreground whitespace-nowrap">
                           {formatDate(dateStr)}
                           {zeroCount > 12 && (
-                            <span title={`${zeroCount} hours with $0 sales`}>
-                              <AlertTriangle className="inline-block ml-1 w-3 h-3 text-yellow-600 dark:text-yellow-400" />
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle className="inline-block ml-1 w-3 h-3 text-yellow-600 dark:text-yellow-400 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="text-xs">
+                                {zeroCount} hours with $0 sales
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                         </td>
                         {Array.from({ length: 24 }, (_, hour) => {
                           const sales = dayData?.[hour] ?? 0;
                           return (
                             <td key={hour} className="p-0.5">
-                              <div 
-                                className={`w-6 h-6 rounded ${getHeatColor(sales, data.maxSales)} flex items-center justify-center cursor-help`}
-                                title={`${restaurant.name} - ${formatDate(dateStr)} ${formatHour(hour)}: $${sales.toLocaleString()}`}
-                              >
-                                {sales === 0 && (
-                                  <span className="text-[8px] text-muted-foreground">-</span>
-                                )}
-                              </div>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div 
+                                    className={`w-6 h-6 rounded ${getHeatColor(sales, data.maxSales)} flex items-center justify-center cursor-pointer`}
+                                  >
+                                    {sales === 0 && (
+                                      <span className="text-[8px] text-muted-foreground">-</span>
+                                    )}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  <div className="font-medium">{restaurant.name}</div>
+                                  <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
+                                  <div className="font-bold text-green-600 dark:text-green-400">${sales.toLocaleString()}</div>
+                                </TooltipContent>
+                              </Tooltip>
                             </td>
                           );
                         })}
