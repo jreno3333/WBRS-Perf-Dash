@@ -128,7 +128,7 @@ export default function HeatmapPage() {
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="gap-1">
               <AlertTriangle className="w-3 h-3" />
-              {stats.totalZeroHours} zero-sales hours
+              {stats.totalZeroHours} zero-sales hours ({stats.totalHours > 0 ? Math.round((stats.totalZeroHours / stats.totalHours) * 100) : 0}%)
             </Badge>
           </div>
         </div>
