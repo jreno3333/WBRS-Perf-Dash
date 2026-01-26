@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db, posDb } from "./db";
 import { scraperRuns, posOrders, hourlySales, restaurants } from "@shared/schema";
-import { desc, sql, gte, lt, and, eq } from "drizzle-orm";
+import { desc, sql, gte, lte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
 import { getDailyDriveThruSummary } from "./scraper/hme-api";
@@ -386,6 +386,85 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching hourly data by restaurant:", error);
       res.status(500).json({ error: "Failed to fetch hourly data" });
+    }
+  });
+
+  // Get hourly sales heatmap data for the past N days
+  app.get("/api/hourly-heatmap", async (req, res) => {
+    try {
+      const { days = "7" } = req.query;
+      const numDays = parseInt(days as string) || 7;
+      
+      // Get today's date in Central timezone (consistent with rest of app)
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const today = new Date(`${todayStr}T12:00:00Z`);
+      
+      // Build date range (past N days including today) - all normalized to noon UTC
+      const dateRange: string[] = [];
+      const startDate = new Date(today);
+      startDate.setDate(startDate.getDate() - (numDays - 1));
+      
+      for (let i = 0; i < numDays; i++) {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + i);
+        dateRange.push(date.toISOString().split('T')[0]);
+      }
+      
+      const restaurantList = await storage.getRestaurants();
+      
+      // Filter hourly sales at DB level by date range
+      const filteredHourlySales = await db.select().from(hourlySales)
+        .where(
+          and(
+            gte(hourlySales.salesDate, new Date(`${dateRange[0]}T00:00:00Z`)),
+            lte(hourlySales.salesDate, new Date(`${dateRange[dateRange.length - 1]}T23:59:59Z`))
+          )
+        );
+      
+      // Group hourly data by restaurant and date
+      const heatmapData: Record<string, Record<string, Record<number, number>>> = {};
+      
+      for (const restaurant of restaurantList) {
+        heatmapData[restaurant.id] = {};
+        for (const dateStr of dateRange) {
+          heatmapData[restaurant.id][dateStr] = {};
+          for (let hour = 0; hour < 24; hour++) {
+            heatmapData[restaurant.id][dateStr][hour] = 0;
+          }
+        }
+      }
+      
+      // Populate with actual sales data - use Central timezone for date grouping
+      for (const sale of filteredHourlySales) {
+        // Normalize the sale date to Central timezone for consistent grouping
+        const saleDate = new Date(sale.salesDate);
+        const saleDateStr = saleDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+        
+        if (dateRange.includes(saleDateStr) && heatmapData[sale.restaurantId]) {
+          heatmapData[sale.restaurantId][saleDateStr][sale.hour] = parseFloat(sale.actualSales as string) || 0;
+        }
+      }
+      
+      // Calculate max sales for color scaling
+      let maxSales = 0;
+      for (const restaurantId of Object.keys(heatmapData)) {
+        for (const dateStr of dateRange) {
+          for (let hour = 0; hour < 24; hour++) {
+            const sales = heatmapData[restaurantId][dateStr][hour];
+            if (sales > maxSales) maxSales = sales;
+          }
+        }
+      }
+      
+      res.json({
+        restaurants: restaurantList.map(r => ({ id: r.id, name: r.name })),
+        dateRange,
+        heatmapData,
+        maxSales
+      });
+    } catch (error) {
+      console.error("Error fetching hourly heatmap data:", error);
+      res.status(500).json({ error: "Failed to fetch hourly heatmap data" });
     }
   });
 

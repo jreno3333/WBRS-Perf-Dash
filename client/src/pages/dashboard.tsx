@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays } from "lucide-react";
+import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays, Grid3X3 } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
@@ -348,6 +348,11 @@ export default function Dashboard() {
               <Link href="/map">
                 <Button variant="ghost" size="icon" data-testid="link-map">
                   <MapPin className="h-5 w-5" />
+                </Button>
+              </Link>
+              <Link href="/heatmap">
+                <Button variant="ghost" size="icon" data-testid="link-heatmap">
+                  <Grid3X3 className="h-5 w-5" />
                 </Button>
               </Link>
               <Link href="/settings">
