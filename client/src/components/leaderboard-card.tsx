@@ -642,7 +642,11 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                     key={hour.hour}
                     className="flex-1 flex items-end relative h-full cursor-pointer"
                     onMouseEnter={() => setHoveredHourIndex(hourIndex)}
-                    onClick={() => setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex)}
+                    onMouseLeave={() => setHoveredHourIndex(null)}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex);
+                    }}
                   >
                     <div
                       className={`w-full rounded-t-sm transition-all ${
@@ -808,7 +812,11 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                       key={`staff-${hour.hour}`}
                       className="flex-1 flex items-end relative h-full cursor-pointer"
                       onMouseEnter={() => setHoveredHourIndex(hourIndex)}
-                      onClick={() => setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex)}
+                      onMouseLeave={() => setHoveredHourIndex(null)}
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex);
+                      }}
                     >
                       {hasNoData ? (
                         <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
