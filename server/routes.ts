@@ -83,6 +83,30 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Comprehensive diagnostics endpoint for production debugging
+  app.get("/api/diagnostics", async (req, res) => {
+    const now = new Date();
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.REPLIT_DEPLOYMENT === '1';
+    
+    res.json({
+      timestamp: now.toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      isDeployment: process.env.REPLIT_DEPLOYMENT === '1',
+      secrets: {
+        sevenShiftsApiToken: !!process.env.SEVENSHIFTS_API_TOKEN,
+        hmeServiceAccount: !!process.env.HME_SERVICE_ACCOUNT,
+        hmeAuthKey: !!process.env.HME_AUTH_KEY,
+        hmeAccountEmail: !!process.env.HME_ACCOUNT_EMAIL,
+        googlePlacesApiKey: !!process.env.GOOGLE_PLACES_API_KEY,
+        databaseUrl: !!process.env.DATABASE_URL,
+        sharedDatabaseUrl: !!process.env.SHARED_DATABASE_URL,
+      },
+      message: isProduction 
+        ? 'Production environment - scheduler runs while app is awake'
+        : 'Development environment - scheduler runs continuously',
+    });
+  });
+
   // Debug endpoint to check database connection
   app.get("/api/db-status", async (req, res) => {
     const xposSharedDbUrl = process.env.XPOSSHARED_DATABASE_URL?.trim() || '';
