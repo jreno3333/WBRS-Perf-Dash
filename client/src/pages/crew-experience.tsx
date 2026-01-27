@@ -306,13 +306,12 @@ export default function CrewExperiencePage() {
                                 <td className="py-2 px-2">
                                   <div className="flex flex-wrap gap-1">
                                     {hour.team.map((member, idx) => (
-                                      <Badge
+                                      <span
                                         key={idx}
-                                        variant="secondary"
-                                        className={`${getCategoryColor(member.category)} text-white text-xs`}
+                                        className={`${getCategoryColor(member.category)} text-white text-xs px-2 py-0.5 rounded-md font-medium`}
                                       >
                                         {member.name}
-                                      </Badge>
+                                      </span>
                                     ))}
                                   </div>
                                 </td>
