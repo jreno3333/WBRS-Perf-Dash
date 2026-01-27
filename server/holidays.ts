@@ -68,23 +68,12 @@ export function getHolidayContext(targetDate: Date = new Date(), timezone: strin
   
   const todayHoliday = getHolidayForDate(today);
   
-  // Only show lastWeekHoliday if the holiday falls on the SAME comparison date
+  // Only show lastWeekHoliday if the holiday falls on the EXACT comparison date
   // (i.e., the exact date 7 days ago, same day of week)
+  // This ensures day-of-week aligned comparison context
   let lastWeekHoliday = getHolidayForDate(lastWeek);
   if (lastWeekHoliday) {
     lastWeekHoliday.isLastWeekComparisonDay = true;
-  }
-  
-  // Also check for holidays NEAR the comparison date (within 1-2 days) that might affect traffic
-  // but don't set as the primary lastWeekHoliday unless it's on the exact comparison day
-  if (!lastWeekHoliday) {
-    const nearbyHoliday = getHolidayNearDate(lastWeek, 2);
-    if (nearbyHoliday) {
-      // Append context that this is nearby, not the exact comparison day
-      nearbyHoliday.isLastWeekComparisonDay = false;
-      nearbyHoliday.name = `${nearbyHoliday.name} (nearby)`;
-      lastWeekHoliday = nearbyHoliday;
-    }
   }
   
   const upcomingHolidays: HolidayInfo[] = [];
