@@ -105,6 +105,30 @@ interface ShiftsResponse {
   };
 }
 
+// User/Employee data from 7shifts
+interface SevenShiftsUser {
+  id: number;
+  company_id: number;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  active: boolean;
+  hire_date: string | null; // YYYY-MM-DD format or null
+  type: string; // employee, manager, asst_manager, employer
+}
+
+interface UsersResponse {
+  data: { id?: number; user?: SevenShiftsUser }[] | SevenShiftsUser[];
+  meta: {
+    cursor?: {
+      current: string | null;
+      prev: string | null;
+      next: string | null;
+      count: number;
+    };
+  };
+}
+
 interface ApiConfig {
   accessToken: string;
   companyId?: number;
@@ -287,6 +311,90 @@ export class SevenShiftsAPI {
       console.error(`Error fetching scheduled shifts for location ${locationId}:`, error);
       return allShifts;
     }
+  }
+
+  // Fetch all users/employees for a location with hire_date for crew experience tracking
+  async getUsers(locationId?: number): Promise<SevenShiftsUser[]> {
+    if (!this.companyId) {
+      await this.getCompany();
+    }
+
+    const allUsers: SevenShiftsUser[] = [];
+    let cursor: string | null = null;
+    
+    try {
+      // Paginate through all users
+      do {
+        let url = `/v2/company/${this.companyId}/users?limit=100`;
+        if (locationId) {
+          url += `&location_id=${locationId}`;
+        }
+        if (cursor) {
+          url += `&cursor=${cursor}`;
+        }
+        
+        const response = await this.request<UsersResponse>(url);
+        
+        // 7shifts API may return users in different formats
+        const users = response.data || [];
+        for (const item of users) {
+          // Handle both { user: {...} } and direct user object formats
+          const user = (item as any).user || item;
+          if (user && user.id) {
+            allUsers.push({
+              id: user.id,
+              company_id: user.company_id,
+              first_name: user.first_name,
+              last_name: user.last_name,
+              email: user.email,
+              active: user.active,
+              hire_date: user.hire_date,
+              type: user.type,
+            });
+          }
+        }
+        
+        cursor = response.meta?.cursor?.next || null;
+      } while (cursor);
+      
+      console.log(`[7shifts] Fetched ${allUsers.length} users${locationId ? ` for location ${locationId}` : ''}`);
+      return allUsers;
+    } catch (error) {
+      console.error(`Error fetching users:`, error);
+      return allUsers;
+    }
+  }
+
+  // Get users who were working during a specific hour based on time punches
+  getUsersWorkingHour(timePunches: TimePunch[], targetHour: number, targetDate: string, timezone: string): number[] {
+    const userIds: number[] = [];
+    
+    for (const punch of timePunches) {
+      if (!punch.clocked_in) continue;
+      
+      const clockedIn = new Date(punch.clocked_in);
+      const clockedOut = punch.clocked_out ? new Date(punch.clocked_out) : new Date(); // Treat still clocked in as now
+      
+      // Convert to target timezone
+      const clockInHour = parseInt(clockedIn.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
+      const clockOutHour = parseInt(clockedOut.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
+      const clockInDate = clockedIn.toLocaleDateString('en-CA', { timeZone: timezone });
+      const clockOutDate = clockedOut.toLocaleDateString('en-CA', { timeZone: timezone });
+      
+      // Check if this punch overlaps with the target hour on the target date
+      const punchStartsBeforeOrDuringHour = (clockInDate < targetDate) || 
+        (clockInDate === targetDate && clockInHour <= targetHour);
+      const punchEndsAfterOrDuringHour = (clockOutDate > targetDate) || 
+        (clockOutDate === targetDate && clockOutHour >= targetHour);
+      
+      if (punchStartsBeforeOrDuringHour && punchEndsAfterOrDuringHour) {
+        if (!userIds.includes(punch.user_id)) {
+          userIds.push(punch.user_id);
+        }
+      }
+    }
+    
+    return userIds;
   }
 
   // Check if an operator is scheduled for a specific hour
@@ -1127,5 +1235,249 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Hybrid sync failed:', errorMessage);
     return { success: false, recordsScraped: 0, error: errorMessage };
+  }
+}
+
+// Import employees table for crew sync
+import { employees, hourlyCrew } from '@shared/schema';
+
+// Calculate tenure category based on hire date
+export function getTenureCategory(hireDate: string | null, asOfDate: Date = new Date()): { category: 'trainee' | 'developing' | 'experienced' | 'veteran'; months: number } {
+  if (!hireDate) {
+    // Default to trainee if no hire date (less than 90 days assumed)
+    return { category: 'trainee', months: 0 };
+  }
+  
+  const hire = new Date(hireDate);
+  const diffMs = asOfDate.getTime() - hire.getTime();
+  const months = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)); // Average days per month
+  
+  if (months < 3) {
+    return { category: 'trainee', months }; // < 90 days
+  } else if (months < 12) {
+    return { category: 'developing', months }; // 90 days - 1 year
+  } else if (months < 24) {
+    return { category: 'experienced', months }; // 1-2 years
+  } else {
+    return { category: 'veteran', months }; // 2+ years
+  }
+}
+
+// Calculate experience score (0-100) based on crew tenure mix
+export function calculateExperienceScore(tenureMix: { trainee: number; developing: number; experienced: number; veteran: number }): number {
+  const total = tenureMix.trainee + tenureMix.developing + tenureMix.experienced + tenureMix.veteran;
+  if (total === 0) return 0;
+  
+  // Weights: Trainee=25, Developing=50, Experienced=75, Veteran=100
+  const weightedSum = 
+    tenureMix.trainee * 25 + 
+    tenureMix.developing * 50 + 
+    tenureMix.experienced * 75 + 
+    tenureMix.veteran * 100;
+  
+  return Math.round(weightedSum / total);
+}
+
+// Format tenure as string like "1yr 3mo"
+export function formatTenure(months: number): string {
+  if (months < 1) return '<1mo';
+  const years = Math.floor(months / 12);
+  const remainingMonths = Math.round(months % 12);
+  
+  if (years === 0) return `${remainingMonths}mo`;
+  if (remainingMonths === 0) return `${years}yr`;
+  return `${years}yr ${remainingMonths}mo`;
+}
+
+// Format tenure mix as string like "2D 1V"
+export function formatTenureMix(mix: { trainee: number; developing: number; experienced: number; veteran: number }): string {
+  const parts: string[] = [];
+  if (mix.trainee > 0) parts.push(`${mix.trainee}T`);
+  if (mix.developing > 0) parts.push(`${mix.developing}D`);
+  if (mix.experienced > 0) parts.push(`${mix.experienced}E`);
+  if (mix.veteran > 0) parts.push(`${mix.veteran}V`);
+  return parts.join(' ') || '-';
+}
+
+// Sync employees from 7shifts API
+export async function syncEmployees(): Promise<{ success: boolean; count: number; error?: string }> {
+  const token = process.env.SEVENSHIFTS_API_TOKEN;
+  if (!token) {
+    return { success: false, count: 0, error: 'SEVENSHIFTS_API_TOKEN not configured' };
+  }
+  
+  try {
+    const api = new SevenShiftsAPI({ accessToken: token });
+    await api.getCompany();
+    
+    // Get all locations to map to our restaurants
+    const locations = await api.getLocations();
+    const allRestaurants = await db.select().from(restaurants);
+    
+    // Create location ID to restaurant ID mapping
+    const locationToRestaurant = new Map<number, string>();
+    for (const loc of locations) {
+      // Match by name (7shifts location name contains restaurant name)
+      const matchingRestaurant = allRestaurants.find(r => 
+        loc.name.includes(r.name) || r.name.includes(loc.name)
+      );
+      if (matchingRestaurant) {
+        locationToRestaurant.set(loc.id, matchingRestaurant.id);
+      }
+    }
+    
+    // Fetch all users from 7shifts
+    const users = await api.getUsers();
+    console.log(`[EmployeeSync] Processing ${users.length} users from 7shifts`);
+    
+    let syncedCount = 0;
+    
+    for (const user of users) {
+      try {
+        // Upsert employee record
+        await db.insert(employees).values({
+          sevenShiftsUserId: user.id,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          hireDate: user.hire_date || null,
+          active: user.active,
+          type: user.type,
+          // Note: We'd need to fetch user assignments to get their primary location
+        }).onConflictDoUpdate({
+          target: employees.sevenShiftsUserId,
+          set: {
+            firstName: user.first_name,
+            lastName: user.last_name,
+            hireDate: user.hire_date || null,
+            active: user.active,
+            type: user.type,
+            syncedAt: new Date(),
+          },
+        });
+        
+        syncedCount++;
+      } catch (err) {
+        console.error(`[EmployeeSync] Error syncing user ${user.id}:`, err);
+      }
+    }
+    
+    console.log(`[EmployeeSync] Synced ${syncedCount} employees`);
+    return { success: true, count: syncedCount };
+    
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[EmployeeSync] Failed:', msg);
+    return { success: false, count: 0, error: msg };
+  }
+}
+
+// Sync hourly crew data from time punches
+export async function syncHourlyCrew(date?: Date): Promise<{ success: boolean; count: number; error?: string }> {
+  const token = process.env.SEVENSHIFTS_API_TOKEN;
+  if (!token) {
+    return { success: false, count: 0, error: 'SEVENSHIFTS_API_TOKEN not configured' };
+  }
+  
+  const targetDate = date || new Date();
+  const dateStr = targetDate.toISOString().split('T')[0];
+  
+  try {
+    const api = new SevenShiftsAPI({ accessToken: token });
+    await api.getCompany();
+    
+    const locations = await api.getLocations();
+    const allRestaurants = await db.select().from(restaurants);
+    
+    // Load all employees for lookup
+    const allEmployees = await db.select().from(employees);
+    const employeeMap = new Map(allEmployees.map(e => [e.sevenShiftsUserId, e]));
+    
+    let syncedCount = 0;
+    
+    for (const location of locations) {
+      const restaurant = allRestaurants.find(r => 
+        location.name.includes(r.name) || r.name.includes(location.name)
+      );
+      
+      if (!restaurant) continue;
+      
+      const timezone = restaurant.timezone || 'America/Chicago';
+      
+      // Fetch time punches for the day
+      const timePunches = await api.getTimePunches(location.id, dateStr);
+      
+      if (timePunches.length === 0) {
+        console.log(`[CrewSync] No time punches for ${location.name} on ${dateStr}`);
+        continue;
+      }
+      
+      // Process each hour
+      for (let hour = 0; hour < 24; hour++) {
+        const userIds = api.getUsersWorkingHour(timePunches, hour, dateStr, timezone);
+        
+        if (userIds.length === 0) continue;
+        
+        // Build crew data for this hour
+        const crewMembers: { userId: number; firstName: string; lastName: string; tenureMonths: number; category: string }[] = [];
+        const tenureMix = { trainee: 0, developing: 0, experienced: 0, veteran: 0 };
+        let totalMonths = 0;
+        
+        for (const userId of userIds) {
+          const emp = employeeMap.get(userId);
+          if (!emp) continue;
+          
+          const tenure = getTenureCategory(emp.hireDate, targetDate);
+          crewMembers.push({
+            userId,
+            firstName: emp.firstName,
+            lastName: emp.lastName,
+            tenureMonths: tenure.months,
+            category: tenure.category,
+          });
+          
+          tenureMix[tenure.category]++;
+          totalMonths += tenure.months;
+        }
+        
+        if (crewMembers.length === 0) continue;
+        
+        const avgTenureMonths = totalMonths / crewMembers.length;
+        const score = calculateExperienceScore(tenureMix);
+        
+        // Upsert hourly crew record
+        await db.insert(hourlyCrew).values({
+          restaurantId: restaurant.id,
+          date: dateStr,
+          hour,
+          crewCount: crewMembers.length,
+          avgTenureMonths: avgTenureMonths.toFixed(1),
+          experienceScore: score,
+          tenureMix,
+          crewMembers,
+        }).onConflictDoUpdate({
+          target: [hourlyCrew.restaurantId, hourlyCrew.date, hourlyCrew.hour],
+          set: {
+            crewCount: crewMembers.length,
+            avgTenureMonths: avgTenureMonths.toFixed(1),
+            experienceScore: score,
+            tenureMix,
+            crewMembers,
+            syncedAt: new Date(),
+          },
+        });
+        
+        syncedCount++;
+      }
+      
+      console.log(`[CrewSync] Synced crew data for ${location.name} on ${dateStr}`);
+    }
+    
+    console.log(`[CrewSync] Completed. ${syncedCount} hourly records synced.`);
+    return { success: true, count: syncedCount };
+    
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[CrewSync] Failed:', msg);
+    return { success: false, count: 0, error: msg };
   }
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, Users } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -121,12 +121,28 @@ function scoreToGrade(score: number): { grade: string; color: string } {
   return { grade: 'F', color: 'text-red-600 dark:text-red-400' };
 }
 
+interface CrewSummary {
+  avgScore: number;
+  avgCrewCount: number;
+  avgTenureMonths: number;
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
+  crewSummary?: CrewSummary;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps) {
+function formatTenure(months: number): string {
+  if (months < 1) return '<1mo';
+  const years = Math.floor(months / 12);
+  const remainingMonths = Math.round(months % 12);
+  if (years === 0) return `${remainingMonths}mo`;
+  if (remainingMonths === 0) return `${years}yr`;
+  return `${years}yr ${remainingMonths}mo`;
+}
+
+export function LeaderboardCard({ restaurant, hourlyData, crewSummary }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -375,6 +391,28 @@ export function LeaderboardCard({ restaurant, hourlyData }: LeaderboardCardProps
                   </div>
                 );
               })()}
+              {/* Crew Experience Badge */}
+              {crewSummary && crewSummary.avgScore > 0 && (
+                <div className="relative group">
+                  <Badge 
+                    className={`flex-shrink-0 text-xs px-1.5 cursor-help gap-1 ${
+                      crewSummary.avgScore >= 75
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : crewSummary.avgScore >= 50
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    } border-0`}
+                    data-testid={`badge-crew-${restaurant.restaurantId}`}
+                  >
+                    <Users className="w-3 h-3" />
+                    <span className="font-medium">{crewSummary.avgScore}</span>
+                  </Badge>
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Crew Experience</div>
+                    <div className="text-muted-foreground">Avg tenure: {formatTenure(crewSummary.avgTenureMonths)}</div>
+                  </div>
+                </div>
+              )}
               {/* Revenue Port Badges - Hidden on small screens, exclude drive_thru as it's shown separately */}
               {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
                 <div className="hidden sm:flex items-center gap-1">

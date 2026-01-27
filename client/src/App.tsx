@@ -8,6 +8,7 @@ import SettingsPage from "@/pages/settings";
 import MapPage from "@/pages/map";
 import HMETest from "@/pages/hme-test";
 import HeatmapPage from "@/pages/heatmap";
+import CrewExperiencePage from "@/pages/crew-experience";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/map" component={MapPage} />
       <Route path="/hme-test" component={HMETest} />
       <Route path="/heatmap" component={HeatmapPage} />
+      <Route path="/crew" component={CrewExperiencePage} />
       <Route component={NotFound} />
     </Switch>
   );

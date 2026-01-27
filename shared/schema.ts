@@ -316,6 +316,70 @@ export const insertDailyWeatherSchema = createInsertSchema(dailyWeather).omit({
 export type InsertDailyWeather = z.infer<typeof insertDailyWeatherSchema>;
 export type DailyWeather = typeof dailyWeather.$inferSelect;
 
+// Employees table - synced from 7shifts for crew experience tracking
+export const employees = pgTable("employees", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sevenShiftsUserId: integer("seven_shifts_user_id").notNull().unique(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  hireDate: date("hire_date"), // Can be null if not set in 7shifts
+  active: boolean("active").notNull().default(true),
+  type: text("type"), // employee, manager, asst_manager, employer
+  locationId: integer("location_id"), // Primary 7shifts location ID
+  restaurantId: varchar("restaurant_id"), // Mapped to our restaurant
+  syncedAt: timestamp("synced_at").defaultNow(),
+});
+
+export const insertEmployeeSchema = createInsertSchema(employees).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+export type Employee = typeof employees.$inferSelect;
+
+// Hourly crew data - tracks which employees worked each hour with tenure info
+export const hourlyCrew = pgTable("hourly_crew", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  hour: integer("hour").notNull(), // 0-23
+  crewCount: integer("crew_count").notNull().default(0),
+  avgTenureMonths: decimal("avg_tenure_months", { precision: 6, scale: 1 }), // Average months of experience
+  experienceScore: integer("experience_score"), // 0-100 score based on crew tenure mix
+  tenureMix: jsonb("tenure_mix").$type<{ trainee: number; developing: number; experienced: number; veteran: number }>(),
+  crewMembers: jsonb("crew_members").$type<{ userId: number; firstName: string; lastName: string; tenureMonths: number; category: string }[]>(),
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDateHour: uniqueIndex("hourly_crew_restaurant_date_hour_idx")
+    .on(table.restaurantId, table.date, table.hour),
+}));
+
+export const insertHourlyCrewSchema = createInsertSchema(hourlyCrew).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertHourlyCrew = z.infer<typeof insertHourlyCrewSchema>;
+export type HourlyCrew = typeof hourlyCrew.$inferSelect;
+
+// Crew experience API response type
+export interface CrewExperienceData {
+  restaurantId: string;
+  restaurantName: string;
+  employeeCount: number;
+  avgTenure: string; // formatted like "1yr 3mo"
+  hourly: {
+    hour: number;
+    label: string;
+    crewCount: number;
+    avgTenure: string;
+    score: number;
+    mix: string; // "2D 1V" format
+    team: { name: string; tenureMonths: number; category: 'trainee' | 'developing' | 'experienced' | 'veteran' }[];
+  }[];
+}
+
 // Users table (keeping for compatibility)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

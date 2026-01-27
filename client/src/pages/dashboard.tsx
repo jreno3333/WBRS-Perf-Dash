@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays, Grid3X3 } from "lucide-react";
+import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays, Grid3X3, Users } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
@@ -143,6 +143,18 @@ export default function Dashboard() {
     },
     refetchInterval,
   });
+
+  // Fetch crew summary data for all restaurants
+  const { data: crewSummaryResponse } = useQuery<{ date: string; summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> }>({
+    queryKey: ["/api/crew/summary", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/crew/summary?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval,
+  });
+  const crewSummary = crewSummaryResponse?.summary;
 
   // Fetch holiday data (no need to refresh frequently)
   const { data: holidayData } = useQuery<{
@@ -371,6 +383,11 @@ export default function Dashboard() {
                   <Grid3X3 className="h-5 w-5" />
                 </Button>
               </Link>
+              <Link href="/crew">
+                <Button variant="ghost" size="icon" data-testid="link-crew">
+                  <Users className="h-5 w-5" />
+                </Button>
+              </Link>
               <Link href="/settings">
                 <Button variant="ghost" size="icon" data-testid="link-settings">
                   <Settings className="h-5 w-5" />
@@ -475,6 +492,7 @@ export default function Dashboard() {
                       key={restaurant.restaurantId} 
                       restaurant={{...restaurant, rank: index + 1}}
                       hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
+                      crewSummary={crewSummary?.[restaurant.restaurantId]}
                     />
                   ))}
                 </div>

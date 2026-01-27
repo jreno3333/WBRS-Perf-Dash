@@ -1327,5 +1327,149 @@ export async function registerRoutes(
     }
   });
 
+  // ========== CREW EXPERIENCE ENDPOINTS ==========
+  
+  // Sync employees from 7shifts
+  app.post("/api/crew/sync-employees", async (req, res) => {
+    try {
+      const { syncEmployees } = await import("./scraper/7shifts-api");
+      const result = await syncEmployees();
+      res.json(result);
+    } catch (error) {
+      console.error("Error syncing employees:", error);
+      res.status(500).json({ error: "Failed to sync employees" });
+    }
+  });
+  
+  // Sync hourly crew data for a specific date
+  app.post("/api/crew/sync", async (req, res) => {
+    try {
+      const { date } = req.body;
+      const { syncHourlyCrew } = await import("./scraper/7shifts-api");
+      const targetDate = date ? new Date(date) : undefined;
+      const result = await syncHourlyCrew(targetDate);
+      res.json(result);
+    } catch (error) {
+      console.error("Error syncing crew data:", error);
+      res.status(500).json({ error: "Failed to sync crew data" });
+    }
+  });
+  
+  // Get crew experience data for all restaurants on a specific date
+  app.get("/api/crew/experience", async (req, res) => {
+    try {
+      const { date } = req.query;
+      const dateStr = date ? String(date) : new Date().toISOString().split('T')[0];
+      
+      const { hourlyCrew, employees } = await import("@shared/schema");
+      const { formatTenure, formatTenureMix } = await import("./scraper/7shifts-api");
+      
+      // Get all restaurants
+      const allRestaurants = await db.select().from(restaurants);
+      
+      // Get hourly crew data for the date
+      const crewData = await db
+        .select()
+        .from(hourlyCrew)
+        .where(eq(hourlyCrew.date, dateStr));
+      
+      // Get all employees for employee count per restaurant
+      const allEmployees = await db.select().from(employees).where(eq(employees.active, true));
+      
+      // Group by restaurant
+      const restaurantCrewMap = new Map<string, typeof crewData>();
+      for (const row of crewData) {
+        const existing = restaurantCrewMap.get(row.restaurantId) || [];
+        existing.push(row);
+        restaurantCrewMap.set(row.restaurantId, existing);
+      }
+      
+      // Build response for each restaurant
+      const result = allRestaurants.map(r => {
+        const hourlyData = restaurantCrewMap.get(r.id) || [];
+        
+        // Calculate restaurant-level metrics
+        let totalMonths = 0;
+        let totalCrew = 0;
+        
+        const hourlyFormatted = hourlyData.map(h => {
+          const members = (h.crewMembers as any[]) || [];
+          totalCrew += members.length;
+          members.forEach(m => totalMonths += m.tenureMonths || 0);
+          
+          return {
+            hour: h.hour,
+            label: `${h.hour === 0 ? 12 : h.hour > 12 ? h.hour - 12 : h.hour}${h.hour < 12 ? 'am' : 'pm'}`,
+            crewCount: h.crewCount,
+            avgTenure: formatTenure(Number(h.avgTenureMonths) || 0),
+            score: h.experienceScore || 0,
+            mix: formatTenureMix(h.tenureMix as any || { trainee: 0, developing: 0, experienced: 0, veteran: 0 }),
+            team: members.map(m => ({
+              name: `${m.firstName} ${m.lastName?.charAt(0) || ''}.`,
+              tenureMonths: m.tenureMonths,
+              category: m.category as 'trainee' | 'developing' | 'experienced' | 'veteran',
+            })),
+          };
+        }).sort((a, b) => a.hour - b.hour);
+        
+        const avgTenureMonths = totalCrew > 0 ? totalMonths / totalCrew : 0;
+        
+        return {
+          restaurantId: r.id,
+          restaurantName: r.name,
+          employeeCount: allEmployees.filter(e => e.restaurantId === r.id).length,
+          avgTenure: formatTenure(avgTenureMonths),
+          avgScore: hourlyFormatted.length > 0 
+            ? Math.round(hourlyFormatted.reduce((sum, h) => sum + h.score, 0) / hourlyFormatted.length)
+            : 0,
+          hourly: hourlyFormatted,
+        };
+      });
+      
+      res.json({ date: dateStr, restaurants: result });
+    } catch (error) {
+      console.error("Error fetching crew experience:", error);
+      res.status(500).json({ error: "Failed to fetch crew experience data" });
+    }
+  });
+  
+  // Get crew experience summary for leaderboard (daily average scores)
+  app.get("/api/crew/summary", async (req, res) => {
+    try {
+      const { date } = req.query;
+      const dateStr = date ? String(date) : new Date().toISOString().split('T')[0];
+      
+      const { hourlyCrew } = await import("@shared/schema");
+      
+      // Get hourly crew data for the date with aggregates
+      const crewData = await db
+        .select({
+          restaurantId: hourlyCrew.restaurantId,
+          avgScore: sql<number>`avg(${hourlyCrew.experienceScore})`,
+          avgCrewCount: sql<number>`avg(${hourlyCrew.crewCount})`,
+          avgTenureMonths: sql<number>`avg(${hourlyCrew.avgTenureMonths}::numeric)`,
+          hourCount: sql<number>`count(*)`,
+        })
+        .from(hourlyCrew)
+        .where(eq(hourlyCrew.date, dateStr))
+        .groupBy(hourlyCrew.restaurantId);
+      
+      // Build summary map
+      const summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> = {};
+      for (const row of crewData) {
+        summary[row.restaurantId] = {
+          avgScore: Math.round(Number(row.avgScore) || 0),
+          avgCrewCount: Math.round((Number(row.avgCrewCount) || 0) * 10) / 10,
+          avgTenureMonths: Math.round((Number(row.avgTenureMonths) || 0) * 10) / 10,
+        };
+      }
+      
+      res.json({ date: dateStr, summary });
+    } catch (error) {
+      console.error("Error fetching crew summary:", error);
+      res.status(500).json({ error: "Failed to fetch crew summary" });
+    }
+  });
+
   return httpServer;
 }
