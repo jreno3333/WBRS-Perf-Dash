@@ -149,7 +149,10 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
           ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
           : 0;
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-        const actualStaff = Number(hour.employeeCount) || 0;
+        // Exclude operator from labor hours (matching leaderboard card logic)
+        const positions = hour.positionBreakdown || {};
+        const operatorHrs = positions['_operatorScheduled'] || 0;
+        const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
         
         // Track staffing metrics
