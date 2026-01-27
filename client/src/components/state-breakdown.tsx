@@ -1,12 +1,19 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, MapPin } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, Users } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
+
+interface CrewSummary {
+  avgScore: number;
+  avgCrewCount: number;
+  avgTenureMonths: number;
+}
 
 interface StateBreakdownProps {
   restaurants: RestaurantSales[];
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
+  crewSummary?: Record<string, CrewSummary>;
 }
 
 // Grade scoring for X-Score calculation
@@ -76,7 +83,27 @@ const TENNESSEE_STORES = [
   "1729 - Sevierville"
 ];
 
-export function StateBreakdown({ restaurants, hourlyByRestaurant }: StateBreakdownProps) {
+function calculateStateCrewScore(restaurantIds: string[], crewSummary?: Record<string, CrewSummary>): { avgScore: number; count: number } {
+  if (!crewSummary) return { avgScore: 0, count: 0 };
+  
+  let totalScore = 0;
+  let count = 0;
+  
+  for (const id of restaurantIds) {
+    const crew = crewSummary[id];
+    if (crew && crew.avgScore > 0) {
+      totalScore += crew.avgScore;
+      count++;
+    }
+  }
+  
+  return { 
+    avgScore: count > 0 ? Math.round(totalScore / count) : 0, 
+    count 
+  };
+}
+
+export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }: StateBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -119,12 +146,28 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant }: StateBreakdo
     tennesseeRestaurants.map(r => r.restaurantId),
     hourlyByRestaurant
   );
+  
+  // Calculate crew scores for each state
+  const alabamaCrewScore = calculateStateCrewScore(
+    alabamaRestaurants.map(r => r.restaurantId),
+    crewSummary
+  );
+  const tennesseeCrewScore = calculateStateCrewScore(
+    tennesseeRestaurants.map(r => r.restaurantId),
+    crewSummary
+  );
 
   const getGradeColor = (grade: string) => {
     if (grade === 'A+' || grade === 'A') return 'text-green-600 dark:text-green-400 bg-green-500/20 border-green-500/50';
     if (grade === 'B') return 'text-blue-600 dark:text-blue-400 bg-blue-500/20 border-blue-500/50';
     if (grade === 'C') return 'text-yellow-600 dark:text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
     return 'text-red-600 dark:text-red-400 bg-red-500/20 border-red-500/50';
+  };
+
+  const getCrewScoreColor = (score: number) => {
+    if (score >= 75) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+    if (score >= 50) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   };
 
   const states = [
@@ -138,6 +181,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant }: StateBreakdo
       totalCount: alabamaRestaurants.length,
       isAhead: alabamaVariance >= 0,
       xScore: alabamaXScore,
+      crewScore: alabamaCrewScore,
     },
     {
       name: "Tennessee",
@@ -149,6 +193,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant }: StateBreakdo
       totalCount: tennesseeRestaurants.length,
       isAhead: tennesseeVariance >= 0,
       xScore: tennesseeXScore,
+      crewScore: tennesseeCrewScore,
     },
   ];
 
@@ -191,6 +236,15 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant }: StateBreakdo
                   </div>
                   <div className="text-xs text-muted-foreground">ahead of LW</div>
                 </div>
+                {state.crewScore.count > 0 && (
+                  <Badge 
+                    className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1`}
+                    data-testid={`badge-crew-state-${state.abbr.toLowerCase()}`}
+                  >
+                    <Users className="w-3 h-3" />
+                    <span className="font-medium">{state.crewScore.avgScore}</span>
+                  </Badge>
+                )}
                 {state.xScore.hoursGraded > 0 && (
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getGradeColor(state.xScore.grade)}`}>
                     <span className="text-lg font-bold">{state.xScore.grade}</span>
