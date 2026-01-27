@@ -1267,13 +1267,13 @@ export function getTenureCategory(
   const months = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)); // Average days per month
   
   if (months < 3) {
-    return { category: 'trainee', months }; // < 90 days
+    return { category: 'trainee', months }; // < 90 days (Training)
+  } else if (months < 6) {
+    return { category: 'developing', months }; // 90 days - 6 months
   } else if (months < 12) {
-    return { category: 'developing', months }; // 90 days - 1 year
-  } else if (months < 24) {
-    return { category: 'experienced', months }; // 1-2 years
+    return { category: 'experienced', months }; // 6 months - 1 year
   } else {
-    return { category: 'veteran', months }; // 2+ years
+    return { category: 'veteran', months }; // 1+ year
   }
 }
 

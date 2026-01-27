@@ -112,10 +112,10 @@ Preferred communication style: Simple, everyday language.
 - **Purpose**: Tracks employee tenure and experience levels to identify inexperienced shifts.
 - **Data Source**: 7shifts employee data (uses `invited_at` as fallback when `hire_date` is null)
 - **Tenure Categories**:
-  - Trainee (T): < 90 days, score 25
-  - Developing (D): 90 days - 1 year, score 50
-  - Experienced (E): 1-2 years, score 75
-  - Veteran (V): 2+ years, score 100
+  - Training (T): < 90 days, score 25
+  - Developing (D): 90 days - 6 months, score 50
+  - Experienced (E): 6 months - 1 year, score 75
+  - Veteran (V): 1+ year, score 100
 - **Experience Score**: Weighted average of crew tenure (0-100 scale)
 - **Data Storage**: 
   - `employees` table stores hire_date and invited_at
