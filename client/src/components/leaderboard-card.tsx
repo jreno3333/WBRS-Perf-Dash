@@ -653,44 +653,38 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                       style={{ height: `${barHeightPx}px` }}
                       title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                     />
-                    <div className={`absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                      <div className="font-medium">
-                        {hour.label}
-                        {isCompleted && hour.todaySales > 0 && <> - Grade: <span className={gradeInfo.color}>{gradeInfo.grade}</span></>}
-                        {isCompleted && (!hour.todaySales || hour.todaySales === 0) && <span className="text-muted-foreground"> (no sales)</span>}
-                        {!isCompleted && <span className="text-muted-foreground"> (pending)</span>}
+                    <div className={`absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{hour.label}</span>
+                        {isCompleted && hour.todaySales > 0 && <span className={gradeInfo.color}>{gradeInfo.grade}</span>}
+                        {!isCompleted && <span className="text-muted-foreground">pending</span>}
+                        <span className={salesVariancePct >= -5 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                          ${hour.todaySales.toLocaleString()}
+                        </span>
+                        <span className="text-muted-foreground">LW ${hour.lastWeekSales.toLocaleString()}</span>
+                        {isCompleted && hour.avgServiceTime && (
+                          <span className={
+                            hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
+                            hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
+                            "text-green-600 dark:text-green-400"
+                          }>
+                            {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
+                          </span>
+                        )}
+                        {isCompleted && (() => {
+                          const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
+                          if (!crewHour || crewHour.experienceScore === 0) return null;
+                          const score = crewHour.experienceScore;
+                          const color = score >= 75 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+                          const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
+                          const parts = [];
+                          if (veteran > 0) parts.push(`${veteran}V`);
+                          if (experienced > 0) parts.push(`${experienced}E`);
+                          if (developing > 0) parts.push(`${developing}D`);
+                          if (trainee > 0) parts.push(`${trainee}T`);
+                          return <span className={color}>{parts.join('/') || '0'}</span>;
+                        })()}
                       </div>
-                      <div className={salesVariancePct >= -5 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
-                        Today: ${hour.todaySales.toLocaleString()}
-                      </div>
-                      <div className="text-muted-foreground">Last Week: ${hour.lastWeekSales.toLocaleString()}</div>
-                      {isCompleted && hour.avgServiceTime && (
-                        <div className={
-                          hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
-                          hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
-                          "text-green-600 dark:text-green-400"
-                        }>
-                          SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
-                        </div>
-                      )}
-                      {isCompleted && (() => {
-                        const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
-                        if (!crewHour) return null;
-                        const score = crewHour.experienceScore;
-                        if (score === 0) return null;
-                        const color = score >= 75 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
-                        const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
-                        const parts = [];
-                        if (veteran > 0) parts.push(`${veteran}V`);
-                        if (experienced > 0) parts.push(`${experienced}E`);
-                        if (developing > 0) parts.push(`${developing}D`);
-                        if (trainee > 0) parts.push(`${trainee}T`);
-                        return (
-                          <div className={color}>
-                            Crew: {score} ({parts.join('/') || '0'})
-                          </div>
-                        );
-                      })()}
                     </div>
                   </div>
                 );
@@ -837,19 +831,17 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           )}
                         </>
                       )}
-                      <div className={`absolute ${missingLeadership ? '-top-20' : '-top-16'} left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 min-w-[140px] transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                        <div className="font-medium">{hour.label}</div>
-                        {missingLeadership && (
-                          <div className="text-orange-500 flex items-center gap-1 font-medium">
-                            <AlertTriangle className="w-3 h-3" />
-                            No Manager
-                          </div>
-                        )}
-                        <div className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
-                          {laborHours.toFixed(1)}h / {recommendedHours}h target
-                        </div>
-                        <div className={`text-xs ${isOverstaffed ? "text-red-600" : isUnderstaffed ? "text-yellow-600" : "text-green-600"}`}>
-                          {isOverstaffed ? `+${staffingDiff.toFixed(1)} over` : isUnderstaffed ? `${staffingDiff.toFixed(1)} under` : "Right-sized"}
+                      <div className={`absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{hour.label}</span>
+                          {missingLeadership && (
+                            <span className="text-orange-500 flex items-center gap-0.5">
+                              <AlertTriangle className="w-3 h-3" />
+                            </span>
+                          )}
+                          <span className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
+                            {laborHours.toFixed(1)}h/{recommendedHours}h
+                          </span>
                         </div>
                       </div>
                     </div>
