@@ -1450,7 +1450,20 @@ export async function registerRoutes(
         };
       });
       
-      res.json({ date: dateStr, restaurants: result });
+      // Also build a flat data map keyed by restaurantId for dashboard consumption
+      const dataMap: Record<string, { hour: number; crewCount: number; experienceScore: number; tenureMix: { trainee: number; developing: number; experienced: number; veteran: number } }[]> = {};
+      for (const r of result) {
+        if (r.hourly.length > 0) {
+          dataMap[r.restaurantId] = r.hourly.map(h => ({
+            hour: h.hour,
+            crewCount: h.crewCount,
+            experienceScore: h.score,
+            tenureMix: (restaurantCrewMap.get(r.restaurantId)?.find(d => d.hour === h.hour)?.tenureMix as any) || { trainee: 0, developing: 0, experienced: 0, veteran: 0 },
+          }));
+        }
+      }
+      
+      res.json({ date: dateStr, restaurants: result, data: dataMap });
     } catch (error) {
       console.error("Error fetching crew experience:", error);
       res.status(500).json({ error: "Failed to fetch crew experience data" });

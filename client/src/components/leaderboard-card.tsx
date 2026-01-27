@@ -674,10 +674,11 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                       )}
                       {isCompleted && (() => {
                         const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
-                        if (!crewHour || crewHour.experienceScore === 0) return null;
+                        if (!crewHour) return null;
                         const score = crewHour.experienceScore;
+                        if (score === 0) return null;
                         const color = score >= 75 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
-                        const { trainee, developing, experienced, veteran } = crewHour.tenureMix;
+                        const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
                         const parts = [];
                         if (veteran > 0) parts.push(`${veteran}V`);
                         if (experienced > 0) parts.push(`${experienced}E`);
@@ -685,7 +686,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                         if (trainee > 0) parts.push(`${trainee}T`);
                         return (
                           <div className={color}>
-                            Crew: {score} ({parts.join('/')})
+                            Crew: {score} ({parts.join('/') || '0'})
                           </div>
                         );
                       })()}
