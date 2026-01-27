@@ -839,17 +839,38 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           )}
                         </>
                       )}
-                      <div className={`absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{hour.label}</span>
-                          {missingLeadership && (
-                            <span className="text-orange-500 flex items-center gap-0.5">
-                              <AlertTriangle className="w-3 h-3" />
+                      <div className={`absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{hour.label}</span>
+                            {missingLeadership && (
+                              <span className="text-orange-500 flex items-center gap-0.5">
+                                <AlertTriangle className="w-3 h-3" />
+                              </span>
+                            )}
+                            <span className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
+                              {laborHours.toFixed(1)}h/{recommendedHours}h
                             </span>
-                          )}
-                          <span className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
-                            {laborHours.toFixed(1)}h/{recommendedHours}h
-                          </span>
+                            {/* Crew experience score */}
+                            {(() => {
+                              const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
+                              if (!crewHour || crewHour.experienceScore === 0) return null;
+                              const score = crewHour.experienceScore;
+                              const color = score >= 75 ? "text-green-600" : score >= 50 ? "text-amber-600" : "text-red-600";
+                              return <span className={color}>XP:{score}</span>;
+                            })()}
+                          </div>
+                          {/* Position list */}
+                          {(() => {
+                            const posKeys = Object.keys(positions)
+                              .filter(k => !k.startsWith('_') && positions[k] > 0);
+                            if (posKeys.length === 0) return null;
+                            return (
+                              <div className="text-muted-foreground text-[10px]">
+                                {posKeys.slice(0, 5).join(', ')}{posKeys.length > 5 ? '...' : ''}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

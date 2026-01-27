@@ -335,7 +335,10 @@ export async function registerRoutes(
   app.get("/api/holidays", async (req, res) => {
     try {
       const { date } = req.query;
-      const targetDate = date ? new Date(date as string) : new Date();
+      // Parse date at noon to avoid timezone shifting (e.g., 2026-01-27 -> 2026-01-27T12:00:00)
+      const targetDate = date 
+        ? new Date(`${date as string}T12:00:00`) 
+        : new Date();
       
       const context = getHolidayContext(targetDate);
       const comparison = getHolidayComparisonContext(targetDate);

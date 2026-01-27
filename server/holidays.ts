@@ -58,9 +58,16 @@ function getHolidayNearDate(date: Date, daysRange: number = 1): HolidayInfo | nu
 }
 
 export function getHolidayContext(targetDate: Date = new Date(), timezone: string = 'America/Chicago'): HolidayContext {
-  // Normalize to the business timezone
-  const targetDateStr = targetDate.toLocaleDateString('en-US', { timeZone: timezone });
-  const today = new Date(targetDateStr);
+  // Normalize to the business timezone - use the local date parts to avoid timezone shift
+  const targetParts = targetDate.toLocaleDateString('en-US', { 
+    timeZone: timezone, 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit' 
+  }).split('/');
+  // Parse as local date to avoid UTC shift: MM/DD/YYYY -> YYYY-MM-DDT12:00:00
+  const todayStr = `${targetParts[2]}-${targetParts[0]}-${targetParts[1]}T12:00:00`;
+  const today = new Date(todayStr);
   
   // Week-over-week comparison is day-of-week aligned (e.g., Tuesday to Tuesday)
   const lastWeek = new Date(today);
