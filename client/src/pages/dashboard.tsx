@@ -156,6 +156,24 @@ export default function Dashboard() {
   });
   const crewSummary = crewSummaryResponse?.summary;
 
+  // Fetch hourly crew experience data for all restaurants
+  interface HourlyCrewData {
+    hour: number;
+    crewCount: number;
+    experienceScore: number;
+    tenureMix: { trainee: number; developing: number; experienced: number; veteran: number };
+  }
+  const { data: hourlyCrewResponse } = useQuery<{ date: string; data: Record<string, HourlyCrewData[]> }>({
+    queryKey: ["/api/crew/experience", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/crew/experience?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval,
+  });
+  const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
+
   // Fetch holiday data (no need to refresh frequently)
   const { data: holidayData } = useQuery<{
     todayHoliday: { name: string; date: string; dayOfWeek: string } | null;
@@ -493,6 +511,7 @@ export default function Dashboard() {
                       restaurant={{...restaurant, rank: index + 1}}
                       hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
                       crewSummary={crewSummary?.[restaurant.restaurantId]}
+                      hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
                     />
                   ))}
                 </div>

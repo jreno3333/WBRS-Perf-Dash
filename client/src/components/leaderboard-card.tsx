@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, Users } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -127,10 +127,18 @@ interface CrewSummary {
   avgTenureMonths: number;
 }
 
+interface HourlyCrewData {
+  hour: number;
+  crewCount: number;
+  experienceScore: number;
+  tenureMix: { trainee: number; developing: number; experienced: number; veteran: number };
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
   crewSummary?: CrewSummary;
+  hourlyCrewData?: HourlyCrewData[];
 }
 
 function formatTenure(months: number): string {
@@ -142,7 +150,7 @@ function formatTenure(months: number): string {
   return `${years}yr ${remainingMonths}mo`;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData, crewSummary }: LeaderboardCardProps) {
+export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -404,7 +412,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary }: Leaderb
                     } border-0`}
                     data-testid={`badge-crew-${restaurant.restaurantId}`}
                   >
-                    <Users className="w-3 h-3" />
+                    <GraduationCap className="w-3 h-3" />
                     <span className="font-medium">{crewSummary.avgScore}</span>
                   </Badge>
                   <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
@@ -669,6 +677,23 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary }: Leaderb
                           Staff: {staffingDiff > 0 ? '+' : ''}{staffingDiff.toFixed(1)}
                         </div>
                       )}
+                      {isCompleted && (() => {
+                        const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
+                        if (!crewHour || crewHour.experienceScore === 0) return null;
+                        const score = crewHour.experienceScore;
+                        const color = score >= 75 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+                        const { trainee, developing, experienced, veteran } = crewHour.tenureMix;
+                        const parts = [];
+                        if (veteran > 0) parts.push(`${veteran}V`);
+                        if (experienced > 0) parts.push(`${experienced}E`);
+                        if (developing > 0) parts.push(`${developing}D`);
+                        if (trainee > 0) parts.push(`${trainee}T`);
+                        return (
+                          <div className={color}>
+                            Crew: {score} ({parts.join('/')})
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, MapPin, Users } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -83,24 +83,37 @@ const TENNESSEE_STORES = [
   "1729 - Sevierville"
 ];
 
-function calculateStateCrewScore(restaurantIds: string[], crewSummary?: Record<string, CrewSummary>): { avgScore: number; count: number } {
-  if (!crewSummary) return { avgScore: 0, count: 0 };
+function calculateStateCrewScore(restaurantIds: string[], crewSummary?: Record<string, CrewSummary>): { avgScore: number; avgTenureMonths: number; count: number } {
+  if (!crewSummary) return { avgScore: 0, avgTenureMonths: 0, count: 0 };
   
   let totalScore = 0;
+  let totalTenure = 0;
   let count = 0;
   
   for (const id of restaurantIds) {
     const crew = crewSummary[id];
     if (crew && crew.avgScore > 0) {
       totalScore += crew.avgScore;
+      totalTenure += crew.avgTenureMonths;
       count++;
     }
   }
   
   return { 
-    avgScore: count > 0 ? Math.round(totalScore / count) : 0, 
+    avgScore: count > 0 ? Math.round(totalScore / count) : 0,
+    avgTenureMonths: count > 0 ? Math.round(totalTenure / count * 10) / 10 : 0,
     count 
   };
+}
+
+// Format tenure months for display
+function formatTenure(months: number): string {
+  if (months < 1) return "< 1 month";
+  if (months < 12) return `${Math.round(months)} mo`;
+  const years = Math.floor(months / 12);
+  const remainingMonths = Math.round(months % 12);
+  if (remainingMonths === 0) return `${years} yr`;
+  return `${years}y ${remainingMonths}m`;
 }
 
 export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }: StateBreakdownProps) {
@@ -237,13 +250,19 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
                   <div className="text-xs text-muted-foreground">ahead of LW</div>
                 </div>
                 {state.crewScore.count > 0 && (
-                  <Badge 
-                    className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1`}
-                    data-testid={`badge-crew-state-${state.abbr.toLowerCase()}`}
-                  >
-                    <Users className="w-3 h-3" />
-                    <span className="font-medium">{state.crewScore.avgScore}</span>
-                  </Badge>
+                  <div className="relative group">
+                    <Badge 
+                      className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1 cursor-help`}
+                      data-testid={`badge-crew-state-${state.abbr.toLowerCase()}`}
+                    >
+                      <GraduationCap className="w-3 h-3" />
+                      <span className="font-medium">{state.crewScore.avgScore}</span>
+                    </Badge>
+                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                      <div className="font-medium">Crew Experience</div>
+                      <div className="text-muted-foreground">Avg tenure: {formatTenure(state.crewScore.avgTenureMonths)}</div>
+                    </div>
+                  </div>
                 )}
                 {state.xScore.hoursGraded > 0 && (
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getGradeColor(state.xScore.grade)}`}>
