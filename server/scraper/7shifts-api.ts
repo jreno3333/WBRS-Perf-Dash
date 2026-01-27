@@ -1314,10 +1314,10 @@ export function formatTenureMix(mix: { trainee: number; developing: number; expe
 }
 
 // Sync employees from 7shifts API
-export async function syncEmployees(): Promise<{ success: boolean; count: number; error?: string }> {
+export async function syncEmployees(): Promise<{ success: boolean; count: number; withInvitedAt: number; error?: string }> {
   const token = process.env.SEVENSHIFTS_API_TOKEN;
   if (!token) {
-    return { success: false, count: 0, error: 'SEVENSHIFTS_API_TOKEN not configured' };
+    return { success: false, count: 0, withInvitedAt: 0, error: 'SEVENSHIFTS_API_TOKEN not configured' };
   }
   
   try {
@@ -1345,11 +1345,13 @@ export async function syncEmployees(): Promise<{ success: boolean; count: number
     console.log(`[EmployeeSync] Processing ${users.length} users from 7shifts`);
     
     let syncedCount = 0;
+    let withInvitedAtCount = 0;
     
     for (const user of users) {
       try {
         // Parse invited date if available (fallback for hire_date)
         const invitedAt = user.invited ? new Date(user.invited) : null;
+        if (invitedAt) withInvitedAtCount++;
         
         // Upsert employee record
         await db.insert(employees).values({
@@ -1380,13 +1382,13 @@ export async function syncEmployees(): Promise<{ success: boolean; count: number
       }
     }
     
-    console.log(`[EmployeeSync] Synced ${syncedCount} employees`);
-    return { success: true, count: syncedCount };
+    console.log(`[EmployeeSync] Synced ${syncedCount} employees (${withInvitedAtCount} with invited_at dates)`);
+    return { success: true, count: syncedCount, withInvitedAt: withInvitedAtCount };
     
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[EmployeeSync] Failed:', msg);
-    return { success: false, count: 0, error: msg };
+    return { success: false, count: 0, withInvitedAt: 0, error: msg };
   }
 }
 
