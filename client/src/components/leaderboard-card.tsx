@@ -672,11 +672,6 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           SOS: {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
                         </div>
                       )}
-                      {isCompleted && (
-                        <div className={staffingDiff > 1 ? "text-red-600 dark:text-red-400" : staffingDiff < -1 ? "text-yellow-600 dark:text-yellow-400" : "text-green-600 dark:text-green-400"}>
-                          Staff: {staffingDiff > 0 ? '+' : ''}{staffingDiff.toFixed(1)}
-                        </div>
-                      )}
                       {isCompleted && (() => {
                         const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
                         if (!crewHour || crewHour.experienceScore === 0) return null;
@@ -839,44 +834,20 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           )}
                         </>
                       )}
-                      <div className={`absolute ${missingLeadership ? '-top-24' : '-top-20'} left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 min-w-[160px] transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                        <div className="font-medium">{hour.label} {staffingDetails.isBreakfast ? "(Breakfast)" : ""}</div>
+                      <div className={`absolute ${missingLeadership ? '-top-20' : '-top-16'} left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 min-w-[140px] transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                        <div className="font-medium">{hour.label}</div>
                         {missingLeadership && (
                           <div className="text-orange-500 flex items-center gap-1 font-medium">
                             <AlertTriangle className="w-3 h-3" />
-                            No Manager/Supervisor
+                            No Manager
                           </div>
                         )}
                         <div className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
-                          Deployed: {laborHours.toFixed(1)} hrs
-                        </div>
-                        <div className="text-muted-foreground">
-                          Target: {recommendedHours} hrs ({staffingDetails.nonProduction} non-prod + {staffingDetails.production} prod)
+                          {laborHours.toFixed(1)}h / {recommendedHours}h target
                         </div>
                         <div className={`text-xs ${isOverstaffed ? "text-red-600" : isUnderstaffed ? "text-yellow-600" : "text-green-600"}`}>
-                          {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` : isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` : "Right-sized"}
+                          {isOverstaffed ? `+${staffingDiff.toFixed(1)} over` : isUnderstaffed ? `${staffingDiff.toFixed(1)} under` : "Right-sized"}
                         </div>
-                        {hour.positionBreakdown && Object.keys(hour.positionBreakdown).length > 0 && (
-                          <div className="border-t border-border/50 mt-1 pt-1">
-                            <div className="text-[10px] text-muted-foreground mb-0.5">By Position:</div>
-                            {Object.entries(hour.positionBreakdown)
-                              .filter(([position]) => position !== '_operatorScheduled')
-                              .sort(([,a], [,b]) => b - a)
-                              .map(([position, hrs]) => (
-                                <div key={position} className="text-[10px] flex justify-between gap-2">
-                                  <span className="truncate">{position}</span>
-                                  <span className="font-medium">{hrs.toFixed(1)}h</span>
-                                </div>
-                              ))
-                            }
-                            {operatorHours > 0 && (
-                              <div className="text-[10px] flex justify-between gap-2 text-blue-500 dark:text-blue-400 mt-0.5">
-                                <span className="truncate italic">Operator (scheduled)</span>
-                                <span className="font-medium">✓</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </div>
                   );
