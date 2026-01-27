@@ -177,7 +177,7 @@ export default function Dashboard() {
   // Fetch holiday data (no need to refresh frequently)
   const { data: holidayData } = useQuery<{
     todayHoliday: { name: string; date: string; dayOfWeek: string } | null;
-    lastWeekHoliday: { name: string; date: string; dayOfWeek: string } | null;
+    lastWeekHoliday: { name: string; date: string; dayOfWeek: string; isLastWeekComparisonDay?: boolean } | null;
     upcomingHolidays: { name: string; date: string; dayOfWeek: string }[];
     comparison: {
       thisYear: { name: string; date: string; dayOfWeek: string } | null;
@@ -450,7 +450,9 @@ export default function Dashboard() {
                     )}
                     {holidayData?.lastWeekHoliday && (
                       <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-300">
-                        Last Week: {holidayData.lastWeekHoliday.name} ({holidayData.lastWeekHoliday.dayOfWeek})
+                        {holidayData.lastWeekHoliday.isLastWeekComparisonDay 
+                          ? `Comparing to: ${holidayData.lastWeekHoliday.name} (${holidayData.lastWeekHoliday.dayOfWeek})`
+                          : `${holidayData.lastWeekHoliday.name} was ${holidayData.lastWeekHoliday.dayOfWeek}`}
                       </Badge>
                     )}
                     {holidayData?.comparison?.thisYear && holidayData?.comparison?.lastYear && (
