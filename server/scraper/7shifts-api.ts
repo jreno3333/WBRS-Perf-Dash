@@ -114,6 +114,7 @@ interface SevenShiftsUser {
   email: string | null;
   active: boolean;
   hire_date: string | null; // YYYY-MM-DD format or null
+  invited: string | null; // ISO timestamp when invited to 7shifts (fallback for hire_date)
   type: string; // employee, manager, asst_manager, employer
 }
 
@@ -349,6 +350,7 @@ export class SevenShiftsAPI {
               email: user.email,
               active: user.active,
               hire_date: user.hire_date,
+              invited: user.invited, // Fallback for hire_date
               type: user.type,
             });
           }
@@ -1241,15 +1243,27 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
 // Import employees table for crew sync
 import { employees, hourlyCrew } from '@shared/schema';
 
-// Calculate tenure category based on hire date
-export function getTenureCategory(hireDate: string | null, asOfDate: Date = new Date()): { category: 'trainee' | 'developing' | 'experienced' | 'veteran'; months: number } {
-  if (!hireDate) {
-    // Default to trainee if no hire date (less than 90 days assumed)
+// Calculate tenure category based on hire date (with invitedAt as fallback)
+export function getTenureCategory(
+  hireDate: string | null, 
+  asOfDate: Date = new Date(),
+  invitedAt?: Date | null
+): { category: 'trainee' | 'developing' | 'experienced' | 'veteran'; months: number } {
+  // Use hireDate if available, otherwise fall back to invitedAt
+  let startDate: Date | null = null;
+  
+  if (hireDate) {
+    startDate = new Date(hireDate);
+  } else if (invitedAt) {
+    startDate = invitedAt;
+  }
+  
+  if (!startDate) {
+    // Default to trainee if no date available
     return { category: 'trainee', months: 0 };
   }
   
-  const hire = new Date(hireDate);
-  const diffMs = asOfDate.getTime() - hire.getTime();
+  const diffMs = asOfDate.getTime() - startDate.getTime();
   const months = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)); // Average days per month
   
   if (months < 3) {
@@ -1334,12 +1348,16 @@ export async function syncEmployees(): Promise<{ success: boolean; count: number
     
     for (const user of users) {
       try {
+        // Parse invited date if available (fallback for hire_date)
+        const invitedAt = user.invited ? new Date(user.invited) : null;
+        
         // Upsert employee record
         await db.insert(employees).values({
           sevenShiftsUserId: user.id,
           firstName: user.first_name,
           lastName: user.last_name,
           hireDate: user.hire_date || null,
+          invitedAt: invitedAt,
           active: user.active,
           type: user.type,
           // Note: We'd need to fetch user assignments to get their primary location
@@ -1349,6 +1367,7 @@ export async function syncEmployees(): Promise<{ success: boolean; count: number
             firstName: user.first_name,
             lastName: user.last_name,
             hireDate: user.hire_date || null,
+            invitedAt: invitedAt,
             active: user.active,
             type: user.type,
             syncedAt: new Date(),
@@ -1426,7 +1445,8 @@ export async function syncHourlyCrew(date?: Date): Promise<{ success: boolean; c
           const emp = employeeMap.get(userId);
           if (!emp) continue;
           
-          const tenure = getTenureCategory(emp.hireDate, targetDate);
+          // Pass invitedAt as fallback for hireDate
+          const tenure = getTenureCategory(emp.hireDate, targetDate, emp.invitedAt);
           crewMembers.push({
             userId,
             firstName: emp.firstName,

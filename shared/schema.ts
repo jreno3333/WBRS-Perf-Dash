@@ -323,6 +323,7 @@ export const employees = pgTable("employees", {
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   hireDate: date("hire_date"), // Can be null if not set in 7shifts
+  invitedAt: timestamp("invited_at"), // Fallback: when they were invited to 7shifts
   active: boolean("active").notNull().default(true),
   type: text("type"), // employee, manager, asst_manager, employer
   locationId: integer("location_id"), // Primary 7shifts location ID
