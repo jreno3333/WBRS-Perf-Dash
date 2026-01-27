@@ -108,6 +108,30 @@ Preferred communication style: Simple, everyday language.
 - **Tooltip**: Shows total review count on hover
 - **Future**: Rating may be integrated into X-Score calculation
 
+### Crew Experience Tracking
+- **Purpose**: Tracks employee tenure and experience levels to identify inexperienced shifts.
+- **Data Source**: 7shifts employee data (uses `invited_at` as fallback when `hire_date` is null)
+- **Tenure Categories**:
+  - Trainee (T): < 90 days, score 25
+  - Developing (D): 90 days - 1 year, score 50
+  - Experienced (E): 1-2 years, score 75
+  - Veteran (V): 2+ years, score 100
+- **Experience Score**: Weighted average of crew tenure (0-100 scale)
+- **Data Storage**: 
+  - `employees` table stores hire_date and invited_at
+  - `hourly_crew` table stores hourly crew composition and scores
+- **Sync Schedule**: Every hour at :00 minutes (first 5 minutes of the hour)
+- **API Endpoints**:
+  - `POST /api/crew/sync-employees` - Syncs employee data from 7shifts
+  - `POST /api/crew/sync` - Recalculates hourly crew experience for a date
+  - `GET /api/crew/experience` - Returns hourly crew breakdown by restaurant
+  - `GET /api/crew/summary` - Returns daily average scores for leaderboard
+- **Display**: 
+  - GraduationCap icon badge on leaderboard cards with score
+  - Color coding: green (≥75), amber (≥50), red (<50)
+  - Hourly tooltips show V/E/D/T breakdown
+  - Dedicated Crew Experience page with detailed hourly team composition
+
 ## External Dependencies
 
 ### Database

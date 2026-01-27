@@ -110,6 +110,9 @@ async function runScheduledSync() {
       log(`HME sync failed: ${hmeError instanceof Error ? hmeError.message : 'Unknown error'}`);
     }
     
+    // Sync crew experience data (once per hour at the top of the hour)
+    await syncCrewExperienceIfNeeded();
+    
     // Sync Google reviews (once per hour at the top of the hour)
     await syncGoogleReviewsIfNeeded();
     
@@ -197,6 +200,51 @@ async function saveDailyWeatherSnapshot(date: string): Promise<number> {
   }
   
   return saved;
+}
+
+// Track last crew experience sync to avoid syncing too frequently
+let lastCrewSync: string | null = null;
+
+// Sync crew experience data once per hour
+async function syncCrewExperienceIfNeeded() {
+  const now = new Date();
+  const currentMinute = now.getMinutes();
+  
+  // Sync within the first 5 minutes of each hour (scheduler runs every 5 minutes)
+  if (currentMinute > 4) {
+    return;
+  }
+  
+  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    hour12: false
+  }).format(now));
+  
+  // Use Central timezone date for sync key to avoid UTC/Central date mismatch around midnight
+  const centralDate = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(now);
+  
+  const syncKey = `${centralDate}-${centralHour}`;
+  
+  // Don't sync more than once per hour
+  if (lastCrewSync === syncKey) {
+    return;
+  }
+  
+  log("Syncing crew experience data...");
+  try {
+    const { syncHourlyCrew } = await import("./scraper/7shifts-api");
+    const result = await syncHourlyCrew();
+    log(`Crew experience sync completed: ${result.count} hourly records updated`);
+    lastCrewSync = syncKey;
+  } catch (error) {
+    log(`Crew experience sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 // Track last Google reviews sync to avoid syncing too frequently
