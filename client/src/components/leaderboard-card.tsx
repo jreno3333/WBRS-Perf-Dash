@@ -43,7 +43,8 @@ function getExecutionGrade(
   speedSeconds: number | undefined,
   staffingDiff: number,
   hasComparableSales: boolean = true, // Whether last week had sales to compare against
-  isFirstWeek: boolean = false // Whether restaurant is in first week (no historical data expected)
+  isFirstWeek: boolean = false, // Whether restaurant is in first week (no historical data expected)
+  hasValidStaffing: boolean = true // Whether staffing data is valid (employee count >= 1)
 ): { grade: string; color: string; hasGrade: boolean } {
   // Track which components are available for grading
   const components: { name: string; score: number }[] = [];
@@ -69,11 +70,14 @@ function getExecutionGrade(
     components.push({ name: 'speed', score: speedScore });
   }
   
-  // Staffing component (always available)
+  // Staffing component (only if we have valid staffing data)
+  // Skip when employee count is near-zero (indicates missing/incomplete API data)
   // PROPER = 100, UNDER/OVER = 60
-  let staffingScore = 100;
-  if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
-  components.push({ name: 'staffing', score: staffingScore });
+  if (hasValidStaffing) {
+    let staffingScore = 100;
+    if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
+    components.push({ name: 'staffing', score: staffingScore });
+  }
   
   // If no components to grade, return no grade
   if (components.length === 0) {
@@ -250,9 +254,12 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       // Exclude operator from labor hours (not production/non-production)
       const positions = hour.positionBreakdown || {};
       const operatorHrs = positions['_operatorScheduled'] || 0;
-      const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
+      const rawEmployeeCount = Number(hour.employeeCount) || 0;
+      const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
-      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek);
+      // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
+      const hasValidStaffing = rawEmployeeCount >= 1;
+      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing);
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
@@ -587,9 +594,12 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 // Exclude operator from labor hours (not production/non-production)
                 const positions = hour.positionBreakdown || {};
                 const operatorHrs = positions['_operatorScheduled'] || 0;
-                const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
+                const rawEmployeeCount = Number(hour.employeeCount) || 0;
+                const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek);
+                // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
+                const hasValidStaffing = rawEmployeeCount >= 1;
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing);
                 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -627,9 +637,12 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 // Exclude operator from labor hours (not production/non-production)
                 const positions = hour.positionBreakdown || {};
                 const operatorHrs = positions['_operatorScheduled'] || 0;
-                const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
+                const rawEmployeeCount = Number(hour.employeeCount) || 0;
+                const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
                 const staffingDiff = actualStaff - staffing.total;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek);
+                // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
+                const hasValidStaffing = rawEmployeeCount >= 1;
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
