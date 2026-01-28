@@ -276,15 +276,15 @@ export default function CrewExperiencePage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                  <Card className="flex flex-col">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg flex items-center gap-2">
                         <Trophy className="w-5 h-5 text-yellow-500" />
                         Company Top Performers
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex-1">
                       <div className="space-y-2">
                         {performanceData.companyRankings.slice(0, 10).map((leader, index) => (
                           <div 
@@ -325,15 +325,15 @@ export default function CrewExperiencePage() {
                     </CardContent>
                   </Card>
                   
-                  <Card>
+                  <Card className="flex flex-col">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg flex items-center gap-2">
                         <Star className="w-5 h-5 text-primary" />
                         Top by Store
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                    <CardContent className="flex-1 overflow-hidden">
+                      <div className="space-y-3 h-full overflow-y-auto">
                         {Object.entries(performanceData.byStore).map(([storeId, leaders]) => {
                           const topLeader = leaders[0];
                           if (!topLeader) return null;
