@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 import { ArrowLeft, Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star } from "lucide-react";
 import { format } from "date-fns";
@@ -96,6 +97,7 @@ export default function CrewExperiencePage() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [expandedRestaurants, setExpandedRestaurants] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
+  const [performanceDays, setPerformanceDays] = useState<number>(7);
   
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   
@@ -109,9 +111,9 @@ export default function CrewExperiencePage() {
   });
   
   const { data: performanceData, isLoading: performanceLoading } = useQuery<PerformanceResponse>({
-    queryKey: ["/api/people/performance", dateStr],
+    queryKey: ["/api/people/performance", dateStr, performanceDays],
     queryFn: async () => {
-      const res = await fetch(`/api/people/performance?date=${dateStr}&days=7`);
+      const res = await fetch(`/api/people/performance?date=${dateStr}&days=${performanceDays}`);
       if (!res.ok) throw new Error("Failed to fetch performance data");
       return res.json();
     },
@@ -225,9 +227,32 @@ export default function CrewExperiencePage() {
           
           <TabsContent value="performance" className="mt-4">
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Top managers and shift supervisors ranked by execution score (last 7 days)
-              </p>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm text-muted-foreground">
+                  Top managers and shift supervisors ranked by execution score
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Period:</span>
+                  <Select 
+                    value={String(performanceDays)} 
+                    onValueChange={(v) => setPerformanceDays(Number(v))}
+                  >
+                    <SelectTrigger className="w-[130px]" data-testid="select-performance-days">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">Last 7 days</SelectItem>
+                      <SelectItem value="14">Last 14 days</SelectItem>
+                      <SelectItem value="30">Last 30 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {performanceData?.dateRange && (
+                <p className="text-xs text-muted-foreground">
+                  Showing data from {performanceData.dateRange.start} to {performanceData.dateRange.end}
+                </p>
+              )}
               
               {performanceLoading ? (
                 <div className="space-y-4">

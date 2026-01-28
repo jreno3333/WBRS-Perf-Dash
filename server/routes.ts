@@ -1656,10 +1656,24 @@ export async function registerRoutes(
           else if (avgScore >= 55) grade = 'D';
           else grade = 'F';
           
+          // Map position types to display names
+          let displayPosition = leader.position || '';
+          if (!displayPosition) {
+            // Fallback to type field but map it nicely
+            if (leader.type === 'asst_manager') displayPosition = 'Manager';
+            else if (leader.type === 'manager') displayPosition = 'Manager';
+            else if (leader.type === 'employee') displayPosition = 'Team Member';
+            else displayPosition = 'Leader';
+          }
+          // Additional mapping for position field values
+          if (displayPosition === 'asst_manager') displayPosition = 'Manager';
+          if (displayPosition.toLowerCase().includes('supervisor')) displayPosition = 'Shift Supervisor';
+          if (displayPosition.toLowerCase().includes('manager') && displayPosition !== 'Shift Supervisor') displayPosition = 'Manager';
+          
           leaderPerformance.push({
             employeeId: leader.id,
             name: `${leader.firstName} ${leader.lastName}`,
-            position: leader.position || leader.type || 'Leader',
+            position: displayPosition,
             restaurantId: leader.restaurantId || '',
             restaurantName: restaurantNameMap.get(leader.restaurantId || '') || 'Unknown',
             hoursWorked: gradeScores.length,
