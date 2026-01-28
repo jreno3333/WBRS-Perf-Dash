@@ -1510,6 +1510,194 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to fetch crew summary" });
     }
   });
+  
+  // Get manager/supervisor performance rankings
+  app.get("/api/people/performance", async (req, res) => {
+    try {
+      const { date, days = "7" } = req.query;
+      const endDate = date ? new Date(String(date)) : new Date();
+      const numDays = Math.min(parseInt(String(days)) || 7, 30);
+      
+      // Calculate date range
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - numDays + 1);
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      // Get managers and shift supervisors
+      const leaderEmployees = await db
+        .select()
+        .from(employees)
+        .where(
+          and(
+            eq(employees.active, true),
+            sql`(${employees.position} ILIKE '%manager%' OR ${employees.position} ILIKE '%supervisor%' OR ${employees.type} IN ('manager', 'asst_manager'))`
+          )
+        );
+      
+      if (leaderEmployees.length === 0) {
+        return res.json({ 
+          dateRange: { start: startDateStr, end: endDateStr },
+          byStore: {},
+          companyRankings: [],
+        });
+      }
+      
+      // Get hourly crew data for the date range
+      const crewData = await db
+        .select()
+        .from(hourlyCrew)
+        .where(
+          and(
+            gte(hourlyCrew.date, startDateStr),
+            sql`${hourlyCrew.date} <= ${endDateStr}`
+          )
+        );
+      
+      // Get hourly labor data for execution grade calculation
+      const laborData = await db
+        .select()
+        .from(hourlyLabor)
+        .where(
+          and(
+            gte(hourlyLabor.date, startDateStr),
+            sql`${hourlyLabor.date} <= ${endDateStr}`
+          )
+        );
+      
+      // Get hourly sales for execution grade calculation
+      const salesData = await db
+        .select()
+        .from(hourlySales)
+        .where(
+          and(
+            gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, startDateStr),
+            sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
+          )
+        );
+      
+      // Build lookup maps
+      const laborByKey = new Map<string, typeof laborData[0]>();
+      for (const l of laborData) {
+        laborByKey.set(`${l.restaurantId}-${l.date}-${l.hour}`, l);
+      }
+      
+      const salesByKey = new Map<string, typeof salesData[0]>();
+      for (const s of salesData) {
+        const dateStr = s.salesDate.toISOString().split('T')[0];
+        salesByKey.set(`${s.restaurantId}-${dateStr}-${s.hour}`, s);
+      }
+      
+      // Calculate performance for each leader
+      type LeaderPerformance = {
+        employeeId: string;
+        name: string;
+        position: string;
+        restaurantId: string;
+        restaurantName: string;
+        hoursWorked: number;
+        avgGradeScore: number;
+        grade: string;
+      };
+      
+      const allRestaurants = await db.select().from(restaurants);
+      const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+      
+      const leaderPerformance: LeaderPerformance[] = [];
+      
+      for (const leader of leaderEmployees) {
+        const userId = leader.sevenShiftsUserId;
+        
+        // Find hours this leader worked
+        const gradeScores: number[] = [];
+        
+        for (const crew of crewData) {
+          const members = (crew.crewMembers as any[]) || [];
+          const wasWorking = members.some(m => m.userId === userId);
+          
+          if (wasWorking) {
+            // Get execution grade for this hour
+            const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+            const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+            
+            if (labor && sales) {
+              // Calculate execution score components
+              const lastWeekSales = Number(sales.lastWeekSales) || 0;
+              const todaySales = Number(sales.actualSales) || 0;
+              const hasComparableSales = lastWeekSales > 0;
+              const salesVariancePct = hasComparableSales 
+                ? ((todaySales - lastWeekSales) / lastWeekSales) * 100 
+                : 0;
+              
+              // Staffing calculation (simplified)
+              const actualStaff = Number(labor.employeeCount) || 0;
+              const projectedStaff = (Number(labor.projectedLabor) || 0) / 10; // rough estimate
+              const staffingDiff = actualStaff - projectedStaff;
+              
+              // Score components
+              const salesScore = hasComparableSales ? (salesVariancePct >= -5 ? 100 : 50) : 75;
+              const staffingScore = Math.abs(staffingDiff) <= 1 ? 100 : (staffingDiff > 1 ? 70 : 60);
+              
+              const score = (salesScore + staffingScore) / 2;
+              gradeScores.push(score);
+            }
+          }
+        }
+        
+        if (gradeScores.length > 0) {
+          const avgScore = gradeScores.reduce((a, b) => a + b, 0) / gradeScores.length;
+          
+          // Convert score to grade
+          let grade = 'C';
+          if (avgScore >= 95) grade = 'A+';
+          else if (avgScore >= 85) grade = 'A';
+          else if (avgScore >= 75) grade = 'B';
+          else if (avgScore >= 65) grade = 'C';
+          else if (avgScore >= 55) grade = 'D';
+          else grade = 'F';
+          
+          leaderPerformance.push({
+            employeeId: leader.id,
+            name: `${leader.firstName} ${leader.lastName}`,
+            position: leader.position || leader.type || 'Leader',
+            restaurantId: leader.restaurantId || '',
+            restaurantName: restaurantNameMap.get(leader.restaurantId || '') || 'Unknown',
+            hoursWorked: gradeScores.length,
+            avgGradeScore: Math.round(avgScore),
+            grade,
+          });
+        }
+      }
+      
+      // Sort by score descending
+      leaderPerformance.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
+      
+      // Group by store
+      const byStore: Record<string, LeaderPerformance[]> = {};
+      for (const lp of leaderPerformance) {
+        if (lp.restaurantId) {
+          if (!byStore[lp.restaurantId]) {
+            byStore[lp.restaurantId] = [];
+          }
+          byStore[lp.restaurantId].push(lp);
+        }
+      }
+      
+      // Sort each store's list by score
+      for (const rid of Object.keys(byStore)) {
+        byStore[rid].sort((a, b) => b.avgGradeScore - a.avgGradeScore);
+      }
+      
+      res.json({
+        dateRange: { start: startDateStr, end: endDateStr },
+        byStore,
+        companyRankings: leaderPerformance,
+      });
+    } catch (error) {
+      console.error("Error fetching people performance:", error);
+      res.status(500).json({ error: "Failed to fetch people performance data" });
+    }
+  });
 
   return httpServer;
 }

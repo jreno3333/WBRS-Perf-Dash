@@ -1432,6 +1432,23 @@ export async function syncHourlyCrew(date?: Date): Promise<{ success: boolean; c
         continue;
       }
       
+      // Fetch roles to update employee positions
+      const roleMap = await api.getRoles(location.id);
+      
+      // Update employee positions from time punches
+      for (const punch of timePunches) {
+        const positionName = roleMap.get(punch.role_id);
+        if (positionName) {
+          await db.update(employees)
+            .set({ 
+              position: positionName,
+              locationId: location.id,
+              restaurantId: restaurant.id,
+            })
+            .where(eq(employees.sevenShiftsUserId, punch.user_id));
+        }
+      }
+      
       // Process each hour
       for (let hour = 0; hour < 24; hour++) {
         const userIds = api.getUsersWorkingHour(timePunches, hour, dateStr, timezone);
