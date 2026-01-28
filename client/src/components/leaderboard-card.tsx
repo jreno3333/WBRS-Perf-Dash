@@ -154,11 +154,6 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
-  // Debug: Log driveThru data for this restaurant
-  if (restaurant.driveThru) {
-    console.log(`[Card ${restaurant.restaurantName}] Has driveThru:`, restaurant.driveThru);
-  }
-  
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
