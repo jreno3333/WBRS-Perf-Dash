@@ -1516,7 +1516,8 @@ export async function registerRoutes(
     try {
       const { date, days = "7" } = req.query;
       const endDate = date ? new Date(String(date)) : new Date();
-      const numDays = Math.min(parseInt(String(days)) || 7, 30);
+      const numDays = Math.min(parseInt(String(days)) || 7, 180);
+      const MIN_HOURS_REQUIRED = 16; // Minimum hours worked to qualify for rankings
       
       // Calculate date range
       const startDate = new Date(endDate);
@@ -1608,14 +1609,18 @@ export async function registerRoutes(
       for (const leader of leaderEmployees) {
         const userId = leader.sevenShiftsUserId;
         
-        // Find hours this leader worked
+        // Find hours this leader worked and track restaurants they worked at
         const gradeScores: number[] = [];
+        const workedAtRestaurants = new Map<string, number>(); // restaurantId -> hours count
         
         for (const crew of crewData) {
           const members = (crew.crewMembers as any[]) || [];
           const wasWorking = members.some(m => m.userId === userId);
           
           if (wasWorking) {
+            // Track restaurant where they worked
+            workedAtRestaurants.set(crew.restaurantId, (workedAtRestaurants.get(crew.restaurantId) || 0) + 1);
+            
             // Get execution grade for this hour
             const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
             const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
@@ -1644,7 +1649,8 @@ export async function registerRoutes(
           }
         }
         
-        if (gradeScores.length > 0) {
+        // Only include if they have minimum required hours
+        if (gradeScores.length >= MIN_HOURS_REQUIRED) {
           const avgScore = gradeScores.reduce((a, b) => a + b, 0) / gradeScores.length;
           
           // Convert score to grade
@@ -1655,6 +1661,24 @@ export async function registerRoutes(
           else if (avgScore >= 65) grade = 'C';
           else if (avgScore >= 55) grade = 'D';
           else grade = 'F';
+          
+          // Determine restaurant from where they worked most (instead of employee profile)
+          let primaryRestaurantId = '';
+          let maxHours = 0;
+          workedAtRestaurants.forEach((hours, rid) => {
+            if (hours > maxHours) {
+              maxHours = hours;
+              primaryRestaurantId = rid;
+            }
+          });
+          
+          // Get restaurant name from the restaurant they worked at
+          const restaurantName = restaurantNameMap.get(primaryRestaurantId) || '';
+          
+          // Skip if we can't determine the restaurant
+          if (!primaryRestaurantId || !restaurantName) {
+            continue;
+          }
           
           // Map position types to display names
           let displayPosition = leader.position || '';
@@ -1674,8 +1698,8 @@ export async function registerRoutes(
             employeeId: leader.id,
             name: `${leader.firstName} ${leader.lastName}`,
             position: displayPosition,
-            restaurantId: leader.restaurantId || '',
-            restaurantName: restaurantNameMap.get(leader.restaurantId || '') || 'Unknown',
+            restaurantId: primaryRestaurantId,
+            restaurantName: restaurantName,
             hoursWorked: gradeScores.length,
             avgGradeScore: Math.round(avgScore),
             grade,

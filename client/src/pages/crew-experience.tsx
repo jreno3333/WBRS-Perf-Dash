@@ -237,13 +237,16 @@ export default function CrewExperiencePage() {
                     value={String(performanceDays)} 
                     onValueChange={(v) => setPerformanceDays(Number(v))}
                   >
-                    <SelectTrigger className="w-[130px]" data-testid="select-performance-days">
+                    <SelectTrigger className="w-[140px]" data-testid="select-performance-days">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="7">Last 7 days</SelectItem>
                       <SelectItem value="14">Last 14 days</SelectItem>
                       <SelectItem value="30">Last 30 days</SelectItem>
+                      <SelectItem value="60">Last 60 days</SelectItem>
+                      <SelectItem value="90">Last 90 days</SelectItem>
+                      <SelectItem value="180">Last 180 days</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
