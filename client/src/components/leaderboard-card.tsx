@@ -61,8 +61,9 @@ function getExecutionGrade(
     components.push({ name: 'sales', score: 100 });
   }
   
-  // Speed component (only if we have drive-thru data)
-  if (speedSeconds !== undefined) {
+  // Speed component (only if we have valid drive-thru data)
+  // Skip when speedSeconds is undefined or 0 (no cars = no data, not fast service)
+  if (speedSeconds !== undefined && speedSeconds > 0) {
     // GREEN (<5min) = 100, YELLOW (5-7min) = 70, RED (>7min) = 40
     let speedScore = 100;
     if (speedSeconds > 420) speedScore = 40;
