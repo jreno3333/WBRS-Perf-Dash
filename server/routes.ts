@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db, posDb } from "./db";
-import { scraperRuns, posOrders, hourlySales, restaurants } from "@shared/schema";
+import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees } from "@shared/schema";
 import { desc, sql, gte, lte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getAllHourlyPosSales } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
@@ -1622,7 +1622,7 @@ export async function registerRoutes(
             
             if (labor && sales) {
               // Calculate execution score components
-              const lastWeekSales = Number(sales.lastWeekSales) || 0;
+              const lastWeekSales = Number(sales.pastActualSales) || 0;
               const todaySales = Number(sales.actualSales) || 0;
               const hasComparableSales = lastWeekSales > 0;
               const salesVariancePct = hasComparableSales 

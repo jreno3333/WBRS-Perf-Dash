@@ -108,29 +108,40 @@ Preferred communication style: Simple, everyday language.
 - **Tooltip**: Shows total review count on hover
 - **Future**: Rating may be integrated into X-Score calculation
 
-### Crew Experience Tracking
-- **Purpose**: Tracks employee tenure and experience levels to identify inexperienced shifts.
-- **Data Source**: 7shifts employee data (uses `invited_at` as fallback when `hire_date` is null)
+### People Tenure & Performance (formerly Crew Experience)
+- **Purpose**: Tracks employee tenure, experience levels, and manager/supervisor performance.
+- **Route**: `/crew` page
+- **Data Source**: 7shifts employee data and time punches
+- **Employee Positions**: 
+  - `employees.position` column stores role (Manager, Shift Supervisor, Team Member, etc.)
+  - Positions are synced from 7shifts time punches during crew sync
 - **Tenure Categories**:
   - Training (T): < 90 days, score 25
   - Developing (D): 90 days - 6 months, score 50
   - Experienced (E): 6 months - 1 year, score 75
   - Veteran (V): 1+ year, score 100
 - **Experience Score**: Weighted average of crew tenure (0-100 scale)
+- **Leader Performance**:
+  - Tracks managers and shift supervisors
+  - Ranks by average execution grade during hours they worked
+  - Displays company-wide top 10 and best performer per store
 - **Data Storage**: 
-  - `employees` table stores hire_date and invited_at
+  - `employees` table stores hire_date, invited_at, and position
   - `hourly_crew` table stores hourly crew composition and scores
 - **Sync Schedule**: Every hour at :00 minutes (first 5 minutes of the hour)
 - **API Endpoints**:
   - `POST /api/crew/sync-employees` - Syncs employee data from 7shifts
-  - `POST /api/crew/sync` - Recalculates hourly crew experience for a date
+  - `POST /api/crew/sync` - Recalculates hourly crew experience for a date (also updates employee positions)
   - `GET /api/crew/experience` - Returns hourly crew breakdown by restaurant
   - `GET /api/crew/summary` - Returns daily average scores for leaderboard
+  - `GET /api/people/performance` - Returns manager/supervisor performance rankings
 - **Display**: 
   - GraduationCap icon badge on leaderboard cards with score
   - Color coding: green (≥75), amber (≥50), red (<50)
   - Hourly tooltips show V/E/D/T breakdown
-  - Dedicated Crew Experience page with detailed hourly team composition
+  - Tabbed People Tenure & Performance page:
+    - **Leader Rankings tab**: Company top performers and top by store
+    - **Hourly Tenure tab**: Detailed hourly team composition
 
 ## External Dependencies
 
