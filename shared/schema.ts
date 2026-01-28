@@ -326,6 +326,7 @@ export const employees = pgTable("employees", {
   invitedAt: timestamp("invited_at"), // Fallback: when they were invited to 7shifts
   active: boolean("active").notNull().default(true),
   type: text("type"), // employee, manager, asst_manager, employer
+  position: text("position"), // Role name: Manager, Shift Supervisor, Team Member, etc.
   locationId: integer("location_id"), // Primary 7shifts location ID
   restaurantId: varchar("restaurant_id"), // Mapped to our restaurant
   syncedAt: timestamp("synced_at").defaultNow(),

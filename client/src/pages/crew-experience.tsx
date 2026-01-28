@@ -150,7 +150,7 @@ export default function CrewExperiencePage() {
               </Button>
             </Link>
             <Users className="w-6 h-6 text-primary" />
-            <h1 className="text-xl font-bold">Crew Experience by Hour</h1>
+            <h1 className="text-xl font-bold">People Tenure & Performance</h1>
             <Badge variant="outline">{storesWithData.length} stores</Badge>
           </div>
           
