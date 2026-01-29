@@ -1738,6 +1738,57 @@ export async function registerRoutes(
     }
   });
 
+  // === Workstream Applicant Tracking ===
+  
+  // Sync applicants from Workstream API
+  app.post("/api/workstream/sync", async (req, res) => {
+    try {
+      const { syncWorkstreamApplicants } = await import("./scraper/workstream-api");
+      const result = await syncWorkstreamApplicants();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("Error syncing Workstream applicants:", error);
+      res.status(500).json({ error: "Failed to sync Workstream applicants" });
+    }
+  });
+  
+  // Get applicants by week
+  app.get("/api/workstream/by-week", async (req, res) => {
+    try {
+      const weeks = parseInt(req.query.weeks as string) || 8;
+      const { getApplicantsByWeek } = await import("./scraper/workstream-api");
+      const data = await getApplicantsByWeek(weeks);
+      res.json(data);
+    } catch (error) {
+      console.error("Error fetching applicants by week:", error);
+      res.status(500).json({ error: "Failed to fetch applicants by week" });
+    }
+  });
+  
+  // Get applicants by unit
+  app.get("/api/workstream/by-unit", async (req, res) => {
+    try {
+      const { getApplicantsByUnit } = await import("./scraper/workstream-api");
+      const data = await getApplicantsByUnit();
+      res.json(data);
+    } catch (error) {
+      console.error("Error fetching applicants by unit:", error);
+      res.status(500).json({ error: "Failed to fetch applicants by unit" });
+    }
+  });
+  
+  // Get applicants summary
+  app.get("/api/workstream/summary", async (req, res) => {
+    try {
+      const { getApplicantsSummary } = await import("./scraper/workstream-api");
+      const data = await getApplicantsSummary();
+      res.json(data);
+    } catch (error) {
+      console.error("Error fetching applicants summary:", error);
+      res.status(500).json({ error: "Failed to fetch applicants summary" });
+    }
+  });
+
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {
     res.json({
