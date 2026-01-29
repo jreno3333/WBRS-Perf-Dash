@@ -32,7 +32,8 @@ interface WorkstreamApplicant {
 }
 
 interface WorkstreamResponse {
-  position_applications: WorkstreamApplicant[];
+  applicants?: WorkstreamApplicant[];
+  position_applications?: WorkstreamApplicant[];
   pagination?: {
     current_page: number;
     total_pages: number;
@@ -64,6 +65,14 @@ function normalizePositionLevel(title: string): string {
 }
 
 async function getAccessToken(): Promise<string> {
+  // First, check for a pre-generated API token (preferred)
+  const apiToken = process.env.WORKSTREAM_API_TOKEN;
+  if (apiToken) {
+    console.log("[Workstream] Using pre-generated API token");
+    return apiToken;
+  }
+  
+  // Fall back to OAuth if no pre-generated token
   if (cachedAccessToken && Date.now() < cachedAccessToken.expiresAt - 60000) {
     return cachedAccessToken.token;
   }
@@ -72,10 +81,10 @@ async function getAccessToken(): Promise<string> {
   const clientSecret = process.env.WORKSTREAM_CLIENT_SECRET;
   
   if (!clientId || !clientSecret) {
-    throw new Error("WORKSTREAM_CLIENT_ID and WORKSTREAM_CLIENT_SECRET not configured");
+    throw new Error("WORKSTREAM_API_TOKEN or WORKSTREAM_CLIENT_ID/SECRET not configured");
   }
   
-  console.log("[Workstream] Fetching new access token...");
+  console.log("[Workstream] Fetching new access token via OAuth...");
   
   const tokenName = `replit_sync_${Date.now()}`;
   const params = new URLSearchParams({
@@ -83,7 +92,7 @@ async function getAccessToken(): Promise<string> {
     client_id: clientId,
     client_secret: clientSecret,
     name: tokenName,
-    scopes: "position_applications",
+    scopes: "applicants",
   });
   
   const response = await fetch(`${WORKSTREAM_API_URL}/tokens?${params.toString()}`, {
@@ -124,7 +133,7 @@ export async function fetchWorkstreamApplicants(): Promise<WorkstreamApplicant[]
   let hasMore = true;
   
   while (hasMore) {
-    const url = `${WORKSTREAM_API_URL}/position_applications?page=${page}&per_page=${perPage}`;
+    const url = `${WORKSTREAM_API_URL}/applicants?page=${page}&per_page=${perPage}`;
     console.log(`[Workstream] Fetching page ${page}...`);
     
     let response: Response | null = null;
@@ -150,20 +159,23 @@ export async function fetchWorkstreamApplicants(): Promise<WorkstreamApplicant[]
     
     if (!response || !response.ok) {
       const errorText = response ? await response.text() : "No response";
-      console.error("[Workstream] API error:", response?.status || "unknown", errorText);
+      console.error("[Workstream] API error:", response?.status || "unknown", "URL:", url);
+      console.error("[Workstream] Response body:", errorText);
       throw new Error(`Workstream API error: ${response?.status || "unknown"}`);
     }
     
     const data: WorkstreamResponse = await response.json();
-    const applicants = data.position_applications || [];
-    allApplicants.push(...applicants);
+    const applicantsList = data.applicants || data.position_applications || [];
+    allApplicants.push(...applicantsList);
     
-    console.log(`[Workstream] Page ${page}: ${applicants.length} applicants`);
+    console.log(`[Workstream] Page ${page}: ${applicantsList.length} applicants`);
     
     if (data.pagination) {
       hasMore = page < data.pagination.total_pages;
+    } else if (applicantsList.length === 0) {
+      hasMore = false;
     } else {
-      hasMore = applicants.length === perPage;
+      hasMore = applicantsList.length === perPage;
     }
     
     page++;
