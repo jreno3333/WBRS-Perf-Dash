@@ -425,4 +425,30 @@ export async function startScheduler() {
   // Run initial sync immediately and wait for it to complete
   // This ensures data (including HME) is available when the app starts
   await runScheduledSync();
+  
+  // Force initial crew sync on startup (bypasses hourly timing check)
+  // This ensures production has crew data with positions after deployment
+  await forceInitialCrewSync();
+}
+
+// Force crew sync on startup - runs regardless of time
+async function forceInitialCrewSync() {
+  log("Running initial crew sync on startup...");
+  try {
+    const { syncHourlyCrew } = await import("./scraper/7shifts-api");
+    
+    // Sync today's data
+    const today = new Date();
+    const todayResult = await syncHourlyCrew(today);
+    log(`Initial crew sync (today): ${todayResult.count} hourly records`);
+    
+    // Also sync yesterday for week-over-week comparisons
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayResult = await syncHourlyCrew(yesterday);
+    log(`Initial crew sync (yesterday): ${yesterdayResult.count} hourly records`);
+    
+  } catch (error) {
+    log(`Initial crew sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
