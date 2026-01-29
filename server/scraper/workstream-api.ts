@@ -2,7 +2,9 @@ import { db } from "../db";
 import { applicants, workstreamLocations, restaurants } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
-const WORKSTREAM_BASE_URL = "https://public-api.workstream.us";
+const WORKSTREAM_API_URL = "https://public-api.workstream.us";
+
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
 
 interface WorkstreamPosition {
   digest_key: string;
@@ -61,11 +63,53 @@ function normalizePositionLevel(title: string): string {
   return 'team_member';
 }
 
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = process.env.WORKSTREAM_API_TOKEN;
-  if (!token) {
-    throw new Error("WORKSTREAM_API_TOKEN not configured");
+async function getAccessToken(): Promise<string> {
+  if (cachedAccessToken && Date.now() < cachedAccessToken.expiresAt - 60000) {
+    return cachedAccessToken.token;
   }
+  
+  const clientId = process.env.WORKSTREAM_CLIENT_ID;
+  const clientSecret = process.env.WORKSTREAM_CLIENT_SECRET;
+  
+  if (!clientId || !clientSecret) {
+    throw new Error("WORKSTREAM_CLIENT_ID and WORKSTREAM_CLIENT_SECRET not configured");
+  }
+  
+  console.log("[Workstream] Fetching new access token...");
+  
+  const tokenName = `replit_sync_${Date.now()}`;
+  const params = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+    name: tokenName,
+    scopes: "position_applications",
+  });
+  
+  const response = await fetch(`${WORKSTREAM_API_URL}/tokens?${params.toString()}`, {
+    method: "POST",
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("[Workstream] OAuth error:", response.status, errorText);
+    throw new Error(`Workstream OAuth error: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  const expiresIn = data.expires_in || 604800;
+  
+  cachedAccessToken = {
+    token: data.token,
+    expiresAt: Date.now() + (expiresIn * 1000),
+  };
+  
+  console.log("[Workstream] Got access token, expires in", expiresIn, "seconds");
+  return cachedAccessToken.token;
+}
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const token = await getAccessToken();
   return {
     "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -80,18 +124,34 @@ export async function fetchWorkstreamApplicants(): Promise<WorkstreamApplicant[]
   let hasMore = true;
   
   while (hasMore) {
-    const url = `${WORKSTREAM_BASE_URL}/position_applications/?page=${page}&per_page=${perPage}`;
+    const url = `${WORKSTREAM_API_URL}/position_applications?page=${page}&per_page=${perPage}`;
     console.log(`[Workstream] Fetching page ${page}...`);
     
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
-    });
+    let response: Response | null = null;
+    let retries = 3;
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[Workstream] API error:", response.status, errorText);
-      throw new Error(`Workstream API error: ${response.status}`);
+    while (retries > 0) {
+      response = await fetch(url, {
+        method: "GET",
+        headers,
+      });
+      
+      if (response.ok || (response.status !== 503 && response.status !== 429 && response.status !== 504)) {
+        break;
+      }
+      
+      retries--;
+      if (retries > 0) {
+        const waitTime = (3 - retries) * 2000;
+        console.log(`[Workstream] Got ${response.status}, retrying in ${waitTime}ms... (${retries} retries left)`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    if (!response || !response.ok) {
+      const errorText = response ? await response.text() : "No response";
+      console.error("[Workstream] API error:", response?.status || "unknown", errorText);
+      throw new Error(`Workstream API error: ${response?.status || "unknown"}`);
     }
     
     const data: WorkstreamResponse = await response.json();
