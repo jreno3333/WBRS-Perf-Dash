@@ -1371,9 +1371,10 @@ export async function registerRoutes(
   // Sync hourly crew data for a specific date
   app.post("/api/crew/sync", async (req, res) => {
     try {
-      const { date } = req.body;
+      // Accept date from body or query parameters
+      const date = req.body?.date || req.query?.date;
       const { syncHourlyCrew } = await import("./scraper/7shifts-api");
-      const targetDate = date ? new Date(date) : undefined;
+      const targetDate = date ? new Date(String(date)) : undefined;
       const result = await syncHourlyCrew(targetDate);
       res.json(result);
     } catch (error) {
@@ -1735,6 +1736,21 @@ export async function registerRoutes(
       console.error("Error fetching people performance:", error);
       res.status(500).json({ error: "Failed to fetch people performance data" });
     }
+  });
+
+  // Version/diagnostics endpoint to verify production deployment
+  app.get("/api/version", (req, res) => {
+    res.json({
+      version: "2.1.0",
+      buildTime: new Date().toISOString(),
+      features: {
+        leaderNames: true,
+        experienceScores: true,
+        hmeTimers: true,
+        googleReviews: true,
+      },
+      deployedAt: process.env.REPLIT_DEPLOYMENT_ID || "development",
+    });
   });
 
   return httpServer;
