@@ -401,7 +401,8 @@ export class SevenShiftsAPI {
 
   // Get users with their positions working during a specific hour
   // Only returns employees who were ACTUALLY clocked in during the target hour
-  // For employees still clocked in, only includes them for hours up to the current time
+  // Uses precise UTC interval overlap to handle boundary conditions correctly
+  // (e.g., someone clocking out at exactly 09:00 is NOT counted for 9:00-10:00 hour)
   getUsersWithPositionsWorkingHour(timePunches: TimePunch[], roleMap: Map<number, string>, targetHour: number, targetDate: string, timezone: string): { userId: number; position: string }[] {
     const users: { userId: number; position: string }[] = [];
     const seenUserIds = new Set<number>();
@@ -416,33 +417,41 @@ export class SevenShiftsAPI {
       return [];
     }
     
+    // Define the target hour interval using precise UTC timestamps
+    // Hour 9 = 09:00:00 to 09:59:59 (we use 10:00 as exclusive end for comparison)
+    const hourStartLocal = `${targetDate}T${targetHour.toString().padStart(2, '0')}:00:00`;
+    const nextHour = (targetHour + 1) % 24;
+    const nextHourDate = targetHour === 23 ? new Date(new Date(targetDate).getTime() + 86400000).toISOString().split('T')[0] : targetDate;
+    const hourEndLocal = `${nextHourDate}T${nextHour.toString().padStart(2, '0')}:00:00`;
+    
+    // Convert to UTC timestamps for precise comparison
+    const hourStartUtc = fromZonedTime(hourStartLocal, timezone);
+    const hourEndUtc = fromZonedTime(hourEndLocal, timezone);
+    
     for (const punch of timePunches) {
       if (!punch.clocked_in) continue;
       
       const clockedIn = new Date(punch.clocked_in);
       
-      // For employees still clocked in, use current time but cap at target date/hour boundary
+      // For employees still clocked in, use current time
+      // For historical dates, if still open, cap at end of target date
       let clockedOut: Date;
       if (punch.clocked_out) {
         clockedOut = new Date(punch.clocked_out);
+      } else if (targetDate < currentLocalDate) {
+        // Historical date with open punch - cap at end of target date
+        clockedOut = fromZonedTime(`${targetDate}T23:59:59`, timezone);
       } else {
-        // Employee is still clocked in - only count them through the current hour
+        // Current date with open punch - use now
         clockedOut = now;
       }
       
-      const clockInHour = parseInt(clockedIn.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
-      const clockOutHour = parseInt(clockedOut.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
-      const clockInDate = clockedIn.toLocaleDateString('en-CA', { timeZone: timezone });
-      const clockOutDate = clockedOut.toLocaleDateString('en-CA', { timeZone: timezone });
+      // Precise interval overlap check:
+      // Punch overlaps the hour if: punchStart < hourEnd AND punchEnd > hourStart
+      // This correctly handles boundary cases (clock out at 09:00 does NOT overlap 09:00-10:00)
+      const punchOverlapsHour = clockedIn < hourEndUtc && clockedOut > hourStartUtc;
       
-      // Check if the punch ACTUALLY overlaps with the target hour
-      // Must have clocked in ON or BEFORE this hour, AND clocked out ON or AFTER this hour
-      const punchStartsBeforeOrDuringHour = (clockInDate < targetDate) || 
-        (clockInDate === targetDate && clockInHour <= targetHour);
-      const punchEndsAfterOrDuringHour = (clockOutDate > targetDate) || 
-        (clockOutDate === targetDate && clockOutHour >= targetHour);
-      
-      if (punchStartsBeforeOrDuringHour && punchEndsAfterOrDuringHour) {
+      if (punchOverlapsHour) {
         if (!seenUserIds.has(punch.user_id)) {
           seenUserIds.add(punch.user_id);
           const position = roleMap.get(punch.role_id) || `Role ${punch.role_id}`;
