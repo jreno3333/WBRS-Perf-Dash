@@ -45,3 +45,6 @@ integrations = ["javascript_database:1.0.0"]
 [userenv]
 
 [userenv.production]
+
+[userenv.shared]
+WORKSTREAM_API_TOKEN = "gvK_0RnzCIXhddu-mhbdSAcimWlLIWoYyB0OAmIZ2yI"

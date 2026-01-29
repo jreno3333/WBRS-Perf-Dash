@@ -133,11 +133,11 @@ export async function fetchWorkstreamApplicants(): Promise<WorkstreamApplicant[]
   let hasMore = true;
   
   while (hasMore) {
-    const url = `${WORKSTREAM_API_URL}/applicants?page=${page}&per_page=${perPage}`;
+    const url = `${WORKSTREAM_API_URL}/position_applications?page=${page}&per_page=${perPage}`;
     console.log(`[Workstream] Fetching page ${page}...`);
     
     let response: Response | null = null;
-    let retries = 3;
+    let retries = 5;
     
     while (retries > 0) {
       response = await fetch(url, {
@@ -151,7 +151,7 @@ export async function fetchWorkstreamApplicants(): Promise<WorkstreamApplicant[]
       
       retries--;
       if (retries > 0) {
-        const waitTime = (3 - retries) * 2000;
+        const waitTime = (5 - retries) * 3000;
         console.log(`[Workstream] Got ${response.status}, retrying in ${waitTime}ms... (${retries} retries left)`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
