@@ -176,8 +176,15 @@ export default function CrewExperiencePage() {
   const handleApplicantSync = async () => {
     setIsSyncingApplicants(true);
     try {
-      await fetch("/api/workstream/sync", { method: "POST" });
-      await refetchApplicants();
+      const response = await fetch("/api/workstream/sync", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Sync failed");
+      }
+      await Promise.all([
+        refetchApplicants(),
+        refetchApplicantsUnit(),
+        refetchApplicantsSummary(),
+      ]);
     } catch (e) {
       console.error("Applicant sync failed:", e);
     } finally {

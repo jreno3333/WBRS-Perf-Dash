@@ -31,6 +31,12 @@ interface WorkstreamApplicant {
 
 interface WorkstreamResponse {
   position_applications: WorkstreamApplicant[];
+  pagination?: {
+    current_page: number;
+    total_pages: number;
+    total_count: number;
+    per_page: number;
+  };
 }
 
 function getWeekStart(date: Date): string {
@@ -68,21 +74,48 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 export async function fetchWorkstreamApplicants(): Promise<WorkstreamApplicant[]> {
   const headers = await getAuthHeaders();
+  const allApplicants: WorkstreamApplicant[] = [];
+  let page = 1;
+  const perPage = 100;
+  let hasMore = true;
   
-  const response = await fetch(`${WORKSTREAM_BASE_URL}/position_applications/`, {
-    method: "GET",
-    headers,
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("[Workstream] API error:", response.status, errorText);
-    throw new Error(`Workstream API error: ${response.status}`);
+  while (hasMore) {
+    const url = `${WORKSTREAM_BASE_URL}/position_applications/?page=${page}&per_page=${perPage}`;
+    console.log(`[Workstream] Fetching page ${page}...`);
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[Workstream] API error:", response.status, errorText);
+      throw new Error(`Workstream API error: ${response.status}`);
+    }
+    
+    const data: WorkstreamResponse = await response.json();
+    const applicants = data.position_applications || [];
+    allApplicants.push(...applicants);
+    
+    console.log(`[Workstream] Page ${page}: ${applicants.length} applicants`);
+    
+    if (data.pagination) {
+      hasMore = page < data.pagination.total_pages;
+    } else {
+      hasMore = applicants.length === perPage;
+    }
+    
+    page++;
+    
+    if (page > 50) {
+      console.warn("[Workstream] Hit safety limit of 50 pages");
+      break;
+    }
   }
   
-  const data: WorkstreamResponse = await response.json();
-  console.log(`[Workstream] Fetched ${data.position_applications?.length || 0} applicants`);
-  return data.position_applications || [];
+  console.log(`[Workstream] Fetched ${allApplicants.length} total applicants`);
+  return allApplicants;
 }
 
 async function matchLocationToRestaurant(locationName: string): Promise<string | null> {
