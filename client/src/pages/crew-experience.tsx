@@ -9,7 +9,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { ArrowLeft, Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, UserPlus, Briefcase, TrendingUp } from "lucide-react";
+import { ArrowLeft, Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star } from "lucide-react";
 import { format } from "date-fns";
 
 interface CrewMember {
@@ -59,30 +59,6 @@ interface PerformanceResponse {
   companyRankings: LeaderPerformance[];
 }
 
-interface ApplicantsByWeek {
-  weekStart: string;
-  weekLabel: string;
-  total: number;
-  byLevel: Record<string, number>;
-  byStatus: Record<string, number>;
-}
-
-interface ApplicantsByUnit {
-  restaurantId: string;
-  restaurantName: string;
-  total: number;
-  byLevel: Record<string, number>;
-  hired: number;
-}
-
-interface ApplicantsSummary {
-  totalApplicants: number;
-  thisWeek: number;
-  hired: number;
-  inProgress: number;
-  byLevel: Record<string, number>;
-  bySource: Record<string, number>;
-}
 
 function getCentralDate(): Date {
   const now = new Date();
@@ -143,54 +119,6 @@ export default function CrewExperiencePage() {
       return res.json();
     },
   });
-  
-  const { data: applicantsByWeek, isLoading: applicantsWeekLoading, refetch: refetchApplicants } = useQuery<ApplicantsByWeek[]>({
-    queryKey: ["/api/workstream/by-week"],
-    queryFn: async () => {
-      const res = await fetch("/api/workstream/by-week?weeks=8");
-      if (!res.ok) throw new Error("Failed to fetch applicants by week");
-      return res.json();
-    },
-  });
-  
-  const { data: applicantsByUnit, isLoading: applicantsUnitLoading } = useQuery<ApplicantsByUnit[]>({
-    queryKey: ["/api/workstream/by-unit"],
-    queryFn: async () => {
-      const res = await fetch("/api/workstream/by-unit");
-      if (!res.ok) throw new Error("Failed to fetch applicants by unit");
-      return res.json();
-    },
-  });
-  
-  const { data: applicantsSummary } = useQuery<ApplicantsSummary>({
-    queryKey: ["/api/workstream/summary"],
-    queryFn: async () => {
-      const res = await fetch("/api/workstream/summary");
-      if (!res.ok) throw new Error("Failed to fetch applicants summary");
-      return res.json();
-    },
-  });
-  
-  const [isSyncingApplicants, setIsSyncingApplicants] = useState(false);
-  
-  const handleApplicantSync = async () => {
-    setIsSyncingApplicants(true);
-    try {
-      const response = await fetch("/api/workstream/sync", { method: "POST" });
-      if (!response.ok) {
-        throw new Error("Sync failed");
-      }
-      await Promise.all([
-        refetchApplicants(),
-        refetchApplicantsUnit(),
-        refetchApplicantsSummary(),
-      ]);
-    } catch (e) {
-      console.error("Applicant sync failed:", e);
-    } finally {
-      setIsSyncingApplicants(false);
-    }
-  };
   
   const toggleRestaurant = (id: string) => {
     setExpandedRestaurants(prev => {
@@ -287,14 +215,10 @@ export default function CrewExperiencePage() {
         </div>
         
         <Tabs defaultValue="performance" className="w-full">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="performance" data-testid="tab-performance">
               <Trophy className="w-4 h-4 mr-2" />
               Leader Rankings
-            </TabsTrigger>
-            <TabsTrigger value="applicants" data-testid="tab-applicants">
-              <UserPlus className="w-4 h-4 mr-2" />
-              Applicants
             </TabsTrigger>
             <TabsTrigger value="tenure" data-testid="tab-tenure">
               <Users className="w-4 h-4 mr-2" />
@@ -442,192 +366,6 @@ export default function CrewExperiencePage() {
                     </CardContent>
                   </Card>
                 </div>
-              )}
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="applicants" className="mt-4">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <p className="text-sm text-muted-foreground">
-                  Applicant tracking from Workstream by week and unit
-                </p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleApplicantSync}
-                  disabled={isSyncingApplicants}
-                  data-testid="button-sync-applicants"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingApplicants ? 'animate-spin' : ''}`} />
-                  Sync from Workstream
-                </Button>
-              </div>
-              
-              {applicantsSummary && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <UserPlus className="w-5 h-5 text-primary" />
-                        <div>
-                          <div className="text-2xl font-bold">{applicantsSummary.totalApplicants}</div>
-                          <div className="text-xs text-muted-foreground">Total Applicants</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-blue-500" />
-                        <div>
-                          <div className="text-2xl font-bold">{applicantsSummary.thisWeek}</div>
-                          <div className="text-xs text-muted-foreground">This Week</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Briefcase className="w-5 h-5 text-green-500" />
-                        <div>
-                          <div className="text-2xl font-bold">{applicantsSummary.hired}</div>
-                          <div className="text-xs text-muted-foreground">Hired</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Users className="w-5 h-5 text-amber-500" />
-                        <div>
-                          <div className="text-2xl font-bold">{applicantsSummary.inProgress}</div>
-                          <div className="text-xs text-muted-foreground">In Progress</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-primary" />
-                      Applicants by Week
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {applicantsWeekLoading ? (
-                      <div className="space-y-2">
-                        {[1, 2, 3].map(i => (
-                          <div key={i} className="h-10 bg-muted rounded animate-pulse" />
-                        ))}
-                      </div>
-                    ) : !applicantsByWeek?.length ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p>No applicant data yet</p>
-                        <p className="text-sm">Click "Sync from Workstream" to load data</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {applicantsByWeek.map((week) => (
-                          <div key={week.weekStart} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                            <div>
-                              <div className="font-medium text-sm">{week.weekLabel}</div>
-                              <div className="flex gap-2 mt-1">
-                                {Object.entries(week.byLevel).map(([level, count]) => (
-                                  <Badge key={level} variant="outline" className="text-xs">
-                                    {level === 'team_member' ? 'TM' : level === 'shift_supervisor' ? 'SS' : level === 'manager' ? 'MGR' : level.toUpperCase()}: {count}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-xl font-bold">{week.total}</div>
-                              <div className="text-xs text-muted-foreground">applicants</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Briefcase className="w-5 h-5 text-primary" />
-                      Applicants by Unit (Last 90 Days)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {applicantsUnitLoading ? (
-                      <div className="space-y-2">
-                        {[1, 2, 3].map(i => (
-                          <div key={i} className="h-10 bg-muted rounded animate-pulse" />
-                        ))}
-                      </div>
-                    ) : !applicantsByUnit?.length ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p>No applicant data yet</p>
-                        <p className="text-sm">Click "Sync from Workstream" to load data</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                        {applicantsByUnit.map((unit) => {
-                          const unitNum = unit.restaurantName.match(/\d+/)?.[0] || unit.restaurantId;
-                          const hireRate = unit.total > 0 ? Math.round((unit.hired / unit.total) * 100) : 0;
-                          return (
-                            <div key={unit.restaurantId} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                              <div>
-                                <div className="font-medium text-sm">Unit #{unitNum}</div>
-                                <div className="flex gap-2 mt-1">
-                                  {Object.entries(unit.byLevel).map(([level, count]) => (
-                                    <Badge key={level} variant="outline" className="text-xs">
-                                      {level === 'team_member' ? 'TM' : level === 'shift_supervisor' ? 'SS' : level === 'manager' ? 'MGR' : level.toUpperCase()}: {count}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xl font-bold">{unit.total}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {unit.hired} hired ({hireRate}%)
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-              
-              {applicantsSummary && Object.keys(applicantsSummary.bySource || {}).length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg">Applicants by Source</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(applicantsSummary.bySource)
-                        .sort((a, b) => b[1] - a[1])
-                        .map(([source, count]) => (
-                          <Badge key={source} variant="secondary" className="text-sm">
-                            {source || 'Unknown'}: {count}
-                          </Badge>
-                        ))}
-                    </div>
-                  </CardContent>
-                </Card>
               )}
             </div>
           </TabsContent>

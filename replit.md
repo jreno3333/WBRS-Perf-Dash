@@ -141,31 +141,7 @@ Preferred communication style: Simple, everyday language.
   - Hourly tooltips show V/E/D/T breakdown
   - Tabbed People Tenure & Performance page:
     - **Leader Rankings tab**: Company top performers and top by store
-    - **Applicants tab**: Workstream applicant tracking
     - **Hourly Tenure tab**: Detailed hourly team composition
-
-### Workstream Integration
-- **Purpose**: Tracks applicants by week, unit, and position level from Workstream ATS.
-- **API**: Workstream Public API (https://public-api.workstream.us)
-- **Authentication**: Bearer token via `WORKSTREAM_API_TOKEN` secret
-- **Data Storage**:
-  - `applicants` table stores applicant data with position level normalization
-  - `workstream_locations` table maps Workstream locations to restaurant IDs
-- **Position Level Mapping**:
-  - `team_member`: Team Member, Crew Member
-  - `shift_supervisor`: Shift Supervisor, Shift Lead, Trainer
-  - `manager`: Manager, Assistant Manager, AGM
-  - `operator`: Operator, Owner, General Manager
-- **API Endpoints**:
-  - `POST /api/workstream/sync` - Syncs applicants from Workstream API
-  - `GET /api/workstream/by-week` - Returns applicants grouped by week (last 8 weeks)
-  - `GET /api/workstream/by-unit` - Returns applicants grouped by restaurant (last 90 days)
-  - `GET /api/workstream/summary` - Returns overall applicant statistics
-- **Display**: 
-  - Summary cards showing total applicants, this week, hired, and in-progress counts
-  - Weekly breakdown with position level badges
-  - Unit breakdown with hire rate percentages
-  - Applicant source breakdown
 
 ## External Dependencies
 
