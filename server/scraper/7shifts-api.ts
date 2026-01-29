@@ -400,21 +400,43 @@ export class SevenShiftsAPI {
   }
 
   // Get users with their positions working during a specific hour
+  // Only returns employees who were ACTUALLY clocked in during the target hour
+  // For employees still clocked in, only includes them for hours up to the current time
   getUsersWithPositionsWorkingHour(timePunches: TimePunch[], roleMap: Map<number, string>, targetHour: number, targetDate: string, timezone: string): { userId: number; position: string }[] {
     const users: { userId: number; position: string }[] = [];
     const seenUserIds = new Set<number>();
+    
+    // Get current time in the target timezone
+    const now = new Date();
+    const currentLocalDate = now.toLocaleDateString('en-CA', { timeZone: timezone });
+    const currentLocalHour = parseInt(now.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
+    
+    // Don't return anyone for future hours (hours that haven't happened yet)
+    if (targetDate > currentLocalDate || (targetDate === currentLocalDate && targetHour > currentLocalHour)) {
+      return [];
+    }
     
     for (const punch of timePunches) {
       if (!punch.clocked_in) continue;
       
       const clockedIn = new Date(punch.clocked_in);
-      const clockedOut = punch.clocked_out ? new Date(punch.clocked_out) : new Date();
+      
+      // For employees still clocked in, use current time but cap at target date/hour boundary
+      let clockedOut: Date;
+      if (punch.clocked_out) {
+        clockedOut = new Date(punch.clocked_out);
+      } else {
+        // Employee is still clocked in - only count them through the current hour
+        clockedOut = now;
+      }
       
       const clockInHour = parseInt(clockedIn.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
       const clockOutHour = parseInt(clockedOut.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
       const clockInDate = clockedIn.toLocaleDateString('en-CA', { timeZone: timezone });
       const clockOutDate = clockedOut.toLocaleDateString('en-CA', { timeZone: timezone });
       
+      // Check if the punch ACTUALLY overlaps with the target hour
+      // Must have clocked in ON or BEFORE this hour, AND clocked out ON or AFTER this hour
       const punchStartsBeforeOrDuringHour = (clockInDate < targetDate) || 
         (clockInDate === targetDate && clockInHour <= targetHour);
       const punchEndsAfterOrDuringHour = (clockOutDate > targetDate) || 
