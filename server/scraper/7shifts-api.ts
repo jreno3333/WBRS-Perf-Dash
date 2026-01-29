@@ -399,6 +399,39 @@ export class SevenShiftsAPI {
     return userIds;
   }
 
+  // Get users with their positions working during a specific hour
+  getUsersWithPositionsWorkingHour(timePunches: TimePunch[], roleMap: Map<number, string>, targetHour: number, targetDate: string, timezone: string): { userId: number; position: string }[] {
+    const users: { userId: number; position: string }[] = [];
+    const seenUserIds = new Set<number>();
+    
+    for (const punch of timePunches) {
+      if (!punch.clocked_in) continue;
+      
+      const clockedIn = new Date(punch.clocked_in);
+      const clockedOut = punch.clocked_out ? new Date(punch.clocked_out) : new Date();
+      
+      const clockInHour = parseInt(clockedIn.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
+      const clockOutHour = parseInt(clockedOut.toLocaleString('en-US', { timeZone: timezone, hour: '2-digit', hour12: false }));
+      const clockInDate = clockedIn.toLocaleDateString('en-CA', { timeZone: timezone });
+      const clockOutDate = clockedOut.toLocaleDateString('en-CA', { timeZone: timezone });
+      
+      const punchStartsBeforeOrDuringHour = (clockInDate < targetDate) || 
+        (clockInDate === targetDate && clockInHour <= targetHour);
+      const punchEndsAfterOrDuringHour = (clockOutDate > targetDate) || 
+        (clockOutDate === targetDate && clockOutHour >= targetHour);
+      
+      if (punchStartsBeforeOrDuringHour && punchEndsAfterOrDuringHour) {
+        if (!seenUserIds.has(punch.user_id)) {
+          seenUserIds.add(punch.user_id);
+          const position = roleMap.get(punch.role_id) || `Role ${punch.role_id}`;
+          users.push({ userId: punch.user_id, position });
+        }
+      }
+    }
+    
+    return users;
+  }
+
   // Check if an operator is scheduled for a specific hour
   // Operators don't punch in, so we check the schedule instead
   hasOperatorScheduledForHour(shifts: ScheduledShift[], roleMap: Map<number, string>, hour: number, timezone: string, date: string): boolean {
@@ -1451,16 +1484,16 @@ export async function syncHourlyCrew(date?: Date): Promise<{ success: boolean; c
       
       // Process each hour
       for (let hour = 0; hour < 24; hour++) {
-        const userIds = api.getUsersWorkingHour(timePunches, hour, dateStr, timezone);
+        const usersWithPositions = api.getUsersWithPositionsWorkingHour(timePunches, roleMap, hour, dateStr, timezone);
         
-        if (userIds.length === 0) continue;
+        if (usersWithPositions.length === 0) continue;
         
-        // Build crew data for this hour
-        const crewMembers: { userId: number; firstName: string; lastName: string; tenureMonths: number; category: string }[] = [];
+        // Build crew data for this hour (now includes position from time punch)
+        const crewMembers: { userId: number; firstName: string; lastName: string; tenureMonths: number; category: string; position: string }[] = [];
         const tenureMix = { trainee: 0, developing: 0, experienced: 0, veteran: 0 };
         let totalMonths = 0;
         
-        for (const userId of userIds) {
+        for (const { userId, position } of usersWithPositions) {
           const emp = employeeMap.get(userId);
           if (!emp) continue;
           
@@ -1472,6 +1505,7 @@ export async function syncHourlyCrew(date?: Date): Promise<{ success: boolean; c
             lastName: emp.lastName,
             tenureMonths: tenure.months,
             category: tenure.category,
+            position, // Position they are working THIS hour (from time punch role_id)
           });
           
           tenureMix[tenure.category]++;

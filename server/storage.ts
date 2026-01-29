@@ -17,6 +17,8 @@ import {
   dailyLabor,
   hourlySales,
   hourlyLabor,
+  hourlyCrew,
+  employees,
   scraperRuns,
   posOrders,
   dailyWeather,
@@ -766,6 +768,9 @@ export class DatabaseStorage implements IStorage {
     // Fetch hourly labor data from separate table
     const allHourlyLaborData = await db.select().from(hourlyLabor).where(eq(hourlyLabor.date, selectedDateStr));
     
+    // Fetch hourly crew data for leader names (managers, shift supervisors, operators)
+    const allHourlyCrewData = await db.select().from(hourlyCrew).where(eq(hourlyCrew.date, selectedDateStr));
+    
     // Fetch Xenial POS hourly data - prioritize over 7shifts for any date
     // POS data is more accurate when available (real transactions vs 7shifts estimates)
     const posHourlySales = await getAllHourlyPosSales(selectedDate);
@@ -782,6 +787,7 @@ export class DatabaseStorage implements IStorage {
       const restaurantLastWeekHourly = lastWeekHourly.filter(s => s.restaurantId === restaurant.id);
       const restaurantHmeData = allHmeData.filter(h => h.restaurantId === restaurant.id);
       const restaurantLaborData = allHourlyLaborData.filter(l => l.restaurantId === restaurant.id);
+      const restaurantCrewData = allHourlyCrewData.filter(c => c.restaurantId === restaurant.id);
       
       const selectedByHour: Map<number, number> = new Map();
       const lastWeekByHour: Map<number, number> = new Map();
@@ -789,6 +795,7 @@ export class DatabaseStorage implements IStorage {
       const laborByHour: Map<number, number> = new Map();
       const actualLaborByHour: Map<number, number> = new Map();
       const employeeCountByHour: Map<number, number> = new Map();
+      const leadersByHour: Map<number, { firstName: string; position: string }[]> = new Map();
       const positionByHour: Map<number, Record<string, number>> = new Map();
       const hmeByHour: Map<number, { avgServiceTime: number; carCount: number }> = new Map();
       
@@ -840,6 +847,36 @@ export class DatabaseStorage implements IStorage {
           positionByHour.set(l.hour, l.positionBreakdown as Record<string, number>);
         }
       });
+      
+      // Extract leaders (managers, shift supervisors, operators) from crew data
+      // Position now comes directly from crewMembers (set during time punch processing)
+      for (const c of restaurantCrewData) {
+        const crewMembers = c.crewMembers as { userId: number; firstName: string; lastName: string; tenureMonths: number; category: string; position?: string }[] | null;
+        if (crewMembers && crewMembers.length > 0) {
+          const positions = positionByHour.get(c.hour) || {};
+          const leaders: { firstName: string; position: string }[] = [];
+          
+          // Filter to leaders (managers, shift supervisors) directly from crewMembers
+          for (const member of crewMembers) {
+            if (member.position) {
+              const posLower = member.position.toLowerCase();
+              if (posLower.includes('manager') || posLower.includes('supervisor')) {
+                leaders.push({ firstName: member.firstName, position: member.position });
+              }
+            }
+          }
+          
+          // Check for scheduled operator (they don't punch in, so not in crewMembers)
+          if (positions['_operatorScheduled'] === 1) {
+            leaders.push({ firstName: 'Operator', position: 'Operator' });
+          }
+          
+          if (leaders.length > 0) {
+            leadersByHour.set(c.hour, leaders);
+          }
+        }
+      }
+      
       // Last week: prioritize Xenial POS data, fallback to 7shifts
       if (posLastWeekSalesForRestaurant && posLastWeekSalesForRestaurant.size > 0) {
         // Use POS data for last week - actual transaction data
@@ -896,6 +933,7 @@ export class DatabaseStorage implements IStorage {
         // Hours 0-4 often have labor but no sales - needed for Early Bird labor totals
         if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0 || projectedLabor > 0 || actualLabor > 0) {
           const hmeHourData = hmeByHour.get(hour);
+          const leaders = leadersByHour.get(hour);
           hourlyData.push({
             hour,
             todaySales,
@@ -905,6 +943,7 @@ export class DatabaseStorage implements IStorage {
             actualLabor,
             employeeCount,
             positionBreakdown,
+            leaders,
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
             avgServiceTime: hmeHourData?.avgServiceTime,
             carCount: hmeHourData?.carCount,

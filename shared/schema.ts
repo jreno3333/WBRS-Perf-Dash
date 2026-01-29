@@ -216,6 +216,7 @@ export interface HourlySalesData {
   actualLabor: number; // Actual labor cost from punched hours
   employeeCount: number; // Number of employees on clock during this hour
   positionBreakdown?: Record<string, number>; // Hours by position: { "Manager": 1.5, "Team Member": 3.0 }
+  leaders?: { firstName: string; position: string }[]; // Manager, Shift Supervisor, Operator names for this hour
   label: string;
   // HME drive-thru data
   avgServiceTime?: number; // Window time in seconds (SOS)

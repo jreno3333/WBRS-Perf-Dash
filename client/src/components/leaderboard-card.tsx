@@ -869,8 +869,23 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                               return <span className={color}>XP:{score}</span>;
                             })()}
                           </div>
-                          {/* Position list */}
+                          {/* Leaders list - show managers, shift supervisors, operators by name */}
                           {(() => {
+                            const leaders = hour.leaders || [];
+                            if (leaders.length > 0) {
+                              return (
+                                <div className="text-muted-foreground text-[10px]">
+                                  {leaders.map((l, i) => (
+                                    <span key={i}>
+                                      {i > 0 && ', '}
+                                      <span className="font-medium">{l.firstName}</span>
+                                      <span className="opacity-70"> ({l.position.includes('Manager') ? 'MGR' : l.position.includes('Supervisor') ? 'SS' : 'OP'})</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            }
+                            // Fallback to position breakdown if no leaders data
                             const posKeys = Object.keys(positions)
                               .filter(k => !k.startsWith('_') && positions[k] > 0);
                             if (posKeys.length === 0) return null;
