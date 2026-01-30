@@ -581,6 +581,21 @@ export class SevenShiftsAPI {
     
     const startOfDayUTC = fromZonedTime(`${date}T00:00:00`, timezone);
     const endOfDayUTC = fromZonedTime(`${date}T23:59:59.999`, timezone);
+    const now = new Date();
+    
+    // DEBUG: Log for East Ridge timezone to diagnose open punch calculation
+    const isEastRidge = timezone === 'America/New_York';
+    if (isEastRidge && punches.length > 50) {
+      const openPunches = punches.filter(p => !p.clocked_out);
+      console.log(`[LABOR DEBUG] Date: ${date}, TZ: ${timezone}`);
+      console.log(`[LABOR DEBUG] startOfDayUTC: ${startOfDayUTC.toISOString()}`);
+      console.log(`[LABOR DEBUG] endOfDayUTC: ${endOfDayUTC.toISOString()}`);
+      console.log(`[LABOR DEBUG] now: ${now.toISOString()}`);
+      console.log(`[LABOR DEBUG] Open punches: ${openPunches.length}`);
+      if (openPunches.length > 0) {
+        console.log(`[LABOR DEBUG] First open punch clocked_in: ${openPunches[0].clocked_in}`);
+      }
+    }
     
     for (const punch of punches) {
       let clockIn = new Date(punch.clocked_in);
