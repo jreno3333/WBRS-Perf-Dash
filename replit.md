@@ -55,6 +55,11 @@ Preferred communication style: Simple, everyday language.
   - Week-over-week fallback divides daily_sales by 100 to normalize
 - **Date Normalization**: All timestamps are normalized to noon UTC (e.g., `2026-01-23T12:00:00.000Z`) to prevent timezone-related date shifting in PostgreSQL.
 - **Week-over-Week Limitation**: 7shifts daily_stats API only returns hourly intervals for ~3 days. For older dates, the system falls back to daily_sales proportional calculation: `lastWeekSales = dailyTotal × (normalizedHour + 1) / 24`.
+- **Labor Data Accuracy**: The system accurately reflects employee clock-in/clock-out data from 7shifts. If afternoon/evening labor counts appear low, this typically indicates:
+  1. Day shift employees have clocked out
+  2. Evening shift hasn't started punching in yet
+  3. Gap between shift changes (normal operations pattern)
+  This is accurate data from 7shifts, not a software bug. The time punch query window spans from 4 AM the day before to noon the day after to capture overnight shifts.
 
 ### Xenial POS Integration
 - **Purpose**: Receives real-time order pushes from Xenial POS - the primary source of sales data.

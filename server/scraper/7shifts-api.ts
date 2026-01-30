@@ -256,6 +256,7 @@ export class SevenShiftsAPI {
       const response = await this.request<TimePunchesResponse>(
         `/v2/company/${this.companyId}/time_punches?location_id=${locationId}&clocked_in[gte]=${startDate}&clocked_in[lte]=${endDate}&limit=500`
       );
+      
       return response.data || [];
     } catch (error) {
       console.error(`Error fetching time punches for location ${locationId}:`, error);
@@ -1195,6 +1196,23 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       const timePunches = await api.getTimePunches(location.id, dateStr);
       const roleMap = await api.getRoles(location.id);
       const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
+      
+      // DEBUG: Log time punch details for East Ridge (1679) to diagnose labor dropoff issue
+      if (restaurant.name.includes('1679') || restaurant.name.includes('East Ridge')) {
+        console.log(`[East Ridge Debug] ${timePunches.length} time punches for ${dateStr}, timezone: ${locationTimezone}`);
+        // Log currently clocked in employees (no clock_out)
+        const clockedIn = timePunches.filter(p => !p.clocked_out);
+        console.log(`[East Ridge Debug] ${clockedIn.length} employees still clocked in:`);
+        clockedIn.slice(0, 5).forEach(p => {
+          console.log(`  - Employee ${p.user_id}: clocked_in=${p.clocked_in}, role=${roleMap.get(p.role_id) || p.role_id}`);
+        });
+        // Log last few clock outs to verify times
+        const clockedOut = timePunches.filter(p => p.clocked_out).slice(-5);
+        console.log(`[East Ridge Debug] Last ${clockedOut.length} clock outs:`);
+        clockedOut.forEach(p => {
+          console.log(`  - Employee ${p.user_id}: clocked_in=${p.clocked_in}, clocked_out=${p.clocked_out}, role=${roleMap.get(p.role_id) || p.role_id}`);
+        });
+      }
       
       // Get labor hours with position breakdown from 7shifts
       const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
