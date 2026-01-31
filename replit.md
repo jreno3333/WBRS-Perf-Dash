@@ -66,7 +66,12 @@ Preferred communication style: Simple, everyday language.
   - Central stores (America/Chicago): UTC offset = +6 hours
   - Query window: `Date.UTC(year, month-1, day, utcOffset-4, 0, 0)` to `Date.UTC(year, month-1, day, utcOffset+23, 59, 59)`
   - Without proper timezone handling, Eastern stores would query the wrong 24-hour UTC window and show incorrect labor data
-  - Debug endpoint `/api/debug/fix-labor` can resync historical data for any restaurant/date range
+- **Labor Debug Endpoints**:
+  - `POST /api/debug/labor-resync` - Preferred method. Counts unique employees per hour and updates `hourly_labor` table with correct headcounts. Use this for fixing labor data.
+  - `POST /api/debug/fix-labor` - Legacy method. Calculates fractional labor hours (person-hours) instead of employee count.
+- **Labor Metric Distinction**:
+  - **Employee count**: Number of unique people clocked in during any part of an hour (what the dashboard shows)
+  - **Labor hours**: Fractional time worked (e.g., 30 people × 20 minutes each = 10 labor hours). This is NOT what we want for the dashboard.
 
 ### Xenial POS Integration
 - **Purpose**: Receives real-time order pushes from Xenial POS - the primary source of sales data.

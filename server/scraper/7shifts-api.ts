@@ -1775,9 +1775,40 @@ export async function resyncLaborForRestaurant(
     
     console.log(`[Labor Resync] Existing database records: ${existingData.length}`);
     
+    // Normalize date for storage (as ISO string with noon UTC)
+    const normalizedDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).toISOString();
+    
+    // Delete existing records and insert new ones with correct employee counts
+    await db.execute(sql`
+      DELETE FROM hourly_labor 
+      WHERE restaurant_id = ${rest.id} 
+      AND date::date = ${dateStr}::date
+    `);
+    console.log(`[Labor Resync] Cleared existing records for ${rest.name} on ${dateStr}`);
+    
+    // Insert hourly_labor records with correct employee counts from time punches
+    let updatedHours = 0;
+    for (let h = 0; h < 24; h++) {
+      const data = hourlyBreakdown[h];
+      if (data.count > 0) {
+        await db
+          .insert(hourlyLabor)
+          .values({
+            restaurantId: rest.id,
+            date: normalizedDate,
+            hour: h,
+            actualLabor: data.count, // Use actual employee count
+            employeeCount: String(data.count),
+            positionBreakdown: {}, // Would need role mapping for position breakdown
+          });
+        updatedHours++;
+      }
+    }
+    console.log(`[Labor Resync] Updated ${updatedHours} hours with correct employee counts`);
+    
     return {
       success: true,
-      message: `Found ${timePunches.length} punches from 7shifts`,
+      message: `Fixed ${updatedHours} hours with ${timePunches.length} punches from 7shifts`,
       rawPunches: punchDetails.slice(0, 50), // Limit to first 50 for response size
       hourlyData: {
         breakdown: hourlyBreakdown,
