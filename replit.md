@@ -60,6 +60,12 @@ Preferred communication style: Simple, everyday language.
   2. Evening shift hasn't started punching in yet
   3. Gap between shift changes (normal operations pattern)
   This is accurate data from 7shifts, not a software bug. The time punch query window spans from 4 AM the day before to noon the day after to capture overnight shifts.
+- **Timezone-Aware Labor Sync (CRITICAL)**: The `getTimePunches()` function requires a timezone parameter to calculate proper UTC date ranges:
+  - Eastern stores (America/New_York): UTC offset = +5 hours
+  - Central stores (America/Chicago): UTC offset = +6 hours
+  - Query window: `Date.UTC(year, month-1, day, utcOffset-4, 0, 0)` to `Date.UTC(year, month-1, day, utcOffset+23, 59, 59)`
+  - Without proper timezone handling, Eastern stores would query the wrong 24-hour UTC window and show incorrect labor data
+  - Debug endpoint `/api/debug/fix-labor` can resync historical data for any restaurant/date range
 
 ### Xenial POS Integration
 - **Purpose**: Receives real-time order pushes from Xenial POS - the primary source of sales data.

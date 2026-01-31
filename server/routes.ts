@@ -887,6 +887,23 @@ export async function registerRoutes(
     }
   });
 
+  // Fix labor data for Eastern timezone stores on a specific date
+  app.post("/api/debug/fix-labor", async (req, res) => {
+    try {
+      const { restaurantName, date } = req.body;
+      if (!restaurantName || !date) {
+        return res.status(400).json({ error: "restaurantName and date are required" });
+      }
+      
+      const { fixLaborForRestaurant } = await import("./scraper/7shifts-api");
+      const result = await fixLaborForRestaurant(restaurantName, date);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fixing labor:", error);
+      res.status(500).json({ error: "Failed to fix labor data" });
+    }
+  });
+
   // ===== XENIAL POS WEBHOOK ENDPOINTS =====
 
   // Test endpoint to verify webhook connectivity (no auth required)

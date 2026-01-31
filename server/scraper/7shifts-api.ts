@@ -228,33 +228,41 @@ export class SevenShiftsAPI {
 
   // Fetch time punches for a location on a specific date
   // Includes punches that started before the target date but continued into it
-  async getTimePunches(locationId: number, date: string): Promise<TimePunch[]> {
+  // timezone parameter is optional - if provided, uses proper UTC offset calculation
+  async getTimePunches(locationId: number, date: string, timezone?: string): Promise<TimePunch[]> {
     if (!this.companyId) {
       await this.getCompany();
     }
 
     try {
-      // Fetch punches that could possibly overlap the target day:
-      // - Start from day before to catch overnight shifts that started the previous day
-      // - End at noon the NEXT day to catch all punches that clocked in late at night
-      //   (7shifts may interpret times as UTC, so 23:59 local could be 5:59pm UTC for Central time)
-      const dayBefore = new Date(date);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      const dayBeforeStr = dayBefore.toISOString().split('T')[0];
+      // Calculate proper UTC range based on location's timezone
+      // For Eastern stores (UTC-5), midnight local = 5am UTC
+      // For Central stores (UTC-6), midnight local = 6am UTC
+      const [year, month, day] = date.split('-').map(Number);
       
-      const dayAfter = new Date(date);
-      dayAfter.setDate(dayAfter.getDate() + 1);
-      const dayAfterStr = dayAfter.toISOString().split('T')[0];
+      // Determine UTC offset based on timezone
+      // In winter: EST is UTC-5, CST is UTC-6
+      // We use a simple offset check (more robust would use a library like date-fns-tz)
+      const isEastern = timezone?.includes('New_York') || timezone?.includes('Eastern');
+      const utcOffset = isEastern ? 5 : 6; // Hours to add to local midnight to get UTC
       
-      // Use 4am day before to 12pm day after - wide window to ensure we capture all punches
-      // getLaborHoursPerHour will filter to only count hours within the target day
-      const startDate = `${dayBeforeStr}T04:00:00`;
-      const endDate = `${dayAfterStr}T12:00:00`;
+      // Calculate start of target day in UTC (midnight local time converted to UTC)
+      // Then go back 4 hours to catch overnight shifts
+      const startOfDayUTC = new Date(Date.UTC(year, month - 1, day, utcOffset, 0, 0));
+      const startDate = new Date(startOfDayUTC.getTime() - 4 * 60 * 60 * 1000);
+      
+      // Calculate end of target day in UTC (11:59:59pm local time converted to UTC)
+      // Then add 4 hours to catch late punches
+      const endOfDayUTC = new Date(Date.UTC(year, month - 1, day, utcOffset + 23, 59, 59));
+      const endDate = new Date(endOfDayUTC.getTime() + 4 * 60 * 60 * 1000);
+      
+      const startDateStr = startDate.toISOString().replace('.000Z', '');
+      const endDateStr = endDate.toISOString().replace('.000Z', '');
       
       // Fetch punches where clocked_in is within range
       // Add limit=500 to get more results (7shifts API defaults to low limit)
       const response = await this.request<TimePunchesResponse>(
-        `/v2/company/${this.companyId}/time_punches?location_id=${locationId}&clocked_in[gte]=${startDate}&clocked_in[lte]=${endDate}&limit=500`
+        `/v2/company/${this.companyId}/time_punches?location_id=${locationId}&clocked_in[gte]=${startDateStr}&clocked_in[lte]=${endDateStr}&limit=500`
       );
       
       return response.data || [];
@@ -967,8 +975,8 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       // Fetch time punches to calculate total labor hours deployed per hour
       // Use restaurant.timezone from our database (not 7shifts API) for proper timezone-aware hour boundary calculations
       // 7shifts API returns America/Chicago for all locations regardless of actual timezone
-      const timePunches = await api.getTimePunches(location.id, dateStr);
       const locationTimezone = restaurant.timezone || 'America/Chicago'; // Use our DB timezone, default to Central
+      const timePunches = await api.getTimePunches(location.id, dateStr, locationTimezone);
       
       // Fetch roles to map role_id to position names
       const roleMap = await api.getRoles(location.id);
@@ -1208,7 +1216,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       }
       
       // Still need 7shifts for labor data (time punches, roles, operator schedules)
-      const timePunches = await api.getTimePunches(location.id, dateStr);
+      const timePunches = await api.getTimePunches(location.id, dateStr, locationTimezone);
       const roleMap = await api.getRoles(location.id);
       const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
       
@@ -1532,8 +1540,8 @@ export async function syncHourlyCrew(date?: Date): Promise<{ success: boolean; c
       
       const timezone = restaurant.timezone || 'America/Chicago';
       
-      // Fetch time punches for the day
-      const timePunches = await api.getTimePunches(location.id, dateStr);
+      // Fetch time punches for the day with timezone-aware date range
+      const timePunches = await api.getTimePunches(location.id, dateStr, timezone);
       
       if (timePunches.length === 0) {
         console.log(`[CrewSync] No time punches for ${location.name} on ${dateStr}`);
@@ -1701,8 +1709,8 @@ export async function resyncLaborForRestaurant(
     console.log(`[Labor Resync] Time punch window: ${punchStart.toISOString()} to ${punchEnd.toISOString()}`);
     console.log(`[Labor Resync] Business day (local): ${startOfDayLocal.toISOString()} to ${endOfDayLocal.toISOString()}`);
     
-    // Fetch time punches from 7shifts using the API class
-    const timePunches = await api.getTimePunches(location.id, dateStr);
+    // Fetch time punches from 7shifts using the API class with timezone-aware date range
+    const timePunches = await api.getTimePunches(location.id, dateStr, locationTimezone);
     console.log(`[Labor Resync] Found ${timePunches.length} time punches from 7shifts`);
     
     // Analyze punches by hour
@@ -1789,5 +1797,122 @@ export async function resyncLaborForRestaurant(
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[Labor Resync] Error:', msg);
     return { success: false, message: msg, rawPunches: [], hourlyData: null };
+  }
+}
+
+// Fix labor data for a restaurant on a specific date by resyncing from 7shifts
+// This actually updates the hourly_labor table with correct timezone-aware data
+export async function fixLaborForRestaurant(restaurantName: string, dateStr: string) {
+  try {
+    console.log(`[Labor Fix] Starting fix for ${restaurantName} on ${dateStr}`);
+    
+    const token = process.env.SEVENSHIFTS_API_TOKEN;
+    if (!token) {
+      return { success: false, message: 'SEVENSHIFTS_API_TOKEN not configured' };
+    }
+    
+    // Find the restaurant
+    const rest = await db.query.restaurants.findFirst({
+      where: (r, { ilike }) => ilike(r.name, `%${restaurantName}%`),
+    });
+    
+    if (!rest) {
+      return { success: false, message: `Restaurant not found: ${restaurantName}` };
+    }
+    
+    const locationTimezone = rest.timezone || 'America/Chicago';
+    console.log(`[Labor Fix] Found restaurant: ${rest.name} (timezone: ${locationTimezone})`);
+    
+    // Initialize 7shifts API with token
+    const api = new SevenShiftsAPI({ accessToken: token });
+    await api.getCompany();
+    const locations = await api.getLocations();
+    
+    const location = locations.find(l => 
+      l.name.includes(rest.name) || rest.name.includes(l.name) ||
+      l.name.includes(restaurantName) || restaurantName.split(' ').some(w => l.name.includes(w))
+    );
+    
+    if (!location) {
+      return { success: false, message: `7shifts location not found for ${restaurantName}` };
+    }
+    
+    console.log(`[Labor Fix] Found 7shifts location: ${location.name} (ID: ${location.id})`);
+    
+    // Fetch time punches with timezone-aware date range
+    const timePunches = await api.getTimePunches(location.id, dateStr, locationTimezone);
+    console.log(`[Labor Fix] Found ${timePunches.length} time punches`);
+    
+    if (timePunches.length === 0) {
+      return { success: false, message: 'No time punches found for this date' };
+    }
+    
+    // Fetch roles to map role_id to position names
+    const roleMap = await api.getRoles(location.id);
+    
+    // Get labor hours WITH position breakdown
+    const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
+    console.log(`[Labor Fix] Calculated labor for ${laborByHour.size} hours`);
+    
+    // Also fetch scheduled shifts for operators
+    const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
+    
+    // Normalize date for storage
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const normalizedDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    
+    // Update hourly_labor table
+    let updatedHours = 0;
+    for (const [hour, laborData] of laborByHour.entries()) {
+      // laborData has { totalHours, byPosition } - use byPosition for position breakdown
+      const positionBreakdown = { ...laborData.byPosition };
+      
+      // Calculate employee count from total hours worked (approximate)
+      // For a full hour, totalHours equals the number of people working
+      const employeeCount = laborData.totalHours;
+      
+      // Upsert the hourly_labor record
+      await db
+        .insert(hourlyLabor)
+        .values({
+          restaurantId: rest.id,
+          date: normalizedDate,
+          hour,
+          actualLabor: laborData.totalHours,
+          employeeCount: String(employeeCount),
+          positionBreakdown,
+        })
+        .onConflictDoUpdate({
+          target: [hourlyLabor.restaurantId, hourlyLabor.date, hourlyLabor.hour],
+          set: {
+            actualLabor: laborData.totalHours,
+            employeeCount: String(employeeCount),
+            positionBreakdown,
+          },
+        });
+      
+      updatedHours++;
+    }
+    
+    console.log(`[Labor Fix] Updated ${updatedHours} hourly records for ${rest.name}`);
+    
+    return {
+      success: true,
+      message: `Fixed labor data: ${updatedHours} hours updated with ${timePunches.length} time punches`,
+      restaurantId: rest.id,
+      date: dateStr,
+      hoursUpdated: updatedHours,
+      punchCount: timePunches.length,
+      sampleHours: Object.fromEntries(
+        Array.from(laborByHour.entries())
+          .filter(([h]) => h >= 10 && h <= 20)
+          .map(([h, data]) => [h, { employeeCount: data.employeeCount, totalHours: data.totalHours }])
+      ),
+    };
+    
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Labor Fix] Error:', msg);
+    return { success: false, message: msg };
   }
 }
