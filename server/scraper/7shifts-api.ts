@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { restaurants, dailySales, dailyLabor, hourlySales, hourlyLabor, scraperRuns, locationMapping, posOrders } from '@shared/schema';
-import { eq, and, gte, lt, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, lt, sql } from 'drizzle-orm';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 interface SevenShiftsLocation {
@@ -1861,7 +1861,17 @@ export async function fixLaborForRestaurant(restaurantName: string, dateStr: str
     const [year, month, day] = dateStr.split('-').map(Number);
     const normalizedDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
     
-    // Update hourly_labor table
+    // Delete ALL existing records for this restaurant/date to handle date format mismatches
+    // (old records may have different timestamp formats that don't match the upsert conflict key)
+    // Use raw SQL since the date column is text but stores dates
+    await db.execute(sql`
+      DELETE FROM hourly_labor 
+      WHERE restaurant_id = ${rest.id} 
+      AND date::date = ${dateStr}::date
+    `);
+    console.log(`[Labor Fix] Cleared existing records for ${rest.name} on ${dateStr}`);
+    
+    // Insert hourly_labor records
     let updatedHours = 0;
     for (const [hour, laborData] of laborByHour.entries()) {
       // laborData has { totalHours, byPosition } - use byPosition for position breakdown
