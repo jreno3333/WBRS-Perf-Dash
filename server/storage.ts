@@ -554,7 +554,8 @@ export class DatabaseStorage implements IStorage {
     }));
     
     // Get hourly labor for selected date and filter by restaurant
-    const selectedDateLabor = allHourlyLabor.filter(l => l.date === selectedDateStr);
+    // Normalize date comparison since dates are stored as full ISO timestamps
+    const selectedDateLabor = allHourlyLabor.filter(l => l.date.split('T')[0] === selectedDateStr);
     
     const selectedByHour: Map<number, number> = new Map();
     const lastWeekByHour: Map<number, number> = new Map();
@@ -766,13 +767,14 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Fetch HME timer data for the selected date
-    const allHmeData = await db.select().from(hmeTimerData).where(eq(hmeTimerData.date, selectedDateStr));
+    // Use LIKE pattern since dates are stored as full ISO timestamps (e.g., "2026-01-29T12:00:00.000+00:00")
+    const allHmeData = await db.select().from(hmeTimerData).where(sql`${hmeTimerData.date} LIKE ${selectedDateStr + '%'}`);
     
     // Fetch hourly labor data from separate table
-    const allHourlyLaborData = await db.select().from(hourlyLabor).where(eq(hourlyLabor.date, selectedDateStr));
+    const allHourlyLaborData = await db.select().from(hourlyLabor).where(sql`${hourlyLabor.date} LIKE ${selectedDateStr + '%'}`);
     
     // Fetch hourly crew data for leader names (managers, shift supervisors, operators)
-    const allHourlyCrewData = await db.select().from(hourlyCrew).where(eq(hourlyCrew.date, selectedDateStr));
+    const allHourlyCrewData = await db.select().from(hourlyCrew).where(sql`${hourlyCrew.date} LIKE ${selectedDateStr + '%'}`);
     
     // Fetch Xenial POS hourly data - prioritize over 7shifts for any date
     // POS data is more accurate when available (real transactions vs 7shifts estimates)

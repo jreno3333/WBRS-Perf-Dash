@@ -1857,9 +1857,9 @@ export async function fixLaborForRestaurant(restaurantName: string, dateStr: str
     // Also fetch scheduled shifts for operators
     const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
     
-    // Normalize date for storage
+    // Normalize date for storage (as ISO string with noon UTC)
     const [year, month, day] = dateStr.split('-').map(Number);
-    const normalizedDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    const normalizedDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).toISOString();
     
     // Delete ALL existing records for this restaurant/date to handle date format mismatches
     // (old records may have different timestamp formats that don't match the upsert conflict key)

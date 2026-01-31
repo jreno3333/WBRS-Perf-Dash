@@ -54,6 +54,7 @@ Preferred communication style: Simple, everyday language.
   - `daily_sales.totalSales`: Stored in cents (e.g., 524970 = $5,249.70)
   - Week-over-week fallback divides daily_sales by 100 to normalize
 - **Date Normalization**: All timestamps are normalized to noon UTC (e.g., `2026-01-23T12:00:00.000Z`) to prevent timezone-related date shifting in PostgreSQL.
+- **Date Query Pattern**: When querying date-indexed tables (`hourly_labor`, `hourly_crew`, `hme_timer_data`), use SQL `LIKE` pattern matching (e.g., `date LIKE '2026-01-29%'`) or normalize dates with `.split('T')[0]` in JavaScript filters. Direct equality checks fail because dates are stored as full ISO timestamps.
 - **Week-over-Week Limitation**: 7shifts daily_stats API only returns hourly intervals for ~3 days. For older dates, the system falls back to daily_sales proportional calculation: `lastWeekSales = dailyTotal × (normalizedHour + 1) / 24`.
 - **Labor Data Accuracy**: The system accurately reflects employee clock-in/clock-out data from 7shifts. If afternoon/evening labor counts appear low, this typically indicates:
   1. Day shift employees have clocked out
