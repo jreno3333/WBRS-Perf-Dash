@@ -8,13 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Restaurant } from "@shared/schema";
+import type { Restaurant, MarketWithRestaurants } from "@shared/schema";
 
 const REVENUE_PORTS = [
   { id: "dine_in", label: "Dine In", icon: Utensils, color: "bg-emerald-500" },
@@ -342,6 +342,8 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <MarketsCard restaurants={restaurants || []} />
 
           <GoogleReviewsCard 
             restaurants={restaurants || []}
@@ -1092,6 +1094,303 @@ function GoogleReviewsSyncCard() {
             </span>
           )}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Color options for markets
+const MARKET_COLORS = [
+  { value: "#6366f1", label: "Indigo" },
+  { value: "#8b5cf6", label: "Purple" },
+  { value: "#06b6d4", label: "Cyan" },
+  { value: "#10b981", label: "Emerald" },
+  { value: "#f59e0b", label: "Amber" },
+  { value: "#ef4444", label: "Red" },
+  { value: "#ec4899", label: "Pink" },
+  { value: "#64748b", label: "Slate" },
+];
+
+function MarketsCard({ restaurants }: { restaurants: Restaurant[] }) {
+  const { toast } = useToast();
+  const [isCreating, setIsCreating] = useState(false);
+  const [editingMarket, setEditingMarket] = useState<string | null>(null);
+  const [newMarketName, setNewMarketName] = useState("");
+  const [newMarketColor, setNewMarketColor] = useState("#6366f1");
+  const [editMarketName, setEditMarketName] = useState("");
+  const [editMarketColor, setEditMarketColor] = useState("");
+  const [selectedRestaurants, setSelectedRestaurants] = useState<string[]>([]);
+
+  const { data: markets, isLoading } = useQuery<MarketWithRestaurants[]>({
+    queryKey: ["/api/markets"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async ({ name, color }: { name: string; color: string }) => {
+      return apiRequest("POST", "/api/markets", { name, color });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/markets"] });
+      setIsCreating(false);
+      setNewMarketName("");
+      setNewMarketColor("#6366f1");
+      toast({ title: "Market created", description: "New market has been created." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create market.", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, name, color, restaurantIds }: { id: string; name?: string; color?: string; restaurantIds?: string[] }) => {
+      return apiRequest("PATCH", `/api/markets/${id}`, { name, color, restaurantIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/markets"] });
+      setEditingMarket(null);
+      toast({ title: "Market updated", description: "Changes saved successfully." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update market.", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/markets/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/markets"] });
+      toast({ title: "Market deleted", description: "Market has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete market.", variant: "destructive" });
+    },
+  });
+
+  const startEditing = (market: MarketWithRestaurants) => {
+    setEditingMarket(market.id);
+    setEditMarketName(market.name);
+    setEditMarketColor(market.color || "#6366f1");
+    setSelectedRestaurants(market.restaurantIds || []);
+  };
+
+  const handleSaveEdit = (id: string) => {
+    updateMutation.mutate({
+      id,
+      name: editMarketName,
+      color: editMarketColor,
+      restaurantIds: selectedRestaurants,
+    });
+  };
+
+  const toggleRestaurant = (restaurantId: string) => {
+    setSelectedRestaurants(prev => 
+      prev.includes(restaurantId) 
+        ? prev.filter(id => id !== restaurantId)
+        : [...prev, restaurantId]
+    );
+  };
+
+  const sortedRestaurants = [...restaurants].sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-primary" />
+            <CardTitle>Markets</CardTitle>
+          </div>
+          {!isCreating && (
+            <Button
+              size="sm"
+              onClick={() => setIsCreating(true)}
+              data-testid="button-create-market"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Market
+            </Button>
+          )}
+        </div>
+        <CardDescription>
+          Group restaurants into markets for multi-unit management. Filter the dashboard by market to see only your units.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {isCreating && (
+          <div className="p-4 border rounded-lg bg-muted/50 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                placeholder="Market name"
+                value={newMarketName}
+                onChange={(e) => setNewMarketName(e.target.value)}
+                className="max-w-xs"
+                data-testid="input-market-name"
+              />
+              <div className="flex items-center gap-2">
+                {MARKET_COLORS.map((color) => (
+                  <button
+                    key={color.value}
+                    type="button"
+                    onClick={() => setNewMarketColor(color.value)}
+                    className={`w-6 h-6 rounded-full border-2 transition-all ${
+                      newMarketColor === color.value ? "border-foreground scale-110" : "border-transparent"
+                    }`}
+                    style={{ backgroundColor: color.value }}
+                    title={color.label}
+                    data-testid={`color-${color.value}`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => createMutation.mutate({ name: newMarketName, color: newMarketColor })}
+                disabled={!newMarketName.trim() || createMutation.isPending}
+                data-testid="button-save-market"
+              >
+                <Save className="h-4 w-4 mr-1" />
+                Create
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setIsCreating(false);
+                  setNewMarketName("");
+                  setNewMarketColor("#6366f1");
+                }}
+                data-testid="button-cancel-market"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="text-muted-foreground text-sm">Loading markets...</div>
+        ) : markets && markets.length > 0 ? (
+          <div className="grid gap-3">
+            {markets.map((market) => (
+              <div
+                key={market.id}
+                className="p-4 border rounded-lg bg-card hover-elevate"
+                data-testid={`market-${market.id}`}
+              >
+                {editingMarket === market.id ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Input
+                        value={editMarketName}
+                        onChange={(e) => setEditMarketName(e.target.value)}
+                        className="max-w-xs"
+                        data-testid="input-edit-market-name"
+                      />
+                      <div className="flex items-center gap-2">
+                        {MARKET_COLORS.map((color) => (
+                          <button
+                            key={color.value}
+                            type="button"
+                            onClick={() => setEditMarketColor(color.value)}
+                            className={`w-6 h-6 rounded-full border-2 transition-all ${
+                              editMarketColor === color.value ? "border-foreground scale-110" : "border-transparent"
+                            }`}
+                            style={{ backgroundColor: color.value }}
+                            title={color.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Assign Restaurants:</Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto p-2 border rounded">
+                        {sortedRestaurants.map((restaurant) => (
+                          <div key={restaurant.id} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`market-${market.id}-restaurant-${restaurant.id}`}
+                              checked={selectedRestaurants.includes(restaurant.id)}
+                              onCheckedChange={() => toggleRestaurant(restaurant.id)}
+                              data-testid={`checkbox-restaurant-${restaurant.id}`}
+                            />
+                            <label
+                              htmlFor={`market-${market.id}-restaurant-${restaurant.id}`}
+                              className="text-sm cursor-pointer truncate"
+                            >
+                              {restaurant.name}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleSaveEdit(market.id)}
+                        disabled={updateMutation.isPending}
+                        data-testid="button-save-edit-market"
+                      >
+                        <Save className="h-4 w-4 mr-1" />
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingMarket(null)}
+                        data-testid="button-cancel-edit-market"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-4 h-4 rounded-full shrink-0"
+                        style={{ backgroundColor: market.color || "#6366f1" }}
+                      />
+                      <span className="font-medium">{market.name}</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {market.restaurantIds?.length || 0} units
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startEditing(market)}
+                        data-testid={`button-edit-market-${market.id}`}
+                      >
+                        <Pencil className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deleteMutation.mutate(market.id)}
+                        disabled={deleteMutation.isPending}
+                        data-testid={`button-delete-market-${market.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-muted-foreground">
+            <MapPin className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>No markets created yet.</p>
+            <p className="text-sm">Create a market to group restaurants for easier filtering.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
