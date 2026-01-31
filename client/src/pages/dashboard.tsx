@@ -14,8 +14,9 @@ import { PaceChart } from "@/components/pace-chart";
 import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
+import { MarketBreakdown } from "@/components/market-breakdown";
 import { format } from "date-fns";
-import type { LeaderboardData, HourlySalesData } from "@shared/schema";
+import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
 // Get current date in Central timezone (business day)
@@ -87,6 +88,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
+  const [selectedMarket, setSelectedMarket] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time" | "xscore">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -174,6 +176,11 @@ export default function Dashboard() {
   });
   const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
 
+  // Fetch markets data
+  const { data: markets } = useQuery<MarketWithRestaurants[]>({
+    queryKey: ["/api/markets"],
+  });
+
   // Fetch holiday data (no need to refresh frequently)
   const { data: holidayData } = useQuery<{
     todayHoliday: { name: string; date: string; dayOfWeek: string } | null;
@@ -244,10 +251,22 @@ export default function Dashboard() {
     });
   };
 
+  // Get selected market restaurant IDs for filtering
+  const selectedMarketRestaurantIds = selectedMarket !== "all" && markets
+    ? markets.find(m => m.id === selectedMarket)?.restaurantIds || []
+    : null;
+
   // Filter and sort restaurants based on selected criteria
   const sortedRestaurants = leaderboardData?.restaurants
     ? [...leaderboardData.restaurants]
-        // First, apply filters
+        // First, apply market filter
+        .filter((r) => {
+          if (selectedMarketRestaurantIds) {
+            return selectedMarketRestaurantIds.includes(r.restaurantId);
+          }
+          return true;
+        })
+        // Then, apply sort-based filters
         .filter((r) => {
           switch (sortBy) {
             case "alabama":
@@ -475,6 +494,16 @@ export default function Dashboard() {
             {/* State Breakdown */}
             <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} crewSummary={crewSummary} />
 
+            {/* Market Breakdown - Only shown if markets exist */}
+            {markets && markets.length > 0 && (
+              <MarketBreakdown 
+                restaurants={leaderboardData.restaurants} 
+                markets={markets}
+                hourlyByRestaurant={hourlyByRestaurant} 
+                crewSummary={crewSummary} 
+              />
+            )}
+
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Leaderboard Column */}
@@ -483,26 +512,57 @@ export default function Dashboard() {
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <Trophy className="w-5 h-5 text-yellow-500" />
                     Restaurant Rankings
+                    {selectedMarket !== "all" && markets && (
+                      <Badge variant="secondary" className="text-xs font-normal">
+                        {markets.find(m => m.id === selectedMarket)?.name || "Market"}
+                      </Badge>
+                    )}
                   </h2>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Sort by:</span>
-                    <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
-                      <SelectTrigger className="w-[140px] h-7 text-xs" data-testid="select-sort">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sales">Total Sales</SelectItem>
-                        <SelectItem value="variance">% vs LW</SelectItem>
-                        <SelectItem value="new_unit">New Units</SelectItem>
-                        <SelectItem value="alabama">Alabama</SelectItem>
-                        <SelectItem value="tennessee">Tennessee</SelectItem>
-                        <SelectItem value="overstaffed">Overstaffed</SelectItem>
-                        <SelectItem value="understaffed">Understaffed</SelectItem>
-                        <SelectItem value="missing_manager">Missing Mgr</SelectItem>
-                        <SelectItem value="dt_time">DT Time</SelectItem>
-                        <SelectItem value="xscore">Exc Score</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="flex items-center gap-3">
+                    {markets && markets.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Market:</span>
+                        <Select value={selectedMarket} onValueChange={setSelectedMarket}>
+                          <SelectTrigger className="w-[130px] h-7 text-xs" data-testid="select-market">
+                            <SelectValue placeholder="All Markets" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Markets</SelectItem>
+                            {markets.map((market) => (
+                              <SelectItem key={market.id} value={market.id}>
+                                <span className="flex items-center gap-2">
+                                  <span 
+                                    className="w-2 h-2 rounded-full shrink-0" 
+                                    style={{ backgroundColor: market.color || "#6366f1" }}
+                                  />
+                                  {market.name}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Sort by:</span>
+                      <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
+                        <SelectTrigger className="w-[140px] h-7 text-xs" data-testid="select-sort">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sales">Total Sales</SelectItem>
+                          <SelectItem value="variance">% vs LW</SelectItem>
+                          <SelectItem value="new_unit">New Units</SelectItem>
+                          <SelectItem value="alabama">Alabama</SelectItem>
+                          <SelectItem value="tennessee">Tennessee</SelectItem>
+                          <SelectItem value="overstaffed">Overstaffed</SelectItem>
+                          <SelectItem value="understaffed">Understaffed</SelectItem>
+                          <SelectItem value="missing_manager">Missing Mgr</SelectItem>
+                          <SelectItem value="dt_time">DT Time</SelectItem>
+                          <SelectItem value="xscore">Exc Score</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 

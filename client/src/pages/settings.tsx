@@ -1361,18 +1361,28 @@ function MarketsCard({ restaurants }: { restaurants: Restaurant[] }) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
+                        type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() => startEditing(market)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startEditing(market);
+                        }}
                         data-testid={`button-edit-market-${market.id}`}
                       >
                         <Pencil className="h-4 w-4 mr-1" />
                         Edit
                       </Button>
                       <Button
+                        type="button"
                         size="sm"
                         variant="ghost"
-                        onClick={() => deleteMutation.mutate(market.id)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          deleteMutation.mutate(market.id);
+                        }}
                         disabled={deleteMutation.isPending}
                         data-testid={`button-delete-market-${market.id}`}
                       >
