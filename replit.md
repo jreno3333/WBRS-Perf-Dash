@@ -130,6 +130,10 @@ Preferred communication style: Simple, everyday language.
   - Tracks managers and shift supervisors
   - Ranks by average execution grade during hours they worked
   - Displays company-wide top 10 and best performer per store
+  - **Execution Grade Calculation**:
+    - Sales component: 100 if within 5% of last week, 50 if below
+    - Staffing component: 100 if properly staffed, 70 if overstaffed, 60 if understaffed
+    - **Sales Surge Exception**: No understaffing penalty when hourly sales are 20%+ above last week (recognizes unexpected rushes)
 - **Data Storage**: 
   - `employees` table stores hire_date, invited_at, and position
   - `hourly_crew` table stores hourly crew composition and scores

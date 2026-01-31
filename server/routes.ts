@@ -1642,7 +1642,18 @@ export async function registerRoutes(
               
               // Score components
               const salesScore = hasComparableSales ? (salesVariancePct >= -5 ? 100 : 50) : 75;
-              const staffingScore = Math.abs(staffingDiff) <= 1 ? 100 : (staffingDiff > 1 ? 70 : 60);
+              
+              // Don't penalize understaffing when sales are 20%+ higher than last week
+              const salesSurge = salesVariancePct >= 20;
+              let staffingScore: number;
+              if (Math.abs(staffingDiff) <= 1) {
+                staffingScore = 100; // Properly staffed
+              } else if (staffingDiff > 1) {
+                staffingScore = 70; // Overstaffed
+              } else {
+                // Understaffed
+                staffingScore = salesSurge ? 100 : 60; // No penalty if sales 20%+ above last week
+              }
               
               const score = (salesScore + staffingScore) / 2;
               gradeScores.push(score);
