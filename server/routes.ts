@@ -870,6 +870,23 @@ export async function registerRoutes(
     }
   });
 
+  // Debug endpoint to resync labor data for a specific restaurant and date
+  app.post("/api/debug/labor-resync", async (req, res) => {
+    try {
+      const { restaurantName, date } = req.body;
+      if (!restaurantName || !date) {
+        return res.status(400).json({ error: "restaurantName and date are required" });
+      }
+      
+      const { resyncLaborForRestaurant } = await import("./scraper/7shifts-api");
+      const result = await resyncLaborForRestaurant(restaurantName, date);
+      res.json(result);
+    } catch (error) {
+      console.error("Error resyncing labor:", error);
+      res.status(500).json({ error: "Failed to resync labor data" });
+    }
+  });
+
   // ===== XENIAL POS WEBHOOK ENDPOINTS =====
 
   // Test endpoint to verify webhook connectivity (no auth required)

@@ -1215,18 +1215,29 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       // DEBUG: Log time punch details for East Ridge (1679) to diagnose labor dropoff issue
       if (restaurant.name.includes('1679') || restaurant.name.includes('East Ridge')) {
         console.log(`[East Ridge Debug] ${timePunches.length} time punches for ${dateStr}, timezone: ${locationTimezone}`);
-        // Log currently clocked in employees (no clock_out)
+        
+        // Analyze punches that would cover afternoon hours (12pm-8pm local)
+        const afternoonPunches = timePunches.filter(p => {
+          const clockIn = new Date(p.clocked_in);
+          const clockOut = p.clocked_out ? new Date(p.clocked_out) : new Date();
+          // Convert to local hours
+          const clockInHour = parseInt(clockIn.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', hour12: false }));
+          const clockOutHour = parseInt(clockOut.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', hour12: false }));
+          // Punch overlaps afternoon if clock_in < 20 and clock_out >= 12
+          return clockInHour < 20 && clockOutHour >= 12;
+        });
+        console.log(`[East Ridge Debug] ${afternoonPunches.length} punches covering 12pm-8pm:`);
+        afternoonPunches.forEach(p => {
+          const clockIn = new Date(p.clocked_in);
+          const clockOut = p.clocked_out ? new Date(p.clocked_out) : null;
+          const inLocal = clockIn.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', minute: '2-digit', hour12: true });
+          const outLocal = clockOut ? clockOut.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', minute: '2-digit', hour12: true }) : 'OPEN';
+          console.log(`  - ${roleMap.get(p.role_id) || 'Unknown'}: ${inLocal} - ${outLocal}`);
+        });
+        
+        // Currently clocked in
         const clockedIn = timePunches.filter(p => !p.clocked_out);
-        console.log(`[East Ridge Debug] ${clockedIn.length} employees still clocked in:`);
-        clockedIn.slice(0, 5).forEach(p => {
-          console.log(`  - Employee ${p.user_id}: clocked_in=${p.clocked_in}, role=${roleMap.get(p.role_id) || p.role_id}`);
-        });
-        // Log last few clock outs to verify times
-        const clockedOut = timePunches.filter(p => p.clocked_out).slice(-5);
-        console.log(`[East Ridge Debug] Last ${clockedOut.length} clock outs:`);
-        clockedOut.forEach(p => {
-          console.log(`  - Employee ${p.user_id}: clocked_in=${p.clocked_in}, clocked_out=${p.clocked_out}, role=${roleMap.get(p.role_id) || p.role_id}`);
-        });
+        console.log(`[East Ridge Debug] ${clockedIn.length} employees still clocked in`);
       }
       
       // Get labor hours with position breakdown from 7shifts
@@ -1616,5 +1627,167 @@ export async function syncHourlyCrew(date?: Date): Promise<{ success: boolean; c
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[CrewSync] Failed:', msg);
     return { success: false, count: 0, error: msg };
+  }
+}
+
+// Debug function to resync labor data for a specific restaurant and date
+export async function resyncLaborForRestaurant(
+  restaurantName: string, 
+  dateStr: string
+): Promise<{ success: boolean; message: string; rawPunches: any[]; hourlyData: any }> {
+  try {
+    console.log(`[Labor Resync] Starting resync for ${restaurantName} on ${dateStr}`);
+    
+    const token = process.env.SEVENSHIFTS_API_TOKEN;
+    if (!token) {
+      return { success: false, message: "SEVENSHIFTS_API_TOKEN not configured", rawPunches: [], hourlyData: null };
+    }
+    
+    const api = new SevenShiftsAPI({ accessToken: token });
+    await api.getCompany();
+    
+    // Find the restaurant in our database
+    const restaurant = await db.select().from(restaurants)
+      .where(sql`${restaurants.name} ILIKE ${`%${restaurantName}%`}`)
+      .limit(1);
+    
+    if (restaurant.length === 0) {
+      return { success: false, message: `Restaurant not found: ${restaurantName}`, rawPunches: [], hourlyData: null };
+    }
+    
+    const rest = restaurant[0];
+    console.log(`[Labor Resync] Found restaurant: ${rest.name} (ID: ${rest.id})`);
+    
+    // Get locations from 7shifts to find the location ID
+    const locations = await api.getLocations();
+    
+    const location = locations.find((loc: any) => 
+      loc.name.toLowerCase().includes(restaurantName.toLowerCase()) ||
+      restaurantName.toLowerCase().includes(loc.name.split(' - ')[0]?.toLowerCase())
+    );
+    
+    if (!location) {
+      return { success: false, message: `Location not found in 7shifts: ${restaurantName}`, rawPunches: [], hourlyData: null };
+    }
+    
+    console.log(`[Labor Resync] Found 7shifts location: ${location.name} (ID: ${location.id}, TZ: ${location.timezone})`);
+    
+    // Calculate date range for time punches
+    const locationTimezone = location.timezone || "America/Chicago";
+    
+    // Parse the date string and create start/end timestamps
+    const [year, month, day] = dateStr.split('-').map(Number);
+    
+    // Get UTC offset for the location timezone
+    const testDate = new Date(`${dateStr}T12:00:00`);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: locationTimezone,
+      hour: 'numeric',
+      hourCycle: 'h23',
+    });
+    
+    // Use a fixed offset approach for timezone handling
+    const isEastern = locationTimezone.includes('New_York');
+    const utcOffset = isEastern ? 5 : 6; // EST is UTC-5, CST is UTC-6 (simplified)
+    
+    // Start of day in local timezone, converted to UTC
+    const startOfDayLocal = new Date(Date.UTC(year, month - 1, day, utcOffset, 0, 0));
+    const endOfDayLocal = new Date(Date.UTC(year, month - 1, day + 1, utcOffset - 1, 59, 59));
+    
+    // Expand the window to capture overnight shifts
+    const punchStart = new Date(startOfDayLocal.getTime() - 4 * 60 * 60 * 1000); // 4 hours before
+    const punchEnd = new Date(endOfDayLocal.getTime() + 4 * 60 * 60 * 1000); // 4 hours after
+    
+    console.log(`[Labor Resync] Time punch window: ${punchStart.toISOString()} to ${punchEnd.toISOString()}`);
+    console.log(`[Labor Resync] Business day (local): ${startOfDayLocal.toISOString()} to ${endOfDayLocal.toISOString()}`);
+    
+    // Fetch time punches from 7shifts using the API class
+    const timePunches = await api.getTimePunches(location.id, dateStr);
+    console.log(`[Labor Resync] Found ${timePunches.length} time punches from 7shifts`);
+    
+    // Analyze punches by hour
+    const hourlyBreakdown: Record<number, { count: number; names: string[] }> = {};
+    for (let h = 0; h < 24; h++) {
+      hourlyBreakdown[h] = { count: 0, names: [] };
+    }
+    
+    const punchDetails: any[] = [];
+    
+    for (const punch of timePunches) {
+      const clockIn = new Date(punch.clocked_in);
+      const clockOut = punch.clocked_out ? new Date(punch.clocked_out) : null;
+      
+      // Convert to local time for display
+      const clockInLocal = clockIn.toLocaleString('en-US', { timeZone: locationTimezone });
+      const clockOutLocal = clockOut ? clockOut.toLocaleString('en-US', { timeZone: locationTimezone }) : 'Still clocked in';
+      
+      punchDetails.push({
+        userId: punch.user_id,
+        firstName: punch.first_name,
+        lastName: punch.last_name,
+        role: punch.role?.name || 'Unknown',
+        clockInUTC: punch.clocked_in,
+        clockOutUTC: punch.clocked_out,
+        clockInLocal,
+        clockOutLocal,
+      });
+      
+      // Calculate which hours this punch covers
+      for (let h = 0; h < 24; h++) {
+        const hourStartUTC = new Date(Date.UTC(year, month - 1, day, utcOffset + h, 0, 0));
+        const hourEndUTC = new Date(Date.UTC(year, month - 1, day, utcOffset + h + 1, 0, 0));
+        
+        const effectiveClockOut = clockOut || new Date(); // Use current time if still working
+        
+        // Check if this punch overlaps with this hour
+        if (clockIn < hourEndUTC && effectiveClockOut > hourStartUTC) {
+          hourlyBreakdown[h].count++;
+          hourlyBreakdown[h].names.push(punch.first_name || 'Unknown');
+        }
+      }
+    }
+    
+    // Log detailed breakdown
+    console.log(`[Labor Resync] Hourly breakdown for ${rest.name} on ${dateStr}:`);
+    for (let h = 5; h <= 23; h++) { // 5am to 11pm local
+      const data = hourlyBreakdown[h];
+      if (data.count > 0 || h >= 12) { // Always show afternoon hours
+        console.log(`  Hour ${h}:00 - ${data.count} employees: ${data.names.join(', ')}`);
+      }
+    }
+    
+    // Compare with what's in our database
+    const existingData = await db.select()
+      .from(hourlyLabor)
+      .where(and(
+        eq(hourlyLabor.restaurantId, rest.id),
+        sql`${hourlyLabor.date}::date = ${dateStr}`
+      ))
+      .orderBy(hourlyLabor.hour);
+    
+    console.log(`[Labor Resync] Existing database records: ${existingData.length}`);
+    
+    return {
+      success: true,
+      message: `Found ${timePunches.length} punches from 7shifts`,
+      rawPunches: punchDetails.slice(0, 50), // Limit to first 50 for response size
+      hourlyData: {
+        breakdown: hourlyBreakdown,
+        existingDbRecords: existingData.map(r => ({
+          hour: r.hour,
+          employeeCount: r.employeeCount,
+        })),
+        location: {
+          id: location.id,
+          name: location.name,
+          timezone: location.timezone,
+        }
+      }
+    };
+    
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Labor Resync] Error:', msg);
+    return { success: false, message: msg, rawPunches: [], hourlyData: null };
   }
 }
