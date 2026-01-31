@@ -163,9 +163,11 @@ export class DatabaseStorage implements IStorage {
     const allHourlyLabor = await db.select().from(hourlyLabor);
     
     // Build hourly labor lookup by restaurant+date+hour
+    // Normalize the date to just YYYY-MM-DD to match lookup keys
     const laborByKey = new Map<string, HourlyLabor>();
     allHourlyLabor.forEach(l => {
-      const key = `${l.restaurantId}-${l.date}-${l.hour}`;
+      const dateStr = l.date.split('T')[0]; // Extract just the date part
+      const key = `${l.restaurantId}-${dateStr}-${l.hour}`;
       laborByKey.set(key, l);
     });
     
@@ -526,7 +528,8 @@ export class DatabaseStorage implements IStorage {
     const allHourlyLabor = await db.select().from(hourlyLabor);
     const laborByKey = new Map<string, HourlyLabor>();
     allHourlyLabor.forEach(l => {
-      const key = `${l.restaurantId}-${l.date}-${l.hour}`;
+      const dateStr = l.date.split('T')[0]; // Extract just the date part
+      const key = `${l.restaurantId}-${dateStr}-${l.hour}`;
       laborByKey.set(key, l);
     });
     
