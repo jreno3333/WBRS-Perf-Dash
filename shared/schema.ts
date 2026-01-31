@@ -444,3 +444,41 @@ export const insertWorkstreamLocationSchema = createInsertSchema(workstreamLocat
 
 export type InsertWorkstreamLocation = z.infer<typeof insertWorkstreamLocationSchema>;
 export type WorkstreamLocation = typeof workstreamLocations.$inferSelect;
+
+// Markets table - for grouping restaurants into multi-unit management groups
+export const markets = pgTable("markets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  color: text("color").default("#6366f1"), // Hex color for UI display
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMarketSchema = createInsertSchema(markets).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMarket = z.infer<typeof insertMarketSchema>;
+export type Market = typeof markets.$inferSelect;
+
+// Restaurant-Market assignments (junction table)
+export const restaurantMarkets = pgTable("restaurant_markets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  marketId: varchar("market_id").notNull(),
+}, (table) => ({
+  uniqueRestaurantMarket: uniqueIndex("restaurant_market_unique_idx")
+    .on(table.restaurantId, table.marketId),
+}));
+
+export const insertRestaurantMarketSchema = createInsertSchema(restaurantMarkets).omit({
+  id: true,
+});
+
+export type InsertRestaurantMarket = z.infer<typeof insertRestaurantMarketSchema>;
+export type RestaurantMarket = typeof restaurantMarkets.$inferSelect;
+
+// Market with restaurant IDs for API responses
+export interface MarketWithRestaurants extends Market {
+  restaurantIds: string[];
+}
