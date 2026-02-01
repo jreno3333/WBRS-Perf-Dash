@@ -29,6 +29,8 @@ interface DailySummaryProps {
   crewSummary?: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }>;
   isCollapsed?: boolean;
   onCollapseChange?: (collapsed: boolean) => void;
+  selectedDate?: string;
+  dateRange?: string[];
 }
 
 // Tennessee stores are identified by name pattern
@@ -202,7 +204,9 @@ function analyzeUnit(
   if (aboveExpectationHours >= 2) {
     strengths.push(`${aboveExpectationHours} hours with sales 20%+ above expectations`);
   }
-  if (slowSpeedHours === 0 && hourlyData?.some(h => h.avgServiceTime)) {
+  // Only show good speed if there's drive-thru data AND no slow hours
+  const hasDriveThruData = hourlyData?.some(h => h.avgServiceTime && h.avgServiceTime > 0);
+  if (slowSpeedHours === 0 && hasDriveThruData) {
     strengths.push("Drive-thru speed consistently under 7 minutes");
   }
   if (understaffedHours === 0 && overstaffedHours === 0 && staffingIssues.length === 0) {
@@ -221,8 +225,17 @@ function analyzeUnit(
     const hours = staffingIssues.filter(s => s.type === "over").map(s => formatHour(s.hour)).join(", ");
     concerns.push(`Overstaffed ${overstaffedHours} hours (${hours})`);
   }
-  if (slowSpeedHours >= 2) {
-    concerns.push(`Drive-thru over 7 min for ${slowSpeedHours} hours`);
+  // Flag speed issues even if just 1 hour has slow SOS
+  if (slowSpeedHours >= 1) {
+    const worstSpeed = speedIssues.sort((a, b) => b.avgTime - a.avgTime)[0];
+    const worstTimeFormatted = worstSpeed 
+      ? `${Math.floor(worstSpeed.avgTime / 60)}:${String(Math.round(worstSpeed.avgTime % 60)).padStart(2, '0')}`
+      : "";
+    if (slowSpeedHours === 1) {
+      concerns.push(`Drive-thru slow at ${formatHour(worstSpeed?.hour || 0)} (${worstTimeFormatted} avg)`);
+    } else {
+      concerns.push(`Drive-thru over 7 min for ${slowSpeedHours} hours (worst: ${worstTimeFormatted})`);
+    }
   }
   if (belowExpectationHours >= 2) {
     concerns.push(`${belowExpectationHours} hours with sales 20%+ below expectations`);
@@ -604,8 +617,27 @@ export function DailySummary({
   markets,
   crewSummary,
   isCollapsed = false,
-  onCollapseChange
+  onCollapseChange,
+  selectedDate,
+  dateRange
 }: DailySummaryProps) {
+  // Format date for display
+  const formatDateDisplay = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr + "T12:00:00Z");
+      return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+  
+  const dateDisplayText = useMemo(() => {
+    if (!selectedDate) return "";
+    if (dateRange && dateRange.length > 1) {
+      return `${formatDateDisplay(dateRange[0])} - ${formatDateDisplay(dateRange[dateRange.length - 1])}`;
+    }
+    return formatDateDisplay(selectedDate);
+  }, [selectedDate, dateRange]);
   const [activeTab, setActiveTab] = useState("units");
   
   // Analyze all units (exclude training units)
@@ -666,11 +698,18 @@ export function DailySummary({
       <Card data-testid="daily-summary-section">
         <CollapsibleTrigger asChild>
           <CardHeader className="cursor-pointer">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-primary" />
-                Daily Performance Summary
-              </CardTitle>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" />
+                  Daily Performance Summary
+                </CardTitle>
+                {dateDisplayText && (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    {dateDisplayText}
+                  </Badge>
+                )}
+              </div>
               <Button variant="ghost" size="sm" type="button">
                 {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
               </Button>

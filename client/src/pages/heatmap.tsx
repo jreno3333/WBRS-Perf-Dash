@@ -4,11 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
-import { ArrowLeft, Calendar, Clock, AlertTriangle, ChevronDown, ChevronUp, Grid3X3 } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
-import { format } from "date-fns";
+import { format, subDays, addDays, parseISO, isValid, startOfDay, endOfDay, eachDayOfInterval } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 
 interface HeatmapData {
@@ -60,7 +62,40 @@ export default function HeatmapPage() {
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [heatmapCollapsed, setHeatmapCollapsed] = useState(true);
   
-  const dateStr = getCentralDateStr();
+  // Date selection state
+  const todayStr = getCentralDateStr();
+  const [startDate, setStartDate] = useState<string>(todayStr);
+  const [endDate, setEndDate] = useState<string>(todayStr);
+  const [isDateRangeMode, setIsDateRangeMode] = useState(false);
+  
+  // Auto-adjust endDate if startDate changes to be after endDate
+  const handleStartDateChange = (newStartDate: string) => {
+    setStartDate(newStartDate);
+    if (isDateRangeMode && newStartDate > endDate) {
+      setEndDate(newStartDate);
+    }
+  };
+  
+  // Compute the active analysis date or date range
+  const analysisDateRange = useMemo(() => {
+    if (!isDateRangeMode) {
+      return [startDate];
+    }
+    
+    try {
+      const start = parseISO(startDate);
+      const end = parseISO(endDate);
+      if (!isValid(start) || !isValid(end) || start > end) {
+        return [startDate];
+      }
+      return eachDayOfInterval({ start, end }).map(d => format(d, 'yyyy-MM-dd'));
+    } catch {
+      return [startDate];
+    }
+  }, [startDate, endDate, isDateRangeMode]);
+  
+  // Use the selected date for API queries
+  const dateStr = startDate;
   
   const { data, isLoading } = useQuery<HeatmapData>({
     queryKey: ['/api/hourly-heatmap'],
@@ -104,10 +139,18 @@ export default function HeatmapPage() {
     setSelectedDates([]);
   };
   
+  // activeDates for heatmap - use date picker range if not default, otherwise use selectedDates or all
   const activeDates = useMemo(() => {
     if (!data) return [];
+    // If date picker has a custom selection (not just today), use the analysisDateRange
+    // Filter to only include dates that exist in the heatmap data
+    const availableDates = new Set(data.dateRange);
+    const filteredAnalysisRange = analysisDateRange.filter(d => availableDates.has(d));
+    if (filteredAnalysisRange.length > 0) {
+      return filteredAnalysisRange;
+    }
     return selectedDates.length > 0 ? selectedDates : data.dateRange;
-  }, [data, selectedDates]);
+  }, [data, selectedDates, analysisDateRange]);
   
   const stats = useMemo(() => {
     if (!data) return { totalZeroHours: 0, totalHours: 0 };
@@ -232,7 +275,79 @@ export default function HeatmapPage() {
             </Link>
             <h1 className="text-xl font-bold">Performance Summary</h1>
           </div>
+          
+          {/* Date Selection Controls */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="start-date" className="text-sm text-muted-foreground whitespace-nowrap">
+                <CalendarDays className="w-4 h-4 inline mr-1" />
+                {isDateRangeMode ? "From:" : "Date:"}
+              </Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={startDate}
+                max={todayStr}
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                className="w-36 h-8 text-sm"
+                data-testid="input-start-date"
+              />
+            </div>
+            
+            {isDateRangeMode && (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="end-date" className="text-sm text-muted-foreground">To:</Label>
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  max={todayStr}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-36 h-8 text-sm"
+                  data-testid="input-end-date"
+                />
+              </div>
+            )}
+            
+            <Button
+              variant={isDateRangeMode ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => {
+                setIsDateRangeMode(!isDateRangeMode);
+                if (!isDateRangeMode) {
+                  setEndDate(startDate);
+                }
+              }}
+              data-testid="button-toggle-range"
+            >
+              {isDateRangeMode ? "Single Day" : "Date Range"}
+            </Button>
+            
+            {startDate !== todayStr && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setStartDate(todayStr);
+                  setEndDate(todayStr);
+                }}
+                data-testid="button-reset-date"
+              >
+                Today
+              </Button>
+            )}
+          </div>
         </div>
+        
+        {/* Date Range Display */}
+        {isDateRangeMode && analysisDateRange.length > 1 && (
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              Analyzing {analysisDateRange.length} days: {format(parseISO(analysisDateRange[0]), 'MMM d')} - {format(parseISO(analysisDateRange[analysisDateRange.length - 1]), 'MMM d')}
+            </Badge>
+          </div>
+        )}
         
         {/* Daily Performance Summary - First */}
         {leaderboardData && (
@@ -243,6 +358,8 @@ export default function HeatmapPage() {
             crewSummary={crewSummary}
             isCollapsed={summaryCollapsed}
             onCollapseChange={setSummaryCollapsed}
+            selectedDate={startDate}
+            dateRange={analysisDateRange}
           />
         )}
         
