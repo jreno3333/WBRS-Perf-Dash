@@ -45,6 +45,11 @@ function getStateFromRestaurant(restaurantName: string): string {
   return TENNESSEE_STORES.some(store => restaurantName.includes(store.split(" - ")[1])) ? "Tennessee" : "Alabama";
 }
 
+interface HourlyLeader {
+  firstName: string;
+  position: string;
+}
+
 interface UnitInsight {
   restaurantId: string;
   restaurantName: string;
@@ -59,9 +64,9 @@ interface UnitInsight {
   leaders: string[];
   strengths: string[];
   concerns: string[];
-  staffingIssues: { hour: number; type: "over" | "under"; diff: number }[];
-  speedIssues: { hour: number; avgTime: number }[];
-  salesOutliers: { hour: number; variance: number; type: "above" | "below" }[];
+  staffingIssues: { hour: number; type: "over" | "under"; diff: number; leaders: HourlyLeader[] }[];
+  speedIssues: { hour: number; avgTime: number; leaders: HourlyLeader[] }[];
+  salesOutliers: { hour: number; variance: number; type: "above" | "below"; leaders: HourlyLeader[] }[];
   recommendation: string;
 }
 
@@ -122,14 +127,17 @@ function analyzeUnit(
       const staffingDiff = actualStaff - staffing.total;
       const hasValidStaffing = rawEmployeeCount >= 1;
       
+      // Extract leaders for this hour
+      const hourLeaders: HourlyLeader[] = (hour.leaders as HourlyLeader[]) || [];
+      
       // Only flag staffing issues if we have valid staffing data
       if (hasValidStaffing) {
         if (staffingDiff > 1) {
           overstaffedHours++;
-          staffingIssues.push({ hour: hour.hour, type: "over", diff: staffingDiff });
+          staffingIssues.push({ hour: hour.hour, type: "over", diff: staffingDiff, leaders: hourLeaders });
         } else if (staffingDiff < -1) {
           understaffedHours++;
-          staffingIssues.push({ hour: hour.hour, type: "under", diff: Math.abs(staffingDiff) });
+          staffingIssues.push({ hour: hour.hour, type: "under", diff: Math.abs(staffingDiff), leaders: hourLeaders });
         }
       }
       
@@ -137,17 +145,17 @@ function analyzeUnit(
       const hasValidSpeed = hour.avgServiceTime !== undefined && hour.avgServiceTime > 0;
       if (hasValidSpeed && hour.avgServiceTime! > 420) { // > 7 min
         slowSpeedHours++;
-        speedIssues.push({ hour: hour.hour, avgTime: hour.avgServiceTime! });
+        speedIssues.push({ hour: hour.hour, avgTime: hour.avgServiceTime!, leaders: hourLeaders });
       }
       
       // Sales variance analysis
       if (hasComparableSales) {
         if (hourVariance >= 20) {
           aboveExpectationHours++;
-          salesOutliers.push({ hour: hour.hour, variance: hourVariance, type: "above" });
+          salesOutliers.push({ hour: hour.hour, variance: hourVariance, type: "above", leaders: hourLeaders });
         } else if (hourVariance <= -20) {
           belowExpectationHours++;
-          salesOutliers.push({ hour: hour.hour, variance: hourVariance, type: "below" });
+          salesOutliers.push({ hour: hour.hour, variance: hourVariance, type: "below", leaders: hourLeaders });
         }
       }
       
@@ -423,17 +431,75 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
               <div className="space-y-1">
                 <div className="flex items-center gap-1 text-sm font-medium text-blue-600">
                   <Target className="w-4 h-4" />
-                  Hourly outliers
+                  Hourly sales outliers
                 </div>
-                <div className="flex flex-wrap gap-1 pl-5">
+                <div className="space-y-1 pl-5">
                   {insight.salesOutliers.slice(0, 5).map((o, i) => (
-                    <Badge 
-                      key={i} 
-                      variant="secondary" 
-                      className={`text-xs ${o.type === "above" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
-                    >
-                      {formatHour(o.hour)}: {o.type === "above" ? "+" : ""}{o.variance.toFixed(0)}%
-                    </Badge>
+                    <div key={i} className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="secondary" 
+                        className={`text-xs ${o.type === "above" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
+                      >
+                        {formatHour(o.hour)}: {o.type === "above" ? "+" : ""}{o.variance.toFixed(0)}%
+                      </Badge>
+                      {o.leaders.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Leader: {o.leaders.map(l => l.firstName).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {insight.speedIssues.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-sm font-medium text-red-600">
+                  <Clock className="w-4 h-4" />
+                  Drive-thru speed issues (&gt;7 min)
+                </div>
+                <div className="space-y-1 pl-5">
+                  {insight.speedIssues.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="secondary" 
+                        className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                      >
+                        {formatHour(s.hour)}: {Math.floor(s.avgTime / 60)}:{String(Math.round(s.avgTime % 60)).padStart(2, '0')} avg
+                      </Badge>
+                      {s.leaders.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Leader: {s.leaders.map(l => l.firstName).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {insight.staffingIssues.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-sm font-medium text-amber-600">
+                  <Users className="w-4 h-4" />
+                  Staffing variances
+                </div>
+                <div className="space-y-1 pl-5">
+                  {insight.staffingIssues.slice(0, 6).map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="secondary" 
+                        className={`text-xs ${s.type === "over" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"}`}
+                      >
+                        {formatHour(s.hour)}: {s.type === "over" ? "+" : "-"}{s.diff.toFixed(0)} {s.type === "over" ? "over" : "under"}
+                      </Badge>
+                      {s.leaders.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Leader: {s.leaders.map(l => l.firstName).join(", ")}
+                        </span>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
