@@ -104,11 +104,21 @@ export default function HeatmapPage() {
   // Fetch leaderboard data for DailySummary
   const { data: leaderboardData } = useQuery<LeaderboardData>({
     queryKey: ['/api/leaderboard', dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/leaderboard?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch leaderboard");
+      return res.json();
+    },
   });
   
   // Fetch hourly sales data for DailySummary
   const { data: hourlyData } = useQuery<Record<string, HourlySalesData[]>>({
-    queryKey: ['/api/hourly-sales', dateStr],
+    queryKey: ['/api/hourly-by-restaurant', dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/hourly-by-restaurant?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch hourly data");
+      return res.json();
+    },
   });
   
   // Fetch markets for DailySummary
@@ -117,9 +127,15 @@ export default function HeatmapPage() {
   });
   
   // Fetch crew summary for DailySummary
-  const { data: crewSummary } = useQuery<Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }>>({
+  const { data: crewSummaryResponse } = useQuery<{ date: string; summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> }>({
     queryKey: ['/api/crew/summary', dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/crew/summary?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch crew summary");
+      return res.json();
+    },
   });
+  const crewSummary = crewSummaryResponse?.summary;
   
   const toggleDate = (dateStr: string) => {
     setSelectedDates(prev => 
