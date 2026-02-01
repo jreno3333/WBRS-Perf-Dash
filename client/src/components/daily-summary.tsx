@@ -26,7 +26,7 @@ interface DailySummaryProps {
   restaurants: LeaderboardData["restaurants"];
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
   markets?: MarketWithRestaurants[];
-  crewSummary?: Record<string, { avgScore: number; avgTenure: string }>;
+  crewSummary?: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }>;
   isCollapsed?: boolean;
   onCollapseChange?: (collapsed: boolean) => void;
 }
@@ -113,25 +113,31 @@ function analyzeUnit(
         ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
         : 0;
       
-      // Staffing analysis
+      // Staffing analysis - only count if we have valid staffing data (employee count >= 1)
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
       const positions = hour.positionBreakdown || {};
       const operatorHrs = positions['_operatorScheduled'] || 0;
-      const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
+      const rawEmployeeCount = Number(hour.employeeCount) || 0;
+      const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
+      const hasValidStaffing = rawEmployeeCount >= 1;
       
-      if (staffingDiff > 1) {
-        overstaffedHours++;
-        staffingIssues.push({ hour: hour.hour, type: "over", diff: staffingDiff });
-      } else if (staffingDiff < -1) {
-        understaffedHours++;
-        staffingIssues.push({ hour: hour.hour, type: "under", diff: Math.abs(staffingDiff) });
+      // Only flag staffing issues if we have valid staffing data
+      if (hasValidStaffing) {
+        if (staffingDiff > 1) {
+          overstaffedHours++;
+          staffingIssues.push({ hour: hour.hour, type: "over", diff: staffingDiff });
+        } else if (staffingDiff < -1) {
+          understaffedHours++;
+          staffingIssues.push({ hour: hour.hour, type: "under", diff: Math.abs(staffingDiff) });
+        }
       }
       
-      // Speed analysis
-      if (hour.avgServiceTime && hour.avgServiceTime > 420) { // > 7 min
+      // Speed analysis - only include if we have valid drive-thru data (avgServiceTime > 0)
+      const hasValidSpeed = hour.avgServiceTime !== undefined && hour.avgServiceTime > 0;
+      if (hasValidSpeed && hour.avgServiceTime! > 420) { // > 7 min
         slowSpeedHours++;
-        speedIssues.push({ hour: hour.hour, avgTime: hour.avgServiceTime });
+        speedIssues.push({ hour: hour.hour, avgTime: hour.avgServiceTime! });
       }
       
       // Sales variance analysis
@@ -145,23 +151,26 @@ function analyzeUnit(
         }
       }
       
-      // Calculate hourly grade score
+      // Calculate hourly grade score - aligned with leaderboard-card logic
       let score = 0;
       let components = 0;
       
+      // Sales component - only if we have comparable data
       if (hasComparableSales) {
         score += hourVariance >= -5 ? 100 : 50;
         components++;
       }
       
-      if (hour.avgServiceTime !== undefined) {
-        if (hour.avgServiceTime <= 300) score += 100;
-        else if (hour.avgServiceTime <= 420) score += 70;
+      // Speed component - only if we have valid drive-thru data
+      if (hasValidSpeed) {
+        if (hour.avgServiceTime! <= 300) score += 100;
+        else if (hour.avgServiceTime! <= 420) score += 70;
         else score += 40;
         components++;
       }
       
-      if (actualStaff >= 1) {
+      // Staffing component - only if we have valid staffing data
+      if (hasValidStaffing) {
         if (Math.abs(staffingDiff) <= 1) score += 100;
         else score += 60;
         components++;
@@ -533,9 +542,10 @@ export function DailySummary({
 }: DailySummaryProps) {
   const [activeTab, setActiveTab] = useState("units");
   
-  // Analyze all units
+  // Analyze all units (exclude training units)
   const unitInsights = useMemo(() => {
-    return restaurants.map(r => {
+    const activeRestaurants = restaurants.filter(r => r.status !== "training");
+    return activeRestaurants.map(r => {
       const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId]);
       // Add market info if available
       if (markets) {

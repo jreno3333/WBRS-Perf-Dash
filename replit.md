@@ -43,6 +43,23 @@ Preferred communication style: Simple, everyday language.
 - **Holiday Context**: Displays US Federal Holiday information on the dashboard and map to contextualize sales performance.
 - **Settings/Admin Page**: Manages restaurant open dates and unit statuses (Training, New Unit, Established) affecting ranking and display.
 - **Sales Display & Ranking**: Uses `actualSales` (sum of all available hourly sales) for both ranking and display. This ensures consistent data between deployments sharing the same database.
+- **Daily Performance Summary**: Comprehensive daily analysis for each unit with:
+  - What went well / areas of concern identification
+  - Sales variance tracking (20%+ outliers highlighted)
+  - Staffing pattern analysis (understaffed/overstaffed hours)
+  - Drive-thru speed issue detection (>7 min flagged)
+  - Actionable recommendations per unit
+  - Multi-level aggregation: By Unit, By Market, By State, Company-wide
+  - Collapsible sections for dashboard organization
+  - Excludes training units from analysis
+  - Grading logic aligned with leaderboard X-Score calculations
+- **Markets/Grouping System**: Organize restaurants into custom regional groups:
+  - Create markets with custom names and colors (8 color options)
+  - Assign any restaurants to markets via Settings page
+  - Filter dashboard by market to focus on specific regions
+  - MarketBreakdown component shows aggregated market metrics
+  - Market-level summaries in Daily Performance Summary
+  - Database: `markets` table + `restaurant_markets` junction table
 
 ### 7shifts Integration
 - **Purpose**: Fetches sales data, labor data, and position/role information from 7shifts (fallback for when Xenial POS data is unavailable).
