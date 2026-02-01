@@ -133,11 +133,16 @@ function analyzeUnit(
       const hourLeaders: HourlyLeader[] = (hour.leaders as HourlyLeader[]) || [];
       
       // Only flag staffing issues if we have valid staffing data
+      // SALES SURGE EXCEPTION: Don't count as understaffed if sales are 20%+ above last week
+      // (recognizes unexpected rushes that couldn't have been anticipated)
       if (hasValidStaffing) {
+        const isSalesSurge = hourVariance >= 20;
+        
         if (staffingDiff > 1) {
           overstaffedHours++;
           staffingIssues.push({ hour: hour.hour, type: "over", diff: staffingDiff, leaders: hourLeaders });
-        } else if (staffingDiff < -1) {
+        } else if (staffingDiff < -1 && !isSalesSurge) {
+          // Only flag understaffing if it's NOT during a sales surge
           understaffedHours++;
           staffingIssues.push({ hour: hour.hour, type: "under", diff: Math.abs(staffingDiff), leaders: hourLeaders });
         }
@@ -180,9 +185,19 @@ function analyzeUnit(
       }
       
       // Staffing component - only if we have valid staffing data
+      // Apply sales surge exception for understaffing (same as flagging logic above)
       if (hasValidStaffing) {
-        if (Math.abs(staffingDiff) <= 1) score += 100;
-        else score += 60;
+        const isSalesSurge = hourVariance >= 20;
+        const isUnderstaffed = staffingDiff < -1;
+        const isOverstaffed = staffingDiff > 1;
+        
+        if (isOverstaffed) {
+          score += 60;
+        } else if (isUnderstaffed && !isSalesSurge) {
+          score += 60;
+        } else {
+          score += 100;
+        }
         components++;
       }
       

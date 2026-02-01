@@ -74,9 +74,20 @@ function getExecutionGrade(
   // Staffing component (only if we have valid staffing data)
   // Skip when employee count is near-zero (indicates missing/incomplete API data)
   // PROPER = 100, UNDER/OVER = 60
+  // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
+  // (recognizes unexpected rushes that couldn't have been anticipated)
   if (hasValidStaffing) {
     let staffingScore = 100;
-    if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
+    const isSalesSurge = salesVariancePct >= 20;
+    const isUnderstaffed = staffingDiff < -1;
+    const isOverstaffed = staffingDiff > 1;
+    
+    if (isOverstaffed) {
+      staffingScore = 60;
+    } else if (isUnderstaffed && !isSalesSurge) {
+      // Only penalize understaffing if it's NOT during a sales surge
+      staffingScore = 60;
+    }
     components.push({ name: 'staffing', score: staffingScore });
   }
   
