@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays, Grid3X3, Users } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays, Grid3X3, Users, ChevronDown, ChevronUp } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
@@ -15,6 +16,7 @@ import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
 import { MarketBreakdown } from "@/components/market-breakdown";
+import { DailySummary } from "@/components/daily-summary";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -90,6 +92,8 @@ export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time" | "xscore">("sales");
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+  const [heatmapCollapsed, setHeatmapCollapsed] = useState(false);
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
@@ -503,6 +507,55 @@ export default function Dashboard() {
                 crewSummary={crewSummary} 
               />
             )}
+
+            {/* Daily Performance Summary */}
+            <DailySummary 
+              restaurants={leaderboardData.restaurants}
+              hourlyByRestaurant={hourlyByRestaurant}
+              markets={markets}
+              crewSummary={crewSummary}
+              isCollapsed={summaryCollapsed}
+              onCollapseChange={setSummaryCollapsed}
+            />
+
+            {/* Hourly Sales Heatmap Section - Collapsible */}
+            <Collapsible open={!heatmapCollapsed} onOpenChange={(open) => setHeatmapCollapsed(!open)}>
+              <Card data-testid="heatmap-section">
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="flex items-center gap-2">
+                        <Grid3X3 className="w-5 h-5 text-blue-500" />
+                        Hourly Sales Heatmap
+                      </CardTitle>
+                      <Button variant="ghost" size="sm" type="button">
+                        {heatmapCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-0">
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Hourly sales breakdown is shown within each restaurant card below. Click on a restaurant to expand/collapse their hourly details.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        <div className="w-2 h-2 rounded-sm bg-green-500 mr-1" />
+                        Above LW
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        <div className="w-2 h-2 rounded-sm bg-red-500 mr-1" />
+                        Below LW
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        A+ to F = Execution Grade
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
 
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
