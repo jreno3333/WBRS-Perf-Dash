@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link } from "wouter";
 import { ArrowLeft, Calendar, Clock, AlertTriangle } from "lucide-react";
+import { DailySummary } from "@/components/daily-summary";
+import { format } from "date-fns";
+import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 
 interface HeatmapData {
   restaurants: { id: string; name: string }[];
@@ -45,11 +48,40 @@ function getHeatColor(sales: number, maxSales: number): string {
   return "bg-green-600 dark:bg-green-600/80";
 }
 
+// Get current date in Central timezone (business day)
+function getCentralDateStr(): string {
+  const now = new Date();
+  return now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+}
+
 export default function HeatmapPage() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+  
+  const dateStr = getCentralDateStr();
   
   const { data, isLoading } = useQuery<HeatmapData>({
     queryKey: ['/api/hourly-heatmap'],
+  });
+  
+  // Fetch leaderboard data for DailySummary
+  const { data: leaderboardData } = useQuery<LeaderboardData>({
+    queryKey: ['/api/leaderboard', dateStr],
+  });
+  
+  // Fetch hourly sales data for DailySummary
+  const { data: hourlyData } = useQuery<Record<string, HourlySalesData[]>>({
+    queryKey: ['/api/hourly-sales', dateStr],
+  });
+  
+  // Fetch markets for DailySummary
+  const { data: markets } = useQuery<MarketWithRestaurants[]>({
+    queryKey: ['/api/markets'],
+  });
+  
+  // Fetch crew summary for DailySummary
+  const { data: crewSummary } = useQuery<Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }>>({
+    queryKey: ['/api/crew/summary', dateStr],
   });
   
   const toggleDate = (dateStr: string) => {
@@ -398,6 +430,18 @@ export default function HeatmapPage() {
             </table>
           </CardContent>
         </Card>
+        
+        {/* Daily Performance Summary */}
+        {leaderboardData && (
+          <DailySummary 
+            restaurants={leaderboardData.restaurants}
+            hourlyByRestaurant={hourlyData}
+            markets={markets}
+            crewSummary={crewSummary}
+            isCollapsed={summaryCollapsed}
+            onCollapseChange={setSummaryCollapsed}
+          />
+        )}
       </div>
     </div>
   );
