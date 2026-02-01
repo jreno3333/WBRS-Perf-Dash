@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link } from "wouter";
-import { ArrowLeft, Calendar, Clock, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, AlertTriangle, ChevronDown, ChevronUp, Grid3X3 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
@@ -57,6 +58,7 @@ function getCentralDateStr(): string {
 export default function HeatmapPage() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+  const [heatmapCollapsed, setHeatmapCollapsed] = useState(true);
   
   const dateStr = getCentralDateStr();
   
@@ -228,210 +230,11 @@ export default function HeatmapPage() {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <h1 className="text-xl font-bold">Hourly Sales Heatmap</h1>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="gap-1">
-              <AlertTriangle className="w-3 h-3" />
-              {stats.totalZeroHours} zero-sales hours ({stats.totalHours > 0 ? Math.round((stats.totalZeroHours / stats.totalHours) * 100) : 0}%)
-            </Badge>
+            <h1 className="text-xl font-bold">Performance Summary</h1>
           </div>
         </div>
         
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Select Days
-              </CardTitle>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={selectAllDates} data-testid="button-select-all">
-                  All
-                </Button>
-                <Button variant="outline" size="sm" onClick={clearDates} data-testid="button-clear-dates">
-                  Clear
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex flex-wrap gap-2">
-              {data.dateRange.map(dateStr => (
-                <Button
-                  key={dateStr}
-                  variant={selectedDates.includes(dateStr) ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleDate(dateStr)}
-                  data-testid={`button-date-${dateStr}`}
-                >
-                  {formatDate(dateStr)}
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              Sales by Hour
-            </CardTitle>
-            <div className="flex items-center gap-2 text-xs mt-2">
-              <span className="text-muted-foreground">Volume:</span>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded bg-gray-200 dark:bg-gray-700" />
-                <span className="text-muted-foreground">$0</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded bg-red-500 dark:bg-red-500/70" />
-                <span className="text-muted-foreground">Low</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded bg-yellow-400 dark:bg-yellow-400/50" />
-                <span className="text-muted-foreground">Med</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded bg-green-500 dark:bg-green-500/70" />
-                <span className="text-muted-foreground">High</span>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr>
-                  <th className="text-left p-1 sticky left-0 bg-background z-10 min-w-[120px]">Store</th>
-                  <th className="text-left p-1 min-w-[60px]">Date</th>
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <th key={i} className="p-1 text-center min-w-[28px]">
-                      {formatHour(i)}
-                    </th>
-                  ))}
-                </tr>
-                <tr className="border-b border-border bg-muted/30">
-                  <td className="p-1 sticky left-0 bg-muted/30 z-10 text-muted-foreground text-[10px]">Open</td>
-                  <td className="p-1 text-muted-foreground text-[10px]">stores</td>
-                  {openStoresPerHour.map((count, hour) => (
-                    <td key={hour} className="p-1 text-center text-[10px] text-muted-foreground font-medium">
-                      {count > 0 ? count : '-'}
-                    </td>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.restaurants.map(restaurant => {
-                  // Filter dates to only those that exist for this restaurant (after open date)
-                  const restaurantDates = activeDates.filter(dateStr => 
-                    data.heatmapData[restaurant.id]?.[dateStr] !== undefined
-                  );
-                  
-                  if (restaurantDates.length === 0) return null;
-                  
-                  return restaurantDates.map((dateStr, dateIdx) => {
-                    const dayData = data.heatmapData[restaurant.id]?.[dateStr];
-                    
-                    // Calculate zero count excluding future hours
-                    const now = new Date();
-                    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-                    const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
-                    const isToday = dateStr === todayStr;
-                    
-                    const zeroCount = dayData 
-                      ? Object.entries(dayData).filter(([hourStr, v]) => {
-                          const hour = parseInt(hourStr);
-                          // For today, only count past/current hours
-                          if (isToday && hour > currentHour) return false;
-                          return v === 0;
-                        }).length 
-                      : 0;
-                    
-                    return (
-                      <tr key={`${restaurant.id}-${dateStr}`} className="border-t border-border/50">
-                        {dateIdx === 0 && (
-                          <td 
-                            className="p-1 font-medium sticky left-0 bg-background z-10"
-                            rowSpan={restaurantDates.length}
-                          >
-                            <div className="truncate max-w-[120px]" title={restaurant.name}>
-                              {restaurant.name}
-                            </div>
-                          </td>
-                        )}
-                        <td className="p-1 text-muted-foreground whitespace-nowrap">
-                          {formatDate(dateStr)}
-                          {zeroCount > 4 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AlertTriangle className="inline-block ml-1 w-3 h-3 text-yellow-600 dark:text-yellow-400 cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="text-xs">
-                                {zeroCount} hours with $0 sales
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </td>
-                        {Array.from({ length: 24 }, (_, hour) => {
-                          const sales = dayData?.[hour] ?? 0;
-                          
-                          // Check if this is a future hour (today and hour > current hour)
-                          const now = new Date();
-                          const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-                          const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
-                          const isFutureHour = dateStr === todayStr && hour > currentHour;
-                          
-                          if (isFutureHour) {
-                            return (
-                              <td key={hour} className="p-0.5">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="w-6 h-6 rounded bg-muted/30 flex items-center justify-center cursor-help border border-dashed border-muted-foreground/20">
-                                      <span className="text-[7px] text-muted-foreground/50">N/A</span>
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="text-xs">
-                                    <div className="font-medium">{restaurant.name}</div>
-                                    <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
-                                    <div className="text-muted-foreground">Future hour - not yet available</div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </td>
-                            );
-                          }
-                          
-                          return (
-                            <td key={hour} className="p-0.5">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div 
-                                    className={`w-6 h-6 rounded ${getHeatColor(sales, visibleMaxSales)} flex items-center justify-center cursor-pointer`}
-                                  >
-                                    {sales === 0 && (
-                                      <span className="text-[8px] text-muted-foreground">-</span>
-                                    )}
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="text-xs">
-                                  <div className="font-medium">{restaurant.name}</div>
-                                  <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
-                                  <div className="font-bold text-green-600 dark:text-green-400">${sales.toLocaleString()}</div>
-                                </TooltipContent>
-                              </Tooltip>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  });
-                })}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-        
-        {/* Daily Performance Summary */}
+        {/* Daily Performance Summary - First */}
         {leaderboardData && (
           <DailySummary 
             restaurants={leaderboardData.restaurants}
@@ -442,6 +245,212 @@ export default function HeatmapPage() {
             onCollapseChange={setSummaryCollapsed}
           />
         )}
+        
+        {/* Hourly Sales Heatmap - Collapsible */}
+        <Collapsible open={!heatmapCollapsed} onOpenChange={(open) => setHeatmapCollapsed(!open)}>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer pb-2">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Grid3X3 className="w-4 h-4 text-blue-500" />
+                    Hourly Sales Heatmap
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      {stats.totalZeroHours} zero-sales hours
+                    </Badge>
+                    <Button variant="ghost" size="sm" type="button">
+                      {heatmapCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0 space-y-4">
+                {/* Date selector */}
+                <div className="flex items-center justify-between flex-wrap gap-2 border-b pb-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Select Days</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={selectAllDates} data-testid="button-select-all">
+                      All
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={clearDates} data-testid="button-clear-dates">
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {data.dateRange.map(dateStr => (
+                    <Button
+                      key={dateStr}
+                      variant={selectedDates.includes(dateStr) ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => toggleDate(dateStr)}
+                      data-testid={`button-date-${dateStr}`}
+                    >
+                      {formatDate(dateStr)}
+                    </Button>
+                  ))}
+                </div>
+                
+                {/* Legend */}
+                <div className="flex items-center gap-2 text-xs border-t pt-3">
+                  <span className="text-muted-foreground">Volume:</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-4 h-4 rounded bg-gray-200 dark:bg-gray-700" />
+                    <span className="text-muted-foreground">$0</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-4 h-4 rounded bg-red-500 dark:bg-red-500/70" />
+                    <span className="text-muted-foreground">Low</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-4 h-4 rounded bg-yellow-400 dark:bg-yellow-400/50" />
+                    <span className="text-muted-foreground">Med</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-4 h-4 rounded bg-green-500 dark:bg-green-500/70" />
+                    <span className="text-muted-foreground">High</span>
+                  </div>
+                </div>
+                
+                {/* Heatmap Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr>
+                        <th className="text-left p-1 sticky left-0 bg-background z-10 min-w-[120px]">Store</th>
+                        <th className="text-left p-1 min-w-[60px]">Date</th>
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <th key={i} className="p-1 text-center min-w-[28px]">
+                            {formatHour(i)}
+                          </th>
+                        ))}
+                      </tr>
+                      <tr className="border-b border-border bg-muted/30">
+                        <td className="p-1 sticky left-0 bg-muted/30 z-10 text-muted-foreground text-[10px]">Open</td>
+                        <td className="p-1 text-muted-foreground text-[10px]">stores</td>
+                        {openStoresPerHour.map((count, hour) => (
+                          <td key={hour} className="p-1 text-center text-[10px] text-muted-foreground font-medium">
+                            {count > 0 ? count : '-'}
+                          </td>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.restaurants.map(restaurant => {
+                        const restaurantDates = activeDates.filter(dateStr => 
+                          data.heatmapData[restaurant.id]?.[dateStr] !== undefined
+                        );
+                        
+                        if (restaurantDates.length === 0) return null;
+                        
+                        return restaurantDates.map((dateStr, dateIdx) => {
+                          const dayData = data.heatmapData[restaurant.id]?.[dateStr];
+                          
+                          const now = new Date();
+                          const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+                          const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+                          const isToday = dateStr === todayStr;
+                          
+                          const zeroCount = dayData 
+                            ? Object.entries(dayData).filter(([hourStr, v]) => {
+                                const hour = parseInt(hourStr);
+                                if (isToday && hour > currentHour) return false;
+                                return v === 0;
+                              }).length 
+                            : 0;
+                          
+                          return (
+                            <tr key={`${restaurant.id}-${dateStr}`} className="border-t border-border/50">
+                              {dateIdx === 0 && (
+                                <td 
+                                  className="p-1 font-medium sticky left-0 bg-background z-10"
+                                  rowSpan={restaurantDates.length}
+                                >
+                                  <div className="truncate max-w-[120px]" title={restaurant.name}>
+                                    {restaurant.name}
+                                  </div>
+                                </td>
+                              )}
+                              <td className="p-1 text-muted-foreground whitespace-nowrap">
+                                {formatDate(dateStr)}
+                                {zeroCount > 4 && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <AlertTriangle className="inline-block ml-1 w-3 h-3 text-yellow-600 dark:text-yellow-400 cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="text-xs">
+                                      {zeroCount} hours with $0 sales
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </td>
+                              {Array.from({ length: 24 }, (_, hour) => {
+                                const sales = dayData?.[hour] ?? 0;
+                                
+                                const now = new Date();
+                                const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+                                const currentHour = parseInt(now.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+                                const isFutureHour = dateStr === todayStr && hour > currentHour;
+                                
+                                if (isFutureHour) {
+                                  return (
+                                    <td key={hour} className="p-0.5">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div className="w-6 h-6 rounded bg-muted/30 flex items-center justify-center cursor-help border border-dashed border-muted-foreground/20">
+                                            <span className="text-[7px] text-muted-foreground/50">N/A</span>
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" className="text-xs">
+                                          <div className="font-medium">{restaurant.name}</div>
+                                          <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
+                                          <div className="text-muted-foreground">Future hour - not yet available</div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </td>
+                                  );
+                                }
+                                
+                                return (
+                                  <td key={hour} className="p-0.5">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div 
+                                          className={`w-6 h-6 rounded ${getHeatColor(sales, visibleMaxSales)} flex items-center justify-center cursor-pointer`}
+                                        >
+                                          {sales === 0 && (
+                                            <span className="text-[8px] text-muted-foreground">-</span>
+                                          )}
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="text-xs">
+                                        <div className="font-medium">{restaurant.name}</div>
+                                        <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
+                                        <div className="font-bold text-green-600 dark:text-green-400">${sales.toLocaleString()}</div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        });
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
       </div>
     </div>
   );
