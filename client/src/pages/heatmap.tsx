@@ -97,8 +97,12 @@ export default function HeatmapPage() {
   // Use the selected date for API queries
   const dateStr = startDate;
   
+  // Auto-refresh every 5 minutes (300000ms) for all-day monitoring
+  const REFRESH_INTERVAL = 5 * 60 * 1000;
+  
   const { data, isLoading } = useQuery<HeatmapData>({
     queryKey: ['/api/hourly-heatmap'],
+    refetchInterval: REFRESH_INTERVAL,
   });
   
   // Fetch leaderboard data for DailySummary
@@ -109,6 +113,7 @@ export default function HeatmapPage() {
       if (!res.ok) throw new Error("Failed to fetch leaderboard");
       return res.json();
     },
+    refetchInterval: REFRESH_INTERVAL,
   });
   
   // Fetch hourly sales data for DailySummary
@@ -119,11 +124,13 @@ export default function HeatmapPage() {
       if (!res.ok) throw new Error("Failed to fetch hourly data");
       return res.json();
     },
+    refetchInterval: REFRESH_INTERVAL,
   });
   
   // Fetch markets for DailySummary
   const { data: markets } = useQuery<MarketWithRestaurants[]>({
     queryKey: ['/api/markets'],
+    refetchInterval: REFRESH_INTERVAL,
   });
   
   // Fetch crew summary for DailySummary
@@ -134,6 +141,7 @@ export default function HeatmapPage() {
       if (!res.ok) throw new Error("Failed to fetch crew summary");
       return res.json();
     },
+    refetchInterval: REFRESH_INTERVAL,
   });
   const crewSummary = crewSummaryResponse?.summary;
   
