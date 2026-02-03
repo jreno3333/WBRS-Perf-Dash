@@ -415,8 +415,8 @@ export default function Dashboard() {
                   <MapPin className="h-5 w-5" />
                 </Button>
               </Link>
-              <Link href="/heatmap">
-                <Button variant="ghost" size="icon" data-testid="link-heatmap">
+              <Link href="/dashboard-view">
+                <Button variant="ghost" size="icon" data-testid="link-dashboard-view">
                   <Grid3X3 className="h-5 w-5" />
                 </Button>
               </Link>

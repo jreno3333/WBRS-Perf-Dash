@@ -18,7 +18,7 @@ function Router() {
       <Route path="/settings" component={SettingsPage} />
       <Route path="/map" component={MapPage} />
       <Route path="/hme-test" component={HMETest} />
-      <Route path="/heatmap" component={HeatmapPage} />
+      <Route path="/dashboard-view" component={HeatmapPage} />
       <Route path="/crew" component={CrewExperiencePage} />
       <Route component={NotFound} />
     </Switch>

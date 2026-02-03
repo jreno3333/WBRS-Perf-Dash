@@ -297,7 +297,7 @@ export default function HeatmapPage() {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <h1 className="text-xl font-bold">Performance Summary</h1>
+            <h1 className="text-xl font-bold">MWB Dashboard</h1>
           </div>
           
           {/* Date Selection Controls */}
