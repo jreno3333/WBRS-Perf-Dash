@@ -199,25 +199,58 @@ export async function fetchQualtricsResponses(startDate?: string): Promise<IdpRe
 }
 
 function parseStoreFromRecord(record: IdpRecord): string | null {
+  // Primary field: 's' = Transaction Unit (store number)
+  if (record['s']) {
+    return String(record['s']).trim();
+  }
+  
+  // Fallback fields
   const storeFields = [
     'store', 'Store', 'STORE',
-    'location', 'Location', 'LOCATION',
-    'storeNumber', 'StoreNumber', 'store_number',
-    'locationId', 'LocationId', 'location_id',
     'unit', 'Unit', 'UNIT',
+    'storeNumber', 'StoreNumber', 'store_number',
     'unitNumber', 'UnitNumber', 'unit_number',
-    'restaurant', 'Restaurant', 'RESTAURANT',
-    'StoreNumber', 'Store Number', 'store number',
   ];
   
   for (const field of storeFields) {
     if (record[field]) return String(record[field]).trim();
   }
   
-  for (const key of Object.keys(record)) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey.includes('store') || lowerKey.includes('location') || lowerKey.includes('unit')) {
-      if (record[key]) return String(record[key]).trim();
+  return null;
+}
+
+function convertTextToRating(text: string): number | null {
+  const lowerText = text.toLowerCase().trim();
+  
+  // Map text labels to numeric ratings (1-5 scale)
+  const ratingMap: Record<string, number> = {
+    'highly satisfied': 5,
+    'very satisfied': 5,
+    'extremely satisfied': 5,
+    'satisfied': 4,
+    'somewhat satisfied': 3,
+    'neutral': 3,
+    'neither satisfied nor dissatisfied': 3,
+    'somewhat dissatisfied': 2,
+    'dissatisfied': 2,
+    'highly dissatisfied': 1,
+    'very dissatisfied': 1,
+    'extremely dissatisfied': 1,
+    // Numbered ratings
+    '5': 5, '4': 4, '3': 3, '2': 2, '1': 1,
+    'five': 5, 'four': 4, 'three': 3, 'two': 2, 'one': 1,
+  };
+  
+  if (ratingMap[lowerText] !== undefined) {
+    return ratingMap[lowerText];
+  }
+  
+  // Try to extract a number from the text
+  const numMatch = text.match(/\d+/);
+  if (numMatch) {
+    const num = parseInt(numMatch[0], 10);
+    if (num >= 1 && num <= 5) {
+      return num;
     }
   }
   
@@ -225,37 +258,43 @@ function parseStoreFromRecord(record: IdpRecord): string | null {
 }
 
 function parseRatingFromRecord(record: IdpRecord): number | null {
+  // Primary field: QID1319640445 = "Overall, how satisfied are you with your visit?"
+  const osatField = record['QID1319640445'];
+  if (osatField !== undefined && osatField !== null && osatField !== '') {
+    const val = String(osatField).trim();
+    
+    // Try direct number first
+    const num = Number(val);
+    if (!isNaN(num) && num >= 1 && num <= 5) {
+      return num;
+    }
+    
+    // Try text conversion
+    const textRating = convertTextToRating(val);
+    if (textRating !== null) {
+      return textRating;
+    }
+  }
+  
+  // Fallback fields
   const ratingFields = [
     'osat', 'OSAT', 'Osat',
     'satisfaction', 'Satisfaction', 'SATISFACTION',
     'overall', 'Overall', 'OVERALL',
     'rating', 'Rating', 'RATING',
-    'score', 'Score', 'SCORE',
-    'Q1', 'Q2', 'Q3', 'q1', 'q2', 'q3',
-    'overallSatisfaction', 'OverallSatisfaction',
-    'overall_satisfaction',
-    'OverallSatisfaction', 'Overall Satisfaction',
   ];
   
   for (const field of ratingFields) {
     const val = record[field];
     if (val !== undefined && val !== null && val !== '') {
-      const num = Number(val);
+      const strVal = String(val).trim();
+      const num = Number(strVal);
       if (!isNaN(num) && num >= 1 && num <= 5) {
         return num;
       }
-    }
-  }
-  
-  for (const key of Object.keys(record)) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey.includes('satis') || lowerKey.includes('osat') || lowerKey.includes('rating') || lowerKey.includes('overall')) {
-      const val = record[key];
-      if (val !== undefined && val !== null && val !== '') {
-        const num = Number(val);
-        if (!isNaN(num) && num >= 1 && num <= 5) {
-          return num;
-        }
+      const textRating = convertTextToRating(strVal);
+      if (textRating !== null) {
+        return textRating;
       }
     }
   }
@@ -264,30 +303,47 @@ function parseRatingFromRecord(record: IdpRecord): number | null {
 }
 
 function parseTimestampFromRecord(record: IdpRecord): Date | null {
+  // Primary fields: 'd' = Transaction Date, 't' = Transaction Time
+  const transactionDate = record['d'];
+  const transactionTime = record['t'];
+  
+  if (transactionDate) {
+    let dateStr = String(transactionDate).trim();
+    if (transactionTime) {
+      dateStr += ' ' + String(transactionTime).trim();
+    }
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+    // Try parsing date-only formats (MM/DD/YYYY or YYYY-MM-DD)
+    const dateOnly = new Date(transactionDate);
+    if (!isNaN(dateOnly.getTime())) {
+      if (transactionTime) {
+        // Try to parse time separately (HH:MM or HH:MM:SS)
+        const timeParts = String(transactionTime).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (timeParts) {
+          dateOnly.setHours(parseInt(timeParts[1], 10));
+          dateOnly.setMinutes(parseInt(timeParts[2], 10));
+          if (timeParts[3]) {
+            dateOnly.setSeconds(parseInt(timeParts[3], 10));
+          }
+        }
+      }
+      return dateOnly;
+    }
+  }
+  
+  // Fallback: try other date fields
   const timeFields = [
-    'endDate', 'EndDate', 'end_date',
-    'startDate', 'StartDate', 'start_date',
-    'recordedDate', 'RecordedDate', 'recorded_date',
-    'submittedAt', 'submitted_at',
-    'timestamp', 'Timestamp',
-    'date', 'Date', 'DATE',
-    'visitDate', 'VisitDate', 'visit_date',
-    'surveyDate', 'SurveyDate', 'survey_date',
+    'endDate (+00:00 GMT)', 'recordedDate (+00:00 GMT)',
+    'endDate', 'EndDate', 'startDate', 'StartDate', 
+    'recordedDate', 'RecordedDate',
   ];
   
   for (const field of timeFields) {
     if (record[field]) {
       const date = new Date(record[field]);
-      if (!isNaN(date.getTime())) {
-        return date;
-      }
-    }
-  }
-  
-  for (const key of Object.keys(record)) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey.includes('date') || lowerKey.includes('time')) {
-      const date = new Date(record[key]);
       if (!isNaN(date.getTime())) {
         return date;
       }
@@ -336,6 +392,12 @@ export async function syncOsatData(): Promise<{ synced: number; errors: string[]
   const aggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   const hourlyAggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   
+  // Log first record for debugging
+  if (records.length > 0) {
+    const sample = records[0];
+    console.log(`[Qualtrics] Sample record - s: "${sample['s']}", QID1319640445: "${sample['QID1319640445']}", d: "${sample['d']}", t: "${sample['t']}"`);
+  }
+  
   for (const record of records) {
     const storeId = parseStoreFromRecord(record);
     const rating = parseRatingFromRecord(record);
@@ -347,7 +409,8 @@ export async function syncOsatData(): Promise<{ synced: number; errors: string[]
     }
     
     if (rating === null) {
-      errors.push(`Record for store ${storeId} missing rating`);
+      const rawRating = record['QID1319640445'];
+      errors.push(`Record for store ${storeId} missing rating (raw value: "${rawRating}")`);
       continue;
     }
     
