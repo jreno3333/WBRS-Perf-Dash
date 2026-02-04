@@ -353,7 +353,7 @@ function parseTimestampFromRecord(record: IdpRecord): Date | null {
   return null;
 }
 
-export async function syncOsatData(): Promise<{ synced: number; errors: string[] }> {
+export async function syncOsatData(daysBack: number = 3): Promise<{ synced: number; errors: string[] }> {
   const errors: string[] = [];
   let synced = 0;
   
@@ -361,11 +361,14 @@ export async function syncOsatData(): Promise<{ synced: number; errors: string[]
   const centralFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
   const todayStr = centralFormatter.format(now);
   
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = centralFormatter.format(yesterday);
+  // Calculate start date based on daysBack parameter
+  const startDate = new Date(now);
+  startDate.setDate(startDate.getDate() - daysBack);
+  const startDateStr = centralFormatter.format(startDate);
   
-  const records = await fetchQualtricsResponses(yesterdayStr);
+  console.log(`[Qualtrics] Syncing OSAT data from ${startDateStr} (${daysBack} days back)`);
+  
+  const records = await fetchQualtricsResponses(startDateStr);
   
   if (records.length === 0) {
     return { synced: 0, errors: ["No responses found"] };
@@ -543,4 +546,9 @@ export async function getHourlyOsatForDate(date: string): Promise<Record<string,
   }
   
   return result;
+}
+
+export async function syncOsatHistorical(daysBack: number = 7): Promise<{ synced: number; errors: string[] }> {
+  console.log(`[Qualtrics] Starting historical OSAT sync for ${daysBack} days`);
+  return syncOsatData(daysBack);
 }

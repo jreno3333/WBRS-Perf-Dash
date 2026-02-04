@@ -1449,18 +1449,38 @@ export async function registerRoutes(
     }
   });
   
-  // Sync OSAT data from Qualtrics
+  // Sync OSAT data from Qualtrics (default 3 days)
   app.post("/api/osat/sync", async (req, res) => {
     try {
-      const result = await syncOsatData();
+      const daysBack = req.body?.daysBack || 3;
+      const result = await syncOsatData(daysBack);
       res.json({
         message: "OSAT sync completed",
         synced: result.synced,
+        daysBack,
         errors: result.errors,
       });
     } catch (error: any) {
       console.error("Error syncing OSAT data:", error);
       res.status(500).json({ error: error.message || "Failed to sync OSAT data" });
+    }
+  });
+  
+  // Historical OSAT sync (7 days)
+  app.post("/api/osat/sync-historical", async (req, res) => {
+    try {
+      const daysBack = req.body?.daysBack || 7;
+      console.log(`[OSAT] Starting historical sync for ${daysBack} days`);
+      const result = await syncOsatData(daysBack);
+      res.json({
+        message: "Historical OSAT sync completed",
+        synced: result.synced,
+        daysBack,
+        errors: result.errors,
+      });
+    } catch (error: any) {
+      console.error("Error syncing historical OSAT data:", error);
+      res.status(500).json({ error: error.message || "Failed to sync historical OSAT data" });
     }
   });
   

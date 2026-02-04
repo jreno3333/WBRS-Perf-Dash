@@ -43,7 +43,12 @@ Preferred communication style: Simple, everyday language.
 - **Xenial POS Integration**: Receives real-time order data via webhooks as the primary source for current sales, ensuring immediate surfacing of integration issues if data is absent.
 - **HME Drive-Thru Timer Integration**: Fetches and aggregates drive-thru timing data from HME CLOUD (ZOOM Nitro), displaying speed indicators on leaderboard cards.
 - **Google Reviews Integration**: Tracks Google business review ratings using the Google Places API, with badges indicating performance and a scheduled hourly sync.
-- **Qualtrics OSAT Integration**: Collects and processes Qualtrics survey responses to calculate customer satisfaction (OSAT) scores, displaying them as badges and integrating into an overall execution grade.
+- **Qualtrics OSAT Integration**: Collects and processes Qualtrics survey responses via the Imported Data Project (IDP) API to calculate customer satisfaction (OSAT) scores. Surveys are assigned to the correct hour based on transaction time (`d` and `t` fields) for hourly analysis. Features:
+  - **Field Mapping**: `s` (store number), `QID1319640445` (satisfaction rating), `d` (transaction date), `t` (transaction time)
+  - **Rating Conversion**: Converts text labels ("Extremely satisfied", "Highly satisfied", etc.) to numeric scores (1-5)
+  - **Sync Options**: Regular sync (last 3 days) and historical sync (7+ days) from Settings page
+  - **Hourly Granularity**: Tracks OSAT by hour to feed into leader metrics and execution grades
+  - **Scheduled Sync**: Runs every 5 minutes automatically
 - **People Tenure & Performance**: Tracks employee tenure, experience levels, and manager performance based on 7shifts data and time punches. Calculates an "Experience Score" and ranks leaders by average execution grade during their shifts.
 
 ## External Dependencies
@@ -70,4 +75,4 @@ Preferred communication style: Simple, everyday language.
 - **@18f/us-federal-holidays**: Library for US Federal Holiday data.
 - **HME DXS RCD API**: For drive-thru timing data.
 - **Google Places API**: For Google business review data.
-- **Qualtrics Response Export API**: For customer satisfaction survey data.
+- **Qualtrics Imported Data Project (IDP) API**: For customer satisfaction survey data from receipt surveys.

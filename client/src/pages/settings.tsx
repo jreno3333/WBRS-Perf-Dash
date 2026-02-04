@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
@@ -1122,18 +1122,18 @@ function QualtricsOsatSyncCard() {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/osat/sync", {});
-      return response.json() as Promise<{ message: string; synced: number; errors: string[] }>;
+      const response = await apiRequest("POST", "/api/osat/sync", { daysBack: 3 });
+      return response.json() as Promise<{ message: string; synced: number; daysBack: number; errors: string[] }>;
     },
     onSuccess: (data) => {
       setLastSyncResult(data.synced > 0 ? "success" : "warning");
       toast({
         title: data.synced > 0 ? "OSAT Data Synced" : "Sync Completed - No Data",
         description: data.synced > 0 
-          ? `Successfully synced ${data.synced} restaurant OSAT records.${data.errors.length > 0 ? ` (${data.errors.length} errors)` : ""}`
+          ? `Successfully synced ${data.synced} restaurant OSAT records (${data.daysBack} days).${data.errors.length > 0 ? ` (${data.errors.length} errors)` : ""}`
           : data.errors.length > 0 
             ? `No data synced. ${data.errors.length} errors encountered.`
-            : "No survey responses found for the last 2 days.",
+            : "No survey responses found.",
         variant: data.synced > 0 ? "default" : "destructive",
       });
       refetchStatus();
@@ -1144,6 +1144,33 @@ function QualtricsOsatSyncCard() {
       toast({
         title: "Sync Failed",
         description: error instanceof Error ? error.message : "Failed to sync OSAT data from Qualtrics.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const historicalSyncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/osat/sync-historical", { daysBack: 7 });
+      return response.json() as Promise<{ message: string; synced: number; daysBack: number; errors: string[] }>;
+    },
+    onSuccess: (data) => {
+      setLastSyncResult(data.synced > 0 ? "success" : "warning");
+      toast({
+        title: "Historical OSAT Sync Complete",
+        description: data.synced > 0 
+          ? `Successfully synced ${data.synced} restaurant OSAT records (${data.daysBack} days of history).`
+          : "No historical survey responses found.",
+        variant: data.synced > 0 ? "default" : "destructive",
+      });
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+    },
+    onError: (error) => {
+      setLastSyncResult("error");
+      toast({
+        title: "Historical Sync Failed",
+        description: error instanceof Error ? error.message : "Failed to sync historical OSAT data.",
         variant: "destructive",
       });
     },
@@ -1199,14 +1226,23 @@ function QualtricsOsatSyncCard() {
           <div className="text-muted-foreground text-sm">Unable to fetch OSAT status</div>
         )}
 
-        <div className="flex items-center gap-3 pt-2 border-t">
+        <div className="flex items-center gap-3 pt-2 border-t flex-wrap">
           <Button
             onClick={() => syncMutation.mutate()}
-            disabled={syncMutation.isPending || !status?.credentialsConfigured}
+            disabled={syncMutation.isPending || historicalSyncMutation.isPending || !status?.credentialsConfigured}
             data-testid="button-osat-sync"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-            {syncMutation.isPending ? "Syncing..." : "Sync OSAT Now"}
+            {syncMutation.isPending ? "Syncing..." : "Sync Last 3 Days"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => historicalSyncMutation.mutate()}
+            disabled={syncMutation.isPending || historicalSyncMutation.isPending || !status?.credentialsConfigured}
+            data-testid="button-osat-sync-historical"
+          >
+            <History className={`h-4 w-4 mr-2 ${historicalSyncMutation.isPending ? "animate-spin" : ""}`} />
+            {historicalSyncMutation.isPending ? "Syncing..." : "Sync 7 Days"}
           </Button>
           {lastSyncResult === "success" && (
             <span className="text-sm text-green-600 flex items-center gap-1">
