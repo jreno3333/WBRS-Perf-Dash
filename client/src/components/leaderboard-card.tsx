@@ -39,6 +39,14 @@ function WeatherIcon({ condition }: { condition: string }) {
 // Execution Grade Calculator
 // Sales: UP/DOWN (with 5% tolerance), Speed: GREEN(<300s)/YELLOW(300-420s)/RED(>420s), Staffing: PROPER/UNDER/OVER
 // OSAT: 85%+ = excellent, 80-85% = acceptable, <80% = needs improvement
+// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
+const GRADE_WEIGHTS = {
+  sales: 35,
+  speed: 25,
+  osat: 25,
+  staffing: 15,
+};
+
 function getExecutionGrade(
   salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
   speedSeconds: number | undefined,
@@ -48,32 +56,41 @@ function getExecutionGrade(
   hasValidStaffing: boolean = true, // Whether staffing data is valid (employee count >= 1)
   osatPercent: number | undefined = undefined // Customer satisfaction (5-star %)
 ): { grade: string; color: string; hasGrade: boolean } {
-  // Track which components are available for grading
-  const components: { name: string; score: number }[] = [];
+  // Track which components are available for grading with their weights
+  const components: { name: string; score: number; weight: number }[] = [];
   
-  // Sales component
+  // Sales component (weight: 35%)
   // For first-week units with no comparable data, give them credit (score 100)
   // For established units without comparable data, skip the sales component
   if (hasComparableSales) {
     // Within -5% to +infinity = 100, Below -5% = 50
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
-    components.push({ name: 'sales', score: salesScore });
+    components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
   } else if (isFirstWeek) {
     // First week units get neutral sales score since no historical data exists
-    components.push({ name: 'sales', score: 100 });
+    components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
   }
   
-  // Speed component (only if we have valid drive-thru data)
+  // Speed component (weight: 25%) - only if we have valid drive-thru data
   // Skip when speedSeconds is undefined or 0 (no cars = no data, not fast service)
   if (speedSeconds !== undefined && speedSeconds > 0) {
     // GREEN (<5min) = 100, YELLOW (5-7min) = 70, RED (>7min) = 40
     let speedScore = 100;
     if (speedSeconds > 420) speedScore = 40;
     else if (speedSeconds > 300) speedScore = 70;
-    components.push({ name: 'speed', score: speedScore });
+    components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
   
-  // Staffing component (only if we have valid staffing data)
+  // OSAT component (weight: 25%) - only if we have customer satisfaction data
+  // 85%+ = 100 (excellent), 80-85% = 70 (acceptable), <80% = 40 (needs improvement)
+  if (osatPercent !== undefined && osatPercent > 0) {
+    let osatScore = 100;
+    if (osatPercent < 80) osatScore = 40;
+    else if (osatPercent < 85) osatScore = 70;
+    components.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
+  }
+  
+  // Staffing component (weight: 15%) - only if we have valid staffing data
   // Skip when employee count is near-zero (indicates missing/incomplete API data)
   // PROPER = 100, UNDER/OVER = 60
   // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
@@ -90,16 +107,7 @@ function getExecutionGrade(
       // Only penalize understaffing if it's NOT during a sales surge
       staffingScore = 60;
     }
-    components.push({ name: 'staffing', score: staffingScore });
-  }
-  
-  // OSAT component (only if we have customer satisfaction data)
-  // 85%+ = 100 (excellent), 80-85% = 70 (acceptable), <80% = 40 (needs improvement)
-  if (osatPercent !== undefined && osatPercent > 0) {
-    let osatScore = 100;
-    if (osatPercent < 80) osatScore = 40;
-    else if (osatPercent < 85) osatScore = 70;
-    components.push({ name: 'osat', score: osatScore });
+    components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
   }
   
   // If no components to grade, return no grade
@@ -107,8 +115,9 @@ function getExecutionGrade(
     return { grade: '-', color: 'text-muted-foreground', hasGrade: false };
   }
   
-  // Calculate weighted average (equal weights for available components)
-  const avgScore = components.reduce((sum, c) => sum + c.score, 0) / components.length;
+  // Calculate weighted average - normalize weights based on available components
+  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
+  const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
   
   // Convert score to letter grade
   let grade: string;
@@ -282,7 +291,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       const staffingDiff = actualStaff - staffing.total;
       // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
       const hasValidStaffing = rawEmployeeCount >= 1;
-      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing);
+      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
@@ -671,7 +680,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 const staffingDiff = actualStaff - staffing.total;
                 // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
                 const hasValidStaffing = rawEmployeeCount >= 1;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
                 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -714,7 +723,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 const staffingDiff = actualStaff - staffing.total;
                 // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
                 const hasValidStaffing = rawEmployeeCount >= 1;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
