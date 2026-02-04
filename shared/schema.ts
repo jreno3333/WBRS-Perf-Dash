@@ -226,6 +226,9 @@ export interface HourlySalesData {
   // HME drive-thru data
   avgServiceTime?: number; // Window time in seconds (SOS)
   carCount?: number; // Number of cars in that hour
+  // OSAT (customer satisfaction) data
+  osatPercent?: number; // 5-star satisfaction percentage for this hour
+  osatResponses?: number; // Number of survey responses for this hour
 }
 
 export interface LeaderboardData {

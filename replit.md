@@ -47,7 +47,8 @@ Preferred communication style: Simple, everyday language.
   - **Field Mapping**: `s` (store number), `QID1319640445` (satisfaction rating), `d` (transaction date), `t` (transaction time)
   - **Rating Conversion**: Converts text labels ("Extremely satisfied", "Highly satisfied", etc.) to numeric scores (1-5)
   - **Sync Options**: Regular sync (last 3 days) and historical sync (7+ days) from Settings page
-  - **Hourly Granularity**: Tracks OSAT by hour to feed into leader metrics and execution grades
+  - **Hourly Granularity**: Tracks OSAT by hour and displays in hourly chart tooltips (green 85%+, yellow 80-85%, red <80%)
+  - **Hourly Chart Display**: Purple OSAT legend indicator; tooltip shows "OSAT X% (N)" where N is response count
   - **Scheduled Sync**: Runs every 5 minutes automatically
 - **People Tenure & Performance**: Tracks employee tenure, experience levels, and manager performance based on 7shifts data and time punches. Calculates an "Experience Score" and ranks leaders by average execution grade during their shifts.
 

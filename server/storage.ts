@@ -28,6 +28,7 @@ import { db, posDb } from "./db";
 import { eq, and, gte, lt, lte, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getPosSalesByRestaurant, getAllHourlyPosSales } from "./xenial-webhook";
+import { getHourlyOsatForDate } from "./scraper/qualtrics-api";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -783,6 +784,9 @@ export class DatabaseStorage implements IStorage {
     // Also fetch last week's POS data for accurate week-over-week comparison
     const posLastWeekHourlySales = await getAllHourlyPosSales(lastWeek);
     
+    // Fetch hourly OSAT data for customer satisfaction metrics
+    const hourlyOsatData = await getHourlyOsatForDate(selectedDateStr);
+    
     const result: Record<string, HourlySalesData[]> = {};
     
     for (const restaurant of restaurantList) {
@@ -803,6 +807,15 @@ export class DatabaseStorage implements IStorage {
       const leadersByHour: Map<number, { firstName: string; position: string }[]> = new Map();
       const positionByHour: Map<number, Record<string, number>> = new Map();
       const hmeByHour: Map<number, { avgServiceTime: number; carCount: number }> = new Map();
+      const osatByHour: Map<number, { osatPercent: number; totalResponses: number }> = new Map();
+      
+      // OSAT data by hour (customer satisfaction)
+      const restaurantOsatData = hourlyOsatData[restaurant.id];
+      if (restaurantOsatData) {
+        for (const [hour, data] of Object.entries(restaurantOsatData)) {
+          osatByHour.set(Number(hour), data);
+        }
+      }
       
       // HME drive-thru data by hour (using avgTotalTime = lane total)
       restaurantHmeData.forEach(h => {
@@ -939,6 +952,7 @@ export class DatabaseStorage implements IStorage {
         if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0 || projectedLabor > 0 || actualLabor > 0) {
           const hmeHourData = hmeByHour.get(hour);
           const leaders = leadersByHour.get(hour);
+          const osatHourData = osatByHour.get(hour);
           hourlyData.push({
             hour,
             todaySales,
@@ -952,6 +966,8 @@ export class DatabaseStorage implements IStorage {
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
             avgServiceTime: hmeHourData?.avgServiceTime,
             carCount: hmeHourData?.carCount,
+            osatPercent: osatHourData?.osatPercent,
+            osatResponses: osatHourData?.totalResponses,
           });
         }
       }

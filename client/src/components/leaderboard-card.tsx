@@ -646,6 +646,12 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                     SOS
                   </span>
                 )}
+                {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-purple-500" />
+                    OSAT
+                  </span>
+                )}
               </div>
             </div>
             {/* Execution Grades Row - only show grades for completed hours (using restaurant's local hour) */}
@@ -762,6 +768,15 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           if (trainee > 0) parts.push(`${trainee}T`);
                           return <span className={color}>{parts.join('/') || '0'}</span>;
                         })()}
+                        {isCompleted && hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0 && (
+                          <span className={
+                            hour.osatPercent >= 85 ? "text-green-600 dark:text-green-400" :
+                            hour.osatPercent >= 80 ? "text-amber-600 dark:text-amber-400" :
+                            "text-red-600 dark:text-red-400"
+                          }>
+                            OSAT {Math.round(hour.osatPercent)}% ({hour.osatResponses})
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
