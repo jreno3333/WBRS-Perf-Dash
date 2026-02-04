@@ -8,6 +8,7 @@ import { desc, sql, gte, lte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getAllHourlyPosSales } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
 import { getDailyDriveThruSummary } from "./scraper/hme-api";
+import { syncOsatData, getOsatForDate } from "./scraper/qualtrics-api";
 
 // Weather code to condition mapping
 function getWeatherCondition(weatherCode: number): string {
@@ -269,6 +270,21 @@ export async function registerRoutes(
             rating: reviews.rating,
             reviewCount: reviews.reviewCount,
             newReviewsToday: reviews.newReviewsToday,
+          };
+        }
+      }
+      
+      // Fetch OSAT data for all restaurants
+      const osatDataMap = await getOsatForDate(targetDateStr);
+      
+      // Add OSAT data to each restaurant
+      for (const r of restaurantsWithWeather) {
+        const osat = osatDataMap[r.restaurantId];
+        if (osat) {
+          (r as any).osat = {
+            osatPercent: osat.osatPercent,
+            totalResponses: osat.totalResponses,
+            fiveStarCount: osat.fiveStarCount,
           };
         }
       }
@@ -1385,6 +1401,37 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching Google reviews summary:", error);
       res.status(500).json({ error: "Failed to fetch Google reviews summary" });
+    }
+  });
+
+  // ========== QUALTRICS OSAT ENDPOINTS ==========
+  
+  // Sync OSAT data from Qualtrics
+  app.post("/api/osat/sync", async (req, res) => {
+    try {
+      const result = await syncOsatData();
+      res.json({
+        message: "OSAT sync completed",
+        synced: result.synced,
+        errors: result.errors,
+      });
+    } catch (error: any) {
+      console.error("Error syncing OSAT data:", error);
+      res.status(500).json({ error: error.message || "Failed to sync OSAT data" });
+    }
+  });
+  
+  // Get OSAT summary for a specific date
+  app.get("/api/osat/summary", async (req, res) => {
+    try {
+      const { date } = req.query;
+      const targetDate = date ? String(date) : new Date().toISOString().split('T')[0];
+      
+      const osatMap = await getOsatForDate(targetDate);
+      res.json({ date: targetDate, osat: osatMap });
+    } catch (error) {
+      console.error("Error fetching OSAT summary:", error);
+      res.status(500).json({ error: "Failed to fetch OSAT summary" });
     }
   });
 

@@ -205,6 +205,11 @@ export interface RestaurantSales {
     reviewCount: number;
     newReviewsToday: number; // New reviews received today (compared to yesterday)
   } | null;
+  osat?: {
+    osatPercent: number; // Percentage of 5-star responses (e.g., 85.5 = 85.5%)
+    totalResponses: number;
+    fiveStarCount: number;
+  } | null;
 }
 
 export interface HourlySalesData {
