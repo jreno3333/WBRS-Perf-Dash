@@ -1,20 +1,13 @@
 import { db } from "../db";
 import { osatData, dailyOsat, restaurants, locationMapping } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
+import AdmZip from "adm-zip";
 
 const QUALTRICS_DATACENTER = "iad1";
 const BASE_URL = `https://${QUALTRICS_DATACENTER}.qualtrics.com/API/v3`;
 
-interface QualtricsResponse {
-  responseId: string;
-  values: Record<string, any>;
-  labels: Record<string, any>;
-  displayedFields: string[];
-  displayedValues: Record<string, any>;
-}
-
-interface ExportResult {
-  responses: QualtricsResponse[];
+interface IdpRecord {
+  [key: string]: any;
 }
 
 async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
@@ -35,10 +28,10 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 3): P
   throw new Error("Max retries exceeded");
 }
 
-async function startResponseExport(surveyId: string, apiToken: string, startDate?: string): Promise<string> {
+async function startIdpExport(idpSourceId: string, apiToken: string, startDate?: string): Promise<string> {
   const body: any = {
-    format: "json",
-    compress: false,
+    format: "csv",
+    compress: true,
     useLabels: true,
   };
   
@@ -46,7 +39,7 @@ async function startResponseExport(surveyId: string, apiToken: string, startDate
     body.startDate = `${startDate}T00:00:00Z`;
   }
   
-  const response = await fetchWithRetry(`${BASE_URL}/surveys/${surveyId}/export-responses`, {
+  const response = await fetchWithRetry(`${BASE_URL}/imported-data-projects/${idpSourceId}/exports`, {
     method: "POST",
     headers: {
       "X-API-TOKEN": apiToken,
@@ -56,11 +49,12 @@ async function startResponseExport(surveyId: string, apiToken: string, startDate
   });
   
   const data = await response.json();
-  return data.result.progressId;
+  console.log("[Qualtrics] Export started response:", JSON.stringify(data));
+  return data.result.jobId;
 }
 
-async function checkExportProgress(surveyId: string, progressId: string, apiToken: string): Promise<{ complete: boolean; fileId?: string }> {
-  const response = await fetchWithRetry(`${BASE_URL}/surveys/${surveyId}/export-responses/${progressId}`, {
+async function checkIdpExportProgress(idpSourceId: string, jobId: string, apiToken: string): Promise<{ complete: boolean; fileId?: string; status?: string }> {
+  const response = await fetchWithRetry(`${BASE_URL}/imported-data-projects/${idpSourceId}/exports/${jobId}`, {
     method: "GET",
     headers: {
       "X-API-TOKEN": apiToken,
@@ -70,51 +64,127 @@ async function checkExportProgress(surveyId: string, progressId: string, apiToke
   const data = await response.json();
   const result = data.result;
   
+  console.log(`[Qualtrics] Export progress: ${result.percentComplete}% - ${result.status}`);
+  
   if (result.status === "complete") {
-    return { complete: true, fileId: result.fileId };
+    return { complete: true, fileId: result.fileId, status: result.status };
   }
-  return { complete: false };
+  if (result.status === "failed") {
+    return { complete: true, status: "failed" };
+  }
+  return { complete: false, status: result.status };
 }
 
-async function downloadExportFile(surveyId: string, fileId: string, apiToken: string): Promise<ExportResult> {
-  const response = await fetchWithRetry(`${BASE_URL}/surveys/${surveyId}/export-responses/${fileId}/file`, {
+async function downloadIdpExportFile(idpSourceId: string, fileId: string, apiToken: string): Promise<IdpRecord[]> {
+  const response = await fetchWithRetry(`${BASE_URL}/imported-data-projects/${idpSourceId}/exports/${fileId}/file`, {
     method: "GET",
     headers: {
       "X-API-TOKEN": apiToken,
     },
   });
   
-  const data = await response.json();
-  return data;
+  const buffer = await response.arrayBuffer();
+  const zip = new AdmZip(Buffer.from(buffer));
+  const zipEntries = zip.getEntries();
+  
+  console.log(`[Qualtrics] ZIP contains ${zipEntries.length} file(s)`);
+  
+  for (const entry of zipEntries) {
+    if (entry.entryName.endsWith('.csv')) {
+      const csvContent = entry.getData().toString('utf8');
+      console.log(`[Qualtrics] Processing CSV: ${entry.entryName}`);
+      return parseCsvToRecords(csvContent);
+    }
+  }
+  
+  console.log("[Qualtrics] No CSV file found in ZIP");
+  return [];
 }
 
-export async function fetchQualtricsResponses(startDate?: string): Promise<QualtricsResponse[]> {
-  const apiToken = process.env.QUALTRICS_API_TOKEN;
-  const surveyId = process.env.QUALTRICS_SURVEY_ID;
+function parseCsvToRecords(csvContent: string): IdpRecord[] {
+  const lines = csvContent.split('\n').filter(line => line.trim());
+  if (lines.length < 2) return [];
   
-  if (!apiToken || !surveyId) {
-    console.log("[Qualtrics] Missing API token or survey ID");
+  const headers = parseCSVLine(lines[0]);
+  console.log(`[Qualtrics] CSV headers: ${headers.join(', ')}`);
+  
+  const records: IdpRecord[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    const record: IdpRecord = {};
+    for (let j = 0; j < headers.length && j < values.length; j++) {
+      record[headers[j]] = values[j];
+    }
+    records.push(record);
+  }
+  
+  console.log(`[Qualtrics] Parsed ${records.length} records from CSV`);
+  if (records.length > 0) {
+    console.log(`[Qualtrics] Sample record keys: ${Object.keys(records[0]).slice(0, 10).join(', ')}`);
+  }
+  
+  return records;
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  
+  return result;
+}
+
+export async function fetchQualtricsResponses(startDate?: string): Promise<IdpRecord[]> {
+  const apiToken = process.env.QUALTRICS_API_TOKEN;
+  const idpSourceId = process.env.QUALTRICS_SURVEY_ID;
+  
+  if (!apiToken || !idpSourceId) {
+    console.log("[Qualtrics] Missing API token or IDP Source ID");
     return [];
   }
   
-  console.log(`[Qualtrics] Starting export for survey ${surveyId}${startDate ? ` from ${startDate}` : ''}`);
+  console.log(`[Qualtrics] Starting IDP export for ${idpSourceId}${startDate ? ` from ${startDate}` : ''}`);
   
   try {
-    const progressId = await startResponseExport(surveyId, apiToken, startDate);
-    console.log(`[Qualtrics] Export started, progressId: ${progressId}`);
+    const jobId = await startIdpExport(idpSourceId, apiToken, startDate);
+    console.log(`[Qualtrics] Export started, jobId: ${jobId}`);
     
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 60;
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000));
-      const progress = await checkExportProgress(surveyId, progressId, apiToken);
+      const progress = await checkIdpExportProgress(idpSourceId, jobId, apiToken);
+      
+      if (progress.status === "failed") {
+        console.log("[Qualtrics] Export failed");
+        return [];
+      }
       
       if (progress.complete && progress.fileId) {
         console.log(`[Qualtrics] Export complete, downloading file`);
-        const result = await downloadExportFile(surveyId, progress.fileId, apiToken);
-        console.log(`[Qualtrics] Downloaded ${result.responses?.length || 0} responses`);
-        return result.responses || [];
+        const records = await downloadIdpExportFile(idpSourceId, progress.fileId, apiToken);
+        console.log(`[Qualtrics] Downloaded ${records.length} records`);
+        return records;
       }
       
       attempts++;
@@ -128,10 +198,7 @@ export async function fetchQualtricsResponses(startDate?: string): Promise<Qualt
   }
 }
 
-function parseStoreFromResponse(response: QualtricsResponse): string | null {
-  const values = response.values || {};
-  const labels = response.labels || {};
-  
+function parseStoreFromRecord(record: IdpRecord): string | null {
   const storeFields = [
     'store', 'Store', 'STORE',
     'location', 'Location', 'LOCATION',
@@ -140,26 +207,24 @@ function parseStoreFromResponse(response: QualtricsResponse): string | null {
     'unit', 'Unit', 'UNIT',
     'unitNumber', 'UnitNumber', 'unit_number',
     'restaurant', 'Restaurant', 'RESTAURANT',
+    'StoreNumber', 'Store Number', 'store number',
   ];
   
   for (const field of storeFields) {
-    if (values[field]) return String(values[field]);
-    if (labels[field]) return String(labels[field]);
+    if (record[field]) return String(record[field]).trim();
   }
   
-  for (const key of Object.keys(values)) {
-    if (key.toLowerCase().includes('store') || key.toLowerCase().includes('location') || key.toLowerCase().includes('unit')) {
-      if (values[key]) return String(values[key]);
+  for (const key of Object.keys(record)) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes('store') || lowerKey.includes('location') || lowerKey.includes('unit')) {
+      if (record[key]) return String(record[key]).trim();
     }
   }
   
   return null;
 }
 
-function parseRatingFromResponse(response: QualtricsResponse): number | null {
-  const values = response.values || {};
-  const labels = response.labels || {};
-  
+function parseRatingFromRecord(record: IdpRecord): number | null {
   const ratingFields = [
     'osat', 'OSAT', 'Osat',
     'satisfaction', 'Satisfaction', 'SATISFACTION',
@@ -169,11 +234,12 @@ function parseRatingFromResponse(response: QualtricsResponse): number | null {
     'Q1', 'Q2', 'Q3', 'q1', 'q2', 'q3',
     'overallSatisfaction', 'OverallSatisfaction',
     'overall_satisfaction',
+    'OverallSatisfaction', 'Overall Satisfaction',
   ];
   
   for (const field of ratingFields) {
-    const val = values[field] ?? labels[field];
-    if (val !== undefined && val !== null) {
+    const val = record[field];
+    if (val !== undefined && val !== null && val !== '') {
       const num = Number(val);
       if (!isNaN(num) && num >= 1 && num <= 5) {
         return num;
@@ -181,12 +247,15 @@ function parseRatingFromResponse(response: QualtricsResponse): number | null {
     }
   }
   
-  for (const key of Object.keys(values)) {
-    if (key.toLowerCase().includes('satis') || key.toLowerCase().includes('osat') || key.toLowerCase().includes('rating')) {
-      const val = values[key];
-      const num = Number(val);
-      if (!isNaN(num) && num >= 1 && num <= 5) {
-        return num;
+  for (const key of Object.keys(record)) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes('satis') || lowerKey.includes('osat') || lowerKey.includes('rating') || lowerKey.includes('overall')) {
+      const val = record[key];
+      if (val !== undefined && val !== null && val !== '') {
+        const num = Number(val);
+        if (!isNaN(num) && num >= 1 && num <= 5) {
+          return num;
+        }
       }
     }
   }
@@ -194,14 +263,31 @@ function parseRatingFromResponse(response: QualtricsResponse): number | null {
   return null;
 }
 
-function parseTimestampFromResponse(response: QualtricsResponse): Date | null {
-  const values = response.values || {};
-  
-  const timeFields = ['endDate', 'EndDate', 'startDate', 'StartDate', 'recordedDate', 'RecordedDate', 'submittedAt', 'timestamp'];
+function parseTimestampFromRecord(record: IdpRecord): Date | null {
+  const timeFields = [
+    'endDate', 'EndDate', 'end_date',
+    'startDate', 'StartDate', 'start_date',
+    'recordedDate', 'RecordedDate', 'recorded_date',
+    'submittedAt', 'submitted_at',
+    'timestamp', 'Timestamp',
+    'date', 'Date', 'DATE',
+    'visitDate', 'VisitDate', 'visit_date',
+    'surveyDate', 'SurveyDate', 'survey_date',
+  ];
   
   for (const field of timeFields) {
-    if (values[field]) {
-      const date = new Date(values[field]);
+    if (record[field]) {
+      const date = new Date(record[field]);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+  }
+  
+  for (const key of Object.keys(record)) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes('date') || lowerKey.includes('time')) {
+      const date = new Date(record[key]);
       if (!isNaN(date.getTime())) {
         return date;
       }
@@ -223,9 +309,9 @@ export async function syncOsatData(): Promise<{ synced: number; errors: string[]
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = centralFormatter.format(yesterday);
   
-  const responses = await fetchQualtricsResponses(yesterdayStr);
+  const records = await fetchQualtricsResponses(yesterdayStr);
   
-  if (responses.length === 0) {
+  if (records.length === 0) {
     return { synced: 0, errors: ["No responses found"] };
   }
   
@@ -250,24 +336,24 @@ export async function syncOsatData(): Promise<{ synced: number; errors: string[]
   const aggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   const hourlyAggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   
-  for (const response of responses) {
-    const storeId = parseStoreFromResponse(response);
-    const rating = parseRatingFromResponse(response);
-    const timestamp = parseTimestampFromResponse(response);
+  for (const record of records) {
+    const storeId = parseStoreFromRecord(record);
+    const rating = parseRatingFromRecord(record);
+    const timestamp = parseTimestampFromRecord(record);
     
     if (!storeId) {
-      errors.push(`Response ${response.responseId}: Missing store identifier`);
+      errors.push(`Record missing store identifier. Keys: ${Object.keys(record).slice(0, 5).join(', ')}`);
       continue;
     }
     
     if (rating === null) {
-      errors.push(`Response ${response.responseId}: Missing rating`);
+      errors.push(`Record for store ${storeId} missing rating`);
       continue;
     }
     
     const restaurant = restaurantByUnit[storeId] || restaurantByUnit[storeId.replace(/^0+/, '')];
     if (!restaurant) {
-      errors.push(`Response ${response.responseId}: Unknown store ${storeId}`);
+      errors.push(`Unknown store: ${storeId}`);
       continue;
     }
     
