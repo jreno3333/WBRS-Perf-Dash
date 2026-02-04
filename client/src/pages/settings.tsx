@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
@@ -356,6 +356,8 @@ export default function SettingsPage() {
           <HMESyncCard />
 
           <GoogleReviewsSyncCard />
+
+          <QualtricsOsatSyncCard />
         </div>
       </main>
     </div>
@@ -1080,6 +1082,131 @@ function GoogleReviewsSyncCard() {
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
             {syncMutation.isPending ? "Syncing..." : "Sync Reviews Now"}
+          </Button>
+          {lastSyncResult === "success" && (
+            <span className="text-sm text-green-600 flex items-center gap-1">
+              <CheckCircle className="h-4 w-4" />
+              Sync completed
+            </span>
+          )}
+          {lastSyncResult === "error" && (
+            <span className="text-sm text-red-600 flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" />
+              Sync failed
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface OsatStatus {
+  credentialsConfigured: boolean;
+  surveyIdConfigured: boolean;
+  restaurantsWithData: number;
+  totalResponses: number;
+  avgOsat: string | null;
+  dateChecked: string;
+  lastSync: string | null;
+}
+
+function QualtricsOsatSyncCard() {
+  const { toast } = useToast();
+  const [lastSyncResult, setLastSyncResult] = useState<string | null>(null);
+
+  const { data: status, isLoading: statusLoading, refetch: refetchStatus } = useQuery<OsatStatus>({
+    queryKey: ["/api/osat/status"],
+    refetchInterval: 30000,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/osat/sync", {});
+      return response.json() as Promise<{ message: string; synced: number; errors: string[] }>;
+    },
+    onSuccess: (data) => {
+      setLastSyncResult(data.synced > 0 ? "success" : "warning");
+      toast({
+        title: data.synced > 0 ? "OSAT Data Synced" : "Sync Completed - No Data",
+        description: data.synced > 0 
+          ? `Successfully synced ${data.synced} restaurant OSAT records.${data.errors.length > 0 ? ` (${data.errors.length} errors)` : ""}`
+          : data.errors.length > 0 
+            ? `No data synced. ${data.errors.length} errors encountered.`
+            : "No survey responses found for the last 2 days.",
+        variant: data.synced > 0 ? "default" : "destructive",
+      });
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+    },
+    onError: (error) => {
+      setLastSyncResult("error");
+      toast({
+        title: "Sync Failed",
+        description: error instanceof Error ? error.message : "Failed to sync OSAT data from Qualtrics.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <ThumbsUp className="h-5 w-5 text-primary" />
+          <CardTitle>Customer Satisfaction (OSAT) Sync</CardTitle>
+        </div>
+        <CardDescription>
+          Syncs survey responses from Qualtrics to track customer satisfaction scores. Surveys are assigned to the hour of the customer visit for detailed hourly analysis.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {statusLoading ? (
+          <div className="text-muted-foreground text-sm">Loading OSAT status...</div>
+        ) : status ? (
+          <div className="grid gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Credentials:</span>
+              {status.credentialsConfigured ? (
+                <Badge className="bg-green-500 hover:bg-green-600">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Configured
+                </Badge>
+              ) : (
+                <Badge variant="destructive">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Missing {!status.surveyIdConfigured ? "QUALTRICS_SURVEY_ID" : "QUALTRICS_API_TOKEN"}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Today's Data:</span>
+              <span className="text-sm text-muted-foreground">
+                {status.restaurantsWithData} restaurants, {status.totalResponses} responses
+                {status.avgOsat && ` (${status.avgOsat}% avg OSAT)`}
+              </span>
+            </div>
+            {status.lastSync && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium">Last Sync:</span>
+                <span className="text-sm text-muted-foreground">
+                  {format(new Date(status.lastSync), "MMM d, h:mm a")}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-muted-foreground text-sm">Unable to fetch OSAT status</div>
+        )}
+
+        <div className="flex items-center gap-3 pt-2 border-t">
+          <Button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending || !status?.credentialsConfigured}
+            data-testid="button-osat-sync"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            {syncMutation.isPending ? "Syncing..." : "Sync OSAT Now"}
           </Button>
           {lastSyncResult === "success" && (
             <span className="text-sm text-green-600 flex items-center gap-1">

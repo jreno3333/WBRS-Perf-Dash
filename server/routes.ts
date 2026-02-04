@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db, posDb } from "./db";
-import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets } from "@shared/schema";
+import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets, dailyOsat } from "@shared/schema";
 import { desc, sql, gte, lte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getAllHourlyPosSales } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
@@ -1405,6 +1405,49 @@ export async function registerRoutes(
   });
 
   // ========== QUALTRICS OSAT ENDPOINTS ==========
+  
+  // Get OSAT sync status
+  app.get("/api/osat/status", async (req, res) => {
+    try {
+      const apiToken = process.env.QUALTRICS_API_TOKEN;
+      const surveyId = process.env.QUALTRICS_SURVEY_ID;
+      
+      const credentialsConfigured = !!(apiToken && surveyId);
+      
+      // Get today's OSAT data
+      const now = new Date();
+      const centralFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
+      const todayStr = centralFormatter.format(now);
+      
+      const todayData = await db.select().from(dailyOsat).where(eq(dailyOsat.date, todayStr));
+      
+      const restaurantsWithData = todayData.length;
+      const totalResponses = todayData.reduce((sum, r) => sum + r.totalResponses, 0);
+      const totalFiveStar = todayData.reduce((sum, r) => sum + r.fiveStarCount, 0);
+      const avgOsat = totalResponses > 0 ? ((totalFiveStar / totalResponses) * 100).toFixed(1) : null;
+      
+      // Get last sync time
+      const latestSync = todayData.length > 0 
+        ? todayData.reduce((latest, r) => {
+            const syncTime = r.syncedAt ? new Date(r.syncedAt) : new Date(0);
+            return syncTime > latest ? syncTime : latest;
+          }, new Date(0))
+        : null;
+      
+      res.json({
+        credentialsConfigured,
+        surveyIdConfigured: !!surveyId,
+        restaurantsWithData,
+        totalResponses,
+        avgOsat,
+        dateChecked: todayStr,
+        lastSync: latestSync?.toISOString() || null,
+      });
+    } catch (error) {
+      console.error("Error getting OSAT status:", error);
+      res.status(500).json({ error: "Failed to get OSAT status" });
+    }
+  });
   
   // Sync OSAT data from Qualtrics
   app.post("/api/osat/sync", async (req, res) => {
