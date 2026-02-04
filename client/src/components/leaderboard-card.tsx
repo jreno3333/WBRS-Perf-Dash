@@ -811,6 +811,36 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   />
                 </svg>
               )}
+              {/* OSAT Dots Overlay - purple dots on hours with survey responses */}
+              {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
+                <svg 
+                  className="absolute inset-0 w-full h-full pointer-events-none" 
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  {activeHours.map((hour, idx) => {
+                    if (!hour.osatResponses || hour.osatResponses <= 0) return null;
+                    const x = ((idx + 0.5) / activeHours.length) * 100;
+                    // Position dot near top of bar (at 15% from top)
+                    const y = 15;
+                    // Color based on OSAT percentage
+                    const osatPct = hour.osatPercent || 0;
+                    const fillColor = osatPct >= 85 ? "rgb(34, 197, 94)" : osatPct >= 80 ? "rgb(234, 179, 8)" : "rgb(239, 68, 68)";
+                    return (
+                      <circle
+                        key={`osat-${hour.hour}`}
+                        cx={x}
+                        cy={y}
+                        r="4"
+                        fill={fillColor}
+                        stroke="rgb(168, 85, 247)"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
+                </svg>
+              )}
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
               <span>{activeHours[0]?.label || ""}</span>
