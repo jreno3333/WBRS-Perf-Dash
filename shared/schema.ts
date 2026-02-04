@@ -482,3 +482,48 @@ export type RestaurantMarket = typeof restaurantMarkets.$inferSelect;
 export interface MarketWithRestaurants extends Market {
   restaurantIds: string[];
 }
+
+// Qualtrics OSAT data (survey responses aggregated by restaurant/date/hour)
+export const osatData = pgTable("osat_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  hour: integer("hour").notNull(), // 0-23
+  totalResponses: integer("total_responses").notNull().default(0),
+  fiveStarCount: integer("five_star_count").notNull().default(0), // Number of 5-star responses
+  osatPercent: decimal("osat_percent", { precision: 5, scale: 2 }), // Calculated: (fiveStarCount / totalResponses) * 100
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDateHour: uniqueIndex("osat_restaurant_date_hour_idx")
+    .on(table.restaurantId, table.date, table.hour),
+}));
+
+export const insertOsatDataSchema = createInsertSchema(osatData).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertOsatData = z.infer<typeof insertOsatDataSchema>;
+export type OsatData = typeof osatData.$inferSelect;
+
+// Daily OSAT summary per restaurant
+export const dailyOsat = pgTable("daily_osat", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  totalResponses: integer("total_responses").notNull().default(0),
+  fiveStarCount: integer("five_star_count").notNull().default(0),
+  osatPercent: decimal("osat_percent", { precision: 5, scale: 2 }), // (fiveStarCount / totalResponses) * 100
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("daily_osat_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
+
+export const insertDailyOsatSchema = createInsertSchema(dailyOsat).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertDailyOsat = z.infer<typeof insertDailyOsatSchema>;
+export type DailyOsat = typeof dailyOsat.$inferSelect;
