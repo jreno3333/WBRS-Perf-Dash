@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -38,13 +38,15 @@ function WeatherIcon({ condition }: { condition: string }) {
 
 // Execution Grade Calculator
 // Sales: UP/DOWN (with 5% tolerance), Speed: GREEN(<300s)/YELLOW(300-420s)/RED(>420s), Staffing: PROPER/UNDER/OVER
+// OSAT: 85%+ = excellent, 80-85% = acceptable, <80% = needs improvement
 function getExecutionGrade(
   salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
   speedSeconds: number | undefined,
   staffingDiff: number,
   hasComparableSales: boolean = true, // Whether last week had sales to compare against
   isFirstWeek: boolean = false, // Whether restaurant is in first week (no historical data expected)
-  hasValidStaffing: boolean = true // Whether staffing data is valid (employee count >= 1)
+  hasValidStaffing: boolean = true, // Whether staffing data is valid (employee count >= 1)
+  osatPercent: number | undefined = undefined // Customer satisfaction (5-star %)
 ): { grade: string; color: string; hasGrade: boolean } {
   // Track which components are available for grading
   const components: { name: string; score: number }[] = [];
@@ -89,6 +91,15 @@ function getExecutionGrade(
       staffingScore = 60;
     }
     components.push({ name: 'staffing', score: staffingScore });
+  }
+  
+  // OSAT component (only if we have customer satisfaction data)
+  // 85%+ = 100 (excellent), 80-85% = 70 (acceptable), <80% = 40 (needs improvement)
+  if (osatPercent !== undefined && osatPercent > 0) {
+    let osatScore = 100;
+    if (osatPercent < 80) osatScore = 40;
+    else if (osatPercent < 85) osatScore = 70;
+    components.push({ name: 'osat', score: osatScore });
   }
   
   // If no components to grade, return no grade
@@ -275,10 +286,31 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
-  const overallScore = hourlyGradeScores.length > 0 
-    ? hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length 
-    : 0;
-  const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
+  // Calculate OSAT component score for overall grade
+  // 85%+ = 100 (excellent), 80-85% = 70 (acceptable), <80% = 40 (needs improvement)
+  let osatScore: number | undefined = undefined;
+  if (restaurant.osat && restaurant.osat.totalResponses > 0) {
+    const osatPct = restaurant.osat.osatPercent;
+    osatScore = osatPct >= 85 ? 100 : osatPct >= 80 ? 70 : 40;
+  }
+  
+  // Blend hourly execution with OSAT as equal weight component
+  let overallScore = 0;
+  let componentCount = 0;
+  
+  if (hourlyGradeScores.length > 0) {
+    const hourlyAvg = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
+    overallScore += hourlyAvg;
+    componentCount++;
+  }
+  
+  if (osatScore !== undefined) {
+    overallScore += osatScore;
+    componentCount++;
+  }
+  
+  overallScore = componentCount > 0 ? overallScore / componentCount : 0;
+  const overallGrade = componentCount > 0 ? scoreToGrade(overallScore) : null;
   
   // No in-progress hour needed since we only show completed hours now
 
@@ -373,6 +405,28 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
                     <div className="font-medium">Google Reviews</div>
                     <div className="text-muted-foreground">{restaurant.googleReviews.reviewCount.toLocaleString()} total reviews</div>
+                  </div>
+                </div>
+              )}
+              {/* OSAT Badge - Customer satisfaction (5-star %) */}
+              {restaurant.osat && restaurant.osat.totalResponses > 0 && (
+                <div className="relative group">
+                  <Badge 
+                    className={`flex-shrink-0 text-xs px-1.5 cursor-help gap-1 ${
+                      restaurant.osat.osatPercent >= 85
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : restaurant.osat.osatPercent >= 80
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    } border-0`}
+                    data-testid={`badge-osat-${restaurant.restaurantId}`}
+                  >
+                    <ThumbsUp className="w-3 h-3" />
+                    <span className="font-medium">{restaurant.osat.osatPercent.toFixed(0)}%</span>
+                  </Badge>
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Customer Satisfaction (OSAT)</div>
+                    <div className="text-muted-foreground">{restaurant.osat.fiveStarCount} of {restaurant.osat.totalResponses} responses = 5 stars</div>
                   </div>
                 </div>
               )}
