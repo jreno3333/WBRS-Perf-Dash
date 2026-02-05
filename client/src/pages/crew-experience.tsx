@@ -137,7 +137,7 @@ export default function CrewExperiencePage() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [expandedRestaurants, setExpandedRestaurants] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
-  const [performanceDays, setPerformanceDays] = useState<number>(7);
+  const [performanceDays, setPerformanceDays] = useState<number>(30);
   const [searchQuery, setSearchQuery] = useState("");
   const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
   const [selectedLeader, setSelectedLeader] = useState<LeaderPerformance | null>(null);
@@ -388,17 +388,20 @@ export default function CrewExperiencePage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                  <Card className="flex flex-col">
+                <div className="space-y-6">
+                  <Card>
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Trophy className="w-5 h-5 text-yellow-500" />
-                        {restaurantFilter !== "all" ? "Store Rankings" : "Company Top Performers"}
-                      </CardTitle>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Trophy className="w-5 h-5 text-yellow-500" />
+                          {restaurantFilter !== "all" ? "Store Leaderboard" : "Overall Leaderboard"}
+                        </CardTitle>
+                        <span className="text-sm text-muted-foreground">{performanceData.companyRankings.length} leaders</span>
+                      </div>
                     </CardHeader>
-                    <CardContent className="flex-1">
+                    <CardContent>
                       <div className="space-y-2">
-                        {performanceData.companyRankings.slice(0, 15).map((leader, index) => (
+                        {performanceData.companyRankings.map((leader, index) => (
                           <div 
                             key={leader.employeeId}
                             className="flex items-center justify-between p-2 rounded-lg bg-muted/50 cursor-pointer hover-elevate"
@@ -417,7 +420,7 @@ export default function CrewExperiencePage() {
                               <div>
                                 <div className="font-medium text-sm">{leader.name}</div>
                                 <div className="text-xs text-muted-foreground">
-                                  {leader.position} {restaurantFilter === "all" && <>• {leader.restaurantName.replace(/^\d+\s*-\s*/, '')}</>}
+                                  {leader.position} • {leader.restaurantName.replace(/^\d+\s*-\s*/, '')}
                                 </div>
                               </div>
                             </div>
@@ -435,15 +438,15 @@ export default function CrewExperiencePage() {
                   </Card>
                   
                   {restaurantFilter === "all" && (
-                    <Card className="flex flex-col">
+                    <Card>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-lg flex items-center gap-2">
                           <Star className="w-5 h-5 text-primary" />
-                          Top by Store
+                          Rankings by Store
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="flex-1 overflow-hidden">
-                        <div className="space-y-3 h-full overflow-y-auto">
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {Object.entries(performanceData.byStore).map(([storeId, leaders]) => {
                             const topLeader = leaders[0];
                             if (!topLeader) return null;
@@ -451,25 +454,33 @@ export default function CrewExperiencePage() {
                             return (
                               <div 
                                 key={storeId} 
-                                className="p-2 rounded-lg bg-muted/50 cursor-pointer hover-elevate"
-                                onClick={() => { setSelectedLeader(topLeader); setExpandedDay(null); }}
+                                className="p-3 rounded-lg bg-muted/50"
                                 data-testid={`store-top-${storeId}`}
                               >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs font-medium text-muted-foreground">Unit #{unitNum}</span>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm font-semibold">Unit #{unitNum}</span>
                                   <span className="text-xs text-muted-foreground">{leaders.length} leaders</span>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-medium text-sm">{topLeader.name}</div>
-                                    <div className="text-xs text-muted-foreground">{topLeader.position}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Badge className={`text-xs ${getGradeColor(topLeader.grade)} border-0`}>
-                                      {topLeader.grade}
-                                    </Badge>
-                                    <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                                  </div>
+                                <div className="space-y-1.5">
+                                  {leaders.map((leader, idx) => (
+                                    <div 
+                                      key={leader.employeeId}
+                                      className="flex items-center justify-between cursor-pointer hover-elevate rounded-md p-1.5"
+                                      onClick={() => { setSelectedLeader(leader); setExpandedDay(null); }}
+                                      data-testid={`store-leader-${storeId}-${idx}`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-muted-foreground w-4">{idx + 1}.</span>
+                                        <div>
+                                          <div className="text-sm font-medium">{leader.name}</div>
+                                          <div className="text-xs text-muted-foreground">{leader.position} • {leader.hoursWorked}h</div>
+                                        </div>
+                                      </div>
+                                      <Badge className={`text-xs ${getGradeColor(leader.grade)} border-0`}>
+                                        {leader.grade}
+                                      </Badge>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             );
