@@ -1771,10 +1771,10 @@ export async function registerRoutes(
   // Get manager/supervisor performance rankings
   app.get("/api/people/performance", async (req, res) => {
     try {
-      const { date, days = "7" } = req.query;
+      const { date, days = "7", restaurantId: filterRestaurantId, search: searchQuery } = req.query;
       const endDate = date ? new Date(String(date)) : new Date();
       const numDays = Math.min(parseInt(String(days)) || 7, 180);
-      const MIN_HOURS_REQUIRED = 16; // Minimum hours worked to qualify for rankings
+      const MIN_HOURS_REQUIRED = 40; // Minimum hours worked to qualify for rankings
       
       // Calculate date range
       const startDate = new Date(endDate);
@@ -1978,9 +1978,19 @@ export async function registerRoutes(
       // Sort by score descending
       leaderPerformance.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
       
+      // Apply filters
+      let filtered = leaderPerformance;
+      if (filterRestaurantId) {
+        filtered = filtered.filter(lp => lp.restaurantId === String(filterRestaurantId));
+      }
+      if (searchQuery) {
+        const q = String(searchQuery).toLowerCase();
+        filtered = filtered.filter(lp => lp.name.toLowerCase().includes(q));
+      }
+      
       // Group by store
       const byStore: Record<string, LeaderPerformance[]> = {};
-      for (const lp of leaderPerformance) {
+      for (const lp of filtered) {
         if (lp.restaurantId) {
           if (!byStore[lp.restaurantId]) {
             byStore[lp.restaurantId] = [];
@@ -1997,13 +2007,320 @@ export async function registerRoutes(
       res.json({
         dateRange: { start: startDateStr, end: endDateStr },
         byStore,
-        companyRankings: leaderPerformance,
+        companyRankings: filtered,
       });
     } catch (error) {
       console.error("Error fetching people performance:", error);
       res.status(500).json({ error: "Failed to fetch people performance data" });
     }
   });
+
+  // Get daily performance detail for a specific leader
+  app.get("/api/people/leader-detail", async (req, res) => {
+    try {
+      const { employeeId, date, days = "14" } = req.query;
+      if (!employeeId) {
+        return res.status(400).json({ error: "employeeId is required" });
+      }
+      
+      const endDate = date ? new Date(String(date)) : new Date();
+      const numDays = Math.min(parseInt(String(days)) || 14, 180);
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - numDays + 1);
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      const leader = await db.select().from(employees).where(eq(employees.id, String(employeeId))).limit(1);
+      if (leader.length === 0) {
+        return res.status(404).json({ error: "Leader not found" });
+      }
+      const leaderInfo = leader[0];
+      const userId = leaderInfo.sevenShiftsUserId;
+      
+      const crewData = await db.select().from(hourlyCrew).where(
+        and(gte(hourlyCrew.date, startDateStr), sql`${hourlyCrew.date} <= ${endDateStr}`)
+      );
+      
+      const laborData = await db.select().from(hourlyLabor).where(
+        and(gte(hourlyLabor.date, startDateStr), sql`${hourlyLabor.date} <= ${endDateStr}`)
+      );
+      
+      const salesData = await db.select().from(hourlySales).where(
+        and(
+          gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, startDateStr),
+          sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
+        )
+      );
+      
+      const hmeData = await db.select().from(hmeTimerData).where(
+        and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
+      );
+      
+      const osatData = await db.select().from(dailyOsat).where(
+        and(gte(dailyOsat.date, startDateStr), lte(dailyOsat.date, endDateStr))
+      );
+      
+      const allRestaurants = await db.select().from(restaurants);
+      const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+      
+      const laborByKey = new Map<string, typeof laborData[0]>();
+      for (const l of laborData) {
+        laborByKey.set(`${l.restaurantId}-${l.date}-${l.hour}`, l);
+      }
+      const salesByKey = new Map<string, typeof salesData[0]>();
+      for (const s of salesData) {
+        const d = s.salesDate.toISOString().split('T')[0];
+        salesByKey.set(`${s.restaurantId}-${d}-${s.hour}`, s);
+      }
+      const hmeByKey = new Map<string, typeof hmeData[0]>();
+      for (const h of hmeData) {
+        hmeByKey.set(`${h.restaurantId}-${h.date}-${h.hour}`, h);
+      }
+      const osatByDateRestaurant = new Map<string, typeof osatData[0]>();
+      for (const o of osatData) {
+        osatByDateRestaurant.set(`${o.restaurantId}-${o.date}`, o);
+      }
+      
+      type HourDetail = {
+        hour: number;
+        restaurantId: string;
+        salesVariancePct: number;
+        hasComparableSales: boolean;
+        todaySales: number;
+        lastWeekSales: number;
+        speedSeconds?: number;
+        staffingDiff: number;
+        actualStaff: number;
+        projectedStaff: number;
+        score: number;
+      };
+      
+      const dailyMap = new Map<string, { restaurantId: string; hours: HourDetail[] }>();
+      
+      for (const crew of crewData) {
+        const members = (crew.crewMembers as any[]) || [];
+        const wasWorking = members.some((m: any) => m.userId === userId);
+        if (!wasWorking) continue;
+        
+        const key = crew.date;
+        if (!dailyMap.has(key)) {
+          dailyMap.set(key, { restaurantId: crew.restaurantId, hours: [] });
+        }
+        const dayData = dailyMap.get(key)!;
+        
+        const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+        const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+        const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+        
+        if (labor && sales) {
+          const lastWeekSales = Number(sales.pastActualSales) || 0;
+          const todaySales = Number(sales.actualSales) || 0;
+          const hasComparableSales = lastWeekSales > 0;
+          const salesVariancePct = hasComparableSales 
+            ? ((todaySales - lastWeekSales) / lastWeekSales) * 100 : 0;
+          
+          const actualStaff = Number(labor.employeeCount) || 0;
+          const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
+          const staffingDiff = actualStaff - projectedStaff;
+          
+          const salesScore = hasComparableSales ? (salesVariancePct >= -5 ? 100 : 50) : 75;
+          const salesSurge = salesVariancePct >= 20;
+          let staffingScore: number;
+          if (Math.abs(staffingDiff) <= 1) staffingScore = 100;
+          else if (staffingDiff > 1) staffingScore = 70;
+          else staffingScore = salesSurge ? 100 : 60;
+          
+          const speedSeconds = hme && hme.avgServiceTime > 0 ? hme.avgServiceTime : undefined;
+          let speedScore = 0;
+          let hasSpeed = false;
+          if (speedSeconds !== undefined && speedSeconds > 0) {
+            hasSpeed = true;
+            if (speedSeconds <= 300) speedScore = 100;
+            else if (speedSeconds <= 420) speedScore = 70;
+            else speedScore = 40;
+          }
+          
+          const components = [
+            { weight: 35, score: salesScore },
+            { weight: 15, score: staffingScore },
+          ];
+          if (hasSpeed) components.push({ weight: 25, score: speedScore });
+          const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+          const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+          
+          dayData.hours.push({
+            hour: crew.hour,
+            restaurantId: crew.restaurantId,
+            salesVariancePct,
+            hasComparableSales,
+            todaySales,
+            lastWeekSales,
+            speedSeconds,
+            staffingDiff,
+            actualStaff,
+            projectedStaff,
+            score,
+          });
+        }
+      }
+      
+      const getGradeLabel = (score: number): string => {
+        if (score >= 95) return "A+";
+        if (score >= 90) return "A";
+        if (score >= 85) return "A-";
+        if (score >= 80) return "B+";
+        if (score >= 75) return "B";
+        if (score >= 70) return "B-";
+        if (score >= 65) return "C+";
+        if (score >= 60) return "C";
+        if (score >= 55) return "C-";
+        if (score >= 50) return "D";
+        return "F";
+      };
+      
+      type DayFeedback = {
+        wentWell: string[];
+        needsImprovement: string[];
+      };
+      
+      type DailyDetail = {
+        date: string;
+        restaurantId: string;
+        restaurantName: string;
+        hoursWorked: number;
+        gradeScore: number;
+        gradeLabel: string;
+        avgSalesVariance: number;
+        totalSales: number;
+        avgSpeed?: number;
+        avgStaffingDiff: number;
+        osatPercent?: number;
+        osatResponses?: number;
+        feedback: DayFeedback;
+      };
+      
+      const dailyDetails: DailyDetail[] = [];
+      
+      const dailyEntries = Array.from(dailyMap.entries());
+      for (const [dateKey, dayData] of dailyEntries) {
+        if (dayData.hours.length === 0) continue;
+        
+        const avgScore = dayData.hours.reduce((s: number, h: HourDetail) => s + h.score, 0) / dayData.hours.length;
+        const comparableHours = dayData.hours.filter((h: HourDetail) => h.hasComparableSales);
+        const avgSalesVar = comparableHours.length > 0
+          ? comparableHours.reduce((s: number, h: HourDetail) => s + h.salesVariancePct, 0) / comparableHours.length
+          : 0;
+        const totalSales = dayData.hours.reduce((s: number, h: HourDetail) => s + h.todaySales, 0);
+        const speedHours = dayData.hours.filter((h: HourDetail) => h.speedSeconds !== undefined && h.speedSeconds! > 0);
+        const avgSpeed = speedHours.length > 0 ? speedHours.reduce((s: number, h: HourDetail) => s + h.speedSeconds!, 0) / speedHours.length : undefined;
+        const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
+        
+        const osat = osatByDateRestaurant.get(`${dayData.restaurantId}-${dateKey}`);
+        const osatPercent = osat ? Number(osat.osatPercent) : undefined;
+        const osatResponses = osat ? osat.totalResponses : undefined;
+        
+        const wentWell: string[] = [];
+        const needsImprovement: string[] = [];
+        
+        if (avgSalesVar >= 5) {
+          wentWell.push(`Sales were up ${avgSalesVar.toFixed(1)}% compared to last week`);
+        } else if (avgSalesVar >= -5) {
+          wentWell.push(`Sales were on track (${avgSalesVar >= 0 ? '+' : ''}${avgSalesVar.toFixed(1)}% vs last week)`);
+        } else {
+          needsImprovement.push(`Sales were down ${Math.abs(avgSalesVar).toFixed(1)}% compared to last week`);
+        }
+        
+        if (avgSpeed !== undefined) {
+          const minutes = Math.floor(avgSpeed / 60);
+          const seconds = Math.round(avgSpeed % 60);
+          const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+          if (avgSpeed <= 300) {
+            wentWell.push(`Drive-thru speed was excellent at ${timeStr}`);
+          } else if (avgSpeed <= 420) {
+            needsImprovement.push(`Drive-thru speed was ${timeStr} - aim for under 5:00`);
+          } else {
+            needsImprovement.push(`Drive-thru speed was slow at ${timeStr} - needs significant improvement (target: under 5:00)`);
+          }
+        }
+        
+        if (Math.abs(avgStaffingDiff) <= 1) {
+          wentWell.push("Staffing levels were properly aligned with projections");
+        } else if (avgStaffingDiff > 1) {
+          needsImprovement.push(`Overstaffed by an average of ${avgStaffingDiff.toFixed(1)} employees per hour`);
+        } else {
+          const salesSurge = avgSalesVar >= 20;
+          if (salesSurge) {
+            wentWell.push("Handled high sales volume despite being understaffed");
+          } else {
+            needsImprovement.push(`Understaffed by an average of ${Math.abs(avgStaffingDiff).toFixed(1)} employees per hour`);
+          }
+        }
+        
+        if (osatPercent !== undefined && osatResponses && osatResponses > 0) {
+          if (osatPercent >= 85) {
+            wentWell.push(`Customer satisfaction was ${osatPercent.toFixed(0)}% (${osatResponses} responses)`);
+          } else if (osatPercent >= 80) {
+            needsImprovement.push(`Customer satisfaction was ${osatPercent.toFixed(0)}% - close to target but room to improve (${osatResponses} responses)`);
+          } else {
+            needsImprovement.push(`Customer satisfaction was low at ${osatPercent.toFixed(0)}% (${osatResponses} responses) - needs attention`);
+          }
+        }
+        
+        if (wentWell.length === 0) {
+          wentWell.push("Keep working on building consistency across all metrics");
+        }
+        
+        dailyDetails.push({
+          date: dateKey,
+          restaurantId: dayData.restaurantId,
+          restaurantName: restaurantNameMap.get(dayData.restaurantId) || '',
+          hoursWorked: dayData.hours.length,
+          gradeScore: Math.round(avgScore),
+          gradeLabel: getGradeLabel(avgScore),
+          avgSalesVariance: Math.round(avgSalesVar * 10) / 10,
+          totalSales: Math.round(totalSales * 100) / 100,
+          avgSpeed,
+          avgStaffingDiff: Math.round(avgStaffingDiff * 10) / 10,
+          osatPercent,
+          osatResponses,
+          feedback: { wentWell, needsImprovement },
+        });
+      }
+      
+      dailyDetails.sort((a, b) => b.date.localeCompare(a.date));
+      
+      let displayPosition = leaderInfo.position || '';
+      if (!displayPosition) {
+        if (leaderInfo.type === 'asst_manager') displayPosition = 'Manager';
+        else if (leaderInfo.type === 'manager') displayPosition = 'Manager';
+        else displayPosition = 'Leader';
+      }
+      if (displayPosition === 'asst_manager') displayPosition = 'Manager';
+      if (displayPosition.toLowerCase().includes('supervisor')) displayPosition = 'Shift Supervisor';
+      if (displayPosition.toLowerCase().includes('manager') && displayPosition !== 'Shift Supervisor') displayPosition = 'Manager';
+      
+      const totalHours = dailyDetails.reduce((s, d) => s + d.hoursWorked, 0);
+      const overallScore = dailyDetails.length > 0 
+        ? dailyDetails.reduce((s, d) => s + d.gradeScore * d.hoursWorked, 0) / totalHours : 0;
+      
+      res.json({
+        leader: {
+          employeeId: leaderInfo.id,
+          name: `${leaderInfo.firstName} ${leaderInfo.lastName}`,
+          position: displayPosition,
+          totalHours,
+          avgGradeScore: Math.round(overallScore),
+          gradeLabel: getGradeLabel(overallScore),
+        },
+        dateRange: { start: startDateStr, end: endDateStr },
+        dailyDetails,
+      });
+    } catch (error) {
+      console.error("Error fetching leader detail:", error);
+      res.status(500).json({ error: "Failed to fetch leader detail" });
+    }
+  });
+  
   // ============ MARKETS API ============
   // Get all markets with their restaurant assignments
   app.get("/api/markets", async (req, res) => {

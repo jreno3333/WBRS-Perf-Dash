@@ -8,8 +8,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Link } from "wouter";
-import { ArrowLeft, Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star } from "lucide-react";
+import { ArrowLeft, Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, Search, ArrowRight, CheckCircle, AlertTriangle, X } from "lucide-react";
 import { format } from "date-fns";
 
 interface CrewMember {
@@ -59,6 +61,40 @@ interface PerformanceResponse {
   companyRankings: LeaderPerformance[];
 }
 
+interface DayFeedback {
+  wentWell: string[];
+  needsImprovement: string[];
+}
+
+interface DailyDetail {
+  date: string;
+  restaurantId: string;
+  restaurantName: string;
+  hoursWorked: number;
+  gradeScore: number;
+  gradeLabel: string;
+  avgSalesVariance: number;
+  totalSales: number;
+  avgSpeed?: number;
+  avgStaffingDiff: number;
+  osatPercent?: number;
+  osatResponses?: number;
+  feedback: DayFeedback;
+}
+
+interface LeaderDetailResponse {
+  leader: {
+    employeeId: string;
+    name: string;
+    position: string;
+    totalHours: number;
+    avgGradeScore: number;
+    gradeLabel: string;
+  };
+  dateRange: { start: string; end: string };
+  dailyDetails: DailyDetail[];
+}
+
 
 function getCentralDate(): Date {
   const now = new Date();
@@ -84,14 +120,17 @@ function getCategoryColor(category: string): string {
   }
 }
 
-function getCategoryLabel(category: string): string {
-  switch (category) {
-    case 'trainee': return "T";
-    case 'developing': return "D";
-    case 'experienced': return "E";
-    case 'veteran': return "V";
-    default: return "?";
-  }
+function getGradeColor(grade: string): string {
+  if (grade.startsWith('A')) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+  if (grade.startsWith('B')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+  if (grade.startsWith('C')) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+}
+
+function formatSpeed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 export default function CrewExperiencePage() {
@@ -99,6 +138,10 @@ export default function CrewExperiencePage() {
   const [expandedRestaurants, setExpandedRestaurants] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
   const [performanceDays, setPerformanceDays] = useState<number>(7);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
+  const [selectedLeader, setSelectedLeader] = useState<LeaderPerformance | null>(null);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   
@@ -111,13 +154,27 @@ export default function CrewExperiencePage() {
     },
   });
   
+  const queryParams = new URLSearchParams({ date: dateStr, days: String(performanceDays) });
+  if (searchQuery.trim()) queryParams.set("search", searchQuery.trim());
+  if (restaurantFilter !== "all") queryParams.set("restaurantId", restaurantFilter);
+  
   const { data: performanceData, isLoading: performanceLoading } = useQuery<PerformanceResponse>({
-    queryKey: ["/api/people/performance", dateStr, performanceDays],
+    queryKey: ["/api/people/performance", dateStr, performanceDays, searchQuery, restaurantFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/people/performance?date=${dateStr}&days=${performanceDays}`);
+      const res = await fetch(`/api/people/performance?${queryParams.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch performance data");
       return res.json();
     },
+  });
+
+  const { data: leaderDetail, isLoading: leaderDetailLoading } = useQuery<LeaderDetailResponse>({
+    queryKey: ["/api/people/leader-detail", selectedLeader?.employeeId, dateStr, performanceDays],
+    queryFn: async () => {
+      const res = await fetch(`/api/people/leader-detail?employeeId=${selectedLeader!.employeeId}&date=${dateStr}&days=${performanceDays}`);
+      if (!res.ok) throw new Error("Failed to fetch leader detail");
+      return res.json();
+    },
+    enabled: !!selectedLeader,
   });
   
   const toggleRestaurant = (id: string) => {
@@ -168,6 +225,16 @@ export default function CrewExperiencePage() {
   };
   
   const storesWithData = data?.restaurants.filter(r => r.hourly.length > 0) || [];
+  
+  const allRestaurantOptions: { id: string; name: string }[] = [];
+  if (performanceData?.byStore) {
+    for (const [storeId, leaders] of Object.entries(performanceData.byStore)) {
+      if (leaders.length > 0) {
+        allRestaurantOptions.push({ id: storeId, name: leaders[0].restaurantName });
+      }
+    }
+  }
+  allRestaurantOptions.sort((a, b) => a.name.localeCompare(b.name));
   
   return (
     <div className="min-h-screen bg-background p-4">
@@ -230,7 +297,7 @@ export default function CrewExperiencePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm text-muted-foreground">
-                  Top managers and shift supervisors ranked by execution score
+                  Top managers and shift supervisors ranked by execution score (min 40 hours)
                 </p>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Period:</span>
@@ -252,6 +319,44 @@ export default function CrewExperiencePage() {
                   </Select>
                 </div>
               </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[200px] max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-leader-search"
+                  />
+                </div>
+                <Select value={restaurantFilter} onValueChange={setRestaurantFilter}>
+                  <SelectTrigger className="w-[200px]" data-testid="select-restaurant-filter">
+                    <SelectValue placeholder="All Restaurants" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Restaurants</SelectItem>
+                    {allRestaurantOptions.map(r => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name.replace(/^\d+\s*-\s*/, 'Unit ')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(searchQuery || restaurantFilter !== "all") && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => { setSearchQuery(""); setRestaurantFilter("all"); }}
+                    data-testid="button-clear-filters"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+
               {performanceData?.dateRange && (
                 <p className="text-xs text-muted-foreground">
                   Showing data from {performanceData.dateRange.start} to {performanceData.dateRange.end}
@@ -270,10 +375,16 @@ export default function CrewExperiencePage() {
                 <Card>
                   <CardContent className="py-12 text-center">
                     <Award className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No manager/supervisor performance data yet.</p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Click sync to load data from 7shifts time punches.
+                    <p className="text-muted-foreground">
+                      {searchQuery || restaurantFilter !== "all" 
+                        ? "No leaders match your search criteria."
+                        : "No manager/supervisor performance data yet."}
                     </p>
+                    {!searchQuery && restaurantFilter === "all" && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Click sync to load data from 7shifts time punches.
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               ) : (
@@ -282,15 +393,16 @@ export default function CrewExperiencePage() {
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg flex items-center gap-2">
                         <Trophy className="w-5 h-5 text-yellow-500" />
-                        Company Top Performers
+                        {restaurantFilter !== "all" ? "Store Rankings" : "Company Top Performers"}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="flex-1">
                       <div className="space-y-2">
-                        {performanceData.companyRankings.slice(0, 10).map((leader, index) => (
+                        {performanceData.companyRankings.slice(0, 15).map((leader, index) => (
                           <div 
                             key={leader.employeeId}
-                            className="flex items-center justify-between p-2 rounded-lg bg-muted/50"
+                            className="flex items-center justify-between p-2 rounded-lg bg-muted/50 cursor-pointer hover-elevate"
+                            onClick={() => { setSelectedLeader(leader); setExpandedDay(null); }}
                             data-testid={`leader-rank-${index + 1}`}
                           >
                             <div className="flex items-center gap-3">
@@ -305,20 +417,16 @@ export default function CrewExperiencePage() {
                               <div>
                                 <div className="font-medium text-sm">{leader.name}</div>
                                 <div className="text-xs text-muted-foreground">
-                                  {leader.position} • {leader.restaurantName.replace(/^\d+\s*-\s*/, '')}
+                                  {leader.position} {restaurantFilter === "all" && <>• {leader.restaurantName.replace(/^\d+\s*-\s*/, '')}</>}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Badge className={`text-xs ${
-                                leader.grade.startsWith('A') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                leader.grade === 'B' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                                leader.grade === 'C' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                                'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                              } border-0`}>
+                              <Badge className={`text-xs ${getGradeColor(leader.grade)} border-0`}>
                                 {leader.grade}
                               </Badge>
                               <span className="text-xs text-muted-foreground">{leader.hoursWorked}h</span>
+                              <ArrowRight className="w-3 h-3 text-muted-foreground" />
                             </div>
                           </div>
                         ))}
@@ -326,45 +434,50 @@ export default function CrewExperiencePage() {
                     </CardContent>
                   </Card>
                   
-                  <Card className="flex flex-col">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Star className="w-5 h-5 text-primary" />
-                        Top by Store
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 overflow-hidden">
-                      <div className="space-y-3 h-full overflow-y-auto">
-                        {Object.entries(performanceData.byStore).map(([storeId, leaders]) => {
-                          const topLeader = leaders[0];
-                          if (!topLeader) return null;
-                          const unitNum = topLeader.restaurantName.match(/\d+/)?.[0] || storeId;
-                          return (
-                            <div key={storeId} className="p-2 rounded-lg bg-muted/50">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs font-medium text-muted-foreground">Unit #{unitNum}</span>
-                                <span className="text-xs text-muted-foreground">{leaders.length} leaders</span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <div className="font-medium text-sm">{topLeader.name}</div>
-                                  <div className="text-xs text-muted-foreground">{topLeader.position}</div>
+                  {restaurantFilter === "all" && (
+                    <Card className="flex flex-col">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Star className="w-5 h-5 text-primary" />
+                          Top by Store
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex-1 overflow-hidden">
+                        <div className="space-y-3 h-full overflow-y-auto">
+                          {Object.entries(performanceData.byStore).map(([storeId, leaders]) => {
+                            const topLeader = leaders[0];
+                            if (!topLeader) return null;
+                            const unitNum = topLeader.restaurantName.match(/\d+/)?.[0] || storeId;
+                            return (
+                              <div 
+                                key={storeId} 
+                                className="p-2 rounded-lg bg-muted/50 cursor-pointer hover-elevate"
+                                onClick={() => { setSelectedLeader(topLeader); setExpandedDay(null); }}
+                                data-testid={`store-top-${storeId}`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-medium text-muted-foreground">Unit #{unitNum}</span>
+                                  <span className="text-xs text-muted-foreground">{leaders.length} leaders</span>
                                 </div>
-                                <Badge className={`text-xs ${
-                                  topLeader.grade.startsWith('A') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                  topLeader.grade === 'B' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                                  topLeader.grade === 'C' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                } border-0`}>
-                                  {topLeader.grade}
-                                </Badge>
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="font-medium text-sm">{topLeader.name}</div>
+                                    <div className="text-xs text-muted-foreground">{topLeader.position}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={`text-xs ${getGradeColor(topLeader.grade)} border-0`}>
+                                      {topLeader.grade}
+                                    </Badge>
+                                    <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </CardContent>
-                  </Card>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               )}
             </div>
@@ -519,6 +632,177 @@ export default function CrewExperiencePage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Sheet open={!!selectedLeader} onOpenChange={(open) => { if (!open) setSelectedLeader(null); }}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="leader-detail-sheet">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              {selectedLeader?.name}
+            </SheetTitle>
+            {selectedLeader && (
+              <p className="text-sm text-muted-foreground">
+                {selectedLeader.position} • {selectedLeader.restaurantName.replace(/^\d+\s*-\s*/, '')}
+              </p>
+            )}
+          </SheetHeader>
+
+          {leaderDetailLoading ? (
+            <div className="mt-6 space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="animate-pulse">
+                  <div className="h-16 bg-muted rounded-lg" />
+                </div>
+              ))}
+            </div>
+          ) : leaderDetail ? (
+            <div className="mt-6 space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col items-center">
+                  <Badge className={`text-lg px-3 py-1 ${getGradeColor(leaderDetail.leader.gradeLabel)} border-0`}>
+                    {leaderDetail.leader.gradeLabel}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground mt-1">Overall</span>
+                </div>
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Total Hours</div>
+                    <div className="font-semibold">{leaderDetail.leader.totalHours}h</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Avg Score</div>
+                    <div className="font-semibold">{leaderDetail.leader.avgGradeScore}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Days Worked</div>
+                    <div className="font-semibold">{leaderDetail.dailyDetails.length}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Period</div>
+                    <div className="text-xs font-medium">{performanceDays} days</div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Daily Performance</h3>
+                <div className="space-y-2">
+                  {leaderDetail.dailyDetails.map((day) => {
+                    const isExpanded = expandedDay === day.date;
+                    const dayOfWeek = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+                    const displayDate = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    return (
+                      <div key={day.date}>
+                        <div
+                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50 cursor-pointer hover-elevate"
+                          onClick={() => setExpandedDay(isExpanded ? null : day.date)}
+                          data-testid={`day-detail-${day.date}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Badge className={`text-xs ${getGradeColor(day.gradeLabel)} border-0 min-w-[2rem] justify-center`}>
+                              {day.gradeLabel}
+                            </Badge>
+                            <div>
+                              <div className="text-sm font-medium">{dayOfWeek}, {displayDate}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {day.hoursWorked}h • ${day.totalSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {day.avgSalesVariance !== 0 && (
+                              <span className={`text-xs ${day.avgSalesVariance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {day.avgSalesVariance >= 0 ? '+' : ''}{day.avgSalesVariance.toFixed(1)}%
+                              </span>
+                            )}
+                            {day.avgSpeed !== undefined && (
+                              <span className={`text-xs ${day.avgSpeed <= 300 ? 'text-green-600 dark:text-green-400' : day.avgSpeed <= 420 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {formatSpeed(day.avgSpeed)}
+                              </span>
+                            )}
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="mt-2 ml-2 mr-2 space-y-3">
+                            <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-muted/30">
+                              <div>
+                                <div className="text-xs text-muted-foreground">Sales Variance</div>
+                                <div className={`text-sm font-medium ${day.avgSalesVariance >= -5 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {day.avgSalesVariance >= 0 ? '+' : ''}{day.avgSalesVariance.toFixed(1)}%
+                                </div>
+                              </div>
+                              {day.avgSpeed !== undefined && (
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Avg Speed</div>
+                                  <div className={`text-sm font-medium ${day.avgSpeed <= 300 ? 'text-green-600 dark:text-green-400' : day.avgSpeed <= 420 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {formatSpeed(day.avgSpeed)}
+                                  </div>
+                                </div>
+                              )}
+                              <div>
+                                <div className="text-xs text-muted-foreground">Staffing Diff</div>
+                                <div className={`text-sm font-medium ${Math.abs(day.avgStaffingDiff) <= 1 ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                  {day.avgStaffingDiff >= 0 ? '+' : ''}{day.avgStaffingDiff.toFixed(1)}
+                                </div>
+                              </div>
+                              {day.osatPercent !== undefined && day.osatResponses !== undefined && day.osatResponses > 0 && (
+                                <div>
+                                  <div className="text-xs text-muted-foreground">OSAT</div>
+                                  <div className={`text-sm font-medium ${day.osatPercent >= 85 ? 'text-green-600 dark:text-green-400' : day.osatPercent >= 80 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {day.osatPercent.toFixed(0)}% ({day.osatResponses})
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {day.feedback.wentWell.length > 0 && (
+                              <div className="p-3 rounded-lg border border-green-200 dark:border-green-800/50 bg-green-50/50 dark:bg-green-900/10">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                  <span className="text-sm font-medium text-green-700 dark:text-green-400">What went well</span>
+                                </div>
+                                <ul className="space-y-1">
+                                  {day.feedback.wentWell.map((item, i) => (
+                                    <li key={i} className="text-sm text-green-700 dark:text-green-300 pl-6">
+                                      {item}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {day.feedback.needsImprovement.length > 0 && (
+                              <div className="p-3 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                  <span className="text-sm font-medium text-amber-700 dark:text-amber-400">Needs improvement</span>
+                                </div>
+                                <ul className="space-y-1">
+                                  {day.feedback.needsImprovement.map((item, i) => (
+                                    <li key={i} className="text-sm text-amber-700 dark:text-amber-300 pl-6">
+                                      {item}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {leaderDetail.dailyDetails.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No daily performance data available for this period.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
