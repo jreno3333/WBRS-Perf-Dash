@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Trophy, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, MapPin, CalendarDays, Grid3X3, Users } from "lucide-react";
+import { Trophy, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, MapPin, CalendarDays, Grid3X3, Users, TrendingUp } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
@@ -389,6 +389,11 @@ export default function Dashboard() {
               <Link href="/crew">
                 <Button variant="ghost" size="icon" data-testid="link-crew">
                   <Users className="h-5 w-5" />
+                </Button>
+              </Link>
+              <Link href="/history">
+                <Button variant="ghost" size="icon" data-testid="link-history">
+                  <TrendingUp className="h-5 w-5" />
                 </Button>
               </Link>
               <ThemeToggle />

@@ -66,6 +66,14 @@ Preferred communication style: Simple, everyday language.
   - **Staffing**: 15% weight (100 points if within ±1, 60 if outside range) - only if valid staffing data available
   - Weights are normalized based on available components, so a restaurant without OSAT data is graded fairly against its available metrics
 - **People Tenure & Performance**: Tracks employee tenure, experience levels, and manager performance based on 7shifts data and time punches. Calculates an "Experience Score" and ranks leaders by average execution grade during their shifts.
+- **Performance History**: Displays historical performance trends over configurable date ranges (7/14/30 days) at /history. Features:
+  - Date range selector for viewing different time periods
+  - State and market filters for focused analysis
+  - Company, state, and market summary cards showing aggregate grades
+  - Expandable restaurant cards with daily grade timelines
+  - Grade calculation aligned with dashboard logic including hasComparableSales, isFirstWeek handling, and sales surge exception
+  - Speed metrics from HME timer data, OSAT from Qualtrics surveys
+  - Note: Server-side staffing calculation uses labor cost variance as proxy (differs slightly from client headcount-based labor model)
 
 ## External Dependencies
 
