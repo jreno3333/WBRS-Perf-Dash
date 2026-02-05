@@ -1567,18 +1567,14 @@ export async function registerRoutes(
   });
   
   // Get category issues aggregated for all restaurants on a specific date
-  app.get("/api/osat/category-issues/all", async (req, res) => {
+  // Support both query param and path param formats
+  const handleCategoryIssuesAll = async (date: string, res: any) => {
     try {
       const { osatCategoryIssues } = await import("@shared/schema");
-      const { date } = req.query;
-      
-      if (!date) {
-        return res.status(400).json({ error: "date is required" });
-      }
       
       const issues = await db.select()
         .from(osatCategoryIssues)
-        .where(eq(osatCategoryIssues.date, String(date)));
+        .where(eq(osatCategoryIssues.date, date));
       
       // Group by restaurant
       const byRestaurant: Record<string, typeof issues> = {};
@@ -1594,6 +1590,24 @@ export async function registerRoutes(
       console.error("Error fetching all category issues:", error);
       res.status(500).json({ error: "Failed to fetch category issues" });
     }
+  };
+  
+  // Query param version: /api/osat/category-issues/all?date=2026-02-04
+  app.get("/api/osat/category-issues/all", async (req, res) => {
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ error: "date is required" });
+    }
+    return handleCategoryIssuesAll(String(date), res);
+  });
+  
+  // Path param version: /api/osat/category-issues/all/2026-02-04
+  app.get("/api/osat/category-issues/all/:date", async (req, res) => {
+    const { date } = req.params;
+    if (!date) {
+      return res.status(400).json({ error: "date is required" });
+    }
+    return handleCategoryIssuesAll(date, res);
   });
 
   // ========== CREW EXPERIENCE ENDPOINTS ==========
