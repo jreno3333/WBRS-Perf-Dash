@@ -38,7 +38,8 @@ function getExecutionGrade(
   avgServiceTime: number | undefined, 
   staffingDiff: number,
   hasComparableSales: boolean = true,
-  osatPercent: number | undefined = undefined
+  osatPercent: number | undefined = undefined,
+  hasValidStaffing: boolean = true
 ): { grade: string; hasGrade: boolean } {
   // Track which components are available for grading with their weights
   const components: { name: string; score: number; weight: number }[] = [];
@@ -65,10 +66,12 @@ function getExecutionGrade(
     components.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
   }
   
-  // Staffing component (weight: 15%)
-  let staffingScore = 100;
-  if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
-  components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
+  // Staffing component (weight: 15%) - only if we have valid staffing data
+  if (hasValidStaffing) {
+    let staffingScore = 100;
+    if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
+    components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
+  }
   
   if (components.length === 0) {
     return { grade: '-', hasGrade: false };
@@ -175,17 +178,21 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         // Exclude operator from labor hours (matching leaderboard card logic)
         const positions = hour.positionBreakdown || {};
         const operatorHrs = positions['_operatorScheduled'] || 0;
-        const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
+        const rawEmployeeCount = Number(hour.employeeCount) || 0;
+        const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
+        const hasValidStaffing = rawEmployeeCount >= 1;
         
-        // Track staffing metrics
-        totalStaffingHours++;
-        if (Math.abs(staffingDiff) <= 1) {
-          staffingProperCount++;
-        } else if (staffingDiff > 1) {
-          staffingOverCount++;
-        } else {
-          staffingUnderCount++;
+        // Track staffing metrics (only if valid staffing data)
+        if (hasValidStaffing) {
+          totalStaffingHours++;
+          if (Math.abs(staffingDiff) <= 1) {
+            staffingProperCount++;
+          } else if (staffingDiff > 1) {
+            staffingOverCount++;
+          } else {
+            staffingUnderCount++;
+          }
         }
         
         // Track speed metrics (only if drive-thru data exists)
@@ -213,7 +220,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
           }
         }
         
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, hour.osatPercent);
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing);
         if (gradeInfo.hasGrade) {
           const score = gradeToScore(gradeInfo.grade);
           if (score > 0) {

@@ -68,8 +68,11 @@ interface UnitInsight {
   concerns: string[];
   staffingIssues: { hour: number; type: "over" | "under"; diff: number; leaders: HourlyLeader[] }[];
   speedIssues: { hour: number; avgTime: number; leaders: HourlyLeader[] }[];
+  osatIssues: { hour: number; osatPercent: number; responses: number; leaders: HourlyLeader[] }[];
   salesOutliers: { hour: number; variance: number; type: "above" | "below"; leaders: HourlyLeader[] }[];
   recommendation: string;
+  osatPercent?: number;
+  osatResponses?: number;
 }
 
 function getGradeLabel(score: number): { label: string; color: string } {
@@ -86,6 +89,14 @@ function getGradeLabel(score: number): { label: string; color: string } {
   return { label: "F", color: "text-red-500" };
 }
 
+// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
+const GRADE_WEIGHTS = {
+  sales: 35,
+  speed: 25,
+  osat: 25,
+  staffing: 15,
+};
+
 function analyzeUnit(
   restaurant: LeaderboardData["restaurants"][0],
   hourlyData: HourlySalesData[] | undefined
@@ -94,6 +105,7 @@ function analyzeUnit(
   const concerns: string[] = [];
   const staffingIssues: UnitInsight["staffingIssues"] = [];
   const speedIssues: UnitInsight["speedIssues"] = [];
+  const osatIssues: UnitInsight["osatIssues"] = [];
   const salesOutliers: UnitInsight["salesOutliers"] = [];
   
   const totalSales = restaurant.actualSales || 0;
@@ -110,6 +122,10 @@ function analyzeUnit(
   let slowSpeedHours = 0;
   let aboveExpectationHours = 0;
   let belowExpectationHours = 0;
+  let lowOsatHours = 0;
+  let totalOsatResponses = 0;
+  let osatSum = 0;
+  let osatHoursWithData = 0;
   
   if (hourlyData && hourlyData.length > 0) {
     const completedHours = hourlyData.filter(h => h.todaySales > 0);
@@ -155,6 +171,18 @@ function analyzeUnit(
         speedIssues.push({ hour: hour.hour, avgTime: hour.avgServiceTime!, leaders: hourLeaders });
       }
       
+      // OSAT analysis - only include if we have customer satisfaction data
+      const hasValidOsat = hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0;
+      if (hasValidOsat) {
+        osatHoursWithData++;
+        totalOsatResponses += hour.osatResponses!;
+        osatSum += hour.osatPercent! * hour.osatResponses!;
+        if (hour.osatPercent! < 80) { // Below 80% is poor
+          lowOsatHours++;
+          osatIssues.push({ hour: hour.hour, osatPercent: hour.osatPercent!, responses: hour.osatResponses!, leaders: hourLeaders });
+        }
+      }
+      
       // Sales variance analysis
       if (hasComparableSales) {
         if (hourVariance >= 20) {
@@ -166,43 +194,50 @@ function analyzeUnit(
         }
       }
       
-      // Calculate hourly grade score - aligned with leaderboard-card logic
-      let score = 0;
-      let components = 0;
+      // Calculate hourly grade score with weighted formula
+      // WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
+      const gradeComponents: { name: string; score: number; weight: number }[] = [];
       
-      // Sales component - only if we have comparable data
+      // Sales component (weight: 35%) - only if we have comparable data
       if (hasComparableSales) {
-        score += hourVariance >= -5 ? 100 : 50;
-        components++;
+        const salesScore = hourVariance >= -5 ? 100 : 50;
+        gradeComponents.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
       }
       
-      // Speed component - only if we have valid drive-thru data
+      // Speed component (weight: 25%) - only if we have valid drive-thru data
       if (hasValidSpeed) {
-        if (hour.avgServiceTime! <= 300) score += 100;
-        else if (hour.avgServiceTime! <= 420) score += 70;
-        else score += 40;
-        components++;
+        let speedScore = 100;
+        if (hour.avgServiceTime! > 420) speedScore = 40;
+        else if (hour.avgServiceTime! > 300) speedScore = 70;
+        gradeComponents.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
       }
       
-      // Staffing component - only if we have valid staffing data
-      // Apply sales surge exception for understaffing (same as flagging logic above)
+      // OSAT component (weight: 25%) - only if we have customer satisfaction data
+      if (hasValidOsat) {
+        let osatScore = 100;
+        if (hour.osatPercent! < 80) osatScore = 40;
+        else if (hour.osatPercent! < 85) osatScore = 70;
+        gradeComponents.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
+      }
+      
+      // Staffing component (weight: 15%) - only if we have valid staffing data
       if (hasValidStaffing) {
         const isSalesSurge = hourVariance >= 20;
         const isUnderstaffed = staffingDiff < -1;
         const isOverstaffed = staffingDiff > 1;
         
-        if (isOverstaffed) {
-          score += 60;
-        } else if (isUnderstaffed && !isSalesSurge) {
-          score += 60;
-        } else {
-          score += 100;
+        let staffingScore = 100;
+        if (isOverstaffed || (isUnderstaffed && !isSalesSurge)) {
+          staffingScore = 60;
         }
-        components++;
+        gradeComponents.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
       }
       
-      if (components > 0) {
-        hourlyScores.push(score / components);
+      if (gradeComponents.length > 0) {
+        // Calculate weighted average normalized by available components
+        const totalWeight = gradeComponents.reduce((sum, c) => sum + c.weight, 0);
+        const weightedScore = gradeComponents.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
+        hourlyScores.push(weightedScore);
       }
     }
   }
@@ -226,6 +261,11 @@ function analyzeUnit(
   }
   if (understaffedHours === 0 && overstaffedHours === 0 && staffingIssues.length === 0) {
     strengths.push("Properly staffed throughout the day");
+  }
+  // Calculate weighted OSAT average
+  const avgOsatPercent = totalOsatResponses > 0 ? osatSum / totalOsatResponses : undefined;
+  if (osatHoursWithData > 0 && lowOsatHours === 0 && avgOsatPercent && avgOsatPercent >= 85) {
+    strengths.push(`Strong customer satisfaction (${avgOsatPercent.toFixed(0)}% OSAT, ${totalOsatResponses} responses)`);
   }
   
   // Generate concerns
@@ -255,6 +295,15 @@ function analyzeUnit(
   if (belowExpectationHours >= 2) {
     concerns.push(`${belowExpectationHours} hours with sales 20%+ below expectations`);
   }
+  // Flag OSAT issues
+  if (lowOsatHours >= 1 && osatIssues.length > 0) {
+    const worstOsat = osatIssues.sort((a, b) => a.osatPercent - b.osatPercent)[0];
+    if (lowOsatHours === 1) {
+      concerns.push(`Low customer satisfaction at ${formatHour(worstOsat.hour)} (${worstOsat.osatPercent.toFixed(0)}% OSAT)`);
+    } else {
+      concerns.push(`Low OSAT for ${lowOsatHours} hours (worst: ${worstOsat.osatPercent.toFixed(0)}% at ${formatHour(worstOsat.hour)})`);
+    }
+  }
   
   // Generate recommendation
   let recommendation = "";
@@ -266,6 +315,8 @@ function analyzeUnit(
     recommendation = `Review staffing during ${formatHour(peakOver?.hour || 14)} - labor running high. Optimize scheduling.`;
   } else if (slowSpeedHours >= 2) {
     recommendation = "Focus on drive-thru efficiency. Consider cross-training and positioning adjustments.";
+  } else if (lowOsatHours >= 2) {
+    recommendation = "Customer satisfaction needs attention. Review order accuracy, service speed, and team friendliness.";
   } else if (salesVariance <= -10) {
     recommendation = "Sales trending down. Review local marketing, check for competitor activity, and ensure full menu availability.";
   } else if (strengths.length > concerns.length) {
@@ -305,8 +356,11 @@ function analyzeUnit(
     concerns,
     staffingIssues,
     speedIssues,
+    osatIssues,
     salesOutliers,
     recommendation,
+    osatPercent: avgOsatPercent,
+    osatResponses: totalOsatResponses > 0 ? totalOsatResponses : undefined,
   };
 }
 
@@ -332,11 +386,14 @@ interface AggregatedSummary {
   understaffedUnits: number;
   overstaffedUnits: number;
   slowSpeedUnits: number;
+  lowOsatUnits: number;
   unitsAboveExpectation: number;
   unitsBelowExpectation: number;
   topStrength: string;
   topConcern: string;
   recommendation: string;
+  avgOsatPercent?: number;
+  totalOsatResponses?: number;
 }
 
 function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSummary {
@@ -349,8 +406,16 @@ function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSum
   const understaffedUnits = insights.filter(i => i.staffingIssues.filter(s => s.type === "under").length >= 2).length;
   const overstaffedUnits = insights.filter(i => i.staffingIssues.filter(s => s.type === "over").length >= 2).length;
   const slowSpeedUnits = insights.filter(i => i.speedIssues.length >= 2).length;
+  const lowOsatUnits = insights.filter(i => i.osatIssues && i.osatIssues.length >= 1).length;
   const unitsAboveExpectation = insights.filter(i => i.salesVariance >= 5).length;
   const unitsBelowExpectation = insights.filter(i => i.salesVariance <= -5).length;
+  
+  // Calculate aggregate OSAT metrics (weighted by responses)
+  const unitsWithOsat = insights.filter(i => i.osatResponses && i.osatResponses > 0);
+  const totalOsatResponses = unitsWithOsat.reduce((sum, i) => sum + (i.osatResponses || 0), 0);
+  const avgOsatPercent = totalOsatResponses > 0
+    ? unitsWithOsat.reduce((sum, i) => sum + ((i.osatPercent || 0) * (i.osatResponses || 0)), 0) / totalOsatResponses
+    : undefined;
   
   // Find most common strength and concern
   const allStrengths = insights.flatMap(i => i.strengths);
@@ -364,7 +429,9 @@ function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSum
         ? `${understaffedUnits} units showing understaffing patterns`
         : overstaffedUnits > 0 
           ? `${overstaffedUnits} units showing overstaffing patterns`
-          : `${unitsBelowExpectation} units below last week's sales`)
+          : lowOsatUnits > 0
+            ? `${lowOsatUnits} units with low customer satisfaction`
+            : `${unitsBelowExpectation} units below last week's sales`)
     : "No major concerns identified";
   
   let recommendation = "";
@@ -372,6 +439,8 @@ function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSum
     recommendation = "Multiple units showing understaffing. Review region-wide scheduling practices.";
   } else if (overstaffedUnits >= unitCount * 0.3) {
     recommendation = "Multiple units showing high labor. Audit scheduling compliance across the group.";
+  } else if (lowOsatUnits >= unitCount * 0.3) {
+    recommendation = "Customer satisfaction needs attention across multiple units. Review service standards.";
   } else if (unitsBelowExpectation >= unitCount * 0.4) {
     recommendation = "Sales trending down across multiple units. Consider marketing push or operational review.";
   } else if (unitsAboveExpectation >= unitCount * 0.5) {
@@ -391,11 +460,14 @@ function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSum
     understaffedUnits,
     overstaffedUnits,
     slowSpeedUnits,
+    lowOsatUnits,
     unitsAboveExpectation,
     unitsBelowExpectation,
     topStrength,
     topConcern,
     recommendation,
+    avgOsatPercent,
+    totalOsatResponses: totalOsatResponses > 0 ? totalOsatResponses : undefined,
   };
 }
 
@@ -408,12 +480,20 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
         <CollapsibleTrigger asChild>
           <CardHeader className="cursor-pointer pb-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <CardTitle className="text-base">{insight.restaurantName}</CardTitle>
                 <Badge variant="outline" className="text-xs">{insight.state}</Badge>
                 <Badge className={`${insight.gradeColor} bg-transparent border`}>
                   {insight.gradeLabel}
                 </Badge>
+                {insight.osatPercent !== undefined && insight.osatResponses && insight.osatResponses > 0 && (
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs ${insight.osatPercent >= 85 ? "text-purple-600 border-purple-300" : insight.osatPercent >= 80 ? "text-yellow-600 border-yellow-300" : "text-red-600 border-red-300"}`}
+                  >
+                    OSAT {insight.osatPercent.toFixed(0)}% ({insight.osatResponses})
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium">{formatCurrency(insight.totalSales)}</span>
@@ -499,6 +579,32 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                       {s.leaders.length > 0 && (
                         <span className="text-xs text-muted-foreground">
                           Leader: {s.leaders.map(l => l.firstName).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {insight.osatIssues && insight.osatIssues.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-sm font-medium text-purple-600">
+                  <Target className="w-4 h-4" />
+                  Customer satisfaction issues (&lt;80% OSAT)
+                </div>
+                <div className="space-y-1 pl-5">
+                  {insight.osatIssues.map((o, i) => (
+                    <div key={i} className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="secondary" 
+                        className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                      >
+                        {formatHour(o.hour)}: {o.osatPercent.toFixed(0)}% ({o.responses} responses)
+                      </Badge>
+                      {o.leaders.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Leader: {o.leaders.map(l => l.firstName).join(", ")}
                         </span>
                       )}
                     </div>
@@ -599,8 +705,17 @@ function AggregatedSummaryCard({ summary, icon }: { summary: AggregatedSummary; 
           <p className="text-sm">{summary.recommendation}</p>
         </div>
         
-        {(summary.understaffedUnits > 0 || summary.overstaffedUnits > 0 || summary.slowSpeedUnits > 0) && (
+        {(summary.understaffedUnits > 0 || summary.overstaffedUnits > 0 || summary.slowSpeedUnits > 0 || summary.lowOsatUnits > 0 || summary.avgOsatPercent !== undefined) && (
           <div className="flex flex-wrap gap-2 pt-2">
+            {summary.avgOsatPercent !== undefined && summary.totalOsatResponses && summary.totalOsatResponses > 0 && (
+              <Badge 
+                variant="secondary" 
+                className={`text-xs ${summary.avgOsatPercent >= 85 ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" : summary.avgOsatPercent >= 80 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
+              >
+                <Target className="w-3 h-3 mr-1" />
+                OSAT {summary.avgOsatPercent.toFixed(0)}% ({summary.totalOsatResponses})
+              </Badge>
+            )}
             {summary.understaffedUnits > 0 && (
               <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
                 <Users className="w-3 h-3 mr-1" />
@@ -617,6 +732,12 @@ function AggregatedSummaryCard({ summary, icon }: { summary: AggregatedSummary; 
               <Badge variant="secondary" className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
                 <Clock className="w-3 h-3 mr-1" />
                 {summary.slowSpeedUnits} slow DT
+              </Badge>
+            )}
+            {summary.lowOsatUnits > 0 && (
+              <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                <Target className="w-3 h-3 mr-1" />
+                {summary.lowOsatUnits} low OSAT
               </Badge>
             )}
           </div>

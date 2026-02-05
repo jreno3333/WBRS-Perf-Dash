@@ -50,6 +50,15 @@ Preferred communication style: Simple, everyday language.
   - **Hourly Granularity**: Tracks OSAT by hour and displays in hourly chart tooltips (green 85%+, yellow 80-85%, red <80%)
   - **Hourly Chart Display**: Purple OSAT legend indicator; tooltip shows "OSAT X% (N)" where N is response count
   - **Scheduled Sync**: Runs every 5 minutes automatically
+  - **Summary Cards Display**: Shows aggregate OSAT percentage and response count with color-coded badge (purple for 85%+, yellow for 80-85%, red for <80%)
+  - **Daily Summary Display**: OSAT badge on unit cards, OSAT issues section (hours with <80% OSAT), and OSAT in strengths/concerns with recommendations
+  - **Aggregated Views**: State/Market summary cards show aggregate OSAT metrics and count of units with low OSAT
+- **Weighted Execution Grading System**: All execution grades use a weighted formula with normalization:
+  - **Sales**: 35% weight (100 points if variance >= -5%, 50 points if below)
+  - **Speed**: 25% weight (100 points if <= 5 min, 70 if <= 7 min, 40 if > 7 min) - only if drive-thru data available
+  - **OSAT**: 25% weight (100 points if >= 85%, 70 if >= 80%, 40 if < 80%) - only if customer satisfaction data available
+  - **Staffing**: 15% weight (100 points if within ±1, 60 if outside range) - only if valid staffing data available
+  - Weights are normalized based on available components, so a restaurant without OSAT data is graded fairly against its available metrics
 - **People Tenure & Performance**: Tracks employee tenure, experience levels, and manager performance based on 7shifts data and time punches. Calculates an "Experience Score" and ranks leaders by average execution grade during their shifts.
 
 ## External Dependencies
