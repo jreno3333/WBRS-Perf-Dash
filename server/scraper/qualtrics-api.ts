@@ -436,7 +436,6 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
   for (const record of records) {
     const storeId = parseStoreFromRecord(record);
     const rating = parseRatingFromRecord(record);
-    const timestamp = parseTimestampFromRecord(record);
     
     if (!storeId) {
       errors.push(`Record missing store identifier. Keys: ${Object.keys(record).slice(0, 5).join(', ')}`);
@@ -455,16 +454,100 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
       continue;
     }
     
+    // Get restaurant's timezone (default to Central if not set)
+    const restaurantTimezone = restaurant.timezone || 'America/Chicago';
+    
+    // Parse transaction date and time in the restaurant's local timezone
     let dateStr = todayStr;
     let hour = new Date().getHours();
     
-    if (timestamp) {
-      const centralDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
-      dateStr = centralDate.format(timestamp);
-      const centralHour = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false });
-      hour = parseInt(centralHour.format(timestamp), 10);
-      // Intl can return 24 for midnight - convert to 0
-      if (hour === 24) hour = 0;
+    const transactionDate = record['d'];
+    const transactionTime = record['t'];
+    
+    if (transactionDate) {
+      // Parse the date (format: "1/29/2026" or "2026-01-29")
+      let parsedDate: Date | null = null;
+      const dateOnlyStr = String(transactionDate).trim();
+      
+      // Try MM/DD/YYYY format first
+      const mdyMatch = dateOnlyStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (mdyMatch) {
+        const [, month, day, year] = mdyMatch;
+        parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      } else {
+        // Try YYYY-MM-DD format
+        parsedDate = new Date(dateOnlyStr);
+      }
+      
+      if (parsedDate && !isNaN(parsedDate.getTime())) {
+        // Format date in Central timezone for storage (consistent date key)
+        const centralFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
+        dateStr = centralFormatter.format(parsedDate);
+        
+        // Parse transaction time if available (format: "02:33PM" or "14:33")
+        if (transactionTime) {
+          const timeStr = String(transactionTime).trim();
+          
+          // Parse time in 12-hour format with AM/PM
+          const time12Match = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+          if (time12Match) {
+            let [, hourStr, minStr, ampm] = time12Match;
+            let parsedHour = parseInt(hourStr, 10);
+            
+            // Convert to 24-hour format
+            if (ampm.toUpperCase() === 'PM' && parsedHour !== 12) {
+              parsedHour += 12;
+            } else if (ampm.toUpperCase() === 'AM' && parsedHour === 12) {
+              parsedHour = 0;
+            }
+            
+            // This hour is in the restaurant's LOCAL timezone
+            // If restaurant is Eastern, we need to convert to Central for storage
+            if (restaurantTimezone === 'America/New_York') {
+              // Eastern is 1 hour ahead of Central, so subtract 1 to get Central hour
+              parsedHour = parsedHour - 1;
+              if (parsedHour < 0) {
+                parsedHour = 23;
+                // Also need to adjust the date back one day
+                const prevDate = new Date(parsedDate);
+                prevDate.setDate(prevDate.getDate() - 1);
+                dateStr = centralFormatter.format(prevDate);
+              }
+            }
+            
+            hour = parsedHour;
+          } else {
+            // Try 24-hour format HH:MM
+            const time24Match = timeStr.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+            if (time24Match) {
+              let parsedHour = parseInt(time24Match[1], 10);
+              
+              // Convert from restaurant timezone to Central
+              if (restaurantTimezone === 'America/New_York') {
+                parsedHour = parsedHour - 1;
+                if (parsedHour < 0) {
+                  parsedHour = 23;
+                  const prevDate = new Date(parsedDate);
+                  prevDate.setDate(prevDate.getDate() - 1);
+                  dateStr = centralFormatter.format(prevDate);
+                }
+              }
+              
+              hour = parsedHour;
+            }
+          }
+        }
+      }
+    } else {
+      // Fallback: try other date fields from Qualtrics response metadata
+      const timestamp = parseTimestampFromRecord(record);
+      if (timestamp) {
+        const centralDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
+        dateStr = centralDate.format(timestamp);
+        const centralHour = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false });
+        hour = parseInt(centralHour.format(timestamp), 10);
+        if (hour === 24) hour = 0;
+      }
     }
     
     const dailyKey = `${restaurant.id}|${dateStr}`;
