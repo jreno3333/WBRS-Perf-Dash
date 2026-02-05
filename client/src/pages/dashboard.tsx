@@ -6,11 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Trophy, BarChart3, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays, Grid3X3, Users } from "lucide-react";
+import { Trophy, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Settings, MapPin, CalendarDays, Grid3X3, Users } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LeaderboardCard } from "@/components/leaderboard-card";
-import { PaceChart } from "@/components/pace-chart";
 import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
@@ -86,7 +85,6 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 }
 
 export default function Dashboard() {
-  const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat">("sales");
@@ -111,30 +109,6 @@ export default function Dashboard() {
     },
     refetchInterval,
   });
-
-  const { data: paceResponse } = useQuery<{ data: HourlySalesData[]; currentHour: number | null; isToday: boolean }>({
-    queryKey: ["/api/pace", selectedRestaurant, dateStr],
-    queryFn: async () => {
-      const res = await fetch(`/api/pace/${selectedRestaurant}?date=${dateStr}`);
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
-    enabled: !!selectedRestaurant,
-    refetchInterval,
-  });
-  const paceData = paceResponse?.data;
-
-  // Always fetch aggregate pace data for the summary cards (independent of sidebar selection)
-  const { data: aggregatePaceResponse } = useQuery<{ data: HourlySalesData[]; currentHour: number | null; isToday: boolean }>({
-    queryKey: ["/api/pace", "all", dateStr],
-    queryFn: async () => {
-      const res = await fetch(`/api/pace/all?date=${dateStr}`);
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
-    refetchInterval,
-  });
-  const aggregatePaceData = aggregatePaceResponse?.data;
 
   const { data: hourlyByRestaurant } = useQuery<Record<string, HourlySalesData[]>>({
     queryKey: ["/api/hourly-by-restaurant", dateStr],
@@ -198,12 +172,6 @@ export default function Dashboard() {
       return res.json();
     },
   });
-
-  const getSelectedRestaurantName = () => {
-    if (selectedRestaurant === "all") return "All Restaurants";
-    const restaurant = leaderboardData?.restaurants.find(r => r.restaurantId === selectedRestaurant);
-    return restaurant?.restaurantName || "Selected Restaurant";
-  };
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
@@ -502,10 +470,8 @@ export default function Dashboard() {
               />
             )}
 
-            {/* Main Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Leaderboard Column */}
-              <div className="lg:col-span-2 space-y-4">
+            {/* Restaurant Rankings */}
+            <div className="space-y-4">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <Trophy className="w-5 h-5 text-yellow-500" />
@@ -577,65 +543,13 @@ export default function Dashboard() {
                 {leaderboardData.restaurants.length === 0 && (
                   <Card>
                     <CardContent className="p-8 text-center">
-                      <BarChart3 className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+                      <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
                       <p className="text-muted-foreground">
                         No sales data available yet for today.
                       </p>
                     </CardContent>
                   </Card>
                 )}
-              </div>
-
-              {/* Pace Chart Column */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-blue-500" />
-                    Pace Comparison
-                  </h2>
-                </div>
-
-                <Select 
-                  value={selectedRestaurant} 
-                  onValueChange={setSelectedRestaurant}
-                >
-                  <SelectTrigger data-testid="select-restaurant">
-                    <SelectValue placeholder="Select restaurant" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Restaurants</SelectItem>
-                    {leaderboardData.restaurants.map((restaurant) => (
-                      <SelectItem 
-                        key={restaurant.restaurantId} 
-                        value={restaurant.restaurantId}
-                      >
-                        {restaurant.restaurantName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Time Zone Info - Above chart */}
-                <p className="text-xs text-muted-foreground">
-                  Rankings compare sales at equivalent local hours for fair comparison between EST and CST restaurants.
-                </p>
-
-                {paceData && paceData.length > 0 ? (
-                  <PaceChart 
-                    data={paceData} 
-                    restaurantName={getSelectedRestaurantName()}
-                  />
-                ) : (
-                  <Card>
-                    <CardContent className="p-8 text-center">
-                      <BarChart3 className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-                      <p className="text-sm text-muted-foreground">
-                        Select a restaurant to view hourly pace
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
             </div>
           </>
         ) : null}

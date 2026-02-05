@@ -1,6 +1,7 @@
 import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, syncSalesWithXenialPOS } from "./scraper/7shifts-api";
 import { syncHMETimerData } from "./scraper/hme-api";
 import { syncAllGoogleReviews, markEndOfDaySnapshots } from "./google-places";
+import { syncOsatData } from "./scraper/qualtrics-api";
 import { db } from "./db";
 import { dailySales, hourlySales, restaurants } from "@shared/schema";
 import { sql, isNotNull } from "drizzle-orm";
@@ -115,6 +116,9 @@ async function runScheduledSync() {
     
     // Sync Google reviews (once per hour at the top of the hour)
     await syncGoogleReviewsIfNeeded();
+    
+    // Sync Qualtrics OSAT data (every 5 minutes)
+    await syncOsatIfNeeded();
     
     // Save end-of-day weather snapshot (at 11 PM Central)
     await saveEndOfDayWeatherIfNeeded();
@@ -249,6 +253,7 @@ async function syncCrewExperienceIfNeeded() {
 
 // Track last Google reviews sync to avoid syncing too frequently
 let lastGoogleReviewsSync: string | null = null;
+let lastOsatSync: string | null = null;
 
 // Sync Google reviews once per hour
 async function syncGoogleReviewsIfNeeded() {
@@ -286,6 +291,29 @@ async function syncGoogleReviewsIfNeeded() {
     }
   } catch (error) {
     log(`Google reviews sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Sync OSAT data every 5 minutes
+async function syncOsatIfNeeded() {
+  const now = new Date();
+  const syncKey = `${now.toISOString().split('T')[0]}-${now.getHours()}-${Math.floor(now.getMinutes() / 5)}`;
+  
+  // Don't sync more than once per 5-minute interval
+  if (lastOsatSync === syncKey) {
+    return;
+  }
+  
+  log("Syncing Qualtrics OSAT data...");
+  try {
+    const result = await syncOsatData(3); // Sync last 3 days
+    log(`OSAT sync completed: ${result.synced} records updated`);
+    if (result.errors.length > 0) {
+      log(`OSAT sync had ${result.errors.length} errors`);
+    }
+    lastOsatSync = syncKey;
+  } catch (error) {
+    log(`OSAT sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
