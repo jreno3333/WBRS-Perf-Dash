@@ -604,32 +604,6 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
               </div>
             )}
             
-            {insight.osatIssues && insight.osatIssues.length > 0 && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-1 text-sm font-medium text-red-600">
-                  <ThumbsUp className="w-4 h-4" />
-                  Customer satisfaction issues (&lt;80% OSAT)
-                </div>
-                <div className="space-y-1 pl-5">
-                  {insight.osatIssues.map((o, i) => (
-                    <div key={i} className="flex items-center gap-2 flex-wrap">
-                      <Badge 
-                        variant="secondary" 
-                        className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                      >
-                        {formatHour(o.hour)}: {o.osatPercent.toFixed(0)}% ({o.responses} responses)
-                      </Badge>
-                      {o.leaders.length > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {o.leaders.map(l => l.firstName).join(", ")}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
             {insight.surveyHours && insight.surveyHours.length > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
@@ -648,6 +622,32 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                       {s.leaders.length > 0 && (
                         <span className="text-xs text-muted-foreground">
                           {s.leaders.map(l => l.firstName).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {insight.osatIssues && insight.osatIssues.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-sm font-medium text-red-600">
+                  <ThumbsUp className="w-4 h-4" />
+                  Customer satisfaction issues (&lt;80% OSAT)
+                </div>
+                <div className="space-y-1 pl-5">
+                  {insight.osatIssues.map((o, i) => (
+                    <div key={i} className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="secondary" 
+                        className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                      >
+                        {formatHour(o.hour)}: {o.osatPercent.toFixed(0)}% ({o.responses} responses)
+                      </Badge>
+                      {o.leaders.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {o.leaders.map(l => l.firstName).join(", ")}
                         </span>
                       )}
                     </div>
