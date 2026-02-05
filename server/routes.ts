@@ -2188,8 +2188,24 @@ export async function registerRoutes(
           lte(hourlyCrew.date, dateRange[dateRange.length - 1])
         ));
       
-      // Get all restaurants
-      const restaurantList = await storage.getRestaurants();
+      // Get all restaurants and filter out training stores
+      const allRestaurants = await storage.getRestaurants();
+      
+      // Helper function to determine restaurant status based on openDate
+      const getRestaurantStatus = (openDate: string | Date | null | undefined): "training" | "new" | "established" => {
+        if (!openDate) return "established";
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const openDateNorm = new Date(openDate);
+        openDateNorm.setHours(0, 0, 0, 0);
+        if (openDateNorm > today) return "training";
+        const diffTime = today.getTime() - openDateNorm.getTime();
+        const daysOpen = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        return daysOpen < 90 ? "new" : "established";
+      };
+      
+      // Filter out training stores
+      const restaurantList = allRestaurants.filter(r => getRestaurantStatus(r.openDate) !== "training");
       
       // Get markets
       const allMarkets = await db.select().from(markets);
