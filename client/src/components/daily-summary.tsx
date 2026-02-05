@@ -74,7 +74,7 @@ interface UnitInsight {
   recommendation: string;
   osatPercent?: number;
   osatResponses?: number;
-  surveyHours?: { hour: number; percent: number; responses: number }[];
+  surveyHours?: { hour: number; percent: number; responses: number; leaders: HourlyLeader[] }[];
 }
 
 function getGradeLabel(score: number): { label: string; color: string } {
@@ -180,7 +180,7 @@ function analyzeUnit(
         osatHoursWithData++;
         totalOsatResponses += hour.osatResponses!;
         osatSum += hour.osatPercent! * hour.osatResponses!;
-        surveyHours!.push({ hour: hour.hour, percent: hour.osatPercent!, responses: hour.osatResponses! });
+        surveyHours!.push({ hour: hour.hour, percent: hour.osatPercent!, responses: hour.osatResponses!, leaders: hourLeaders });
         if (hour.osatPercent! < 80) { // Below 80% is poor
           lowOsatHours++;
           osatIssues.push({ hour: hour.hour, osatPercent: hour.osatPercent!, responses: hour.osatResponses!, leaders: hourLeaders });
@@ -624,15 +624,21 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                   <MessageSquare className="w-4 h-4" />
                   Surveys received ({insight.osatResponses} total)
                 </div>
-                <div className="flex flex-wrap gap-1 pl-5">
+                <div className="space-y-1 pl-5">
                   {insight.surveyHours.map((s, i) => (
-                    <Badge 
-                      key={i}
-                      variant="secondary" 
-                      className={`text-xs ${s.percent >= 85 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : s.percent >= 80 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
-                    >
-                      {formatHour(s.hour)}: {s.percent.toFixed(0)}% ({s.responses})
-                    </Badge>
+                    <div key={i} className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="secondary" 
+                        className={`text-xs ${s.percent >= 85 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : s.percent >= 80 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
+                      >
+                        {formatHour(s.hour)}: {s.percent.toFixed(0)}% ({s.responses})
+                      </Badge>
+                      {s.leaders.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {s.leaders.map(l => l.firstName).join(", ")}
+                        </span>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
