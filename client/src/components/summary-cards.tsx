@@ -25,40 +25,58 @@ const scoreToGrade = (score: number): string => {
   return 'F';
 };
 
+// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
+const GRADE_WEIGHTS = {
+  sales: 35,
+  speed: 25,
+  osat: 25,
+  staffing: 15,
+};
+
 function getExecutionGrade(
   salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
   avgServiceTime: number | undefined, 
   staffingDiff: number,
-  hasComparableSales: boolean = true
+  hasComparableSales: boolean = true,
+  osatPercent: number | undefined = undefined
 ): { grade: string; hasGrade: boolean } {
-  // Track which components are available for grading
-  const components: { name: string; score: number }[] = [];
+  // Track which components are available for grading with their weights
+  const components: { name: string; score: number; weight: number }[] = [];
   
-  // Sales component (only if we have comparable data - last week had sales)
-  // Allow 5% variance to still count as "meeting expectations" (score 100)
+  // Sales component (weight: 35%) - only if we have comparable data
   if (hasComparableSales) {
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
-    components.push({ name: 'sales', score: salesScore });
+    components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
   }
   
-  // Speed component (only if we have drive-thru data)
-  if (avgServiceTime !== undefined) {
+  // Speed component (weight: 25%) - only if we have drive-thru data
+  if (avgServiceTime !== undefined && avgServiceTime > 0) {
     let speedScore = 100;
     if (avgServiceTime > 420) speedScore = 40;
     else if (avgServiceTime > 300) speedScore = 70;
-    components.push({ name: 'speed', score: speedScore });
+    components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
   
-  // Staffing component (always available)
+  // OSAT component (weight: 25%) - only if we have customer satisfaction data
+  if (osatPercent !== undefined && osatPercent > 0) {
+    let osatScore = 100;
+    if (osatPercent < 80) osatScore = 40;
+    else if (osatPercent < 85) osatScore = 70;
+    components.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
+  }
+  
+  // Staffing component (weight: 15%)
   let staffingScore = 100;
   if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
-  components.push({ name: 'staffing', score: staffingScore });
+  components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
   
   if (components.length === 0) {
     return { grade: '-', hasGrade: false };
   }
   
-  const avgScore = components.reduce((sum, c) => sum + c.score, 0) / components.length;
+  // Calculate weighted average - normalize weights based on available components
+  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
+  const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
   
   let grade: string;
   if (avgScore >= 95) grade = 'A+';
@@ -117,7 +135,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
   // Track scores by hour for trend calculation
   const scoresByHour: Record<number, number[]> = {};
   
-  // Track overall staffing and speed metrics
+  // Track overall staffing, speed, and OSAT metrics
   let staffingProperCount = 0;
   let staffingOverCount = 0;
   let staffingUnderCount = 0;
@@ -126,6 +144,11 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
   let speedRedCount = 0;
   let totalSpeedHours = 0;
   let totalStaffingHours = 0;
+  let osatGoodCount = 0;
+  let osatCautionCount = 0;
+  let osatPoorCount = 0;
+  let totalOsatHours = 0;
+  let totalOsatResponses = 0;
   
   if (hourlyByRestaurant) {
     for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
@@ -166,7 +189,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         }
         
         // Track speed metrics (only if drive-thru data exists)
-        if (hour.avgServiceTime !== undefined) {
+        if (hour.avgServiceTime !== undefined && hour.avgServiceTime > 0) {
           totalSpeedHours++;
           if (hour.avgServiceTime <= 300) {
             speedGreenCount++;
@@ -177,7 +200,20 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
           }
         }
         
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
+        // Track OSAT metrics (only if customer satisfaction data exists)
+        if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
+          totalOsatHours++;
+          totalOsatResponses += hour.osatResponses;
+          if (hour.osatPercent >= 85) {
+            osatGoodCount++;
+          } else if (hour.osatPercent >= 80) {
+            osatCautionCount++;
+          } else {
+            osatPoorCount++;
+          }
+        }
+        
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, hour.osatPercent);
         if (gradeInfo.hasGrade) {
           const score = gradeToScore(gradeInfo.grade);
           if (score > 0) {
@@ -198,9 +234,10 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
     }
   }
   
-  // Calculate staffing and speed percentages
+  // Calculate staffing, speed, and OSAT percentages
   const staffingProperPct = totalStaffingHours > 0 ? Math.round((staffingProperCount / totalStaffingHours) * 100) : 0;
   const speedGreenPct = totalSpeedHours > 0 ? Math.round((speedGreenCount / totalSpeedHours) * 100) : 0;
+  const osatGoodPct = totalOsatHours > 0 ? Math.round((osatGoodCount / totalOsatHours) * 100) : 0;
   
   // Count stores by execution grade
   const gradeCounts = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
@@ -352,6 +389,18 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     </PopoverTrigger>
                     <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
                       % of hours with drive-thru time under 5 min
+                    </PopoverContent>
+                  </Popover>
+                )}
+                {totalOsatHours > 0 && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <span className={`font-medium cursor-help ${osatGoodPct >= 85 ? 'text-purple-600 dark:text-purple-400' : osatGoodPct >= 70 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                        OSAT: {osatGoodPct}% ({totalOsatResponses})
+                      </span>
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
+                      % of hours with 85%+ customer satisfaction ({totalOsatResponses} survey responses)
                     </PopoverContent>
                   </Popover>
                 )}
