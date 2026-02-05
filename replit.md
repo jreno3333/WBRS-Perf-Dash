@@ -71,13 +71,17 @@ Preferred communication style: Simple, everyday language.
   - State and market filters for focused analysis
   - Company, state, and market summary cards showing aggregate grades
   - Expandable restaurant cards with daily grade timelines (shows all 7/14/30 days)
-  - Six metrics in expanded view: Avg Grade, Total Sales, Avg Speed, OSAT, Avg XP, Grade Trend
+  - Six metrics in expanded view: Avg Grade, Total Sales, Avg Speed (mm:ss format), OSAT, Avg XP, Grade Trend
   - Grade calculation aligned with dashboard logic including hasComparableSales, isFirstWeek handling, and sales surge exception
-  - Speed metrics from HME timer data (color-coded: green <5min, yellow 5-7min, red >7min)
+  - Speed metrics from HME timer data (color-coded: green <5min, yellow 5-7min, red >7min), displayed as minutes:seconds
   - OSAT from Qualtrics surveys
   - XP (experience score) from hourly_crew data (color-coded: green 85+, yellow 70-84, orange 50-69, red <50)
   - Grade Trend shows improvement comparing second half to first half of the date range
   - Note: Server-side staffing calculation uses labor cost variance as proxy (differs slightly from client headcount-based labor model)
+- **Grade Scale (Detailed)**: Unified across dashboard and Performance History
+  - A+ = 95+, A = 90-94, A- = 85-89, B+ = 80-84, B = 75-79, B- = 70-74
+  - C+ = 65-69, C = 60-64, C- = 55-59, D = 50-54, F = below 50
+- **Sales Variance Data**: pastActualSales from 7shifts API represents last week's sales for comparison. POS-sourced current-day data defaults to 0% variance until historical sync populates comparison.
 
 ## External Dependencies
 

@@ -2276,13 +2276,18 @@ export async function registerRoutes(
         return { grade: avgScore, gradeLabel: getGradeLabel(avgScore), hasGrade: true };
       };
       
-      // Helper to get grade label - ALIGNED WITH CLIENT-SIDE LOGIC
+      // Helper to get grade label - ALIGNED WITH CLIENT-SIDE LOGIC (detailed scale)
       const getGradeLabel = (score: number): string => {
         if (score >= 95) return "A+";
-        if (score >= 85) return "A";
+        if (score >= 90) return "A";
+        if (score >= 85) return "A-";
+        if (score >= 80) return "B+";
         if (score >= 75) return "B";
-        if (score >= 65) return "C";
-        if (score >= 55) return "D";
+        if (score >= 70) return "B-";
+        if (score >= 65) return "C+";
+        if (score >= 60) return "C";
+        if (score >= 55) return "C-";
+        if (score >= 50) return "D";
         return "F";
       };
       

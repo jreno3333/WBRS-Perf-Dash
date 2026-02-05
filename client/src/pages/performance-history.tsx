@@ -239,7 +239,7 @@ function RestaurantCard({ restaurant }: { restaurant: RestaurantHistory }) {
                     <span className="text-xs text-muted-foreground">Avg Speed</span>
                   </div>
                   <div className={`text-lg font-bold ${restaurant.avgSpeed !== undefined ? (restaurant.avgSpeed <= 300 ? "text-green-600" : restaurant.avgSpeed <= 420 ? "text-yellow-600" : "text-red-600") : ""}`}>
-                    {restaurant.avgSpeed !== undefined ? `${(restaurant.avgSpeed / 60).toFixed(1)} min` : "N/A"}
+                    {restaurant.avgSpeed !== undefined ? `${Math.floor(restaurant.avgSpeed / 60)}:${String(Math.round(restaurant.avgSpeed % 60)).padStart(2, '0')}` : "N/A"}
                   </div>
                 </div>
 
