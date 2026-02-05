@@ -947,12 +947,13 @@ export class DatabaseStorage implements IStorage {
         const employeeCount = employeeCountByHour.get(hour) || 0;
         const positionBreakdown = positionByHour.get(hour);
         
-        // Include hours with any data (sales, forecast, or labor)
+        // Include hours with any data (sales, forecast, labor, or customer surveys)
         // Hours 0-4 often have labor but no sales - needed for Early Bird labor totals
-        if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0 || projectedLabor > 0 || actualLabor > 0) {
+        const osatHourData = osatByHour.get(hour);
+        const hasOsatData = osatHourData && osatHourData.totalResponses > 0;
+        if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0 || projectedLabor > 0 || actualLabor > 0 || hasOsatData) {
           const hmeHourData = hmeByHour.get(hour);
           const leaders = leadersByHour.get(hour);
-          const osatHourData = osatByHour.get(hour);
           hourlyData.push({
             hour,
             todaySales,
