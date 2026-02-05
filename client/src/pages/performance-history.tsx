@@ -212,7 +212,7 @@ function RestaurantCard({ restaurant }: { restaurant: RestaurantHistory }) {
                 <GradeTimeline grades={restaurant.dailyGrades} />
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-2 mb-1">
                     <Target className="w-4 h-4 text-muted-foreground" />
@@ -233,6 +233,16 @@ function RestaurantCard({ restaurant }: { restaurant: RestaurantHistory }) {
 
                 <div className="p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Avg Speed</span>
+                  </div>
+                  <div className={`text-lg font-bold ${restaurant.avgSpeed !== undefined ? (restaurant.avgSpeed <= 300 ? "text-green-600" : restaurant.avgSpeed <= 420 ? "text-yellow-600" : "text-red-600") : ""}`}>
+                    {restaurant.avgSpeed !== undefined ? `${(restaurant.avgSpeed / 60).toFixed(1)} min` : "N/A"}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2 mb-1">
                     <ThumbsUp className="w-4 h-4 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">OSAT</span>
                   </div>
@@ -247,10 +257,13 @@ function RestaurantCard({ restaurant }: { restaurant: RestaurantHistory }) {
                 <div className="p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-2 mb-1">
                     <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Improvement</span>
+                    <span className="text-xs text-muted-foreground">Grade Trend</span>
                   </div>
                   <div className={`text-lg font-bold ${restaurant.gradeImprovement > 0 ? "text-green-600" : restaurant.gradeImprovement < 0 ? "text-red-600" : ""}`}>
-                    {restaurant.gradeImprovement > 0 ? "+" : ""}{restaurant.gradeImprovement.toFixed(1)} pts
+                    {restaurant.gradeImprovement > 0 ? "+" : ""}{restaurant.gradeImprovement.toFixed(1)}
+                    <span className="text-xs text-muted-foreground ml-1">
+                      {restaurant.dailyGrades.length >= 2 ? "(vs first day)" : ""}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -317,7 +330,7 @@ function SummaryCard({
                 {avgImprovement > 0 ? "+" : ""}{avgImprovement.toFixed(1)}
               </span>
             </div>
-            <div className="text-xs text-muted-foreground">Trend</div>
+            <div className="text-xs text-muted-foreground">Grade Trend</div>
           </div>
         </div>
         {avgOsat !== undefined && (

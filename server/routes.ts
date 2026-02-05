@@ -2113,9 +2113,11 @@ export async function registerRoutes(
     try {
       const { days = "7", startDate, endDate } = req.query;
       
-      // Calculate date range
-      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-      const today = new Date(`${todayStr}T12:00:00Z`);
+      // Calculate date range based on available data
+      // First, find the most recent date that has data
+      const latestDataResult = await db.select({ maxDate: sql<string>`MAX(DATE(sales_date))` })
+        .from(hourlySales);
+      const latestDataDate = latestDataResult[0]?.maxDate;
       
       let dateRange: string[] = [];
       
@@ -2131,9 +2133,12 @@ export async function registerRoutes(
           dateRange.push(date.toISOString().split('T')[0]);
         }
       } else {
-        // Last N days
+        // Last N days - use the most recent date with data as the end point
         const numDays = parseInt(days as string) || 7;
-        const startDateCalc = new Date(today);
+        const endDate = latestDataDate 
+          ? new Date(`${latestDataDate}T12:00:00Z`) 
+          : new Date();
+        const startDateCalc = new Date(endDate);
         startDateCalc.setDate(startDateCalc.getDate() - (numDays - 1));
         
         for (let i = 0; i < numDays; i++) {
