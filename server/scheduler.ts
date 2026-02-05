@@ -3,9 +3,12 @@ import { syncHMETimerData } from "./scraper/hme-api";
 import { syncAllGoogleReviews, markEndOfDaySnapshots } from "./google-places";
 import { syncOsatData } from "./scraper/qualtrics-api";
 import { db } from "./db";
-import { dailySales, hourlySales, restaurants } from "@shared/schema";
-import { sql, isNotNull } from "drizzle-orm";
+import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews } from "@shared/schema";
+import { sql, isNotNull, lt } from "drizzle-orm";
 import { storage } from "./storage";
+
+// Data retention period: 2 years (730 days)
+const DATA_RETENTION_DAYS = 730;
 
 // Set to true to pause scheduled syncs (for historical data loading)
 let schedulerPaused = false; // Historical data loaded - scheduler active
@@ -32,6 +35,56 @@ export function resumeScheduler() {
 
 export function isSchedulerPaused(): boolean {
   return schedulerPaused;
+}
+
+// Data retention cleanup - removes data older than 2 years
+async function cleanupOldData() {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - DATA_RETENTION_DAYS);
+  const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
+  const cutoffTimestamp = cutoffDate;
+  
+  log(`Starting data retention cleanup (removing data older than ${cutoffDateStr})...`);
+  
+  try {
+    // Clean up hourly_sales (uses timestamp)
+    const hourlyResult = await db.delete(hourlySales)
+      .where(lt(hourlySales.salesDate, cutoffTimestamp));
+    
+    // Clean up hourly_labor (uses date string)
+    await db.delete(hourlyLabor)
+      .where(lt(hourlyLabor.date, cutoffDateStr));
+    
+    // Clean up daily_sales
+    await db.delete(dailySales)
+      .where(lt(dailySales.salesDate, cutoffTimestamp));
+    
+    // Clean up HME timer data
+    await db.delete(hmeTimerData)
+      .where(lt(hmeTimerData.date, cutoffDateStr));
+    
+    // Clean up OSAT data
+    await db.delete(dailyOsat)
+      .where(lt(dailyOsat.date, cutoffDateStr));
+    await db.delete(osatData)
+      .where(lt(osatData.date, cutoffDateStr));
+    
+    // Clean up hourly crew data
+    await db.delete(hourlyCrew)
+      .where(lt(hourlyCrew.date, cutoffDateStr));
+    
+    // Clean up POS orders (uses timestamp)
+    await db.delete(posOrders)
+      .where(lt(posOrders.businessDate, cutoffTimestamp));
+    
+    // Clean up Google reviews (uses date string)
+    await db.delete(dailyGoogleReviews)
+      .where(lt(dailyGoogleReviews.date, cutoffDateStr));
+    
+    log(`Data retention cleanup completed - removed data older than ${cutoffDateStr}`);
+  } catch (error) {
+    log(`Data retention cleanup error: ${error}`);
+  }
 }
 
 function getNextSyncTime(): Date {
@@ -457,6 +510,26 @@ export async function startScheduler() {
   // Force initial crew sync on startup (bypasses hourly timing check)
   // This ensures production has crew data with positions after deployment
   await forceInitialCrewSync();
+  
+  // Schedule daily data retention cleanup (runs once per day at midnight)
+  scheduleDailyCleanup();
+}
+
+// Schedule data retention cleanup to run daily at midnight
+function scheduleDailyCleanup() {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0); // Next midnight
+  
+  const msUntilMidnight = midnight.getTime() - now.getTime();
+  
+  log(`Data retention cleanup scheduled for midnight (in ${Math.round(msUntilMidnight / 60000)} minutes)`);
+  
+  setTimeout(async () => {
+    await cleanupOldData();
+    // Schedule next cleanup in 24 hours
+    setInterval(cleanupOldData, 24 * 60 * 60 * 1000);
+  }, msUntilMidnight);
 }
 
 // Force crew sync on startup - runs regardless of time

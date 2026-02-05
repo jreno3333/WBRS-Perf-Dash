@@ -2148,9 +2148,11 @@ export async function registerRoutes(
         }
       }
       
-      // Fetch all hourly sales data for the date range
+      // Fetch all hourly sales data for the date range PLUS 7 days before for variance calculation
       // hourlySales uses salesDate (timestamp) - we need to filter by date range
-      const startDateTs = new Date(`${dateRange[0]}T00:00:00Z`);
+      const expandedStartDate = new Date(`${dateRange[0]}T00:00:00Z`);
+      expandedStartDate.setDate(expandedStartDate.getDate() - 7); // Go back 7 days for comparison data
+      const startDateTs = expandedStartDate;
       const endDateTs = new Date(`${dateRange[dateRange.length - 1]}T23:59:59Z`);
       const allHourlySales = await db.select().from(hourlySales)
         .where(and(
@@ -2367,12 +2369,29 @@ export async function registerRoutes(
           // Skip if no sales data for this date
           if (restaurantSales.length === 0) continue;
           
-          // Calculate daily totals using actualSales and pastActualSales
+          // Calculate daily totals using actualSales
           const totalSales = restaurantSales.reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
-          const lastWeekSales = restaurantSales.reduce((sum, s) => sum + parseFloat(s.pastActualSales || "0"), 0);
+          
+          // Calculate variance by looking up actual sales from 7 days ago in our own data
+          // Use America/Chicago timezone for consistent business date handling
+          const centralFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
+          
+          // Parse current date and calculate 7 days ago
+          const [year, month, day] = dateStr.split('-').map(Number);
+          const weekAgoDate = new Date(year, month - 1, day - 7); // month is 0-indexed
+          const weekAgoDateStr = centralFormatter.format(weekAgoDate); // YYYY-MM-DD in Central time
+          
+          const weekAgoSales = allHourlySales
+            .filter(s => {
+              // Extract date portion in Central timezone for consistent comparison
+              const salesDateStr = centralFormatter.format(new Date(s.salesDate));
+              return salesDateStr === weekAgoDateStr && s.restaurantId === restaurant.id;
+            })
+            .reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
+          
           // Handle missing comparison data - if no last week sales, mark as no comparison available
-          const hasComparableSales = lastWeekSales > 0;
-          const salesVariance = hasComparableSales ? ((totalSales - lastWeekSales) / lastWeekSales) * 100 : 0;
+          const hasComparableSales = weekAgoSales > 0;
+          const salesVariance = hasComparableSales ? ((totalSales - weekAgoSales) / weekAgoSales) * 100 : 0;
           
           // Calculate average speed from HME timer data (weighted by car count)
           let avgSpeed: number | undefined;

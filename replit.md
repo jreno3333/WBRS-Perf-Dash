@@ -81,7 +81,8 @@ Preferred communication style: Simple, everyday language.
 - **Grade Scale (Detailed)**: Unified across dashboard and Performance History
   - A+ = 95+, A = 90-94, A- = 85-89, B+ = 80-84, B = 75-79, B- = 70-74
   - C+ = 65-69, C = 60-64, C- = 55-59, D = 50-54, F = below 50
-- **Sales Variance Data**: pastActualSales from 7shifts API represents last week's sales for comparison. POS-sourced current-day data defaults to 0% variance until historical sync populates comparison.
+- **Sales Variance Data**: Sales variance is calculated by comparing current day sales to our own historical data from 7 days ago (not relying on 7shifts pastActualSales). This ensures accurate week-over-week comparisons using our database records.
+- **Data Retention Policy**: All data (sales, labor, HME timer, OSAT, crew, POS orders, Google reviews) is retained for 2 years (730 days). Automatic cleanup runs daily at midnight to remove data older than the retention period.
 
 ## External Dependencies
 
