@@ -1497,6 +1497,104 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to fetch OSAT summary" });
     }
   });
+  
+  // Get category issues for a restaurant on a specific date
+  app.get("/api/osat/category-issues", async (req, res) => {
+    try {
+      const { osatCategoryIssues } = await import("@shared/schema");
+      const { restaurantId, date } = req.query;
+      
+      if (!restaurantId || !date) {
+        return res.status(400).json({ error: "restaurantId and date are required" });
+      }
+      
+      const issues = await db.select()
+        .from(osatCategoryIssues)
+        .where(and(
+          eq(osatCategoryIssues.restaurantId, String(restaurantId)),
+          eq(osatCategoryIssues.date, String(date))
+        ));
+      
+      // Aggregate issues by category
+      const categoryNames: Record<string, string> = {
+        orderAccuracy: 'Order Accuracy',
+        foodQuality: 'Food Quality',
+        menuOptions: 'Menu Options',
+        value: 'Value',
+        easeOfOrdering: 'Ease of Ordering',
+        employeeFriendliness: 'Employee Friendliness',
+        speedOfService: 'Speed of Service',
+        cleanliness: 'Cleanliness',
+        driveThruWaitTime: 'Drive-Thru Wait Time',
+      };
+      
+      // Count low ratings (< 3) per category
+      const categoryIssues: { category: string; lowCount: number; totalCount: number; avgRating: number }[] = [];
+      
+      for (const [key, label] of Object.entries(categoryNames)) {
+        const ratings = issues
+          .map(i => (i as any)[key])
+          .filter((r: any) => r !== null && r !== undefined) as number[];
+        
+        if (ratings.length > 0) {
+          const lowCount = ratings.filter(r => r < 3).length;
+          const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+          
+          if (lowCount > 0 || avgRating < 3) {
+            categoryIssues.push({
+              category: label,
+              lowCount,
+              totalCount: ratings.length,
+              avgRating: Math.round(avgRating * 10) / 10,
+            });
+          }
+        }
+      }
+      
+      // Sort by most issues first
+      categoryIssues.sort((a, b) => b.lowCount - a.lowCount || a.avgRating - b.avgRating);
+      
+      res.json({ 
+        restaurantId, 
+        date, 
+        totalSurveys: issues.length,
+        categoryIssues 
+      });
+    } catch (error) {
+      console.error("Error fetching category issues:", error);
+      res.status(500).json({ error: "Failed to fetch category issues" });
+    }
+  });
+  
+  // Get category issues aggregated for all restaurants on a specific date
+  app.get("/api/osat/category-issues/all", async (req, res) => {
+    try {
+      const { osatCategoryIssues } = await import("@shared/schema");
+      const { date } = req.query;
+      
+      if (!date) {
+        return res.status(400).json({ error: "date is required" });
+      }
+      
+      const issues = await db.select()
+        .from(osatCategoryIssues)
+        .where(eq(osatCategoryIssues.date, String(date)));
+      
+      // Group by restaurant
+      const byRestaurant: Record<string, typeof issues> = {};
+      for (const issue of issues) {
+        if (!byRestaurant[issue.restaurantId]) {
+          byRestaurant[issue.restaurantId] = [];
+        }
+        byRestaurant[issue.restaurantId].push(issue);
+      }
+      
+      res.json({ date, issuesByRestaurant: byRestaurant });
+    } catch (error) {
+      console.error("Error fetching all category issues:", error);
+      res.status(500).json({ error: "Failed to fetch category issues" });
+    }
+  });
 
   // ========== CREW EXPERIENCE ENDPOINTS ==========
   

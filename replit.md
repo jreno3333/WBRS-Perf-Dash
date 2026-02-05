@@ -45,13 +45,19 @@ Preferred communication style: Simple, everyday language.
 - **Google Reviews Integration**: Tracks Google business review ratings using the Google Places API, with badges indicating performance and a scheduled hourly sync.
 - **Qualtrics OSAT Integration**: Collects and processes Qualtrics survey responses via the Imported Data Project (IDP) API to calculate customer satisfaction (OSAT) scores. Surveys are assigned to the correct hour based on transaction time (`d` and `t` fields) for hourly analysis. Features:
   - **Field Mapping**: `s` (store number), `QID1319640445` (satisfaction rating), `d` (transaction date), `t` (transaction time)
+  - **Category Rating Fields**: Tracks specific satisfaction areas from surveys:
+    - `QID1319640443_3` (Order Accuracy), `QID1319640443_8` (Food Quality), `QID1319640443_1` (Menu Options)
+    - `QID1319640443_9` (Value), `QID1319640443_2` (Ease of Ordering), `QID1319640443_11` (Employee Friendliness)
+    - `QID1319640443_10` (Speed of Service), `QID1319640443_12` (Cleanliness), `QID1319640443_14` (Drive-Thru Wait Time)
+  - **Survey Issue Areas**: Displays categories rated less than 3/5 in the Daily Summary for coaching focus
   - **Rating Conversion**: Converts text labels ("Extremely satisfied", "Highly satisfied", etc.) to numeric scores (1-5)
   - **Sync Options**: Regular sync (last 3 days) and historical sync (7+ days) from Settings page
   - **Hourly Granularity**: Tracks OSAT by hour and displays in hourly chart tooltips (green 85%+, yellow 80-85%, red <80%)
   - **Hourly Chart Display**: Purple OSAT legend indicator; tooltip shows "OSAT X% (N)" where N is response count
   - **Scheduled Sync**: Runs every 5 minutes automatically
   - **Summary Cards Display**: Shows aggregate OSAT percentage and response count with color-coded badge (purple for 85%+, yellow for 80-85%, red for <80%)
-  - **Daily Summary Display**: OSAT badge on unit cards, OSAT issues section (hours with <80% OSAT), and OSAT in strengths/concerns with recommendations
+  - **Daily Summary Display**: OSAT badge on unit cards, OSAT issues section (hours with <80% OSAT), survey issue areas for coaching, and OSAT in strengths/concerns with recommendations
+  - **Surveys Received Section**: Shows each hour with surveys, color-coded satisfaction badges, response count, and the leader(s) on duty for recognition/coaching
   - **Aggregated Views**: State/Market summary cards show aggregate OSAT metrics and count of units with low OSAT
 - **Weighted Execution Grading System**: All execution grades use a weighted formula with normalization:
   - **Sales**: 35% weight (100 points if variance >= -5%, 50 points if below)

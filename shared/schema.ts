@@ -535,3 +535,32 @@ export const insertDailyOsatSchema = createInsertSchema(dailyOsat).omit({
 
 export type InsertDailyOsat = z.infer<typeof insertDailyOsatSchema>;
 export type DailyOsat = typeof dailyOsat.$inferSelect;
+
+// OSAT category issues tracking - stores low-rated categories from surveys
+export const osatCategoryIssues = pgTable("osat_category_issues", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  hour: integer("hour").notNull(), // 0-23
+  // Category ratings (1-5 scale, null if not answered)
+  orderAccuracy: integer("order_accuracy"),
+  foodQuality: integer("food_quality"),
+  menuOptions: integer("menu_options"),
+  value: integer("value"),
+  easeOfOrdering: integer("ease_of_ordering"),
+  employeeFriendliness: integer("employee_friendliness"),
+  speedOfService: integer("speed_of_service"),
+  cleanliness: integer("cleanliness"),
+  driveThruWaitTime: integer("drive_thru_wait_time"),
+  overallRating: integer("overall_rating"),
+  transactionId: text("transaction_id"), // Optional: to avoid duplicates
+  syncedAt: timestamp("synced_at").defaultNow(),
+});
+
+export const insertOsatCategoryIssuesSchema = createInsertSchema(osatCategoryIssues).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertOsatCategoryIssues = z.infer<typeof insertOsatCategoryIssuesSchema>;
+export type OsatCategoryIssues = typeof osatCategoryIssues.$inferSelect;

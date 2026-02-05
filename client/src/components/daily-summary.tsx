@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,8 @@ import {
   Building2,
   MapPin,
   Globe,
-  MessageSquare
+  MessageSquare,
+  AlertCircle
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -53,6 +55,13 @@ interface HourlyLeader {
   position: string;
 }
 
+interface CategoryIssue {
+  category: string;
+  lowCount: number;
+  totalCount: number;
+  avgRating: number;
+}
+
 interface UnitInsight {
   restaurantId: string;
   restaurantName: string;
@@ -75,6 +84,7 @@ interface UnitInsight {
   osatPercent?: number;
   osatResponses?: number;
   surveyHours?: { hour: number; percent: number; responses: number; leaders: HourlyLeader[] }[];
+  categoryIssues?: CategoryIssue[];
 }
 
 function getGradeLabel(score: number): { label: string; color: string } {
@@ -644,6 +654,26 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
               </div>
             )}
             
+            {insight.categoryIssues && insight.categoryIssues.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-sm font-medium text-red-600">
+                  <AlertCircle className="w-4 h-4" />
+                  Survey issue areas (rated &lt;3/5)
+                </div>
+                <div className="flex flex-wrap gap-1 pl-5">
+                  {insight.categoryIssues.map((issue, i) => (
+                    <Badge 
+                      key={i}
+                      variant="secondary" 
+                      className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                    >
+                      {issue.category}: {issue.avgRating.toFixed(1)}/5 ({issue.lowCount}/{issue.totalCount} low)
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {insight.staffingIssues.length > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1 text-sm font-medium text-amber-600">
@@ -788,6 +818,80 @@ export function DailySummary({
   selectedDate,
   dateRange
 }: DailySummaryProps) {
+  // Fetch category issues for the selected date
+  const { data: categoryIssuesData } = useQuery<{ 
+    date: string; 
+    issuesByRestaurant: Record<string, { 
+      restaurantId: string;
+      date: string;
+      hour: number;
+      orderAccuracy: number | null;
+      foodQuality: number | null;
+      menuOptions: number | null;
+      value: number | null;
+      easeOfOrdering: number | null;
+      employeeFriendliness: number | null;
+      speedOfService: number | null;
+      cleanliness: number | null;
+      driveThruWaitTime: number | null;
+      overallRating: number | null;
+    }[]> 
+  }>({
+    queryKey: ['/api/osat/category-issues/all', selectedDate],
+    enabled: !!selectedDate,
+  });
+  
+  // Process category issues into a usable format per restaurant
+  const categoryIssuesByRestaurant = useMemo(() => {
+    if (!categoryIssuesData?.issuesByRestaurant) return {};
+    
+    const result: Record<string, CategoryIssue[]> = {};
+    const categoryNames: Record<string, string> = {
+      orderAccuracy: 'Order Accuracy',
+      foodQuality: 'Food Quality',
+      menuOptions: 'Menu Options',
+      value: 'Value',
+      easeOfOrdering: 'Ease of Ordering',
+      employeeFriendliness: 'Employee Friendliness',
+      speedOfService: 'Speed of Service',
+      cleanliness: 'Cleanliness',
+      driveThruWaitTime: 'Drive-Thru Wait Time',
+    };
+    
+    for (const [restaurantId, issues] of Object.entries(categoryIssuesData.issuesByRestaurant)) {
+      const categoryIssues: CategoryIssue[] = [];
+      
+      for (const [key, label] of Object.entries(categoryNames)) {
+        const ratings = issues
+          .map(i => (i as any)[key])
+          .filter((r: any) => r !== null && r !== undefined) as number[];
+        
+        if (ratings.length > 0) {
+          const lowCount = ratings.filter(r => r < 3).length;
+          const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+          
+          if (lowCount > 0 || avgRating < 3) {
+            categoryIssues.push({
+              category: label,
+              lowCount,
+              totalCount: ratings.length,
+              avgRating: Math.round(avgRating * 10) / 10,
+            });
+          }
+        }
+      }
+      
+      // Sort by most issues first
+      categoryIssues.sort((a, b) => b.lowCount - a.lowCount || a.avgRating - b.avgRating);
+      
+      if (categoryIssues.length > 0) {
+        result[restaurantId] = categoryIssues;
+      }
+    }
+    
+    return result;
+  }, [categoryIssuesData]);
+  
   // Format date for display
   const formatDateDisplay = (dateStr: string) => {
     try {
@@ -820,9 +924,13 @@ export function DailySummary({
           insight.marketName = market.name;
         }
       }
+      // Add category issues if available
+      if (categoryIssuesByRestaurant[r.restaurantId]) {
+        insight.categoryIssues = categoryIssuesByRestaurant[r.restaurantId];
+      }
       return insight;
     });
-  }, [restaurants, hourlyByRestaurant, markets]);
+  }, [restaurants, hourlyByRestaurant, markets, categoryIssuesByRestaurant]);
   
   // Aggregate by state
   const stateSummaries = useMemo(() => {

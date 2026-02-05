@@ -1,7 +1,39 @@
 import { db } from "../db";
-import { osatData, dailyOsat, restaurants, locationMapping } from "@shared/schema";
+import { osatData, dailyOsat, restaurants, locationMapping, osatCategoryIssues } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import AdmZip from "adm-zip";
+
+// Category field mappings from Qualtrics survey
+const CATEGORY_FIELDS = {
+  orderAccuracy: 'QID1319640443_3',
+  foodQuality: 'QID1319640443_8',
+  menuOptions: 'QID1319640443_1',
+  value: 'QID1319640443_9',
+  easeOfOrdering: 'QID1319640443_2',
+  employeeFriendliness: 'QID1319640443_11',
+  speedOfService: 'QID1319640443_10',
+  cleanliness: 'QID1319640443_12',
+  driveThruWaitTime: 'QID1319640443_14',
+} as const;
+
+function parseCategoryRating(value: any): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const strVal = String(value).trim();
+  const num = Number(strVal);
+  if (!isNaN(num) && num >= 1 && num <= 5) return num;
+  
+  // Try text conversion
+  const textRating = convertTextToRating(strVal);
+  return textRating;
+}
+
+function parseCategoryRatings(record: IdpRecord): Record<string, number | null> {
+  const ratings: Record<string, number | null> = {};
+  for (const [key, field] of Object.entries(CATEGORY_FIELDS)) {
+    ratings[key] = parseCategoryRating(record[field]);
+  }
+  return ratings;
+}
 
 const QUALTRICS_DATACENTER = "iad1";
 const BASE_URL = `https://${QUALTRICS_DATACENTER}.qualtrics.com/API/v3`;
@@ -449,6 +481,40 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
     hourlyAggregated[hourlyKey].totalResponses++;
     if (rating === 5) {
       hourlyAggregated[hourlyKey].fiveStarCount++;
+    }
+    
+    // Parse and save category ratings for this survey response
+    const categoryRatings = parseCategoryRatings(record);
+    const hasLowRating = Object.values(categoryRatings).some(r => r !== null && r < 3);
+    const hasAnyRating = Object.values(categoryRatings).some(r => r !== null);
+    
+    // Save category data if overall rating is low OR any category has low rating OR any category data exists
+    if (rating < 5 || hasLowRating || hasAnyRating) {
+      const transactionId = record['trans'] || record['transactionId'] || record['transaction_id'] || null;
+      
+      try {
+        await db.insert(osatCategoryIssues).values({
+          restaurantId: restaurant.id,
+          date: dateStr,
+          hour,
+          orderAccuracy: categoryRatings.orderAccuracy,
+          foodQuality: categoryRatings.foodQuality,
+          menuOptions: categoryRatings.menuOptions,
+          value: categoryRatings.value,
+          easeOfOrdering: categoryRatings.easeOfOrdering,
+          employeeFriendliness: categoryRatings.employeeFriendliness,
+          speedOfService: categoryRatings.speedOfService,
+          cleanliness: categoryRatings.cleanliness,
+          driveThruWaitTime: categoryRatings.driveThruWaitTime,
+          overallRating: rating,
+          transactionId: transactionId ? String(transactionId) : null,
+        });
+      } catch (error: any) {
+        // Ignore duplicate key errors for transaction IDs
+        if (!error.message?.includes('duplicate key')) {
+          console.error(`[Qualtrics] Error saving category ratings: ${error.message}`);
+        }
+      }
     }
   }
   
