@@ -347,16 +347,26 @@ async function syncGoogleReviewsIfNeeded() {
   }
 }
 
-// Sync OSAT data every 5 minutes
+// Sync OSAT data once per hour (like Google Reviews)
 async function syncOsatIfNeeded() {
   const now = new Date();
-  const syncKey = `${now.toISOString().split('T')[0]}-${now.getHours()}-${Math.floor(now.getMinutes() / 5)}`;
+  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    hour12: false
+  }).format(now));
   
-  log(`[OSAT Debug] Checking OSAT sync - syncKey: ${syncKey}, lastOsatSync: ${lastOsatSync}`);
+  const currentMinute = now.getMinutes();
   
-  // Don't sync more than once per 5-minute interval
+  // Sync within the first 5 minutes of each hour (scheduler runs every 5 minutes)
+  if (currentMinute > 4) {
+    return;
+  }
+  
+  const syncKey = `${now.toISOString().split('T')[0]}-${centralHour}`;
+  
+  // Don't sync more than once per hour
   if (lastOsatSync === syncKey) {
-    log(`[OSAT Debug] Skipping - already synced this 5-minute window`);
     return;
   }
   
