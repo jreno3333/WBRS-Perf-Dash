@@ -427,10 +427,28 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
   const aggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   const hourlyAggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   
-  // Log first record for debugging
+  // Log date distribution and first record for debugging
   if (records.length > 0) {
     const sample = records[0];
     console.log(`[Qualtrics] Sample record - s: "${sample['s']}", QID1319640445: "${sample['QID1319640445']}", d: "${sample['d']}", t: "${sample['t']}"`);
+    
+    // Count records per date to understand distribution
+    const dateDistribution: Record<string, number> = {};
+    for (const r of records) {
+      const d = r['d'] || 'unknown';
+      dateDistribution[d] = (dateDistribution[d] || 0) + 1;
+    }
+    const sortedDates = Object.entries(dateDistribution).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    console.log(`[Qualtrics] Date distribution (top 10): ${JSON.stringify(sortedDates)}`);
+    
+    // Check specifically for today's date (2026-02-05 or 2/5/2026)
+    const today25Format = '2/5/2026';
+    const todayIsoFormat = '2026-02-05';
+    const todayRecords = records.filter(r => r['d'] === today25Format || r['d'] === todayIsoFormat || r['d'] === '02/05/2026');
+    console.log(`[Qualtrics] Records with today's date (${todayStr}): ${todayRecords.length}`);
+    if (todayRecords.length > 0) {
+      console.log(`[Qualtrics] Today's surveys: ${todayRecords.map(r => `s:${r['s']}, t:${r['t']}, rating:${r['QID1319640445']}`).join(' | ')}`);
+    }
   }
   
   for (const record of records) {
@@ -473,10 +491,17 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
       const mdyMatch = dateOnlyStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (mdyMatch) {
         const [, month, day, year] = mdyMatch;
-        parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        // Use noon (12:00) to avoid timezone boundary issues when formatting
+        parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
       } else {
-        // Try YYYY-MM-DD format
-        parsedDate = new Date(dateOnlyStr);
+        // Try YYYY-MM-DD format - append time to avoid timezone issues
+        const isoMatch = dateOnlyStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoMatch) {
+          const [, year, month, day] = isoMatch;
+          parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+        } else {
+          parsedDate = new Date(dateOnlyStr);
+        }
       }
       
       if (parsedDate && !isNaN(parsedDate.getTime())) {
