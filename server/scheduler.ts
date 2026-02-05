@@ -306,7 +306,6 @@ async function syncCrewExperienceIfNeeded() {
 
 // Track last Google reviews sync to avoid syncing too frequently
 let lastGoogleReviewsSync: string | null = null;
-let lastOsatSync: string | null = null;
 
 // Sync Google reviews once per hour
 async function syncGoogleReviewsIfNeeded() {
@@ -347,29 +346,8 @@ async function syncGoogleReviewsIfNeeded() {
   }
 }
 
-// Sync OSAT data once per hour (like Google Reviews)
+// Sync OSAT data every 5 minutes (same as sales/labor)
 async function syncOsatIfNeeded() {
-  const now = new Date();
-  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
-    timeZone: 'America/Chicago',
-    hour: 'numeric',
-    hour12: false
-  }).format(now));
-  
-  const currentMinute = now.getMinutes();
-  
-  // Sync within the first 5 minutes of each hour (scheduler runs every 5 minutes)
-  if (currentMinute > 4) {
-    return;
-  }
-  
-  const syncKey = `${now.toISOString().split('T')[0]}-${centralHour}`;
-  
-  // Don't sync more than once per hour
-  if (lastOsatSync === syncKey) {
-    return;
-  }
-  
   log("Syncing Qualtrics OSAT data...");
   try {
     const result = await syncOsatData(3); // Sync last 3 days
@@ -377,7 +355,6 @@ async function syncOsatIfNeeded() {
     if (result.errors.length > 0) {
       log(`OSAT sync had ${result.errors.length} errors`);
     }
-    lastOsatSync = syncKey;
   } catch (error) {
     log(`OSAT sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
