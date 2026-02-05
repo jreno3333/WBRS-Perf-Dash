@@ -17,7 +17,8 @@ import {
   FileText,
   Building2,
   MapPin,
-  Globe
+  Globe,
+  MessageSquare
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -73,6 +74,7 @@ interface UnitInsight {
   recommendation: string;
   osatPercent?: number;
   osatResponses?: number;
+  surveyHours?: { hour: number; percent: number; responses: number }[];
 }
 
 function getGradeLabel(score: number): { label: string; color: string } {
@@ -107,6 +109,7 @@ function analyzeUnit(
   const speedIssues: UnitInsight["speedIssues"] = [];
   const osatIssues: UnitInsight["osatIssues"] = [];
   const salesOutliers: UnitInsight["salesOutliers"] = [];
+  const surveyHours: UnitInsight["surveyHours"] = [];
   
   const totalSales = restaurant.actualSales || 0;
   const lastWeekSales = restaurant.lastWeekSales || 0;
@@ -177,6 +180,7 @@ function analyzeUnit(
         osatHoursWithData++;
         totalOsatResponses += hour.osatResponses!;
         osatSum += hour.osatPercent! * hour.osatResponses!;
+        surveyHours!.push({ hour: hour.hour, percent: hour.osatPercent!, responses: hour.osatResponses! });
         if (hour.osatPercent! < 80) { // Below 80% is poor
           lowOsatHours++;
           osatIssues.push({ hour: hour.hour, osatPercent: hour.osatPercent!, responses: hour.osatResponses!, leaders: hourLeaders });
@@ -361,6 +365,7 @@ function analyzeUnit(
     recommendation,
     osatPercent: avgOsatPercent,
     osatResponses: totalOsatResponses > 0 ? totalOsatResponses : undefined,
+    surveyHours: surveyHours.length > 0 ? surveyHours : undefined,
   };
 }
 
@@ -552,7 +557,7 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                       </Badge>
                       {o.leaders.length > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          Leader: {o.leaders.map(l => l.firstName).join(", ")}
+                          {o.leaders.map(l => l.firstName).join(", ")}
                         </span>
                       )}
                     </div>
@@ -578,7 +583,7 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                       </Badge>
                       {s.leaders.length > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          Leader: {s.leaders.map(l => l.firstName).join(", ")}
+                          {s.leaders.map(l => l.firstName).join(", ")}
                         </span>
                       )}
                     </div>
@@ -604,10 +609,30 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                       </Badge>
                       {o.leaders.length > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          Leader: {o.leaders.map(l => l.firstName).join(", ")}
+                          {o.leaders.map(l => l.firstName).join(", ")}
                         </span>
                       )}
                     </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {insight.surveyHours && insight.surveyHours.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-sm font-medium text-purple-600">
+                  <MessageSquare className="w-4 h-4" />
+                  Surveys received ({insight.osatResponses} total)
+                </div>
+                <div className="flex flex-wrap gap-1 pl-5">
+                  {insight.surveyHours.map((s, i) => (
+                    <Badge 
+                      key={i}
+                      variant="secondary" 
+                      className={`text-xs ${s.percent >= 85 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : s.percent >= 80 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
+                    >
+                      {formatHour(s.hour)}: {s.percent.toFixed(0)}% ({s.responses})
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -630,7 +655,7 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                       </Badge>
                       {s.leaders.length > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          Leader: {s.leaders.map(l => l.firstName).join(", ")}
+                          {s.leaders.map(l => l.firstName).join(", ")}
                         </span>
                       )}
                     </div>
