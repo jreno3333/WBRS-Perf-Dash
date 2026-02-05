@@ -2394,7 +2394,8 @@ export async function registerRoutes(
           
           // Parse current date and calculate 7 days ago
           const [year, month, day] = dateStr.split('-').map(Number);
-          const weekAgoDate = new Date(year, month - 1, day - 7); // month is 0-indexed
+          // Use noon to avoid timezone boundary issues when formatting
+          const weekAgoDate = new Date(year, month - 1, day - 7, 12, 0, 0); // month is 0-indexed
           const weekAgoDateStr = centralFormatter.format(weekAgoDate); // YYYY-MM-DD in Central time
           
           const weekAgoSales = allHourlySales
