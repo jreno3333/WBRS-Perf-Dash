@@ -15,6 +15,7 @@ import {
   Users, 
   Clock,
   Target,
+  ThumbsUp,
   FileText,
   Building2,
   MapPin,
@@ -504,8 +505,9 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                 {insight.osatPercent !== undefined && insight.osatResponses && insight.osatResponses > 0 && (
                   <Badge 
                     variant="outline" 
-                    className={`text-xs ${insight.osatPercent >= 85 ? "text-purple-600 border-purple-300" : insight.osatPercent >= 80 ? "text-yellow-600 border-yellow-300" : "text-red-600 border-red-300"}`}
+                    className={`text-xs ${insight.osatPercent >= 85 ? "text-green-600 border-green-300" : insight.osatPercent >= 80 ? "text-yellow-600 border-yellow-300" : "text-red-600 border-red-300"}`}
                   >
+                    <ThumbsUp className="w-3 h-3 mr-1" />
                     OSAT {insight.osatPercent.toFixed(0)}% ({insight.osatResponses})
                   </Badge>
                 )}
@@ -604,8 +606,8 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
             
             {insight.osatIssues && insight.osatIssues.length > 0 && (
               <div className="space-y-1">
-                <div className="flex items-center gap-1 text-sm font-medium text-purple-600">
-                  <Target className="w-4 h-4" />
+                <div className="flex items-center gap-1 text-sm font-medium text-red-600">
+                  <ThumbsUp className="w-4 h-4" />
                   Customer satisfaction issues (&lt;80% OSAT)
                 </div>
                 <div className="space-y-1 pl-5">
@@ -613,7 +615,7 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
                     <div key={i} className="flex items-center gap-2 flex-wrap">
                       <Badge 
                         variant="secondary" 
-                        className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                        className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                       >
                         {formatHour(o.hour)}: {o.osatPercent.toFixed(0)}% ({o.responses} responses)
                       </Badge>
@@ -630,8 +632,8 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
             
             {insight.surveyHours && insight.surveyHours.length > 0 && (
               <div className="space-y-1">
-                <div className="flex items-center gap-1 text-sm font-medium text-purple-600">
-                  <MessageSquare className="w-4 h-4" />
+                <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+                  <ThumbsUp className="w-4 h-4" />
                   Surveys received ({insight.osatResponses} total)
                 </div>
                 <div className="space-y-1 pl-5">
@@ -771,9 +773,9 @@ function AggregatedSummaryCard({ summary, icon }: { summary: AggregatedSummary; 
             {summary.avgOsatPercent !== undefined && summary.totalOsatResponses && summary.totalOsatResponses > 0 && (
               <Badge 
                 variant="secondary" 
-                className={`text-xs ${summary.avgOsatPercent >= 85 ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" : summary.avgOsatPercent >= 80 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
+                className={`text-xs ${summary.avgOsatPercent >= 85 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : summary.avgOsatPercent >= 80 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
               >
-                <Target className="w-3 h-3 mr-1" />
+                <ThumbsUp className="w-3 h-3 mr-1" />
                 OSAT {summary.avgOsatPercent.toFixed(0)}% ({summary.totalOsatResponses})
               </Badge>
             )}
@@ -796,8 +798,8 @@ function AggregatedSummaryCard({ summary, icon }: { summary: AggregatedSummary; 
               </Badge>
             )}
             {summary.lowOsatUnits > 0 && (
-              <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                <Target className="w-3 h-3 mr-1" />
+              <Badge variant="secondary" className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                <ThumbsUp className="w-3 h-3 mr-1" />
                 {summary.lowOsatUnits} low OSAT
               </Badge>
             )}
