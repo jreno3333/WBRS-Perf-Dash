@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -119,6 +119,31 @@ function formatTenure(months: number): string {
   return `${years}y ${remainingMonths}m`;
 }
 
+// Calculate aggregate OSAT for a group of restaurants
+function calculateStateOsat(restaurants: RestaurantSales[]): { osatPercent: number | undefined; totalResponses: number } {
+  let totalResponses = 0;
+  let weightedSum = 0;
+  
+  for (const r of restaurants) {
+    if (r.osat && r.osat.totalResponses > 0) {
+      totalResponses += r.osat.totalResponses;
+      weightedSum += r.osat.osatPercent * r.osat.totalResponses;
+    }
+  }
+  
+  return {
+    osatPercent: totalResponses > 0 ? weightedSum / totalResponses : undefined,
+    totalResponses
+  };
+}
+
+// Get OSAT badge color based on percentage
+function getOsatColor(percent: number): string {
+  if (percent >= 85) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+  if (percent >= 80) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+}
+
 export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }: StateBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -172,6 +197,10 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
     tennesseeRestaurants.map(r => r.restaurantId),
     crewSummary
   );
+  
+  // Calculate OSAT for each state
+  const alabamaOsat = calculateStateOsat(alabamaRestaurants);
+  const tennesseeOsat = calculateStateOsat(tennesseeRestaurants);
 
   const getGradeColor = (grade: string) => {
     if (grade === 'A+' || grade === 'A') return 'text-green-600 dark:text-green-400 bg-green-500/20 border-green-500/50';
@@ -198,6 +227,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
       isAhead: alabamaVariance >= 0,
       xScore: alabamaXScore,
       crewScore: alabamaCrewScore,
+      osat: alabamaOsat,
     },
     {
       name: "Tennessee",
@@ -210,6 +240,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
       isAhead: tennesseeVariance >= 0,
       xScore: tennesseeXScore,
       crewScore: tennesseeCrewScore,
+      osat: tennesseeOsat,
     },
   ];
 
@@ -252,6 +283,21 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
                   </div>
                   <div className="text-xs text-muted-foreground">ahead of LW</div>
                 </div>
+                {state.osat.osatPercent !== undefined && (
+                  <div className="relative group">
+                    <Badge 
+                      className={`${getOsatColor(state.osat.osatPercent)} border-0 gap-1 cursor-help`}
+                      data-testid={`badge-osat-state-${state.abbr.toLowerCase()}`}
+                    >
+                      <ThumbsUp className="w-3 h-3" />
+                      <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
+                    </Badge>
+                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                      <div className="font-medium">Customer Satisfaction</div>
+                      <div className="text-muted-foreground">{state.osat.totalResponses} responses</div>
+                    </div>
+                  </div>
+                )}
                 {state.crewScore.count > 0 && (
                   <div className="relative group">
                     <Badge 
