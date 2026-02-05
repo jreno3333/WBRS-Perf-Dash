@@ -2179,6 +2179,13 @@ export async function registerRoutes(
           lte(hmeTimerData.date, dateRange[dateRange.length - 1])
         ));
       
+      // Fetch hourly crew data for experience scores (XP)
+      const allCrewData = await db.select().from(hourlyCrew)
+        .where(and(
+          gte(hourlyCrew.date, dateRange[0]),
+          lte(hourlyCrew.date, dateRange[dateRange.length - 1])
+        ));
+      
       // Get all restaurants
       const restaurantList = await storage.getRestaurants();
       
@@ -2290,6 +2297,7 @@ export async function registerRoutes(
         staffingDiff: number;
         osatPercent?: number;
         osatResponses?: number;
+        avgXp?: number; // Average experience score for the day (0-100)
       };
       
       type RestaurantHistory = {
@@ -2307,6 +2315,7 @@ export async function registerRoutes(
         avgStaffingDiff: number;
         avgOsat?: number;
         totalOsatResponses: number;
+        avgXp?: number; // Average experience score across all days (0-100)
         gradeImprovement: number; // Trend: positive = improving
       };
       
@@ -2332,6 +2341,7 @@ export async function registerRoutes(
         const laborForDate = allHourlyLabor.filter(l => l.date.startsWith(dateStr));
         const osatForDate = allOsatData.filter(o => o.date === dateStr);
         const hmeForDate = allHmeData.filter(h => h.date === dateStr);
+        const crewForDate = allCrewData.filter(c => c.date === dateStr);
         
         // Group by restaurant
         const salesByRestaurant = new Map<string, typeof salesForDate>();
@@ -2347,6 +2357,7 @@ export async function registerRoutes(
           const restaurantLabor = laborForDate.filter(l => l.restaurantId === restaurant.id);
           const restaurantOsat = osatForDate.find(o => o.restaurantId === restaurant.id);
           const restaurantHme = hmeForDate.filter(h => h.restaurantId === restaurant.id);
+          const restaurantCrew = crewForDate.filter(c => c.restaurantId === restaurant.id);
           
           // Skip if no sales data for this date
           if (restaurantSales.length === 0) continue;
@@ -2396,6 +2407,14 @@ export async function registerRoutes(
           const osatPercent = restaurantOsat?.osatPercent ? parseFloat(restaurantOsat.osatPercent) : undefined;
           const osatResponses = restaurantOsat?.totalResponses ?? 0;
           
+          // Calculate average experience score (XP) from crew data
+          let avgXp: number | undefined;
+          const crewWithXp = restaurantCrew.filter(c => c.experienceScore !== null && c.experienceScore !== undefined && c.experienceScore > 0);
+          if (crewWithXp.length > 0) {
+            const totalXp = crewWithXp.reduce((sum, c) => sum + (c.experienceScore || 0), 0);
+            avgXp = totalXp / crewWithXp.length;
+          }
+          
           // Determine if this is a first-week unit (opened within the past 7 days from the date being graded)
           const gradeDate = new Date(dateStr);
           const openDate = restaurant.openDate ? new Date(restaurant.openDate) : null;
@@ -2433,6 +2452,7 @@ export async function registerRoutes(
               avgStaffingDiff: 0,
               avgOsat: undefined,
               totalOsatResponses: 0,
+              avgXp: undefined,
               gradeImprovement: 0,
             });
           }
@@ -2447,6 +2467,7 @@ export async function registerRoutes(
             staffingDiff,
             osatPercent,
             osatResponses,
+            avgXp,
           });
         }
       }
@@ -2481,6 +2502,12 @@ export async function registerRoutes(
         const speedGrades = grades.filter(g => g.avgSpeed !== undefined);
         if (speedGrades.length > 0) {
           history.avgSpeed = speedGrades.reduce((sum, g) => sum + g.avgSpeed!, 0) / speedGrades.length;
+        }
+        
+        // Calculate average XP (experience score)
+        const xpGrades = grades.filter(g => g.avgXp !== undefined);
+        if (xpGrades.length > 0) {
+          history.avgXp = xpGrades.reduce((sum, g) => sum + g.avgXp!, 0) / xpGrades.length;
         }
         
         // Calculate grade improvement (last half vs first half)

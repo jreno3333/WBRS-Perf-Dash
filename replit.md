@@ -67,12 +67,16 @@ Preferred communication style: Simple, everyday language.
   - Weights are normalized based on available components, so a restaurant without OSAT data is graded fairly against its available metrics
 - **People Tenure & Performance**: Tracks employee tenure, experience levels, and manager performance based on 7shifts data and time punches. Calculates an "Experience Score" and ranks leaders by average execution grade during their shifts.
 - **Performance History**: Displays historical performance trends over configurable date ranges (7/14/30 days) at /history. Features:
-  - Date range selector for viewing different time periods
+  - Date range selector for viewing different time periods (uses last N days with actual data, not calendar days)
   - State and market filters for focused analysis
   - Company, state, and market summary cards showing aggregate grades
-  - Expandable restaurant cards with daily grade timelines
+  - Expandable restaurant cards with daily grade timelines (shows all 7/14/30 days)
+  - Six metrics in expanded view: Avg Grade, Total Sales, Avg Speed, OSAT, Avg XP, Grade Trend
   - Grade calculation aligned with dashboard logic including hasComparableSales, isFirstWeek handling, and sales surge exception
-  - Speed metrics from HME timer data, OSAT from Qualtrics surveys
+  - Speed metrics from HME timer data (color-coded: green <5min, yellow 5-7min, red >7min)
+  - OSAT from Qualtrics surveys
+  - XP (experience score) from hourly_crew data (color-coded: green 85+, yellow 70-84, orange 50-69, red <50)
+  - Grade Trend shows improvement comparing second half to first half of the date range
   - Note: Server-side staffing calculation uses labor cost variance as proxy (differs slightly from client headcount-based labor model)
 
 ## External Dependencies
