@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap } from "lucide-react";
+import { TrendingUp, TrendingDown, GraduationCap, ThumbsUp } from "lucide-react";
 import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -105,6 +105,31 @@ function formatTenure(months: number): string {
   return `${years}y ${remainingMonths}m`;
 }
 
+// Calculate aggregate OSAT for a group of restaurants
+function calculateMarketOsat(marketRestaurants: RestaurantSales[]): { osatPercent: number | undefined; totalResponses: number } {
+  let totalResponses = 0;
+  let weightedSum = 0;
+  
+  for (const r of marketRestaurants) {
+    if (r.osat && r.osat.totalResponses > 0) {
+      totalResponses += r.osat.totalResponses;
+      weightedSum += r.osat.osatPercent * r.osat.totalResponses;
+    }
+  }
+  
+  return {
+    osatPercent: totalResponses > 0 ? weightedSum / totalResponses : undefined,
+    totalResponses
+  };
+}
+
+// Get OSAT badge color based on percentage
+function getOsatColor(percent: number): string {
+  if (percent >= 85) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+  if (percent >= 80) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+}
+
 export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary }: MarketBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -128,6 +153,7 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
     
     const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant);
     const crewScore = calculateMarketCrewScore(marketRestaurantIds, crewSummary);
+    const osat = calculateMarketOsat(marketRestaurants);
     
     return {
       id: market.id,
@@ -141,6 +167,7 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
       isAhead: variance >= 0,
       xScore,
       crewScore,
+      osat,
     };
   }).filter(m => m.totalCount > 0);
 
@@ -203,6 +230,21 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
                   </div>
                   <div className="text-xs text-muted-foreground">ahead of LW</div>
                 </div>
+                {market.osat.osatPercent !== undefined && (
+                  <div className="relative group">
+                    <Badge 
+                      className={`${getOsatColor(market.osat.osatPercent)} border-0 gap-1 cursor-help`}
+                      data-testid={`badge-osat-market-${market.id}`}
+                    >
+                      <ThumbsUp className="w-3 h-3" />
+                      <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
+                    </Badge>
+                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                      <div className="font-medium">Customer Satisfaction</div>
+                      <div className="text-muted-foreground">{market.osat.totalResponses} responses</div>
+                    </div>
+                  </div>
+                )}
                 {market.crewScore.count > 0 && (
                   <div className="relative group">
                     <Badge 
