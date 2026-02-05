@@ -31,6 +31,10 @@ Preferred communication style: Simple, everyday language.
 - **Validation**: Zod schemas via drizzle-zod
 - **Migrations**: Drizzle Kit
 - **Data Separation Architecture**: Data is segmented into distinct tables (e.g., `pos_orders`, `hourly_sales`, `hourly_labor`, `hme_timer_data`, `daily_weather`) to ensure isolation and multi-app compatibility, allowing independent querying of specific data domains.
+- **Labor vs Crew Data**: Two distinct metrics tracked separately:
+  - `hourly_labor.employee_count`: Fractional labor hours worked during the hour (e.g., 9.5 means 9.5 total hours worked)
+  - `hourly_crew.crew_count` + `tenure_mix`: Unique individuals clocked in during the hour (headcount)
+  - These differ during shift changes when employees work partial hours (e.g., 13 people may contribute only 9.5 total hours)
 
 ### Key Features
 - **Map Page**: Interactive map displaying restaurant locations with sales performance indicators and real-time weather data.
