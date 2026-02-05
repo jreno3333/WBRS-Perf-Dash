@@ -89,7 +89,7 @@ export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "alabama" | "tennessee" | "overstaffed" | "understaffed" | "missing_manager" | "dt_time" | "xscore">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
@@ -269,29 +269,23 @@ export default function Dashboard() {
         // Then, apply sort-based filters
         .filter((r) => {
           switch (sortBy) {
-            case "alabama":
-              // Only Alabama (Central timezone) stores
-              return r.timezone?.includes("Chicago");
-            case "tennessee":
-              // Only Tennessee (Eastern timezone) stores
-              return r.timezone?.includes("New_York");
             case "new_unit":
               // Only new units
               return r.status === "new";
-            case "overstaffed":
-              // Only overstaffed units (missing labor target)
-              return !r.willHitLaborTarget;
-            case "understaffed":
-              // Only understaffed units (very low labor %)
-              return (r.projectedLaborPercent || 0) < 15;
             case "missing_manager":
               // Only units missing manager
               return hasMissingManager(r.restaurantId);
             case "dt_time":
               // Only units with drive-thru data
               return r.driveThru != null;
+            case "google_reviews":
+              // Only units with Google Reviews data
+              return r.googleReviews != null;
+            case "osat":
+              // Only units with OSAT data
+              return r.osat != null && r.osat.totalResponses > 0;
             default:
-              return true; // No filter for sales/variance
+              return true; // No filter for sales/variance/xscore
           }
         })
         // Then sort
@@ -309,12 +303,6 @@ export default function Dashboard() {
               const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
               const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
               return bVariance - aVariance;
-            case "overstaffed":
-              // Sort by projected labor % descending (highest labor % first)
-              return (b.projectedLaborPercent || 0) - (a.projectedLaborPercent || 0);
-            case "understaffed":
-              // Sort by projected labor % ascending (lowest labor % first)
-              return (a.projectedLaborPercent || 0) - (b.projectedLaborPercent || 0);
             case "dt_time":
               // Sort by drive-thru service time ascending (fastest first)
               const aTime = a.driveThru?.avgServiceTime ?? Infinity;
@@ -328,6 +316,16 @@ export default function Dashboard() {
               const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId], aLocalCutoff);
               const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId], bLocalCutoff);
               return bScore - aScore;
+            case "google_reviews":
+              // Sort by Google rating descending (highest first)
+              const aRating = a.googleReviews?.rating ?? 0;
+              const bRating = b.googleReviews?.rating ?? 0;
+              return bRating - aRating;
+            case "osat":
+              // Sort by OSAT percentage descending (highest first)
+              const aOsat = a.osat?.osatPercent ?? 0;
+              const bOsat = b.osat?.osatPercent ?? 0;
+              return bOsat - aOsat;
             default:
               // Default sort by actualSales (total sales so far today)
               return b.actualSales - a.actualSales;
@@ -553,13 +551,11 @@ export default function Dashboard() {
                           <SelectItem value="sales">Total Sales</SelectItem>
                           <SelectItem value="variance">% vs LW</SelectItem>
                           <SelectItem value="new_unit">New Units</SelectItem>
-                          <SelectItem value="alabama">Alabama</SelectItem>
-                          <SelectItem value="tennessee">Tennessee</SelectItem>
-                          <SelectItem value="overstaffed">Overstaffed</SelectItem>
-                          <SelectItem value="understaffed">Understaffed</SelectItem>
                           <SelectItem value="missing_manager">Missing Mgr</SelectItem>
                           <SelectItem value="dt_time">DT Time</SelectItem>
                           <SelectItem value="xscore">Exc Score</SelectItem>
+                          <SelectItem value="google_reviews">Google Rating</SelectItem>
+                          <SelectItem value="osat">OSAT</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
