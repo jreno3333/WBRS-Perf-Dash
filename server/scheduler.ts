@@ -352,8 +352,11 @@ async function syncOsatIfNeeded() {
   const now = new Date();
   const syncKey = `${now.toISOString().split('T')[0]}-${now.getHours()}-${Math.floor(now.getMinutes() / 5)}`;
   
+  log(`[OSAT Debug] Checking OSAT sync - syncKey: ${syncKey}, lastOsatSync: ${lastOsatSync}`);
+  
   // Don't sync more than once per 5-minute interval
   if (lastOsatSync === syncKey) {
+    log(`[OSAT Debug] Skipping - already synced this 5-minute window`);
     return;
   }
   
