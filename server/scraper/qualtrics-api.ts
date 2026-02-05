@@ -463,6 +463,8 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
       dateStr = centralDate.format(timestamp);
       const centralHour = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false });
       hour = parseInt(centralHour.format(timestamp), 10);
+      // Intl can return 24 for midnight - convert to 0
+      if (hour === 24) hour = 0;
     }
     
     const dailyKey = `${restaurant.id}|${dateStr}`;

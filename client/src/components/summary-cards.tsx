@@ -104,6 +104,22 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
 
   // Exclude training units from totals
   const activeRestaurants = restaurants.filter(r => r.status !== "training");
+  
+  // Calculate OSAT totals from restaurant-level daily data (not hourly)
+  // This ensures we count all surveys regardless of whether there's hourly sales data
+  const dailyOsatTotals = activeRestaurants.reduce((acc, r) => {
+    const osat = (r as any).osat;
+    if (osat && osat.totalResponses > 0) {
+      acc.totalResponses += osat.totalResponses;
+      acc.fiveStarCount += osat.fiveStarCount;
+      acc.restaurantsWithOsat++;
+    }
+    return acc;
+  }, { totalResponses: 0, fiveStarCount: 0, restaurantsWithOsat: 0 });
+  const dailyOsatPercent = dailyOsatTotals.totalResponses > 0 
+    ? (dailyOsatTotals.fiveStarCount / dailyOsatTotals.totalResponses) * 100 
+    : 0;
+  
   // Use actualSales and actualLastWeekSales (all available hours) for display to match 7shifts
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
   const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
@@ -399,15 +415,15 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     </PopoverContent>
                   </Popover>
                 )}
-                {totalOsatHours > 0 && (
+                {dailyOsatTotals.totalResponses > 0 && (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <span className={`font-medium cursor-help ${osatGoodPct >= 85 ? 'text-purple-600 dark:text-purple-400' : osatGoodPct >= 70 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                        OSAT: {osatGoodPct}% ({totalOsatResponses})
+                      <span className={`font-medium cursor-help ${dailyOsatPercent >= 85 ? 'text-purple-600 dark:text-purple-400' : dailyOsatPercent >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                        OSAT: {Math.round(dailyOsatPercent)}% ({dailyOsatTotals.totalResponses})
                       </span>
                     </PopoverTrigger>
                     <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
-                      % of hours with 85%+ customer satisfaction ({totalOsatResponses} survey responses)
+                      Customer satisfaction rate ({dailyOsatTotals.totalResponses} survey responses from {dailyOsatTotals.restaurantsWithOsat} restaurants)
                     </PopoverContent>
                   </Popover>
                 )}
