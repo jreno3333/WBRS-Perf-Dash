@@ -376,24 +376,24 @@ export default function Dashboard() {
                   Live
                 </Badge>
               )}
-              <Link href="/map">
-                <Button variant="ghost" size="icon" data-testid="link-map">
-                  <MapPin className="h-5 w-5" />
-                </Button>
-              </Link>
               <Link href="/dashboard-view">
-                <Button variant="ghost" size="icon" data-testid="link-dashboard-view">
+                <Button variant="ghost" size="icon" data-testid="link-dashboard-view" title="Daily Performance">
                   <Grid3X3 className="h-5 w-5" />
                 </Button>
               </Link>
+              <Link href="/history">
+                <Button variant="ghost" size="icon" data-testid="link-history" title="Performance Trends">
+                  <TrendingUp className="h-5 w-5" />
+                </Button>
+              </Link>
               <Link href="/crew">
-                <Button variant="ghost" size="icon" data-testid="link-crew">
+                <Button variant="ghost" size="icon" data-testid="link-crew" title="People">
                   <Users className="h-5 w-5" />
                 </Button>
               </Link>
-              <Link href="/history">
-                <Button variant="ghost" size="icon" data-testid="link-history">
-                  <TrendingUp className="h-5 w-5" />
+              <Link href="/map">
+                <Button variant="ghost" size="icon" data-testid="link-map" title="Map">
+                  <MapPin className="h-5 w-5" />
                 </Button>
               </Link>
               <ThemeToggle />
