@@ -5,8 +5,8 @@ import { syncOsatData } from "./scraper/qualtrics-api";
 import { sendDailyReports } from "./daily-report";
 import { sendLeaderReports } from "./leader-report";
 import { db } from "./db";
-import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews } from "@shared/schema";
-import { sql, isNotNull, lt } from "drizzle-orm";
+import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews, reportSchedules } from "@shared/schema";
+import { sql, isNotNull, lt, eq } from "drizzle-orm";
 import { storage } from "./storage";
 
 // Data retention period: 2 years (730 days)
@@ -192,39 +192,78 @@ async function runScheduledSync() {
 let lastYesterdaySync: string | null = null;
 let lastWeatherSave: string | null = null;
 let lastDailyReportSend: string | null = null;
+let lastLeaderReportSend: string | null = null;
 
-async function sendDailyReportsIfNeeded() {
-  const now = new Date();
+function getCentralTime(now: Date) {
   const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
     timeZone: 'America/Chicago',
     hour: 'numeric',
     hour12: false
   }).format(now));
-  
-  if (centralHour !== 6) return;
-  
-  const currentMinute = now.getMinutes();
-  if (currentMinute > 9) return;
-  
-  const syncKey = now.toISOString().split('T')[0];
-  if (lastDailyReportSend === syncKey) return;
-  
-  lastDailyReportSend = syncKey;
-  
-  log("Sending daily performance reports...");
-  try {
-    const result = await sendDailyReports();
-    log(`Daily reports: ${result.sent} sent, ${result.failed} failed`);
-  } catch (error) {
-    log(`Daily report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+  const centralMinute = parseInt(new Intl.DateTimeFormat('en-US', { 
+    timeZone: 'America/Chicago',
+    minute: 'numeric'
+  }).format(now));
+  const centralDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  return { hour: centralHour, minute: centralMinute, date: centralDate };
+}
 
-  log("Sending leader ranking reports...");
+function isWithinSendWindow(currentHour: number, currentMinute: number, targetHour: number, targetMinute: number): boolean {
+  const currentTotalMinutes = currentHour * 60 + currentMinute;
+  const targetTotalMinutes = targetHour * 60 + targetMinute;
+  return currentTotalMinutes >= targetTotalMinutes && currentTotalMinutes < targetTotalMinutes + 10;
+}
+
+async function sendDailyReportsIfNeeded() {
+  const now = new Date();
+  const { hour: centralHour, minute: centralMinute, date: centralDate } = getCentralTime(now);
+
   try {
-    const leaderResult = await sendLeaderReports();
-    log(`Leader reports: ${leaderResult.sent} sent, ${leaderResult.failed} failed`);
+    const schedules = await db.select().from(reportSchedules);
+    
+    const dailySchedule = schedules.find(s => s.reportType === 'daily_report');
+    const leaderSchedule = schedules.find(s => s.reportType === 'leader_report');
+
+    const dailyHour = dailySchedule?.sendHour ?? 6;
+    const dailyMinute = dailySchedule?.sendMinute ?? 0;
+    const dailyEnabled = dailySchedule?.isEnabled ?? true;
+
+    const leaderHour = leaderSchedule?.sendHour ?? 6;
+    const leaderMinute = leaderSchedule?.sendMinute ?? 0;
+    const leaderEnabled = leaderSchedule?.isEnabled ?? true;
+
+    if (dailyEnabled && isWithinSendWindow(centralHour, centralMinute, dailyHour, dailyMinute)) {
+      if (lastDailyReportSend !== centralDate) {
+        lastDailyReportSend = centralDate;
+        log("Sending daily performance reports...");
+        try {
+          const result = await sendDailyReports();
+          log(`Daily reports: ${result.sent} sent, ${result.failed} failed`);
+        } catch (error) {
+          log(`Daily report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+    }
+
+    if (leaderEnabled && isWithinSendWindow(centralHour, centralMinute, leaderHour, leaderMinute)) {
+      if (lastLeaderReportSend !== centralDate) {
+        lastLeaderReportSend = centralDate;
+        log("Sending leader ranking reports...");
+        try {
+          const leaderResult = await sendLeaderReports();
+          log(`Leader reports: ${leaderResult.sent} sent, ${leaderResult.failed} failed`);
+        } catch (error) {
+          log(`Leader report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+    }
   } catch (error) {
-    log(`Leader report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    log(`Report schedule check error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 

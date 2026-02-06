@@ -113,7 +113,8 @@ Preferred communication style: Simple, everyday language.
 - **Auth Files**: `server/routes.ts` (auth endpoints), `client/src/pages/login.tsx` (login UI), `client/src/App.tsx` (AuthGuard wrapper).
 
 ### Daily Report Emails
-- **Scheduler**: Sends daily performance summary emails at 6:00 AM Central using `server/scheduler.ts` and `server/daily-report.ts`.
+- **Scheduler**: Sends daily performance summary and leader ranking emails at configurable times (Central Time) using `server/scheduler.ts`, `server/daily-report.ts`, and `server/leader-report.ts`. Default: 6:00 AM Central for both reports. Configurable via Settings page using `report_schedules` table.
+- **Report Schedule Config**: `report_schedules` table stores `report_type` (daily_report/leader_report), `send_hour`, `send_minute`, `is_enabled`. API: GET/PATCH `/api/report-schedules`.
 - **Subscribers**: Managed in Settings page (`/settings`). Supports name, email, active/paused status.
 - **Deduplication**: Uses `email_send_log` table to prevent duplicate sends per report date.
 - **Email Service**: `server/email.ts` wraps Resend API. Requires `RESEND_API_KEY` secret. Uses `RESEND_FROM_EMAIL` or defaults to `onboarding@resend.dev`.

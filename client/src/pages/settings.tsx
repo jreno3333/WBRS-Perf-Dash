@@ -361,6 +361,8 @@ export default function SettingsPage() {
 
           <EmailSubscribersCard />
 
+          <ReportScheduleCard />
+
           <LeaderReportCard />
         </div>
       </main>
@@ -1928,6 +1930,129 @@ function LeaderReportCard() {
               </div>
             )}
           </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface ReportSchedule {
+  id: string;
+  reportType: string;
+  sendHour: number;
+  sendMinute: number;
+  isEnabled: boolean;
+  updatedAt: string | null;
+}
+
+function ReportScheduleCard() {
+  const { toast } = useToast();
+
+  const { data: schedules, isLoading } = useQuery<ReportSchedule[]>({
+    queryKey: ["/api/report-schedules"],
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ reportType, sendHour, sendMinute, isEnabled }: { reportType: string; sendHour?: number; sendMinute?: number; isEnabled?: boolean }) => {
+      return apiRequest("PATCH", `/api/report-schedules/${reportType}`, { sendHour, sendMinute, isEnabled });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/report-schedules"] });
+      toast({ title: "Schedule updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to update schedule", variant: "destructive" });
+    },
+  });
+
+  const dailySchedule = schedules?.find(s => s.reportType === 'daily_report');
+  const leaderSchedule = schedules?.find(s => s.reportType === 'leader_report');
+
+  const formatTime = (hour: number, minute: number) => {
+    const h = hour.toString().padStart(2, '0');
+    const m = minute.toString().padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const handleTimeChange = (reportType: string, timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+      updateMutation.mutate({ reportType, sendHour: h, sendMinute: m });
+    }
+  };
+
+  const handleToggle = (reportType: string, checked: boolean) => {
+    updateMutation.mutate({ reportType, isEnabled: checked });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Report Send Schedule
+          </CardTitle>
+          <CardDescription>Configure when daily and leader ranking reports are sent (Central Time).</CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading schedules...</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-4 p-3 border rounded-md" data-testid="schedule-daily-report">
+              <div className="flex items-center gap-3 min-w-0">
+                <Checkbox
+                  checked={dailySchedule?.isEnabled ?? true}
+                  onCheckedChange={(checked) => handleToggle('daily_report', checked === true)}
+                  data-testid="checkbox-daily-report-enabled"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Daily Performance Report</p>
+                  <p className="text-xs text-muted-foreground">Summary of yesterday's sales, grades, and insights</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Send at</Label>
+                <Input
+                  type="time"
+                  className="w-28"
+                  value={formatTime(dailySchedule?.sendHour ?? 6, dailySchedule?.sendMinute ?? 0)}
+                  onChange={(e) => handleTimeChange('daily_report', e.target.value)}
+                  disabled={!(dailySchedule?.isEnabled ?? true)}
+                  data-testid="input-daily-report-time"
+                />
+                <span className="text-xs text-muted-foreground">CT</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 p-3 border rounded-md" data-testid="schedule-leader-report">
+              <div className="flex items-center gap-3 min-w-0">
+                <Checkbox
+                  checked={leaderSchedule?.isEnabled ?? true}
+                  onCheckedChange={(checked) => handleToggle('leader_report', checked === true)}
+                  data-testid="checkbox-leader-report-enabled"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Leader Rankings Report</p>
+                  <p className="text-xs text-muted-foreground">Top 10 leaders and per-store rankings</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Send at</Label>
+                <Input
+                  type="time"
+                  className="w-28"
+                  value={formatTime(leaderSchedule?.sendHour ?? 6, leaderSchedule?.sendMinute ?? 0)}
+                  onChange={(e) => handleTimeChange('leader_report', e.target.value)}
+                  disabled={!(leaderSchedule?.isEnabled ?? true)}
+                  data-testid="input-leader-report-time"
+                />
+                <span className="text-xs text-muted-foreground">CT</span>
+              </div>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db, posDb } from "./db";
-import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets, dailyOsat, hmeTimerData, osatData as osatDataTable, users, magicLinkTokens, emailSubscribers, emailSendLog } from "@shared/schema";
+import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets, dailyOsat, hmeTimerData, osatData as osatDataTable, users, magicLinkTokens, emailSubscribers, emailSendLog, reportSchedules } from "@shared/schema";
 import { desc, sql, gte, lte, lt, and, eq, isNull } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getAllHourlyPosSales } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
@@ -3441,6 +3441,54 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error sending daily report:", error);
       res.status(500).json({ error: "Failed to send daily report" });
+    }
+  });
+
+  // Report schedule configuration
+  app.get("/api/report-schedules", async (req, res) => {
+    try {
+      const schedules = await db.select().from(reportSchedules);
+      res.json(schedules);
+    } catch (error) {
+      console.error("Error fetching report schedules:", error);
+      res.status(500).json({ error: "Failed to fetch report schedules" });
+    }
+  });
+
+  app.patch("/api/report-schedules/:reportType", async (req, res) => {
+    try {
+      const { reportType } = req.params;
+      const validTypes = ['daily_report', 'leader_report'];
+      if (!validTypes.includes(reportType)) {
+        return res.status(400).json({ error: "Invalid report type" });
+      }
+
+      const { sendHour, sendMinute, isEnabled } = req.body;
+      
+      if (sendHour !== undefined && (typeof sendHour !== 'number' || sendHour < 0 || sendHour > 23)) {
+        return res.status(400).json({ error: "sendHour must be 0-23" });
+      }
+      if (sendMinute !== undefined && (typeof sendMinute !== 'number' || sendMinute < 0 || sendMinute > 59)) {
+        return res.status(400).json({ error: "sendMinute must be 0-59" });
+      }
+
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (sendHour !== undefined) updates.sendHour = sendHour;
+      if (sendMinute !== undefined) updates.sendMinute = sendMinute;
+      if (isEnabled !== undefined) updates.isEnabled = !!isEnabled;
+
+      const result = await db.update(reportSchedules)
+        .set(updates)
+        .where(eq(reportSchedules.reportType, reportType))
+        .returning();
+      
+      if (result.length === 0) {
+        return res.status(404).json({ error: "Schedule not found" });
+      }
+      res.json(result[0]);
+    } catch (error) {
+      console.error("Error updating report schedule:", error);
+      res.status(500).json({ error: "Failed to update report schedule" });
     }
   });
 
