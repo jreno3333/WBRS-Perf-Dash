@@ -1789,7 +1789,8 @@ export async function registerRoutes(
         .where(
           and(
             eq(employees.active, true),
-            sql`(${employees.position} ILIKE '%manager%' OR ${employees.position} ILIKE '%supervisor%' OR ${employees.type} IN ('manager', 'asst_manager'))`
+            sql`(${employees.position} ILIKE '%manager%' OR ${employees.position} ILIKE '%supervisor%' OR ${employees.type} IN ('manager', 'asst_manager'))`,
+            sql`${employees.position} NOT ILIKE '%team member trainer%'`
           )
         );
       
