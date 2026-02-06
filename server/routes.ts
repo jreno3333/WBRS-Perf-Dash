@@ -199,7 +199,13 @@ export async function registerRoutes(
       req.session.userId = user.id;
       req.session.email = user.email || tokenRecord.email;
 
-      return res.redirect("/");
+      req.session.save((err) => {
+        if (err) {
+          console.error("[auth] Session save error:", err);
+          return res.redirect("/login?error=server");
+        }
+        return res.redirect("/");
+      });
     } catch (error) {
       console.error("[auth] Verify error:", error);
       return res.redirect("/login?error=server");
