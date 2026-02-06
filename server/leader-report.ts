@@ -155,7 +155,11 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
     const leaderEmployees = await db.select().from(employees).where(
-      inArray(employees.type, ["manager", "asst_manager"])
+      and(
+        eq(employees.active, true),
+        sql`(${employees.position} ILIKE '%manager%' OR ${employees.position} ILIKE '%supervisor%' OR ${employees.type} IN ('manager', 'asst_manager'))`,
+        sql`${employees.position} NOT ILIKE '%team member trainer%'`
+      )
     );
 
     if (leaderEmployees.length === 0) return null;
