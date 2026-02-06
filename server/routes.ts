@@ -3328,28 +3328,49 @@ export async function registerRoutes(
   });
 
   app.post("/api/email-subscribers", async (req, res) => {
+    const { email, name, isActive, reportTime, reportTypes } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const validTypes = ['daily_report', 'leader_report'];
+    const requestedTypes = Array.isArray(reportTypes)
+      ? reportTypes.filter((t: string) => validTypes.includes(t))
+      : ['daily_report', 'leader_report'];
+
     try {
-      const { email, name, isActive, reportTime, reportTypes } = req.body;
-      if (!email) {
-        return res.status(400).json({ error: "Email is required" });
-      }
-      const values: Record<string, any> = {
-        email: email.trim().toLowerCase(),
-        name: name || null,
-        isActive: isActive !== false,
-        reportTime: reportTime || "06:00",
-      };
-      if (Array.isArray(reportTypes)) {
-        const validTypes = ['daily_report', 'leader_report'];
-        values.reportTypes = reportTypes.filter((t: string) => validTypes.includes(t));
-      }
       const [subscriber] = await db.insert(emailSubscribers)
-        .values(values)
+        .values({
+          email: normalizedEmail,
+          name: name || null,
+          isActive: isActive !== false,
+          reportTime: reportTime || "06:00",
+          reportTypes: requestedTypes,
+        })
         .returning();
       res.json(subscriber);
     } catch (error: any) {
       if (error?.code === "23505") {
-        return res.status(409).json({ error: "Email already subscribed" });
+        try {
+          const [existing] = await db.select().from(emailSubscribers)
+            .where(eq(emailSubscribers.email, normalizedEmail)).limit(1);
+          if (existing) {
+            const currentTypes = existing.reportTypes || [];
+            const newTypes = requestedTypes.filter((t: string) => !currentTypes.includes(t));
+            if (newTypes.length > 0) {
+              const mergedTypes = [...currentTypes, ...newTypes];
+              const [updated] = await db.update(emailSubscribers)
+                .set({ reportTypes: mergedTypes, name: name || existing.name })
+                .where(eq(emailSubscribers.id, existing.id))
+                .returning();
+              return res.json(updated);
+            }
+          }
+          return res.status(409).json({ error: "Email already subscribed to this report" });
+        } catch (innerError) {
+          console.error("Error merging subscriber report types:", innerError);
+          return res.status(500).json({ error: "Failed to update subscriber" });
+        }
       }
       console.error("Error adding email subscriber:", error);
       res.status(500).json({ error: "Failed to add subscriber" });

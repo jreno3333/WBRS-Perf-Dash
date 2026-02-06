@@ -1748,12 +1748,16 @@ function DailyReportCard() {
   });
 
   const removeMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/email-subscribers/${id}`);
+    mutationFn: async (sub: EmailSubscriber) => {
+      const remaining = (sub.reportTypes || []).filter(t => t !== 'daily_report');
+      if (remaining.length === 0) {
+        return apiRequest("DELETE", `/api/email-subscribers/${sub.id}`);
+      }
+      return apiRequest("PATCH", `/api/email-subscribers/${sub.id}`, { reportTypes: remaining });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
-      toast({ title: "Subscriber removed" });
+      toast({ title: "Subscriber removed from daily report" });
     },
   });
 
@@ -1915,7 +1919,7 @@ function DailyReportCard() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => removeMutation.mutate(sub.id)}
+                        onClick={() => removeMutation.mutate(sub)}
                         disabled={removeMutation.isPending}
                         data-testid={`button-remove-daily-subscriber-${sub.id}`}
                       >
@@ -2055,12 +2059,16 @@ function LeaderReportCard() {
   });
 
   const removeMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/email-subscribers/${id}`);
+    mutationFn: async (sub: EmailSubscriber) => {
+      const remaining = (sub.reportTypes || []).filter(t => t !== 'leader_report');
+      if (remaining.length === 0) {
+        return apiRequest("DELETE", `/api/email-subscribers/${sub.id}`);
+      }
+      return apiRequest("PATCH", `/api/email-subscribers/${sub.id}`, { reportTypes: remaining });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
-      toast({ title: "Subscriber removed" });
+      toast({ title: "Subscriber removed from leader report" });
     },
   });
 
@@ -2222,7 +2230,7 @@ function LeaderReportCard() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => removeMutation.mutate(sub.id)}
+                        onClick={() => removeMutation.mutate(sub)}
                         disabled={removeMutation.isPending}
                         data-testid={`button-remove-leader-subscriber-${sub.id}`}
                       >
