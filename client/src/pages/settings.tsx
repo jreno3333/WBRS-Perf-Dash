@@ -360,6 +360,8 @@ export default function SettingsPage() {
           <QualtricsOsatSyncCard />
 
           <EmailSubscribersCard />
+
+          <LeaderReportCard />
         </div>
       </main>
     </div>
@@ -1809,6 +1811,124 @@ function EmailSubscribersCard() {
             </div>
           )}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeaderReportCard() {
+  const { toast } = useToast();
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const { data: subscribers } = useQuery<EmailSubscriber[]>({
+    queryKey: ["/api/email-subscribers"],
+  });
+
+  const sendNowMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/leader-report/send-now");
+    },
+    onSuccess: async (response) => {
+      const data = await response.json();
+      toast({
+        title: "Leader report sent",
+        description: `${data.sent} email(s) sent, ${data.failed} failed.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to send leader report", variant: "destructive" });
+    },
+  });
+
+  const loadPreview = async () => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch("/api/leader-report/preview");
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ title: "No preview available", description: err.error || "No leader data available", variant: "destructive" });
+        setPreviewHtml(null);
+      } else {
+        const html = await res.text();
+        setPreviewHtml(html);
+      }
+      setShowPreview(true);
+    } catch {
+      toast({ title: "Error", description: "Failed to load preview", variant: "destructive" });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Star className="h-5 w-5" />
+            Leader Rankings Report
+          </CardTitle>
+          <CardDescription>
+            Top 10 company-wide leaders and per-store rankings with overall position. Uses same subscriber list as the daily report.
+          </CardDescription>
+        </div>
+        <div className="flex gap-2 flex-wrap shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadPreview}
+            disabled={previewLoading}
+            data-testid="button-preview-leader-report"
+          >
+            <Eye className="h-4 w-4 mr-1" />
+            {previewLoading ? "Loading..." : "Preview"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => sendNowMutation.mutate()}
+            disabled={sendNowMutation.isPending || !subscribers || subscribers.length === 0}
+            data-testid="button-send-leader-report-now"
+          >
+            <Send className="h-4 w-4 mr-1" />
+            {sendNowMutation.isPending ? "Sending..." : "Send Now"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {showPreview && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Leader Report Preview (Last 7 Days)</span>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => { setShowPreview(false); setPreviewHtml(null); }}
+                data-testid="button-close-leader-preview"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            {previewHtml ? (
+              <div className="border rounded-md overflow-hidden">
+                <iframe
+                  srcDoc={previewHtml}
+                  className="w-full border-0"
+                  style={{ height: "700px" }}
+                  title="Leader Report Preview"
+                  data-testid="iframe-leader-report-preview"
+                />
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground border rounded-md">
+                <Star className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No leader data available for this period.</p>
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -3380,6 +3380,38 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/leader-report/preview", async (req, res) => {
+    try {
+      const { buildLeaderReportHtml } = await import("./leader-report");
+      const now = new Date();
+      const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateStr = req.query.date as string || centralFormatter.format(yesterday);
+      const html = await buildLeaderReportHtml(dateStr);
+      if (!html) {
+        res.status(404).json({ error: "No leader data available for this date range" });
+        return;
+      }
+      res.setHeader("Content-Type", "text/html");
+      res.send(html);
+    } catch (error) {
+      console.error("Error generating leader report preview:", error);
+      res.status(500).json({ error: "Failed to generate leader report preview" });
+    }
+  });
+
+  app.post("/api/leader-report/send-now", async (req, res) => {
+    try {
+      const { sendLeaderReports } = await import("./leader-report");
+      const result = await sendLeaderReports();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("Error sending leader report:", error);
+      res.status(500).json({ error: "Failed to send leader report" });
+    }
+  });
+
   app.get("/api/daily-report/preview", async (req, res) => {
     try {
       const { buildDailyReportHtml } = await import("./daily-report");

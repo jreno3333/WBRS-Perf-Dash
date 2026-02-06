@@ -3,6 +3,7 @@ import { syncHMETimerData } from "./scraper/hme-api";
 import { syncAllGoogleReviews, markEndOfDaySnapshots } from "./google-places";
 import { syncOsatData } from "./scraper/qualtrics-api";
 import { sendDailyReports } from "./daily-report";
+import { sendLeaderReports } from "./leader-report";
 import { db } from "./db";
 import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews } from "@shared/schema";
 import { sql, isNotNull, lt } from "drizzle-orm";
@@ -216,6 +217,14 @@ async function sendDailyReportsIfNeeded() {
     log(`Daily reports: ${result.sent} sent, ${result.failed} failed`);
   } catch (error) {
     log(`Daily report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  log("Sending leader ranking reports...");
+  try {
+    const leaderResult = await sendLeaderReports();
+    log(`Leader reports: ${leaderResult.sent} sent, ${leaderResult.failed} failed`);
+  } catch (error) {
+    log(`Leader report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
