@@ -175,6 +175,7 @@ interface LeaderboardCardProps {
   hourlyData?: HourlySalesData[];
   crewSummary?: CrewSummary;
   hourlyCrewData?: HourlyCrewData[];
+  isToday?: boolean;
 }
 
 function formatTenure(months: number): string {
@@ -186,7 +187,7 @@ function formatTenure(months: number): string {
   return `${years}yr ${remainingMonths}mo`;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData }: LeaderboardCardProps) {
+export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, isToday = true }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -374,10 +375,12 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   NU {restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`}
                 </Badge>
               )}
-              <Badge variant="secondary" className="flex-shrink-0 text-xs">
-                <Clock className="w-3 h-3 mr-1" />
-                {getTimezoneDisplay(restaurant.timezone)}
-              </Badge>
+              {isToday && (
+                <Badge variant="secondary" className="flex-shrink-0 text-xs">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {getTimezoneDisplay(restaurant.timezone)}
+                </Badge>
+              )}
               {/* Overall Execution Grade - Always visible */}
               {overallGrade && (
                 <Badge 

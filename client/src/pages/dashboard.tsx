@@ -536,6 +536,7 @@ export default function Dashboard() {
                       hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
                       crewSummary={crewSummary?.[restaurant.restaurantId]}
                       hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
+                      isToday={isToday}
                     />
                   ))}
                 </div>
