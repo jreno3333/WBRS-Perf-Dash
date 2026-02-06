@@ -438,6 +438,16 @@ export const insertEmailSubscriberSchema = createInsertSchema(emailSubscribers).
 export type InsertEmailSubscriber = z.infer<typeof insertEmailSubscriberSchema>;
 export type EmailSubscriber = typeof emailSubscribers.$inferSelect;
 
+// Report schedule configuration
+export const reportSchedules = pgTable("report_schedules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reportType: text("report_type").notNull().unique(),
+  sendHour: integer("send_hour").notNull().default(6),
+  sendMinute: integer("send_minute").notNull().default(0),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Email send log for deduplication
 export const emailSendLog = pgTable("email_send_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
