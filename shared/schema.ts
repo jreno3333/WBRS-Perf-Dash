@@ -391,11 +391,15 @@ export interface CrewExperienceData {
   }[];
 }
 
-// Users table (keeping for compatibility)
+// Users table
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  email: text("email").unique(),
+  displayName: text("display_name"),
+  role: text("role").notNull().default("viewer"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -405,6 +409,43 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// Magic link tokens for passwordless auth
+export const magicLinkTokens = pgTable("magic_link_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Email subscribers for daily reports
+export const emailSubscribers = pgTable("email_subscribers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  name: text("name"),
+  isActive: boolean("is_active").notNull().default(true),
+  reportTime: text("report_time").notNull().default("06:00"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmailSubscriberSchema = createInsertSchema(emailSubscribers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEmailSubscriber = z.infer<typeof insertEmailSubscriberSchema>;
+export type EmailSubscriber = typeof emailSubscribers.$inferSelect;
+
+// Email send log for deduplication
+export const emailSendLog = pgTable("email_send_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reportDate: text("report_date").notNull(),
+  email: text("email").notNull(),
+  status: text("status").notNull(),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
 
 // Workstream applicants table - tracks applicant data by week/unit/position
 export const applicants = pgTable("applicants", {

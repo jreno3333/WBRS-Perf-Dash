@@ -106,6 +106,18 @@ Preferred communication style: Simple, everyday language.
 - **TypeScript**: Superset of JavaScript for type safety.
 - **Zod**: Schema declaration and validation library.
 
+### Authentication
+- **Magic Link Email Auth**: Users sign in by entering their email on `/login`. A magic link is sent via Resend (or logged to console if no API key). Token is SHA256-hashed, single-use, expires in 15 minutes. Sessions last 30 days (PostgreSQL-backed via connect-pg-simple).
+- **Auth Middleware**: Protects all `/api/*` routes except `/api/auth/`, `/api/diagnostics`, `/api/db-status`, `/api/xenial/` (webhooks).
+- **Allowed Emails**: Optional `ALLOWED_LOGIN_EMAILS` env var (comma-separated). If not set, any email can log in.
+- **Auth Files**: `server/routes.ts` (auth endpoints), `client/src/pages/login.tsx` (login UI), `client/src/App.tsx` (AuthGuard wrapper).
+
+### Daily Report Emails
+- **Scheduler**: Sends daily performance summary emails at 6:00 AM Central using `server/scheduler.ts` and `server/daily-report.ts`.
+- **Subscribers**: Managed in Settings page (`/settings`). Supports name, email, active/paused status.
+- **Deduplication**: Uses `email_send_log` table to prevent duplicate sends per report date.
+- **Email Service**: `server/email.ts` wraps Resend API. Requires `RESEND_API_KEY` secret. Uses `RESEND_FROM_EMAIL` or defaults to `onboarding@resend.dev`.
+
 ### APIs/Services
 - **7shifts API**: For sales, labor, and employee data synchronization.
 - **Open-Meteo API**: For fetching weather data.
@@ -113,3 +125,4 @@ Preferred communication style: Simple, everyday language.
 - **HME DXS RCD API**: For drive-thru timing data.
 - **Google Places API**: For Google business review data.
 - **Qualtrics Imported Data Project (IDP) API**: For customer satisfaction survey data from receipt surveys.
+- **Resend API**: For sending magic link authentication emails and daily performance report emails.

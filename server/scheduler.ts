@@ -2,6 +2,7 @@ import { fetchSalesFromAPI, fetchHourlySalesFromAPI, fetchHistoricalSales, fetch
 import { syncHMETimerData } from "./scraper/hme-api";
 import { syncAllGoogleReviews, markEndOfDaySnapshots } from "./google-places";
 import { syncOsatData } from "./scraper/qualtrics-api";
+import { sendDailyReports } from "./daily-report";
 import { db } from "./db";
 import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews } from "@shared/schema";
 import { sql, isNotNull, lt } from "drizzle-orm";
@@ -178,6 +179,9 @@ async function runScheduledSync() {
     
     // Check if we should also sync yesterday's data (after midnight Central to capture hours 22-23)
     await syncYesterdayIfNeeded();
+    
+    // Send daily email reports (at 6 AM Central)
+    await sendDailyReportsIfNeeded();
   } catch (error) {
     log(`Sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
@@ -186,6 +190,34 @@ async function runScheduledSync() {
 // Track last yesterday resync to avoid doing it too frequently
 let lastYesterdaySync: string | null = null;
 let lastWeatherSave: string | null = null;
+let lastDailyReportSend: string | null = null;
+
+async function sendDailyReportsIfNeeded() {
+  const now = new Date();
+  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    hour12: false
+  }).format(now));
+  
+  if (centralHour !== 6) return;
+  
+  const currentMinute = now.getMinutes();
+  if (currentMinute > 9) return;
+  
+  const syncKey = now.toISOString().split('T')[0];
+  if (lastDailyReportSend === syncKey) return;
+  
+  lastDailyReportSend = syncKey;
+  
+  log("Sending daily performance reports...");
+  try {
+    const result = await sendDailyReports();
+    log(`Daily reports: ${result.sent} sent, ${result.failed} failed`);
+  } catch (error) {
+    log(`Daily report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
 // Fetch weather for a location (helper function)
 async function fetchWeatherForLocation(latitude: number, longitude: number): Promise<{ temp: number; condition: string; humidity: number; windSpeed: number } | null> {

@@ -1,14 +1,16 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db, posDb } from "./db";
-import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets, dailyOsat, hmeTimerData, osatData as osatDataTable } from "@shared/schema";
-import { desc, sql, gte, lte, lt, and, eq } from "drizzle-orm";
+import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets, dailyOsat, hmeTimerData, osatData as osatDataTable, users, magicLinkTokens, emailSubscribers, emailSendLog } from "@shared/schema";
+import { desc, sql, gte, lte, lt, and, eq, isNull } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getAllHourlyPosSales } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
 import { getDailyDriveThruSummary } from "./scraper/hme-api";
 import { syncOsatData, getOsatForDate } from "./scraper/qualtrics-api";
+import { sendMagicLinkEmail } from "./email";
+import crypto from "crypto";
 
 // Weather code to condition mapping
 function getWeatherCondition(weatherCode: number): string {
@@ -80,10 +82,165 @@ async function fetchHistoricalWeather(latitude: number, longitude: number, date:
   return null;
 }
 
+// Allowed emails for magic link login (configured via env or defaults to any)
+function getAllowedEmails(): string[] | null {
+  const allowed = process.env.ALLOWED_LOGIN_EMAILS;
+  if (!allowed) return null;
+  return allowed.split(",").map(e => e.trim().toLowerCase());
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.session?.userId) {
+    return next();
+  }
+  return res.status(401).json({ message: "Not authenticated" });
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // ========== AUTH ROUTES (no auth required) ==========
+
+  app.post("/api/auth/magic-link", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+
+      const allowedEmails = getAllowedEmails();
+      if (allowedEmails && !allowedEmails.includes(normalizedEmail)) {
+        return res.json({ success: true, message: "If that email is authorized, you'll receive a sign-in link." });
+      }
+
+      let user = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+
+      if (user.length === 0) {
+        await db.insert(users).values({
+          username: normalizedEmail,
+          password: "magic-link-auth",
+          email: normalizedEmail,
+          role: "viewer",
+        });
+        user = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const tokenH = hashToken(token);
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      await db.insert(magicLinkTokens).values({
+        email: normalizedEmail,
+        tokenHash: tokenH,
+        expiresAt,
+      });
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const magicLink = `${baseUrl}/api/auth/verify?token=${token}`;
+
+      const sent = await sendMagicLinkEmail(normalizedEmail, magicLink);
+      if (!sent) {
+        console.error("[auth] Failed to send magic link email to", normalizedEmail);
+      }
+
+      return res.json({ success: true, message: "If that email is authorized, you'll receive a sign-in link." });
+    } catch (error) {
+      console.error("[auth] Magic link error:", error);
+      return res.status(500).json({ message: "Failed to process login request" });
+    }
+  });
+
+  app.get("/api/auth/verify", async (req, res) => {
+    try {
+      const { token } = req.query;
+      if (!token || typeof token !== "string") {
+        return res.redirect("/login?error=invalid");
+      }
+
+      const tokenH = hashToken(token);
+
+      const [tokenRecord] = await db.select()
+        .from(magicLinkTokens)
+        .where(and(
+          eq(magicLinkTokens.tokenHash, tokenH),
+          isNull(magicLinkTokens.consumedAt)
+        ))
+        .limit(1);
+
+      if (!tokenRecord) {
+        return res.redirect("/login?error=invalid");
+      }
+
+      if (new Date() > tokenRecord.expiresAt) {
+        return res.redirect("/login?error=expired");
+      }
+
+      await db.update(magicLinkTokens)
+        .set({ consumedAt: new Date() })
+        .where(eq(magicLinkTokens.id, tokenRecord.id));
+
+      const [user] = await db.select()
+        .from(users)
+        .where(eq(users.email, tokenRecord.email))
+        .limit(1);
+
+      if (!user) {
+        return res.redirect("/login?error=invalid");
+      }
+
+      req.session.userId = user.id;
+      req.session.email = user.email || tokenRecord.email;
+
+      return res.redirect("/");
+    } catch (error) {
+      console.error("[auth] Verify error:", error);
+      return res.redirect("/login?error=server");
+    }
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    if (req.session?.userId) {
+      return res.json({
+        authenticated: true,
+        userId: req.session.userId,
+        email: req.session.email,
+      });
+    }
+    return res.json({ authenticated: false });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Failed to logout" });
+      }
+      res.clearCookie("connect.sid");
+      return res.json({ success: true });
+    });
+  });
+
+  // Auth middleware - protect all /api/* routes except auth, diagnostics, and webhooks
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+    const openPaths = [
+      "/api/auth/",
+      "/api/diagnostics",
+      "/api/db-status",
+      "/api/xenial/",
+    ];
+    if (openPaths.some(p => req.path.startsWith(p))) {
+      return next();
+    }
+    return requireAuth(req, res, next);
+  });
+
   // Comprehensive diagnostics endpoint for production debugging
   app.get("/api/diagnostics", async (req, res) => {
     const now = new Date();
@@ -3149,6 +3306,77 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching performance history:", error);
       res.status(500).json({ error: "Failed to fetch performance history" });
+    }
+  });
+
+  // ========== EMAIL SUBSCRIBERS ENDPOINTS ==========
+
+  app.get("/api/email-subscribers", async (req, res) => {
+    try {
+      const subscribers = await db.select().from(emailSubscribers).orderBy(emailSubscribers.createdAt);
+      res.json(subscribers);
+    } catch (error) {
+      console.error("Error fetching email subscribers:", error);
+      res.status(500).json({ error: "Failed to fetch subscribers" });
+    }
+  });
+
+  app.post("/api/email-subscribers", async (req, res) => {
+    try {
+      const { email, name, isActive, reportTime } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+      const [subscriber] = await db.insert(emailSubscribers)
+        .values({
+          email: email.trim().toLowerCase(),
+          name: name || null,
+          isActive: isActive !== false,
+          reportTime: reportTime || "06:00",
+        })
+        .returning();
+      res.json(subscriber);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        return res.status(409).json({ error: "Email already subscribed" });
+      }
+      console.error("Error adding email subscriber:", error);
+      res.status(500).json({ error: "Failed to add subscriber" });
+    }
+  });
+
+  app.patch("/api/email-subscribers/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isActive, name, reportTime } = req.body;
+      const updates: Record<string, any> = {};
+      if (typeof isActive === "boolean") updates.isActive = isActive;
+      if (name !== undefined) updates.name = name;
+      if (reportTime) updates.reportTime = reportTime;
+
+      const [updated] = await db.update(emailSubscribers)
+        .set(updates)
+        .where(eq(emailSubscribers.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "Subscriber not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating subscriber:", error);
+      res.status(500).json({ error: "Failed to update subscriber" });
+    }
+  });
+
+  app.delete("/api/email-subscribers/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.delete(emailSubscribers).where(eq(emailSubscribers.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting subscriber:", error);
+      res.status(500).json({ error: "Failed to delete subscriber" });
     }
   });
 

@@ -358,6 +358,8 @@ export default function SettingsPage() {
           <GoogleReviewsSyncCard />
 
           <QualtricsOsatSyncCard />
+
+          <EmailSubscribersCard />
         </div>
       </main>
     </div>
@@ -1564,6 +1566,154 @@ function MarketsCard({ restaurants }: { restaurants: Restaurant[] }) {
             <p className="text-sm">Create a market to group restaurants for easier filtering.</p>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface EmailSubscriber {
+  id: string;
+  email: string;
+  name: string | null;
+  isActive: boolean;
+  reportTime: string;
+  createdAt: string;
+}
+
+function EmailSubscribersCard() {
+  const { toast } = useToast();
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+
+  const { data: subscribers, isLoading } = useQuery<EmailSubscriber[]>({
+    queryKey: ["/api/email-subscribers"],
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/email-subscribers", {
+        email: newEmail.trim(),
+        name: newName.trim() || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+      setNewEmail("");
+      setNewName("");
+      toast({ title: "Subscriber added", description: "Daily reports will be sent to this email." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to add subscriber", variant: "destructive" });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/email-subscribers/${id}`, { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/email-subscribers/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+      toast({ title: "Subscriber removed" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Receipt className="h-5 w-5" />
+          Daily Report Subscribers
+        </CardTitle>
+        <CardDescription>
+          Manage email addresses that receive the daily performance summary at 6:00 AM Central.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="flex gap-2 flex-wrap">
+            <Input
+              type="text"
+              placeholder="Name (optional)"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="w-40"
+              data-testid="input-subscriber-name"
+            />
+            <Input
+              type="email"
+              placeholder="Email address"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              className="flex-1 min-w-[200px]"
+              data-testid="input-subscriber-email"
+            />
+            <Button
+              onClick={() => addMutation.mutate()}
+              disabled={!newEmail.trim() || addMutation.isPending}
+              data-testid="button-add-subscriber"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="text-center py-4 text-muted-foreground text-sm">Loading subscribers...</div>
+          ) : subscribers && subscribers.length > 0 ? (
+            <div className="space-y-2">
+              {subscribers.map((sub) => (
+                <div
+                  key={sub.id}
+                  className="flex items-center gap-3 p-3 rounded-md border"
+                  data-testid={`row-subscriber-${sub.id}`}
+                >
+                  <Checkbox
+                    checked={sub.isActive}
+                    onCheckedChange={(checked) => {
+                      toggleMutation.mutate({ id: sub.id, isActive: !!checked });
+                    }}
+                    data-testid={`checkbox-subscriber-active-${sub.id}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      {sub.name || sub.email}
+                    </div>
+                    {sub.name && (
+                      <div className="text-xs text-muted-foreground truncate">{sub.email}</div>
+                    )}
+                  </div>
+                  <Badge variant={sub.isActive ? "default" : "secondary"} className="shrink-0">
+                    {sub.isActive ? "Active" : "Paused"}
+                  </Badge>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => removeMutation.mutate(sub.id)}
+                    disabled={removeMutation.isPending}
+                    data-testid={`button-remove-subscriber-${sub.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
+              <Receipt className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>No subscribers yet.</p>
+              <p className="text-sm">Add email addresses to receive daily performance reports.</p>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
