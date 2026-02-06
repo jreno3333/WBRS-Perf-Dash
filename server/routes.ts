@@ -1881,6 +1881,7 @@ export async function registerRoutes(
         hoursWorked: number;
         avgGradeScore: number;
         grade: string;
+        avgTransactionsPerHour: number | null;
       };
       
       const allRestaurants = await db.select().from(restaurants);
