@@ -209,9 +209,9 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
 
-        if (labor && sales) {
+        const hourSales = sales ? (Number(sales.actualSales) || 0) : 0;
+        if (labor && sales && hourSales > 0) {
           totalHoursWorked++;
-          const hourSales = Number(sales.actualSales) || 0;
           totalSalesAllHours += hourSales;
 
           const dayKey = crew.date;

@@ -2075,9 +2075,9 @@ export async function registerRoutes(
             const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
             const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
             
-            if (labor && sales) {
+            const hourSales = sales ? (Number(sales.actualSales) || 0) : 0;
+            if (labor && sales && hourSales > 0) {
               totalHoursWorked++;
-              const hourSales = Number(sales.actualSales) || 0;
               totalSalesAllHours += hourSales;
               const dayKey = crew.date;
               if (!dailyAggregates.has(dayKey)) {
@@ -2381,8 +2381,8 @@ export async function registerRoutes(
         const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         
-        if (labor && sales) {
-          const todaySales = Number(sales.actualSales) || 0;
+        const todaySales = sales ? (Number(sales.actualSales) || 0) : 0;
+        if (labor && sales && todaySales > 0) {
           
           // Look up last week's sales from our own data (7 days ago, same hour)
           const crewDate = new Date(crew.date + 'T12:00:00');
