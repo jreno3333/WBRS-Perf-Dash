@@ -33,6 +33,24 @@ function formatCurrency(amount: number): string {
   return `$${Math.round(amount)}`;
 }
 
+function formatSpeed(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function getSpeedColor(seconds: number): string {
+  if (seconds <= 300) return "#16a34a";
+  if (seconds <= 420) return "#d97706";
+  return "#dc2626";
+}
+
+function getOsatColor(pct: number): string {
+  if (pct >= 85) return "#7c3aed";
+  if (pct >= 80) return "#d97706";
+  return "#dc2626";
+}
+
 interface LeaderSummary {
   name: string;
   position: string;
@@ -42,11 +60,15 @@ interface LeaderSummary {
   avgGradeScore: number;
   grade: string;
   avgHourlySales: number | null;
+  avgSpeed: number | null;
+  osatPercent: number | null;
+  surveyCount: number;
   companyRank: number;
   totalLeaders: number;
 }
 
 const MIN_HOURS_REQUIRED = 8;
+const MIN_HOURS_TOP10 = 20;
 
 export async function sendLeaderReports(): Promise<{ sent: number; failed: number }> {
   const result = { sent: 0, failed: 0 };
@@ -196,6 +218,8 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
       const workedAtRestaurants = new Map<string, number>();
       let totalHoursWorked = 0;
       let totalSalesAllHours = 0;
+      let allSpeedValues: number[] = [];
+      let allOsatWeighted: { percent: number; responses: number }[] = [];
 
       for (const crew of crewData) {
         const members = (crew.crewMembers as any[]) || [];
@@ -237,9 +261,13 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
           day.staffingDiffs.push(actualStaff - projectedStaff);
 
-          if (hme && hme.avgTotalTime && hme.avgTotalTime > 0) day.speedValues.push(hme.avgTotalTime);
+          if (hme && hme.avgTotalTime && hme.avgTotalTime > 0) {
+            day.speedValues.push(hme.avgTotalTime);
+            allSpeedValues.push(hme.avgTotalTime);
+          }
           if (osatHour && osatHour.totalResponses > 0) {
             day.osatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
+            allOsatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
           }
         }
       }
@@ -299,6 +327,12 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         if (displayPosition.toLowerCase().includes("supervisor")) displayPosition = "Shift Supervisor";
         else if (displayPosition.toLowerCase().includes("manager")) displayPosition = "Manager";
 
+        const overallAvgSpeed = allSpeedValues.length > 0
+          ? allSpeedValues.reduce((a, b) => a + b, 0) / allSpeedValues.length : null;
+        const totalSurveyResponses = allOsatWeighted.reduce((s, o) => s + o.responses, 0);
+        const overallOsatPercent = totalSurveyResponses > 0
+          ? allOsatWeighted.reduce((s, o) => s + o.percent * o.responses, 0) / totalSurveyResponses : null;
+
         leaders.push({
           name: `${leader.firstName} ${leader.lastName}`,
           position: displayPosition,
@@ -308,6 +342,9 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           avgGradeScore: Math.round(avgScore),
           grade: getGradeLabel(Math.round(avgScore)),
           avgHourlySales: totalHoursWorked > 0 ? Math.round(totalSalesAllHours / totalHoursWorked) : null,
+          avgSpeed: overallAvgSpeed,
+          osatPercent: overallOsatPercent !== null ? Math.round(overallOsatPercent) : null,
+          surveyCount: totalSurveyResponses,
           companyRank: 0,
           totalLeaders: 0,
         });
@@ -316,10 +353,15 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
 
     if (leaders.length === 0) return null;
 
-    leaders.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
-    leaders.forEach((l, i) => { l.companyRank = i + 1; l.totalLeaders = leaders.length; });
+    const top10Eligible = leaders
+      .filter(l => l.hoursWorked >= MIN_HOURS_TOP10 && l.surveyCount > 0)
+      .sort((a, b) => b.avgGradeScore - a.avgGradeScore);
 
-    const top10 = leaders.slice(0, 10);
+    top10Eligible.forEach((l, i) => { l.companyRank = i + 1; l.totalLeaders = top10Eligible.length; });
+
+    const top10 = top10Eligible.slice(0, 10);
+
+    leaders.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
 
     const byStore: Record<string, LeaderSummary[]> = {};
     for (const l of leaders) {
@@ -361,7 +403,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="max-width: 640px; margin: 0 auto; padding: 20px;">
     <div style="background-color: #18181b; color: white; padding: 24px; border-radius: 8px 8px 0 0; text-align: center;">
       <h1 style="margin: 0; font-size: 20px; font-weight: 600;">MWB Leader Rankings</h1>
       <p style="margin: 8px 0 0; font-size: 14px; color: #a1a1aa;">${dayOfWeek}, ${formattedDate}</p>
@@ -370,24 +412,28 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
 
     <div style="background: white; padding: 20px 24px; border: 1px solid #e4e4e7; border-top: none;">
       <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 600; color: #18181b;">Top 10 Leaders - Company Wide</h3>
-      <p style="margin: 0 0 12px; font-size: 11px; color: #71717a;">${leaders.length} total leaders ranked (min ${MIN_HOURS_REQUIRED} hrs)</p>
+      <p style="margin: 0 0 12px; font-size: 11px; color: #71717a;">${top10Eligible.length} eligible leaders (min ${MIN_HOURS_TOP10} hrs + surveys required)</p>
       <div style="display: flex; align-items: center; padding: 4px 0; border-bottom: 2px solid #e4e4e7;">
-        <span style="width: 28px; font-size: 10px; color: #a1a1aa; font-weight: 600;">RANK</span>
+        <span style="width: 24px; font-size: 10px; color: #a1a1aa; font-weight: 600;">#</span>
         <span style="flex: 1; font-size: 10px; color: #a1a1aa; font-weight: 600;">LEADER</span>
-        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: center;">GRADE</span>
-        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: right;">HRS</span>
-        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 48px; text-align: right;">$/HR</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: center;">GRD</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">$/HR</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">SOS</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">OSAT</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 28px; text-align: right;">SRV</span>
       </div>
       ${top10.map((l, i) => `
         <div style="display: flex; align-items: center; padding: 8px 0; ${i < top10.length - 1 ? 'border-bottom: 1px solid #f4f4f5;' : ''}">
-          <span style="width: 28px; font-size: 13px; font-weight: 700; color: ${i < 3 ? '#16a34a' : '#71717a'};">${l.companyRank}</span>
+          <span style="width: 24px; font-size: 13px; font-weight: 700; color: ${i < 3 ? '#16a34a' : '#71717a'};">${l.companyRank}</span>
           <div style="flex: 1; min-width: 0;">
             <div style="font-size: 13px; font-weight: 500;">${l.name}</div>
             <div style="font-size: 11px; color: #a1a1aa;">${l.restaurantName} &middot; ${l.position}</div>
           </div>
           <span style="font-size: 14px; font-weight: 700; color: ${getGradeColor(l.grade)}; width: 36px; text-align: center;">${l.grade}</span>
-          <span style="font-size: 12px; color: #71717a; width: 36px; text-align: right;">${l.hoursWorked}</span>
-          <span style="font-size: 12px; color: #71717a; width: 48px; text-align: right;">${l.avgHourlySales !== null ? formatCurrency(l.avgHourlySales) : '--'}</span>
+          <span style="font-size: 12px; color: #71717a; width: 44px; text-align: right;">${l.avgHourlySales !== null ? formatCurrency(l.avgHourlySales) : '--'}</span>
+          <span style="font-size: 12px; color: ${l.avgSpeed !== null ? getSpeedColor(l.avgSpeed) : '#71717a'}; width: 44px; text-align: right;">${l.avgSpeed !== null ? formatSpeed(l.avgSpeed) : '--'}</span>
+          <span style="font-size: 12px; font-weight: 500; color: ${l.osatPercent !== null ? getOsatColor(l.osatPercent) : '#71717a'}; width: 40px; text-align: right;">${l.osatPercent !== null ? l.osatPercent + '%' : '--'}</span>
+          <span style="font-size: 11px; color: #71717a; width: 28px; text-align: right;">${l.surveyCount || '--'}</span>
         </div>
       `).join("")}
     </div>
@@ -396,26 +442,33 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
     <div style="background: white; padding: 16px 24px; border: 1px solid #e4e4e7; border-top: none;">
       <h4 style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #18181b;">${store.restaurantName}</h4>
       <div style="display: flex; align-items: center; padding: 3px 0; border-bottom: 1px solid #e4e4e7;">
-        <span style="width: 28px; font-size: 9px; color: #a1a1aa; font-weight: 600;">RANK</span>
+        <span style="width: 20px; font-size: 9px; color: #a1a1aa; font-weight: 600;">#</span>
         <span style="flex: 1; font-size: 9px; color: #a1a1aa; font-weight: 600;">LEADER</span>
         <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 32px; text-align: center;">GRD</span>
-        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 32px; text-align: right;">HRS</span>
-        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">$/HR</span>
-        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">CO. #</span>
+        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">$/HR</span>
+        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">SOS</span>
+        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: right;">OSAT</span>
+        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 24px; text-align: right;">SRV</span>
+        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: right;">CO.#</span>
       </div>
-      ${store.leaders.map((l, i) => `
+      ${store.leaders.map((l, i) => {
+        const coRank = top10Eligible.find(t => t.name === l.name);
+        const coRankStr = coRank ? `${coRank.companyRank}/${coRank.totalLeaders}` : '--';
+        return `
         <div style="display: flex; align-items: center; padding: 5px 0; ${i < store.leaders.length - 1 ? 'border-bottom: 1px solid #fafafa;' : ''}">
-          <span style="width: 28px; font-size: 11px; color: #a1a1aa;">${i + 1}</span>
+          <span style="width: 20px; font-size: 11px; color: #a1a1aa;">${i + 1}</span>
           <div style="flex: 1; min-width: 0;">
             <span style="font-size: 12px;">${l.name}</span>
             <span style="font-size: 10px; color: #a1a1aa; margin-left: 4px;">${l.position}</span>
           </div>
           <span style="font-size: 12px; font-weight: 600; color: ${getGradeColor(l.grade)}; width: 32px; text-align: center;">${l.grade}</span>
-          <span style="font-size: 11px; color: #71717a; width: 32px; text-align: right;">${l.hoursWorked}</span>
-          <span style="font-size: 11px; color: #71717a; width: 44px; text-align: right;">${l.avgHourlySales !== null ? formatCurrency(l.avgHourlySales) : '--'}</span>
-          <span style="font-size: 11px; color: #71717a; width: 44px; text-align: right;">${l.companyRank}/${l.totalLeaders}</span>
-        </div>
-      `).join("")}
+          <span style="font-size: 11px; color: #71717a; width: 40px; text-align: right;">${l.avgHourlySales !== null ? formatCurrency(l.avgHourlySales) : '--'}</span>
+          <span style="font-size: 11px; color: ${l.avgSpeed !== null ? getSpeedColor(l.avgSpeed) : '#71717a'}; width: 40px; text-align: right;">${l.avgSpeed !== null ? formatSpeed(l.avgSpeed) : '--'}</span>
+          <span style="font-size: 11px; font-weight: 500; color: ${l.osatPercent !== null ? getOsatColor(l.osatPercent) : '#71717a'}; width: 36px; text-align: right;">${l.osatPercent !== null ? l.osatPercent + '%' : '--'}</span>
+          <span style="font-size: 10px; color: #71717a; width: 24px; text-align: right;">${l.surveyCount || '--'}</span>
+          <span style="font-size: 10px; color: #71717a; width: 36px; text-align: right;">${coRankStr}</span>
+        </div>`;
+      }).join("")}
     </div>
     `).join("")}
 
@@ -424,7 +477,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         View Full Leader Rankings
       </a>
       <p style="font-size: 11px; color: #a1a1aa; margin-top: 12px;">
-        Based on 7-day rolling execution grades &middot; Min ${MIN_HOURS_REQUIRED} hours required
+        Top 10 requires min ${MIN_HOURS_TOP10} hrs + surveys &middot; Per-store min ${MIN_HOURS_REQUIRED} hrs
       </p>
     </div>
   </div>
