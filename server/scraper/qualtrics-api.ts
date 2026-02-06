@@ -618,9 +618,8 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
           driveThruWaitTime: categoryRatings.driveThruWaitTime,
           overallRating: rating,
           transactionId: transactionId ? String(transactionId) : null,
-        });
+        }).onConflictDoNothing();
       } catch (error: any) {
-        // Ignore duplicate key errors for transaction IDs
         if (!error.message?.includes('duplicate key')) {
           console.error(`[Qualtrics] Error saving category ratings: ${error.message}`);
         }
