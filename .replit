@@ -48,3 +48,4 @@ integrations = ["javascript_database:1.0.0"]
 
 [userenv.shared]
 WORKSTREAM_API_TOKEN = "gvK_0RnzCIXhddu-mhbdSAcimWlLIWoYyB0OAmIZ2yI"
+RESEND_API_KEY = "re_9smnVHLk_G2vxtyE7JFoUCoqxr27eaPEy"
