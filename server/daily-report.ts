@@ -56,10 +56,13 @@ export async function sendDailyReports(): Promise<{ sent: number; failed: number
   try {
     const subscribers = await db.select()
       .from(emailSubscribers)
-      .where(eq(emailSubscribers.isActive, true));
+      .where(and(
+        eq(emailSubscribers.isActive, true),
+        sql`${emailSubscribers.reportTypes} @> ARRAY['daily_report']`
+      ));
 
     if (subscribers.length === 0) {
-      console.log("[daily-report] No active subscribers");
+      console.log("[daily-report] No active subscribers for daily_report");
       return result;
     }
 

@@ -76,10 +76,13 @@ export async function sendLeaderReports(): Promise<{ sent: number; failed: numbe
   try {
     const subscribers = await db.select()
       .from(emailSubscribers)
-      .where(eq(emailSubscribers.isActive, true));
+      .where(and(
+        eq(emailSubscribers.isActive, true),
+        sql`${emailSubscribers.reportTypes} @> ARRAY['leader_report']`
+      ));
 
     if (subscribers.length === 0) {
-      console.log("[leader-report] No active subscribers");
+      console.log("[leader-report] No active subscribers for leader_report");
       return result;
     }
 

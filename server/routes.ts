@@ -3323,17 +3323,22 @@ export async function registerRoutes(
 
   app.post("/api/email-subscribers", async (req, res) => {
     try {
-      const { email, name, isActive, reportTime } = req.body;
+      const { email, name, isActive, reportTime, reportTypes } = req.body;
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
       }
+      const values: Record<string, any> = {
+        email: email.trim().toLowerCase(),
+        name: name || null,
+        isActive: isActive !== false,
+        reportTime: reportTime || "06:00",
+      };
+      if (Array.isArray(reportTypes)) {
+        const validTypes = ['daily_report', 'leader_report'];
+        values.reportTypes = reportTypes.filter((t: string) => validTypes.includes(t));
+      }
       const [subscriber] = await db.insert(emailSubscribers)
-        .values({
-          email: email.trim().toLowerCase(),
-          name: name || null,
-          isActive: isActive !== false,
-          reportTime: reportTime || "06:00",
-        })
+        .values(values)
         .returning();
       res.json(subscriber);
     } catch (error: any) {
@@ -3348,11 +3353,15 @@ export async function registerRoutes(
   app.patch("/api/email-subscribers/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { isActive, name, reportTime } = req.body;
+      const { isActive, name, reportTime, reportTypes } = req.body;
       const updates: Record<string, any> = {};
       if (typeof isActive === "boolean") updates.isActive = isActive;
       if (name !== undefined) updates.name = name;
       if (reportTime) updates.reportTime = reportTime;
+      if (Array.isArray(reportTypes)) {
+        const validTypes = ['daily_report', 'leader_report'];
+        updates.reportTypes = reportTypes.filter((t: string) => validTypes.includes(t));
+      }
 
       const [updated] = await db.update(emailSubscribers)
         .set(updates)

@@ -420,13 +420,14 @@ export const magicLinkTokens = pgTable("magic_link_tokens", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Email subscribers for daily reports
+// Email subscribers for reports
 export const emailSubscribers = pgTable("email_subscribers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull().unique(),
   name: text("name"),
   isActive: boolean("is_active").notNull().default(true),
   reportTime: text("report_time").notNull().default("06:00"),
+  reportTypes: text("report_types").array().notNull().default(sql`ARRAY['daily_report','leader_report']`),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
