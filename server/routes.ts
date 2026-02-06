@@ -1943,7 +1943,7 @@ export async function registerRoutes(
               const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
               day.staffingDiffs.push(actualStaff - projectedStaff);
               
-              const speedSeconds = hme && hme.avgServiceTime > 0 ? hme.avgServiceTime : undefined;
+              const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
               if (speedSeconds !== undefined && speedSeconds > 0) {
                 day.speedValues.push(speedSeconds);
               }
@@ -2243,7 +2243,7 @@ export async function registerRoutes(
           else staffingScore = salesSurge ? 100 : 60;
           components.push({ weight: 15, score: staffingScore });
           
-          const speedSeconds = hme && hme.avgServiceTime > 0 ? hme.avgServiceTime : undefined;
+          const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
           if (speedSeconds !== undefined && speedSeconds > 0) {
             let speedScore = 100;
             if (speedSeconds > 420) speedScore = 40;
