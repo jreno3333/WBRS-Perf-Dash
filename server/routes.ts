@@ -3462,7 +3462,14 @@ export async function registerRoutes(
   // Report schedule configuration
   app.get("/api/report-schedules", async (req, res) => {
     try {
-      const schedules = await db.select().from(reportSchedules);
+      let schedules = await db.select().from(reportSchedules);
+      if (schedules.length === 0) {
+        await db.insert(reportSchedules).values([
+          { reportType: 'daily_report', sendHour: 6, sendMinute: 0, isEnabled: true },
+          { reportType: 'leader_report', sendHour: 6, sendMinute: 0, isEnabled: true },
+        ]).onConflictDoNothing();
+        schedules = await db.select().from(reportSchedules);
+      }
       res.json(schedules);
     } catch (error) {
       console.error("Error fetching report schedules:", error);
@@ -3498,7 +3505,13 @@ export async function registerRoutes(
         .returning();
       
       if (result.length === 0) {
-        return res.status(404).json({ error: "Schedule not found" });
+        const inserted = await db.insert(reportSchedules).values({
+          reportType,
+          sendHour: sendHour ?? 6,
+          sendMinute: sendMinute ?? 0,
+          isEnabled: isEnabled !== undefined ? !!isEnabled : true,
+        }).returning();
+        return res.json(inserted[0]);
       }
       res.json(result[0]);
     } catch (error) {
