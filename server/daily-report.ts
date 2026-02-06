@@ -305,33 +305,64 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
     </div>
 
     <div style="background: white; padding: 20px 24px; border: 1px solid #e4e4e7; border-top: none;">
-      <h3 style="margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #16a34a;">Top Performers</h3>
+      <h3 style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #16a34a;">Top Performers</h3>
+      <div style="display: flex; align-items: center; padding: 4px 0; border-bottom: 2px solid #e4e4e7;">
+        <span style="width: 20px; font-size: 10px; color: #a1a1aa; font-weight: 600;">#</span>
+        <span style="flex: 1; font-size: 10px; color: #a1a1aa; font-weight: 600;">RESTAURANT</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: center;">GRADE</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 55px; text-align: right;">SALES</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 48px; text-align: right;">VAR</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">SPEED</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">OSAT</span>
+      </div>
       ${top3.map((r, i) => `
         <div style="display: flex; align-items: center; padding: 8px 0; ${i < top3.length - 1 ? 'border-bottom: 1px solid #f4f4f5;' : ''}">
           <span style="width: 20px; font-size: 12px; color: #a1a1aa; font-weight: 600;">${i + 1}</span>
           <span style="flex: 1; font-size: 13px; font-weight: 500;">${r.name}</span>
-          <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; margin-right: 12px;">${r.gradeLabel}</span>
-          <span style="font-size: 12px; color: #71717a; width: 60px; text-align: right;">${formatCurrency(r.sales)}</span>
-          <span style="font-size: 12px; width: 55px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
+          <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; width: 36px; text-align: center;">${r.gradeLabel}</span>
+          <span style="font-size: 12px; color: #71717a; width: 55px; text-align: right;">${formatCurrency(r.sales)}</span>
+          <span style="font-size: 12px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
+          ${r.avgSpeed !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.avgSpeed <= 300 ? '#16a34a' : r.avgSpeed <= 420 ? '#d97706' : '#dc2626'};">${formatTime(r.avgSpeed)}</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
+          ${r.osatPercent !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626'};">${Math.round(r.osatPercent)}%</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
         </div>
       `).join("")}
     </div>
 
     <div style="background: white; padding: 20px 24px; border: 1px solid #e4e4e7; border-top: none;">
-      <h3 style="margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #dc2626;">Needs Attention</h3>
+      <h3 style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #dc2626;">Needs Attention</h3>
+      <div style="display: flex; align-items: center; padding: 4px 0; border-bottom: 2px solid #e4e4e7;">
+        <span style="width: 20px; font-size: 10px; color: #a1a1aa; font-weight: 600;">#</span>
+        <span style="flex: 1; font-size: 10px; color: #a1a1aa; font-weight: 600;">RESTAURANT</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: center;">GRADE</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 55px; text-align: right;">SALES</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 48px; text-align: right;">VAR</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">SPEED</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">OSAT</span>
+      </div>
       ${bottom3.map((r, i) => `
         <div style="display: flex; align-items: center; padding: 8px 0; ${i < bottom3.length - 1 ? 'border-bottom: 1px solid #f4f4f5;' : ''}">
           <span style="width: 20px; font-size: 12px; color: #a1a1aa; font-weight: 600;">${summaries.length - bottom3.length + i + 1}</span>
           <span style="flex: 1; font-size: 13px; font-weight: 500;">${r.name}</span>
-          <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; margin-right: 12px;">${r.gradeLabel}</span>
-          <span style="font-size: 12px; color: #71717a; width: 60px; text-align: right;">${formatCurrency(r.sales)}</span>
-          <span style="font-size: 12px; width: 55px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
+          <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; width: 36px; text-align: center;">${r.gradeLabel}</span>
+          <span style="font-size: 12px; color: #71717a; width: 55px; text-align: right;">${formatCurrency(r.sales)}</span>
+          <span style="font-size: 12px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
+          ${r.avgSpeed !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.avgSpeed <= 300 ? '#16a34a' : r.avgSpeed <= 420 ? '#d97706' : '#dc2626'};">${formatTime(r.avgSpeed)}</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
+          ${r.osatPercent !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626'};">${Math.round(r.osatPercent)}%</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
         </div>
       `).join("")}
     </div>
 
     <div style="background: white; padding: 20px 24px; border: 1px solid #e4e4e7; border-top: none;">
-      <h3 style="margin: 0 0 12px; font-size: 14px; font-weight: 600;">All Restaurants</h3>
+      <h3 style="margin: 0 0 8px; font-size: 14px; font-weight: 600;">All Restaurants</h3>
+      <div style="display: flex; align-items: center; padding: 4px 0; border-bottom: 2px solid #e4e4e7;">
+        <span style="width: 20px; font-size: 10px; color: #a1a1aa; font-weight: 600;">#</span>
+        <span style="flex: 1; font-size: 10px; color: #a1a1aa; font-weight: 600;">RESTAURANT</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 28px; text-align: center;">GRD</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 50px; text-align: right;">SALES</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 48px; text-align: right;">VAR</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">SPEED</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">OSAT</span>
+      </div>
       ${summaries.map((r, i) => `
         <div style="display: flex; align-items: center; padding: 6px 0; ${i < summaries.length - 1 ? 'border-bottom: 1px solid #fafafa;' : ''}">
           <span style="width: 20px; font-size: 11px; color: #a1a1aa;">${i + 1}</span>
@@ -339,7 +370,8 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
           <span style="font-size: 12px; font-weight: 600; color: ${getGradeColor(r.gradeLabel)}; width: 28px; text-align: center;">${r.gradeLabel}</span>
           <span style="font-size: 11px; color: #71717a; width: 50px; text-align: right;">${formatCurrency(r.sales)}</span>
           <span style="font-size: 11px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
-          ${r.avgSpeed !== null ? `<span style="font-size: 11px; width: 40px; text-align: right; color: ${r.avgSpeed <= 300 ? '#16a34a' : r.avgSpeed <= 420 ? '#d97706' : '#dc2626'};">${formatTime(r.avgSpeed)}</span>` : '<span style="width: 40px;"></span>'}
+          ${r.avgSpeed !== null ? `<span style="font-size: 11px; width: 40px; text-align: right; color: ${r.avgSpeed <= 300 ? '#16a34a' : r.avgSpeed <= 420 ? '#d97706' : '#dc2626'};">${formatTime(r.avgSpeed)}</span>` : '<span style="font-size: 11px; width: 40px; text-align: right; color: #a1a1aa;">--</span>'}
+          ${r.osatPercent !== null ? `<span style="font-size: 11px; width: 40px; text-align: right; color: ${r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626'};">${Math.round(r.osatPercent)}%</span>` : '<span style="font-size: 11px; width: 40px; text-align: right; color: #a1a1aa;">--</span>'}
         </div>
       `).join("")}
     </div>
