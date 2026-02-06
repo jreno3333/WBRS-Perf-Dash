@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { fetchSalesFromAPI, fetchHistoricalSales, fetchHistoricalHourlySales, fetchHourlySalesFromAPI, syncLocationsFromAPI } from "./scraper/7shifts-api";
 import { db, posDb } from "./db";
-import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets, dailyOsat, hmeTimerData } from "@shared/schema";
+import { scraperRuns, posOrders, hourlySales, hourlyLabor, hourlyCrew, restaurants, employees, markets, restaurantMarkets, dailyOsat, hmeTimerData, osatData as osatDataTable } from "@shared/schema";
 import { desc, sql, gte, lte, lt, and, eq } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getAllHourlyPosSales } from "./xenial-webhook";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "./holidays";
@@ -1823,16 +1823,30 @@ export async function registerRoutes(
           )
         );
       
-      // Get hourly sales for execution grade calculation
+      // Get hourly sales for execution grade calculation - extend range 7 days earlier for variance
+      const extendedStartDate = new Date(startDate);
+      extendedStartDate.setDate(extendedStartDate.getDate() - 7);
+      const extendedStartDateStr = extendedStartDate.toISOString().split('T')[0];
+      
       const salesData = await db
         .select()
         .from(hourlySales)
         .where(
           and(
-            gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, startDateStr),
+            gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, extendedStartDateStr),
             sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
           )
         );
+      
+      // Get HME drive-thru timer data
+      const hmeData = await db.select().from(hmeTimerData).where(
+        and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
+      );
+      
+      // Get hourly OSAT data
+      const hourlyOsatData = await db.select().from(osatDataTable).where(
+        and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
+      );
       
       // Build lookup maps
       const laborByKey = new Map<string, typeof laborData[0]>();
@@ -1844,6 +1858,16 @@ export async function registerRoutes(
       for (const s of salesData) {
         const dateStr = s.salesDate.toISOString().split('T')[0];
         salesByKey.set(`${s.restaurantId}-${dateStr}-${s.hour}`, s);
+      }
+      
+      const hmeByKey = new Map<string, typeof hmeData[0]>();
+      for (const h of hmeData) {
+        hmeByKey.set(`${h.restaurantId}-${h.date}-${h.hour}`, h);
+      }
+      
+      const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
+      for (const o of hourlyOsatData) {
+        osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
       }
       
       // Calculate performance for each leader
@@ -1875,43 +1899,69 @@ export async function registerRoutes(
           const wasWorking = members.some(m => m.userId === userId);
           
           if (wasWorking) {
-            // Track restaurant where they worked
             workedAtRestaurants.set(crew.restaurantId, (workedAtRestaurants.get(crew.restaurantId) || 0) + 1);
             
-            // Get execution grade for this hour
             const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
             const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+            const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+            const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
             
             if (labor && sales) {
-              // Calculate execution score components
-              const lastWeekSales = Number(sales.pastActualSales) || 0;
               const todaySales = Number(sales.actualSales) || 0;
+              
+              // Look up last week's sales from our own data (7 days ago, same hour)
+              const crewDate = new Date(crew.date + 'T12:00:00');
+              const lastWeekDate = new Date(crewDate);
+              lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+              const lastWeekDateStr = lastWeekDate.toISOString().split('T')[0];
+              const lastWeekSalesRecord = salesByKey.get(`${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`);
+              const lastWeekSales = lastWeekSalesRecord ? Number(lastWeekSalesRecord.actualSales) || 0 : 0;
+              
               const hasComparableSales = lastWeekSales > 0;
               const salesVariancePct = hasComparableSales 
                 ? ((todaySales - lastWeekSales) / lastWeekSales) * 100 
                 : 0;
               
-              // Staffing calculation (simplified)
               const actualStaff = Number(labor.employeeCount) || 0;
-              const projectedStaff = (Number(labor.projectedLabor) || 0) / 10; // rough estimate
+              const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
               const staffingDiff = actualStaff - projectedStaff;
               
-              // Score components
               const salesScore = hasComparableSales ? (salesVariancePct >= -5 ? 100 : 50) : 75;
-              
-              // Don't penalize understaffing when sales are 20%+ higher than last week
               const salesSurge = salesVariancePct >= 20;
               let staffingScore: number;
-              if (Math.abs(staffingDiff) <= 1) {
-                staffingScore = 100; // Properly staffed
-              } else if (staffingDiff > 1) {
-                staffingScore = 70; // Overstaffed
-              } else {
-                // Understaffed
-                staffingScore = salesSurge ? 100 : 60; // No penalty if sales 20%+ above last week
+              if (Math.abs(staffingDiff) <= 1) staffingScore = 100;
+              else if (staffingDiff > 1) staffingScore = 70;
+              else staffingScore = salesSurge ? 100 : 60;
+              
+              const speedSeconds = hme && hme.avgServiceTime > 0 ? hme.avgServiceTime : undefined;
+              let speedScore = 0;
+              let hasSpeed = false;
+              if (speedSeconds !== undefined && speedSeconds > 0) {
+                hasSpeed = true;
+                if (speedSeconds <= 300) speedScore = 100;
+                else if (speedSeconds <= 420) speedScore = 70;
+                else speedScore = 40;
               }
               
-              const score = (salesScore + staffingScore) / 2;
+              const osatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
+              let osatScore = 0;
+              let hasOsat = false;
+              if (osatPercent !== undefined) {
+                hasOsat = true;
+                if (osatPercent >= 85) osatScore = 100;
+                else if (osatPercent >= 80) osatScore = 70;
+                else osatScore = 40;
+              }
+              
+              const components: { weight: number; score: number }[] = [
+                { weight: 35, score: salesScore },
+                { weight: 15, score: staffingScore },
+              ];
+              if (hasSpeed) components.push({ weight: 25, score: speedScore });
+              if (hasOsat) components.push({ weight: 25, score: osatScore });
+              const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+              const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+              
               gradeScores.push(score);
             }
           }
@@ -1921,14 +1971,17 @@ export async function registerRoutes(
         if (gradeScores.length >= MIN_HOURS_REQUIRED) {
           const avgScore = gradeScores.reduce((a, b) => a + b, 0) / gradeScores.length;
           
-          // Convert score to grade
-          let grade = 'C';
+          let grade = 'F';
           if (avgScore >= 95) grade = 'A+';
-          else if (avgScore >= 85) grade = 'A';
+          else if (avgScore >= 90) grade = 'A';
+          else if (avgScore >= 85) grade = 'A-';
+          else if (avgScore >= 80) grade = 'B+';
           else if (avgScore >= 75) grade = 'B';
-          else if (avgScore >= 65) grade = 'C';
-          else if (avgScore >= 55) grade = 'D';
-          else grade = 'F';
+          else if (avgScore >= 70) grade = 'B-';
+          else if (avgScore >= 65) grade = 'C+';
+          else if (avgScore >= 60) grade = 'C';
+          else if (avgScore >= 55) grade = 'C-';
+          else if (avgScore >= 50) grade = 'D';
           
           // Determine restaurant from where they worked most (instead of employee profile)
           let primaryRestaurantId = '';
@@ -2045,9 +2098,14 @@ export async function registerRoutes(
         and(gte(hourlyLabor.date, startDateStr), sql`${hourlyLabor.date} <= ${endDateStr}`)
       );
       
+      // Extend sales range 7 days earlier to look up last week's sales for variance
+      const detailExtStart = new Date(startDate);
+      detailExtStart.setDate(detailExtStart.getDate() - 7);
+      const detailExtStartStr = detailExtStart.toISOString().split('T')[0];
+      
       const salesData = await db.select().from(hourlySales).where(
         and(
-          gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, startDateStr),
+          gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, detailExtStartStr),
           sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
         )
       );
@@ -2056,8 +2114,9 @@ export async function registerRoutes(
         and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
       );
       
-      const osatData = await db.select().from(dailyOsat).where(
-        and(gte(dailyOsat.date, startDateStr), lte(dailyOsat.date, endDateStr))
+      // Use hourly OSAT data instead of daily aggregates
+      const hourlyOsatData = await db.select().from(osatDataTable).where(
+        and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
       );
       
       const allRestaurants = await db.select().from(restaurants);
@@ -2076,9 +2135,9 @@ export async function registerRoutes(
       for (const h of hmeData) {
         hmeByKey.set(`${h.restaurantId}-${h.date}-${h.hour}`, h);
       }
-      const osatByDateRestaurant = new Map<string, typeof osatData[0]>();
-      for (const o of osatData) {
-        osatByDateRestaurant.set(`${o.restaurantId}-${o.date}`, o);
+      const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
+      for (const o of hourlyOsatData) {
+        osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
       }
       
       type HourDetail = {
@@ -2092,6 +2151,8 @@ export async function registerRoutes(
         staffingDiff: number;
         actualStaff: number;
         projectedStaff: number;
+        osatPercent?: number;
+        osatResponses?: number;
         score: number;
       };
       
@@ -2111,10 +2172,19 @@ export async function registerRoutes(
         const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+        const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         
         if (labor && sales) {
-          const lastWeekSales = Number(sales.pastActualSales) || 0;
           const todaySales = Number(sales.actualSales) || 0;
+          
+          // Look up last week's sales from our own data (7 days ago, same hour)
+          const crewDate = new Date(crew.date + 'T12:00:00');
+          const lastWeekDate = new Date(crewDate);
+          lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+          const lastWeekDateStr = lastWeekDate.toISOString().split('T')[0];
+          const lastWeekSalesRecord = salesByKey.get(`${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`);
+          const lastWeekSales = lastWeekSalesRecord ? Number(lastWeekSalesRecord.actualSales) || 0 : 0;
+          
           const hasComparableSales = lastWeekSales > 0;
           const salesVariancePct = hasComparableSales 
             ? ((todaySales - lastWeekSales) / lastWeekSales) * 100 : 0;
@@ -2140,11 +2210,23 @@ export async function registerRoutes(
             else speedScore = 40;
           }
           
-          const components = [
+          const hourOsatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
+          const hourOsatResponses = osatHour && osatHour.totalResponses > 0 ? osatHour.totalResponses : undefined;
+          let osatScore = 0;
+          let hasOsatComponent = false;
+          if (hourOsatPercent !== undefined) {
+            hasOsatComponent = true;
+            if (hourOsatPercent >= 85) osatScore = 100;
+            else if (hourOsatPercent >= 80) osatScore = 70;
+            else osatScore = 40;
+          }
+          
+          const components: { weight: number; score: number }[] = [
             { weight: 35, score: salesScore },
             { weight: 15, score: staffingScore },
           ];
           if (hasSpeed) components.push({ weight: 25, score: speedScore });
+          if (hasOsatComponent) components.push({ weight: 25, score: osatScore });
           const totalWeight = components.reduce((s, c) => s + c.weight, 0);
           const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
           
@@ -2159,6 +2241,8 @@ export async function registerRoutes(
             staffingDiff,
             actualStaff,
             projectedStaff,
+            osatPercent: hourOsatPercent,
+            osatResponses: hourOsatResponses,
             score,
           });
         }
@@ -2215,9 +2299,16 @@ export async function registerRoutes(
         const avgSpeed = speedHours.length > 0 ? speedHours.reduce((s: number, h: HourDetail) => s + h.speedSeconds!, 0) / speedHours.length : undefined;
         const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
         
-        const osat = osatByDateRestaurant.get(`${dayData.restaurantId}-${dateKey}`);
-        const osatPercent = osat ? Number(osat.osatPercent) : undefined;
-        const osatResponses = osat ? osat.totalResponses : undefined;
+        // Aggregate OSAT from hours the leader actually worked (not the whole day)
+        const osatHours = dayData.hours.filter((h: HourDetail) => h.osatPercent !== undefined && h.osatResponses !== undefined && h.osatResponses > 0);
+        let osatPercent: number | undefined = undefined;
+        let osatResponses: number | undefined = undefined;
+        if (osatHours.length > 0) {
+          const totalOsatResponses = osatHours.reduce((s: number, h: HourDetail) => s + (h.osatResponses || 0), 0);
+          const weightedOsat = osatHours.reduce((s: number, h: HourDetail) => s + (h.osatPercent || 0) * (h.osatResponses || 0), 0);
+          osatPercent = totalOsatResponses > 0 ? weightedOsat / totalOsatResponses : undefined;
+          osatResponses = totalOsatResponses;
+        }
         
         const wentWell: string[] = [];
         const needsImprovement: string[] = [];
