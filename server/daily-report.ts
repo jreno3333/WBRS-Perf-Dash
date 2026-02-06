@@ -124,7 +124,7 @@ export async function sendDailyReports(): Promise<{ sent: number; failed: number
   return result;
 }
 
-async function buildDailyReportHtml(dateStr: string): Promise<string | null> {
+export async function buildDailyReportHtml(dateStr: string): Promise<string | null> {
   try {
     const allRestaurants = await storage.getRestaurants();
     const activeRestaurants = allRestaurants.filter(r => {

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
@@ -1584,6 +1584,9 @@ function EmailSubscribersCard() {
   const { toast } = useToast();
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const { data: subscribers, isLoading } = useQuery<EmailSubscriber[]>({
     queryKey: ["/api/email-subscribers"],
@@ -1626,16 +1629,76 @@ function EmailSubscribersCard() {
     },
   });
 
+  const sendNowMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/daily-report/send-now");
+    },
+    onSuccess: async (response) => {
+      const data = await response.json();
+      toast({
+        title: "Report sent",
+        description: `${data.sent} email(s) sent, ${data.failed} failed.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to send report", variant: "destructive" });
+    },
+  });
+
+  const loadPreview = async () => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch("/api/daily-report/preview");
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ title: "No preview available", description: err.error || "No data for yesterday", variant: "destructive" });
+        setPreviewHtml(null);
+      } else {
+        const html = await res.text();
+        setPreviewHtml(html);
+      }
+      setShowPreview(true);
+    } catch {
+      toast({ title: "Error", description: "Failed to load preview", variant: "destructive" });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Receipt className="h-5 w-5" />
-          Daily Report Subscribers
-        </CardTitle>
-        <CardDescription>
-          Manage email addresses that receive the daily performance summary at 6:00 AM Central.
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5" />
+            Daily Report Subscribers
+          </CardTitle>
+          <CardDescription>
+            Manage email addresses that receive the daily performance summary at 6:00 AM Central.
+          </CardDescription>
+        </div>
+        <div className="flex gap-2 flex-wrap shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadPreview}
+            disabled={previewLoading}
+            data-testid="button-preview-report"
+          >
+            <Eye className="h-4 w-4 mr-1" />
+            {previewLoading ? "Loading..." : "Preview"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => sendNowMutation.mutate()}
+            disabled={sendNowMutation.isPending || !subscribers || subscribers.length === 0}
+            data-testid="button-send-report-now"
+          >
+            <Send className="h-4 w-4 mr-1" />
+            {sendNowMutation.isPending ? "Sending..." : "Send Now"}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -1711,6 +1774,38 @@ function EmailSubscribersCard() {
               <Receipt className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p>No subscribers yet.</p>
               <p className="text-sm">Add email addresses to receive daily performance reports.</p>
+            </div>
+          )}
+
+          {showPreview && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Report Preview (Yesterday)</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => { setShowPreview(false); setPreviewHtml(null); }}
+                  data-testid="button-close-preview"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              {previewHtml ? (
+                <div className="border rounded-md overflow-hidden">
+                  <iframe
+                    srcDoc={previewHtml}
+                    className="w-full border-0"
+                    style={{ height: "600px" }}
+                    title="Daily Report Preview"
+                    data-testid="iframe-report-preview"
+                  />
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground border rounded-md">
+                  <Receipt className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No report data available for yesterday.</p>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -3380,6 +3380,38 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/daily-report/preview", async (req, res) => {
+    try {
+      const { buildDailyReportHtml } = await import("./daily-report");
+      const now = new Date();
+      const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateStr = req.query.date as string || centralFormatter.format(yesterday);
+      const html = await buildDailyReportHtml(dateStr);
+      if (!html) {
+        res.status(404).json({ error: "No data available for this date" });
+        return;
+      }
+      res.setHeader("Content-Type", "text/html");
+      res.send(html);
+    } catch (error) {
+      console.error("Error generating report preview:", error);
+      res.status(500).json({ error: "Failed to generate report preview" });
+    }
+  });
+
+  app.post("/api/daily-report/send-now", async (req, res) => {
+    try {
+      const { sendDailyReports } = await import("./daily-report");
+      const result = await sendDailyReports();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("Error sending daily report:", error);
+      res.status(500).json({ error: "Failed to send daily report" });
+    }
+  });
+
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {
     res.json({
