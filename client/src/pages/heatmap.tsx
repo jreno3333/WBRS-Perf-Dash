@@ -70,10 +70,16 @@ export default function HeatmapPage() {
   
   // Auto-adjust endDate if startDate changes to be after endDate
   const handleStartDateChange = (newStartDate: string) => {
+    if (!newStartDate) return;
     setStartDate(newStartDate);
     if (isDateRangeMode && newStartDate > endDate) {
       setEndDate(newStartDate);
     }
+  };
+
+  const handleEndDateChange = (newEndDate: string) => {
+    if (!newEndDate) return;
+    setEndDate(newEndDate);
   };
   
   // Compute the active analysis date or date range
@@ -327,7 +333,7 @@ export default function HeatmapPage() {
                   value={endDate}
                   min={startDate}
                   max={todayStr}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  onChange={(e) => handleEndDateChange(e.target.value)}
                   className="w-36 h-8 text-sm"
                   data-testid="input-end-date"
                 />
