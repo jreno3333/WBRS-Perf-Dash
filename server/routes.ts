@@ -1890,9 +1890,18 @@ export async function registerRoutes(
       for (const leader of leaderEmployees) {
         const userId = leader.sevenShiftsUserId;
         
-        // Find hours this leader worked and track restaurants they worked at
-        const gradeScores: number[] = [];
-        const workedAtRestaurants = new Map<string, number>(); // restaurantId -> hours count
+        // Group hours by date to compute daily aggregate grades
+        const dailyAggregates = new Map<string, {
+          restaurantId: string;
+          totalSalesToday: number;
+          totalSalesLastWeek: number;
+          staffingDiffs: number[];
+          speedValues: number[];
+          osatWeighted: { percent: number; responses: number }[];
+          hoursCount: number;
+        }>();
+        const workedAtRestaurants = new Map<string, number>();
+        let totalHoursWorked = 0;
         
         for (const crew of crewData) {
           const members = (crew.crewMembers as any[]) || [];
@@ -1907,66 +1916,95 @@ export async function registerRoutes(
             const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
             
             if (labor && sales) {
-              const todaySales = Number(sales.actualSales) || 0;
+              totalHoursWorked++;
+              const dayKey = crew.date;
+              if (!dailyAggregates.has(dayKey)) {
+                dailyAggregates.set(dayKey, {
+                  restaurantId: crew.restaurantId,
+                  totalSalesToday: 0, totalSalesLastWeek: 0,
+                  staffingDiffs: [], speedValues: [], osatWeighted: [], hoursCount: 0,
+                });
+              }
+              const day = dailyAggregates.get(dayKey)!;
+              day.hoursCount++;
               
-              // Look up last week's sales from our own data (7 days ago, same hour)
+              const todaySales = Number(sales.actualSales) || 0;
+              day.totalSalesToday += todaySales;
+              
               const crewDate = new Date(crew.date + 'T12:00:00');
               const lastWeekDate = new Date(crewDate);
               lastWeekDate.setDate(lastWeekDate.getDate() - 7);
               const lastWeekDateStr = lastWeekDate.toISOString().split('T')[0];
               const lastWeekSalesRecord = salesByKey.get(`${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`);
               const lastWeekSales = lastWeekSalesRecord ? Number(lastWeekSalesRecord.actualSales) || 0 : 0;
-              
-              const hasComparableSales = lastWeekSales > 0;
-              const salesVariancePct = hasComparableSales 
-                ? ((todaySales - lastWeekSales) / lastWeekSales) * 100 
-                : 0;
+              day.totalSalesLastWeek += lastWeekSales;
               
               const actualStaff = Number(labor.employeeCount) || 0;
               const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
-              const staffingDiff = actualStaff - projectedStaff;
-              
-              const salesSurge = salesVariancePct >= 20;
-              
-              const components: { weight: number; score: number }[] = [];
-              
-              if (hasComparableSales) {
-                const salesScore = salesVariancePct >= -5 ? 100 : 50;
-                components.push({ weight: 35, score: salesScore });
-              }
-              
-              let staffingScore: number;
-              if (Math.abs(staffingDiff) <= 1) staffingScore = 100;
-              else if (staffingDiff > 1) staffingScore = 60;
-              else staffingScore = salesSurge ? 100 : 60;
-              components.push({ weight: 15, score: staffingScore });
+              day.staffingDiffs.push(actualStaff - projectedStaff);
               
               const speedSeconds = hme && hme.avgServiceTime > 0 ? hme.avgServiceTime : undefined;
               if (speedSeconds !== undefined && speedSeconds > 0) {
-                let speedScore = 100;
-                if (speedSeconds > 420) speedScore = 40;
-                else if (speedSeconds > 300) speedScore = 70;
-                components.push({ weight: 25, score: speedScore });
+                day.speedValues.push(speedSeconds);
               }
               
               const osatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
+              const osatResponses = osatHour && osatHour.totalResponses > 0 ? osatHour.totalResponses : 0;
               if (osatPercent !== undefined) {
-                let osatScore = 100;
-                if (osatPercent < 80) osatScore = 40;
-                else if (osatPercent < 85) osatScore = 70;
-                components.push({ weight: 25, score: osatScore });
+                day.osatWeighted.push({ percent: osatPercent, responses: osatResponses });
               }
-              const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-              const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
-              
-              gradeScores.push(score);
             }
           }
         }
         
+        // Compute daily grades from daily aggregates, then average
+        const dailyGrades: { score: number; hours: number }[] = [];
+        for (const [, day] of Array.from(dailyAggregates)) {
+          const hasComparableSales = day.totalSalesLastWeek > 0;
+          const salesVariancePct = hasComparableSales
+            ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100
+            : 0;
+          const avgStaffingDiff = day.staffingDiffs.reduce((a: number, b: number) => a + b, 0) / day.staffingDiffs.length;
+          const avgSpeed = day.speedValues.length > 0 ? day.speedValues.reduce((a: number, b: number) => a + b, 0) / day.speedValues.length : undefined;
+          const totalOsatResponses = day.osatWeighted.reduce((s: number, o: { percent: number; responses: number }) => s + o.responses, 0);
+          const osatPercent = totalOsatResponses > 0
+            ? day.osatWeighted.reduce((s: number, o: { percent: number; responses: number }) => s + o.percent * o.responses, 0) / totalOsatResponses
+            : undefined;
+          const salesSurge = salesVariancePct >= 20;
+          
+          const components: { weight: number; score: number }[] = [];
+          if (hasComparableSales) {
+            components.push({ weight: 35, score: salesVariancePct >= -5 ? 100 : 50 });
+          }
+          let staffingScore = 100;
+          if (Math.abs(avgStaffingDiff) <= 1) staffingScore = 100;
+          else if (avgStaffingDiff > 1) staffingScore = 60;
+          else staffingScore = salesSurge ? 100 : 60;
+          components.push({ weight: 15, score: staffingScore });
+          if (avgSpeed !== undefined) {
+            let speedScore = 100;
+            if (avgSpeed > 420) speedScore = 40;
+            else if (avgSpeed > 300) speedScore = 70;
+            components.push({ weight: 25, score: speedScore });
+          }
+          if (osatPercent !== undefined) {
+            let osatScore = 100;
+            if (osatPercent < 80) osatScore = 40;
+            else if (osatPercent < 85) osatScore = 70;
+            components.push({ weight: 25, score: osatScore });
+          }
+          
+          if (components.length > 0) {
+            const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+            const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+            dailyGrades.push({ score, hours: day.hoursCount });
+          }
+        }
+        
         // Only include if they have minimum required hours
-        if (gradeScores.length >= MIN_HOURS_REQUIRED) {
-          const avgScore = gradeScores.reduce((a, b) => a + b, 0) / gradeScores.length;
+        if (totalHoursWorked >= MIN_HOURS_REQUIRED && dailyGrades.length > 0) {
+          const totalGradeHours = dailyGrades.reduce((s, d) => s + d.hours, 0);
+          const avgScore = dailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours;
           
           let grade = 'F';
           if (avgScore >= 95) grade = 'A+';
@@ -2018,7 +2056,7 @@ export async function registerRoutes(
             position: displayPosition,
             restaurantId: primaryRestaurantId,
             restaurantName: restaurantName,
-            hoursWorked: gradeScores.length,
+            hoursWorked: totalHoursWorked,
             avgGradeScore: Math.round(avgScore),
             grade,
           });
@@ -2283,17 +2321,17 @@ export async function registerRoutes(
       for (const [dateKey, dayData] of dailyEntries) {
         if (dayData.hours.length === 0) continue;
         
-        const avgScore = dayData.hours.reduce((s: number, h: HourDetail) => s + h.score, 0) / dayData.hours.length;
-        const comparableHours = dayData.hours.filter((h: HourDetail) => h.hasComparableSales);
-        const avgSalesVar = comparableHours.length > 0
-          ? comparableHours.reduce((s: number, h: HourDetail) => s + h.salesVariancePct, 0) / comparableHours.length
-          : 0;
+        // Compute daily aggregates first
         const totalSales = dayData.hours.reduce((s: number, h: HourDetail) => s + h.todaySales, 0);
+        const totalLastWeekSales = dayData.hours.reduce((s: number, h: HourDetail) => s + h.lastWeekSales, 0);
+        const hasComparableSales = totalLastWeekSales > 0;
+        const dailySalesVariancePct = hasComparableSales
+          ? ((totalSales - totalLastWeekSales) / totalLastWeekSales) * 100
+          : 0;
+        const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
         const speedHours = dayData.hours.filter((h: HourDetail) => h.speedSeconds !== undefined && h.speedSeconds! > 0);
         const avgSpeed = speedHours.length > 0 ? speedHours.reduce((s: number, h: HourDetail) => s + h.speedSeconds!, 0) / speedHours.length : undefined;
-        const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
         
-        // Aggregate OSAT from hours the leader actually worked (not the whole day)
         const osatHours = dayData.hours.filter((h: HourDetail) => h.osatPercent !== undefined && h.osatResponses !== undefined && h.osatResponses > 0);
         let osatPercent: number | undefined = undefined;
         let osatResponses: number | undefined = undefined;
@@ -2304,15 +2342,45 @@ export async function registerRoutes(
           osatResponses = totalOsatResponses;
         }
         
+        // Compute daily grade from daily aggregates (not hourly average)
+        const salesSurge = dailySalesVariancePct >= 20;
+        const gradeComponents: { weight: number; score: number }[] = [];
+        if (hasComparableSales) {
+          gradeComponents.push({ weight: 35, score: dailySalesVariancePct >= -5 ? 100 : 50 });
+        }
+        let staffingScore = 100;
+        if (Math.abs(avgStaffingDiff) <= 1) staffingScore = 100;
+        else if (avgStaffingDiff > 1) staffingScore = 60;
+        else staffingScore = salesSurge ? 100 : 60;
+        gradeComponents.push({ weight: 15, score: staffingScore });
+        if (avgSpeed !== undefined) {
+          let speedScore = 100;
+          if (avgSpeed > 420) speedScore = 40;
+          else if (avgSpeed > 300) speedScore = 70;
+          gradeComponents.push({ weight: 25, score: speedScore });
+        }
+        if (osatPercent !== undefined) {
+          let osatGradeScore = 100;
+          if (osatPercent < 80) osatGradeScore = 40;
+          else if (osatPercent < 85) osatGradeScore = 70;
+          gradeComponents.push({ weight: 25, score: osatGradeScore });
+        }
+        const totalGradeWeight = gradeComponents.reduce((s, c) => s + c.weight, 0);
+        const dailyGradeScore = totalGradeWeight > 0
+          ? gradeComponents.reduce((s, c) => s + c.score * c.weight, 0) / totalGradeWeight
+          : 0;
+        
         const wentWell: string[] = [];
         const needsImprovement: string[] = [];
         
-        if (avgSalesVar >= 5) {
-          wentWell.push(`Sales were up ${avgSalesVar.toFixed(1)}% compared to last week`);
-        } else if (avgSalesVar >= -5) {
-          wentWell.push(`Sales were on track (${avgSalesVar >= 0 ? '+' : ''}${avgSalesVar.toFixed(1)}% vs last week)`);
-        } else {
-          needsImprovement.push(`Sales were down ${Math.abs(avgSalesVar).toFixed(1)}% compared to last week`);
+        if (hasComparableSales) {
+          if (dailySalesVariancePct >= 5) {
+            wentWell.push(`Sales were up ${dailySalesVariancePct.toFixed(1)}% compared to last week`);
+          } else if (dailySalesVariancePct >= -5) {
+            wentWell.push(`Sales were on track (${dailySalesVariancePct >= 0 ? '+' : ''}${dailySalesVariancePct.toFixed(1)}% vs last week)`);
+          } else {
+            needsImprovement.push(`Sales were down ${Math.abs(dailySalesVariancePct).toFixed(1)}% compared to last week`);
+          }
         }
         
         if (avgSpeed !== undefined) {
@@ -2333,7 +2401,6 @@ export async function registerRoutes(
         } else if (avgStaffingDiff > 1) {
           needsImprovement.push(`Overstaffed by an average of ${avgStaffingDiff.toFixed(1)} employees per hour`);
         } else {
-          const salesSurge = avgSalesVar >= 20;
           if (salesSurge) {
             wentWell.push("Handled high sales volume despite being understaffed");
           } else {
@@ -2360,9 +2427,9 @@ export async function registerRoutes(
           restaurantId: dayData.restaurantId,
           restaurantName: restaurantNameMap.get(dayData.restaurantId) || '',
           hoursWorked: dayData.hours.length,
-          gradeScore: Math.round(avgScore),
-          gradeLabel: getGradeLabel(avgScore),
-          avgSalesVariance: Math.round(avgSalesVar * 10) / 10,
+          gradeScore: Math.round(dailyGradeScore),
+          gradeLabel: getGradeLabel(dailyGradeScore),
+          avgSalesVariance: Math.round(dailySalesVariancePct * 10) / 10,
           totalSales: Math.round(totalSales * 100) / 100,
           avgSpeed,
           avgStaffingDiff: Math.round(avgStaffingDiff * 10) / 10,
