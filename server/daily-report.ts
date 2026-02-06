@@ -27,10 +27,7 @@ function getGradeColor(grade: string): string {
 }
 
 function formatCurrency(amount: number): string {
-  if (amount >= 1000) {
-    return `$${(amount / 1000).toFixed(1)}k`;
-  }
-  return `$${Math.round(amount)}`;
+  return `$${Math.round(amount).toLocaleString('en-US')}`;
 }
 
 function formatTime(seconds: number): string {
