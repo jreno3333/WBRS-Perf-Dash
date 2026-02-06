@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -820,28 +820,53 @@ export function DailySummary({
   selectedDate,
   dateRange
 }: DailySummaryProps) {
-  // Fetch category issues for the selected date
-  const { data: categoryIssuesData } = useQuery<{ 
-    date: string; 
-    issuesByRestaurant: Record<string, { 
-      restaurantId: string;
-      date: string;
-      hour: number;
-      orderAccuracy: number | null;
-      foodQuality: number | null;
-      menuOptions: number | null;
-      value: number | null;
-      easeOfOrdering: number | null;
-      employeeFriendliness: number | null;
-      speedOfService: number | null;
-      cleanliness: number | null;
-      driveThruWaitTime: number | null;
-      overallRating: number | null;
-    }[]> 
-  }>({
-    queryKey: ['/api/osat/category-issues/all', selectedDate],
-    enabled: !!selectedDate,
+  // Fetch category issues for all dates in range
+  const datesToFetch = dateRange && dateRange.length > 0 ? dateRange : (selectedDate ? [selectedDate] : []);
+  
+  type CategoryIssueRow = {
+    restaurantId: string;
+    date: string;
+    hour: number;
+    orderAccuracy: number | null;
+    foodQuality: number | null;
+    menuOptions: number | null;
+    value: number | null;
+    easeOfOrdering: number | null;
+    employeeFriendliness: number | null;
+    speedOfService: number | null;
+    cleanliness: number | null;
+    driveThruWaitTime: number | null;
+    overallRating: number | null;
+  };
+  
+  const categoryIssueQueries = useQueries({
+    queries: datesToFetch.map(date => ({
+      queryKey: ['/api/osat/category-issues/all', date],
+      queryFn: async () => {
+        const res = await fetch(`/api/osat/category-issues/all?date=${date}`);
+        if (!res.ok) throw new Error("Failed to fetch category issues");
+        return res.json() as Promise<{ date: string; issuesByRestaurant: Record<string, CategoryIssueRow[]> }>;
+      },
+      enabled: !!date,
+    })),
   });
+  
+  const categoryIssuesData = useMemo(() => {
+    const allData = categoryIssueQueries.filter(q => q.data).map(q => q.data!);
+    if (allData.length === 0) return null;
+    if (allData.length === 1) return allData[0];
+    
+    const merged: Record<string, CategoryIssueRow[]> = {};
+    for (const dayData of allData) {
+      for (const [restaurantId, issues] of Object.entries(dayData.issuesByRestaurant)) {
+        if (!merged[restaurantId]) {
+          merged[restaurantId] = [];
+        }
+        merged[restaurantId].push(...issues);
+      }
+    }
+    return { date: allData[0].date, issuesByRestaurant: merged };
+  }, [categoryIssueQueries]);
   
   // Process category issues into a usable format per restaurant
   const categoryIssuesByRestaurant = useMemo(() => {

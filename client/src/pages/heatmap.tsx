@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,7 @@ import { ArrowLeft, Calendar, Clock, AlertTriangle, ChevronDown, ChevronUp, Grid
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
 import { format, subDays, addDays, parseISO, isValid, startOfDay, endOfDay, eachDayOfInterval } from "date-fns";
-import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
+import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, RestaurantSales } from "@shared/schema";
 
 interface HeatmapData {
   restaurants: { id: string; name: string }[];
@@ -100,9 +100,6 @@ export default function HeatmapPage() {
     }
   }, [startDate, endDate, isDateRangeMode]);
   
-  // Use the selected date for API queries
-  const dateStr = startDate;
-  
   // Auto-refresh every 5 minutes (300000ms) for all-day monitoring
   const REFRESH_INTERVAL = 5 * 60 * 1000;
   
@@ -111,45 +108,186 @@ export default function HeatmapPage() {
     refetchInterval: REFRESH_INTERVAL,
   });
   
-  // Fetch leaderboard data for DailySummary
-  const { data: leaderboardData } = useQuery<LeaderboardData>({
-    queryKey: ['/api/leaderboard', dateStr],
-    queryFn: async () => {
-      const res = await fetch(`/api/leaderboard?date=${dateStr}`);
-      if (!res.ok) throw new Error("Failed to fetch leaderboard");
-      return res.json();
-    },
-    refetchInterval: REFRESH_INTERVAL,
+  // Fetch leaderboard data for ALL days in range
+  const leaderboardQueries = useQueries({
+    queries: analysisDateRange.map(date => ({
+      queryKey: ['/api/leaderboard', date],
+      queryFn: async () => {
+        const res = await fetch(`/api/leaderboard?date=${date}`);
+        if (!res.ok) throw new Error("Failed to fetch leaderboard");
+        return res.json() as Promise<LeaderboardData>;
+      },
+      refetchInterval: REFRESH_INTERVAL,
+    })),
   });
-  
-  // Fetch hourly sales data for DailySummary
-  const { data: hourlyData } = useQuery<Record<string, HourlySalesData[]>>({
-    queryKey: ['/api/hourly-by-restaurant', dateStr],
-    queryFn: async () => {
-      const res = await fetch(`/api/hourly-by-restaurant?date=${dateStr}`);
-      if (!res.ok) throw new Error("Failed to fetch hourly data");
-      return res.json();
-    },
-    refetchInterval: REFRESH_INTERVAL,
+
+  // Fetch hourly sales data for ALL days in range
+  const hourlyQueries = useQueries({
+    queries: analysisDateRange.map(date => ({
+      queryKey: ['/api/hourly-by-restaurant', date],
+      queryFn: async () => {
+        const res = await fetch(`/api/hourly-by-restaurant?date=${date}`);
+        if (!res.ok) throw new Error("Failed to fetch hourly data");
+        return res.json() as Promise<Record<string, HourlySalesData[]>>;
+      },
+      refetchInterval: REFRESH_INTERVAL,
+    })),
   });
-  
-  // Fetch markets for DailySummary
+
+  // Fetch crew summary for ALL days in range
+  const crewQueries = useQueries({
+    queries: analysisDateRange.map(date => ({
+      queryKey: ['/api/crew/summary', date],
+      queryFn: async () => {
+        const res = await fetch(`/api/crew/summary?date=${date}`);
+        if (!res.ok) throw new Error("Failed to fetch crew summary");
+        return res.json() as Promise<{ date: string; summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> }>;
+      },
+      refetchInterval: REFRESH_INTERVAL,
+    })),
+  });
+
+  // Fetch markets (not date-dependent)
   const { data: markets } = useQuery<MarketWithRestaurants[]>({
     queryKey: ['/api/markets'],
     refetchInterval: REFRESH_INTERVAL,
   });
-  
-  // Fetch crew summary for DailySummary
-  const { data: crewSummaryResponse } = useQuery<{ date: string; summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> }>({
-    queryKey: ['/api/crew/summary', dateStr],
-    queryFn: async () => {
-      const res = await fetch(`/api/crew/summary?date=${dateStr}`);
-      if (!res.ok) throw new Error("Failed to fetch crew summary");
-      return res.json();
-    },
-    refetchInterval: REFRESH_INTERVAL,
-  });
-  const crewSummary = crewSummaryResponse?.summary;
+
+  // Aggregate leaderboard data across all days in range
+  const leaderboardData = useMemo<LeaderboardData | undefined>(() => {
+    const allData = leaderboardQueries
+      .filter(q => q.data)
+      .map(q => q.data!);
+    
+    if (allData.length === 0) return undefined;
+    if (allData.length === 1) return allData[0];
+    
+    const restaurantMap = new Map<string, RestaurantSales>();
+    const restaurantDayCount = new Map<string, number>();
+    
+    for (const dayData of allData) {
+      for (const r of dayData.restaurants) {
+        const existing = restaurantMap.get(r.restaurantId);
+        const count = (restaurantDayCount.get(r.restaurantId) || 0) + 1;
+        restaurantDayCount.set(r.restaurantId, count);
+        
+        if (!existing) {
+          restaurantMap.set(r.restaurantId, { ...r });
+        } else {
+          existing.actualSales += r.actualSales;
+          existing.todaySales += r.todaySales;
+          existing.lastWeekSales += r.lastWeekSales;
+          existing.actualLastWeekSales += r.actualLastWeekSales;
+          existing.forecastSales += r.forecastSales;
+          if (r.driveThru && existing.driveThru) {
+            existing.driveThru = {
+              carCount: existing.driveThru.carCount + r.driveThru.carCount,
+              avgTotalTime: ((existing.driveThru.avgTotalTime * (count - 1)) + r.driveThru.avgTotalTime) / count,
+              avgServiceTime: ((existing.driveThru.avgServiceTime * (count - 1)) + r.driveThru.avgServiceTime) / count,
+            };
+          } else if (r.driveThru) {
+            existing.driveThru = { ...r.driveThru };
+          }
+          if (r.osat && existing.osat) {
+            existing.osat = {
+              totalResponses: existing.osat.totalResponses + r.osat.totalResponses,
+              fiveStarCount: existing.osat.fiveStarCount + r.osat.fiveStarCount,
+              osatPercent: ((existing.osat.fiveStarCount + r.osat.fiveStarCount) / (existing.osat.totalResponses + r.osat.totalResponses)) * 100,
+            };
+          } else if (r.osat) {
+            existing.osat = { ...r.osat };
+          }
+        }
+      }
+    }
+    
+    const restaurants = Array.from(restaurantMap.values()).map(r => {
+      r.pacePercentage = r.actualLastWeekSales > 0 ? (r.actualSales / r.actualLastWeekSales) * 100 : 0;
+      r.isAheadOfPace = r.pacePercentage >= 100;
+      return r;
+    });
+    
+    return {
+      ...allData[0],
+      restaurants,
+    };
+  }, [leaderboardQueries]);
+
+  // Aggregate hourly data across all days (merge/concatenate hourly records)
+  const hourlyData = useMemo<Record<string, HourlySalesData[]> | undefined>(() => {
+    const allData = hourlyQueries
+      .filter(q => q.data)
+      .map(q => q.data!);
+    
+    if (allData.length === 0) return undefined;
+    if (allData.length === 1) return allData[0];
+    
+    const merged: Record<string, HourlySalesData[]> = {};
+    
+    for (const dayData of allData) {
+      for (const [restaurantId, hours] of Object.entries(dayData)) {
+        if (!merged[restaurantId]) {
+          merged[restaurantId] = [];
+        }
+        for (const hour of hours) {
+          const existing = merged[restaurantId].find(h => h.hour === hour.hour);
+          if (existing) {
+            existing.todaySales += hour.todaySales;
+            existing.lastWeekSales += hour.lastWeekSales;
+            existing.forecastSales += hour.forecastSales;
+            if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
+              const existingResponses = existing.osatResponses || 0;
+              const existingOsat = existing.osatPercent || 0;
+              const totalResponses = existingResponses + hour.osatResponses;
+              existing.osatPercent = ((existingOsat * existingResponses) + (hour.osatPercent * hour.osatResponses)) / totalResponses;
+              existing.osatResponses = totalResponses;
+            }
+          } else {
+            merged[restaurantId].push({ ...hour });
+          }
+        }
+      }
+    }
+    
+    return merged;
+  }, [hourlyQueries]);
+
+  // Aggregate crew summary across days (average)
+  const crewSummary = useMemo<Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> | undefined>(() => {
+    const allData = crewQueries
+      .filter(q => q.data?.summary)
+      .map(q => q.data!.summary);
+    
+    if (allData.length === 0) return undefined;
+    if (allData.length === 1) return allData[0];
+    
+    const merged: Record<string, { totalScore: number; totalCrewCount: number; totalTenure: number; count: number }> = {};
+    
+    for (const daySummary of allData) {
+      for (const [restaurantId, data] of Object.entries(daySummary)) {
+        if (!merged[restaurantId]) {
+          merged[restaurantId] = { totalScore: 0, totalCrewCount: 0, totalTenure: 0, count: 0 };
+        }
+        merged[restaurantId].totalScore += data.avgScore;
+        merged[restaurantId].totalCrewCount += data.avgCrewCount;
+        merged[restaurantId].totalTenure += data.avgTenureMonths;
+        merged[restaurantId].count++;
+      }
+    }
+    
+    const result: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> = {};
+    for (const [id, data] of Object.entries(merged)) {
+      result[id] = {
+        avgScore: data.totalScore / data.count,
+        avgCrewCount: data.totalCrewCount / data.count,
+        avgTenureMonths: data.totalTenure / data.count,
+      };
+    }
+    return result;
+  }, [crewQueries]);
+
+  // Use first date in range for single-date dependent queries
+  const dateStr = startDate;
   
   const toggleDate = (dateStr: string) => {
     setSelectedDates(prev => 
