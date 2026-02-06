@@ -1904,6 +1904,7 @@ export async function registerRoutes(
         }>();
         const workedAtRestaurants = new Map<string, number>();
         let totalHoursWorked = 0;
+        let totalSalesAllHours = 0;
         
         for (const crew of crewData) {
           const members = (crew.crewMembers as any[]) || [];
@@ -1919,6 +1920,8 @@ export async function registerRoutes(
             
             if (labor && sales) {
               totalHoursWorked++;
+              const hourSales = Number(sales.actualSales) || 0;
+              totalSalesAllHours += hourSales;
               const dayKey = crew.date;
               if (!dailyAggregates.has(dayKey)) {
                 dailyAggregates.set(dayKey, {
@@ -2061,6 +2064,7 @@ export async function registerRoutes(
             hoursWorked: totalHoursWorked,
             avgGradeScore: Math.round(avgScore),
             grade,
+            avgTransactionsPerHour: totalHoursWorked > 0 ? Math.round(totalSalesAllHours / totalHoursWorked) : null,
           });
         }
       }
@@ -2094,10 +2098,19 @@ export async function registerRoutes(
         byStore[rid].sort((a, b) => b.avgGradeScore - a.avgGradeScore);
       }
       
+      // Calculate company average hourly volume (weighted by hours worked)
+      const leadersWithVolume = leaderPerformance.filter(lp => lp.avgTransactionsPerHour !== null);
+      const totalWeightedSales = leadersWithVolume.reduce((s, lp) => s + (lp.avgTransactionsPerHour as number) * lp.hoursWorked, 0);
+      const totalWeightedHours = leadersWithVolume.reduce((s, lp) => s + lp.hoursWorked, 0);
+      const companyAvgHourlyVolume = totalWeightedHours > 0
+        ? Math.round(totalWeightedSales / totalWeightedHours)
+        : null;
+      
       res.json({
         dateRange: { start: startDateStr, end: endDateStr },
         byStore,
         companyRankings: filtered,
+        companyAvgHourlyVolume,
       });
     } catch (error) {
       console.error("Error fetching people performance:", error);
@@ -2314,6 +2327,7 @@ export async function registerRoutes(
         avgStaffingDiff: number;
         osatPercent?: number;
         osatResponses?: number;
+        avgHourlyVolume: number;
         feedback: DayFeedback;
       };
       
@@ -2437,6 +2451,7 @@ export async function registerRoutes(
           avgStaffingDiff: Math.round(avgStaffingDiff * 10) / 10,
           osatPercent,
           osatResponses,
+          avgHourlyVolume: dayData.hours.length > 0 ? Math.round(totalSales / dayData.hours.length) : 0,
           feedback: { wentWell, needsImprovement },
         });
       }

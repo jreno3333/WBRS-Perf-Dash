@@ -53,12 +53,14 @@ interface LeaderPerformance {
   hoursWorked: number;
   avgGradeScore: number;
   grade: string;
+  avgTransactionsPerHour: number | null;
 }
 
 interface PerformanceResponse {
   dateRange: { start: string; end: string };
   byStore: Record<string, LeaderPerformance[]>;
   companyRankings: LeaderPerformance[];
+  companyAvgHourlyVolume: number | null;
 }
 
 interface DayFeedback {
@@ -79,6 +81,7 @@ interface DailyDetail {
   avgStaffingDiff: number;
   osatPercent?: number;
   osatResponses?: number;
+  avgHourlyVolume?: number;
   feedback: DayFeedback;
 }
 
@@ -131,6 +134,19 @@ function formatSpeed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function getVolumeLabel(avgVolume: number | null, companyAvg: number | null): { label: string; color: string } | null {
+  if (avgVolume === null || companyAvg === null || companyAvg === 0) return null;
+  const ratio = avgVolume / companyAvg;
+  if (ratio >= 1.25) return { label: 'High', color: 'text-red-600 dark:text-red-400' };
+  if (ratio >= 0.75) return { label: 'Med', color: 'text-muted-foreground' };
+  return { label: 'Low', color: 'text-blue-600 dark:text-blue-400' };
+}
+
+function formatDollars(amount: number): string {
+  if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}k`;
+  return `$${Math.round(amount)}`;
 }
 
 export default function CrewExperiencePage() {
@@ -428,6 +444,14 @@ export default function CrewExperiencePage() {
                               <Badge className={`text-xs ${getGradeColor(leader.grade)} border-0`}>
                                 {leader.grade}
                               </Badge>
+                              {leader.avgTransactionsPerHour !== null && (() => {
+                                const vol = getVolumeLabel(leader.avgTransactionsPerHour, performanceData.companyAvgHourlyVolume);
+                                return vol ? (
+                                  <span className={`text-xs font-medium ${vol.color}`} data-testid={`volume-label-${index}`}>
+                                    {formatDollars(leader.avgTransactionsPerHour)}/hr
+                                  </span>
+                                ) : null;
+                              })()}
                               <span className="text-xs text-muted-foreground">{leader.hoursWorked}h</span>
                               <ArrowRight className="w-3 h-3 text-muted-foreground" />
                             </div>
@@ -476,9 +500,19 @@ export default function CrewExperiencePage() {
                                           <div className="text-xs text-muted-foreground">{leader.position} • {leader.hoursWorked}h</div>
                                         </div>
                                       </div>
-                                      <Badge className={`text-xs ${getGradeColor(leader.grade)} border-0`}>
-                                        {leader.grade}
-                                      </Badge>
+                                      <div className="flex items-center gap-1.5">
+                                        <Badge className={`text-xs ${getGradeColor(leader.grade)} border-0`}>
+                                          {leader.grade}
+                                        </Badge>
+                                        {leader.avgTransactionsPerHour !== null && (() => {
+                                          const vol = getVolumeLabel(leader.avgTransactionsPerHour, performanceData.companyAvgHourlyVolume);
+                                          return vol ? (
+                                            <span className={`text-xs ${vol.color}`}>
+                                              {formatDollars(leader.avgTransactionsPerHour)}/hr
+                                            </span>
+                                          ) : null;
+                                        })()}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -688,8 +722,16 @@ export default function CrewExperiencePage() {
                     <div className="font-semibold">{leaderDetail.dailyDetails.length}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">Period</div>
-                    <div className="text-xs font-medium">{performanceDays} days</div>
+                    <div className="text-xs text-muted-foreground">Avg Volume/Hr</div>
+                    {selectedLeader?.avgTransactionsPerHour !== null && selectedLeader?.avgTransactionsPerHour !== undefined ? (() => {
+                      const vol = getVolumeLabel(selectedLeader.avgTransactionsPerHour, performanceData?.companyAvgHourlyVolume ?? null);
+                      return (
+                        <div className="font-semibold flex items-center gap-1">
+                          {formatDollars(selectedLeader.avgTransactionsPerHour)}
+                          {vol && <span className={`text-xs font-normal ${vol.color}`}>{vol.label}</span>}
+                        </div>
+                      );
+                    })() : <div className="font-semibold text-muted-foreground">-</div>}
                   </div>
                 </div>
               </div>
@@ -716,6 +758,12 @@ export default function CrewExperiencePage() {
                               <div className="text-sm font-medium">{dayOfWeek}, {displayDate}</div>
                               <div className="text-xs text-muted-foreground">
                                 {day.hoursWorked}h • ${day.totalSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                {day.avgHourlyVolume !== undefined && day.avgHourlyVolume > 0 && (() => {
+                                  const vol = getVolumeLabel(day.avgHourlyVolume, performanceData?.companyAvgHourlyVolume ?? null);
+                                  return vol ? (
+                                    <span className={`ml-1 ${vol.color}`}> {formatDollars(day.avgHourlyVolume)}/hr {vol.label}</span>
+                                  ) : null;
+                                })()}
                               </div>
                             </div>
                           </div>
