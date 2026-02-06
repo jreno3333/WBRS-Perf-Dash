@@ -1926,39 +1926,36 @@ export async function registerRoutes(
               const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
               const staffingDiff = actualStaff - projectedStaff;
               
-              const salesScore = hasComparableSales ? (salesVariancePct >= -5 ? 100 : 50) : 75;
               const salesSurge = salesVariancePct >= 20;
+              
+              const components: { weight: number; score: number }[] = [];
+              
+              if (hasComparableSales) {
+                const salesScore = salesVariancePct >= -5 ? 100 : 50;
+                components.push({ weight: 35, score: salesScore });
+              }
+              
               let staffingScore: number;
               if (Math.abs(staffingDiff) <= 1) staffingScore = 100;
-              else if (staffingDiff > 1) staffingScore = 70;
+              else if (staffingDiff > 1) staffingScore = 60;
               else staffingScore = salesSurge ? 100 : 60;
+              components.push({ weight: 15, score: staffingScore });
               
               const speedSeconds = hme && hme.avgServiceTime > 0 ? hme.avgServiceTime : undefined;
-              let speedScore = 0;
-              let hasSpeed = false;
               if (speedSeconds !== undefined && speedSeconds > 0) {
-                hasSpeed = true;
-                if (speedSeconds <= 300) speedScore = 100;
-                else if (speedSeconds <= 420) speedScore = 70;
-                else speedScore = 40;
+                let speedScore = 100;
+                if (speedSeconds > 420) speedScore = 40;
+                else if (speedSeconds > 300) speedScore = 70;
+                components.push({ weight: 25, score: speedScore });
               }
               
               const osatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
-              let osatScore = 0;
-              let hasOsat = false;
               if (osatPercent !== undefined) {
-                hasOsat = true;
-                if (osatPercent >= 85) osatScore = 100;
-                else if (osatPercent >= 80) osatScore = 70;
-                else osatScore = 40;
+                let osatScore = 100;
+                if (osatPercent < 80) osatScore = 40;
+                else if (osatPercent < 85) osatScore = 70;
+                components.push({ weight: 25, score: osatScore });
               }
-              
-              const components: { weight: number; score: number }[] = [
-                { weight: 35, score: salesScore },
-                { weight: 15, score: staffingScore },
-              ];
-              if (hasSpeed) components.push({ weight: 25, score: speedScore });
-              if (hasOsat) components.push({ weight: 25, score: osatScore });
               const totalWeight = components.reduce((s, c) => s + c.weight, 0);
               const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
               
@@ -2193,40 +2190,37 @@ export async function registerRoutes(
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
           const staffingDiff = actualStaff - projectedStaff;
           
-          const salesScore = hasComparableSales ? (salesVariancePct >= -5 ? 100 : 50) : 75;
           const salesSurge = salesVariancePct >= 20;
+          
+          const components: { weight: number; score: number }[] = [];
+          
+          if (hasComparableSales) {
+            const salesScore = salesVariancePct >= -5 ? 100 : 50;
+            components.push({ weight: 35, score: salesScore });
+          }
+          
           let staffingScore: number;
           if (Math.abs(staffingDiff) <= 1) staffingScore = 100;
-          else if (staffingDiff > 1) staffingScore = 70;
+          else if (staffingDiff > 1) staffingScore = 60;
           else staffingScore = salesSurge ? 100 : 60;
+          components.push({ weight: 15, score: staffingScore });
           
           const speedSeconds = hme && hme.avgServiceTime > 0 ? hme.avgServiceTime : undefined;
-          let speedScore = 0;
-          let hasSpeed = false;
           if (speedSeconds !== undefined && speedSeconds > 0) {
-            hasSpeed = true;
-            if (speedSeconds <= 300) speedScore = 100;
-            else if (speedSeconds <= 420) speedScore = 70;
-            else speedScore = 40;
+            let speedScore = 100;
+            if (speedSeconds > 420) speedScore = 40;
+            else if (speedSeconds > 300) speedScore = 70;
+            components.push({ weight: 25, score: speedScore });
           }
           
           const hourOsatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
           const hourOsatResponses = osatHour && osatHour.totalResponses > 0 ? osatHour.totalResponses : undefined;
-          let osatScore = 0;
-          let hasOsatComponent = false;
           if (hourOsatPercent !== undefined) {
-            hasOsatComponent = true;
-            if (hourOsatPercent >= 85) osatScore = 100;
-            else if (hourOsatPercent >= 80) osatScore = 70;
-            else osatScore = 40;
+            let osatScore = 100;
+            if (hourOsatPercent < 80) osatScore = 40;
+            else if (hourOsatPercent < 85) osatScore = 70;
+            components.push({ weight: 25, score: osatScore });
           }
-          
-          const components: { weight: number; score: number }[] = [
-            { weight: 35, score: salesScore },
-            { weight: 15, score: staffingScore },
-          ];
-          if (hasSpeed) components.push({ weight: 25, score: speedScore });
-          if (hasOsatComponent) components.push({ weight: 25, score: osatScore });
           const totalWeight = components.reduce((s, c) => s + c.weight, 0);
           const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
           
