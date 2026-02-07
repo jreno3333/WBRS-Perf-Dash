@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Link } from "wouter";
-import { Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, Search, ArrowRight, CheckCircle, AlertTriangle, X } from "lucide-react";
+import { Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, Search, ArrowRight, CheckCircle, AlertTriangle, X, ArrowUpDown } from "lucide-react";
 import { NavBar } from "@/components/nav-bar";
 import { format } from "date-fns";
 
@@ -159,6 +159,7 @@ export default function CrewExperiencePage() {
   const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
   const [selectedLeader, setSelectedLeader] = useState<LeaderPerformance | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const [tenureSort, setTenureSort] = useState<"experience" | "employees">("experience");
   
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   
@@ -241,7 +242,10 @@ export default function CrewExperiencePage() {
     });
   };
   
-  const storesWithData = data?.restaurants.filter(r => r.hourly.length > 0) || [];
+  const storesWithData = (data?.restaurants.filter(r => r.hourly.length > 0) || []).sort((a, b) => {
+    if (tenureSort === "employees") return b.employeeCount - a.employeeCount;
+    return b.avgScore - a.avgScore;
+  });
   
   const allRestaurantOptions: { id: string; name: string }[] = [];
   if (performanceData?.byStore) {
@@ -302,7 +306,7 @@ export default function CrewExperiencePage() {
             </TabsTrigger>
             <TabsTrigger value="tenure" data-testid="tab-tenure">
               <Users className="w-4 h-4 mr-2" />
-              Hourly Tenure
+              Experience Level
             </TabsTrigger>
           </TabsList>
           
@@ -549,7 +553,17 @@ export default function CrewExperiencePage() {
                   <span className="text-xs text-muted-foreground">Veteran (2yr+)</span>
                 </div>
                 
-                <div className="ml-auto flex gap-2">
+                <div className="ml-auto flex items-center gap-2">
+                  <Select value={tenureSort} onValueChange={(v) => setTenureSort(v as "experience" | "employees")}>
+                    <SelectTrigger className="w-[170px]" data-testid="select-tenure-sort">
+                      <ArrowUpDown className="w-3 h-3 mr-1" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="experience">Sort by Experience</SelectItem>
+                      <SelectItem value="employees">Sort by Headcount</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Button variant="outline" size="sm" onClick={expandAll}>
                     Expand All
                   </Button>
