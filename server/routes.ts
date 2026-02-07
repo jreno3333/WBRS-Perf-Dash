@@ -1483,6 +1483,94 @@ export async function registerRoutes(
     }
   });
 
+  // Detailed HME data validation - shows per-store data coverage for recent days (single aggregated query)
+  app.get("/api/hme/validate", async (req, res) => {
+    try {
+      const { days } = req.query;
+      const numDays = Math.min(parseInt(String(days || '3')), 7);
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      
+      // Build date list
+      const dates: string[] = [];
+      for (let i = 0; i < numDays; i++) {
+        const d = new Date(todayStr + 'T12:00:00-06:00');
+        d.setDate(d.getDate() - i);
+        dates.push(d.toLocaleDateString('en-CA'));
+      }
+      const oldestDate = dates[dates.length - 1];
+      
+      // Single aggregated query for all stores and dates
+      const { sql: sqlTag } = await import("drizzle-orm");
+      const hmeAgg = await db.select({
+        restaurantId: hmeTimerData.restaurantId,
+        date: hmeTimerData.date,
+        hours: sqlTag<number>`count(*)::int`,
+        totalCars: sqlTag<number>`coalesce(sum(${hmeTimerData.carCount}), 0)::int`,
+        weightedServiceTime: sqlTag<number>`coalesce(sum(${hmeTimerData.avgServiceTime} * ${hmeTimerData.carCount}), 0)`,
+      })
+      .from(hmeTimerData)
+      .where(sqlTag`${hmeTimerData.date} >= ${oldestDate}`)
+      .groupBy(hmeTimerData.restaurantId, hmeTimerData.date);
+      
+      // Build lookup: restaurantId -> date -> data
+      const dataMap = new Map<string, Map<string, { hours: number; totalCars: number; avgServiceTime: number | null }>>();
+      for (const row of hmeAgg) {
+        if (!dataMap.has(row.restaurantId)) {
+          dataMap.set(row.restaurantId, new Map());
+        }
+        dataMap.get(row.restaurantId)!.set(row.date, {
+          hours: row.hours,
+          totalCars: row.totalCars,
+          avgServiceTime: row.totalCars > 0 ? Math.round(row.weightedServiceTime / row.totalCars) : null,
+        });
+      }
+      
+      // Get active restaurants
+      const allRestaurants = await storage.getRestaurants();
+      const activeRestaurants = allRestaurants
+        .filter(r => r.isActive && !r.name.includes('Training'))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      
+      const validation = activeRestaurants.map(restaurant => ({
+        name: restaurant.name,
+        restaurantId: restaurant.id,
+        dailyData: dates.map(date => {
+          const d = dataMap.get(restaurant.id)?.get(date);
+          return {
+            date,
+            hours: d?.hours || 0,
+            totalCars: d?.totalCars || 0,
+            avgServiceTime: d?.avgServiceTime ?? null,
+          };
+        }),
+      }));
+      
+      // Also check what HME API sees
+      let hmeStoreCount = 0;
+      let hmeStoreNumbers: string[] = [];
+      try {
+        const { fetchHMEStores } = await import("./scraper/hme-api");
+        const stores = await fetchHMEStores();
+        hmeStoreCount = stores.length;
+        hmeStoreNumbers = stores.map(s => s.StoreNumber).sort();
+      } catch (e) {
+        // ignore
+      }
+      
+      res.json({
+        generatedAt: new Date().toISOString(),
+        timezone: 'America/Chicago',
+        dates,
+        hmeApiStores: hmeStoreCount,
+        hmeStoreNumbers,
+        restaurants: validation,
+      });
+    } catch (error) {
+      console.error("Error validating HME data:", error);
+      res.status(500).json({ error: "Failed to validate HME data" });
+    }
+  });
+
   // Get Google Reviews sync status
   app.get("/api/google-reviews/status", async (req, res) => {
     try {

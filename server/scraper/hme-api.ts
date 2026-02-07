@@ -288,23 +288,42 @@ export async function syncHMETimerData(targetDate?: Date): Promise<{ saved: numb
     const metrics = aggregateCarDataToHourly(records);
     console.log(`[HME] Aggregated to ${metrics.length} hourly records`);
 
+    // Log per-store record counts from raw data for diagnostics
+    const storeRecordCounts = new Map<string, number>();
+    for (const r of records) {
+      storeRecordCounts.set(r.StoreNumber, (storeRecordCounts.get(r.StoreNumber) || 0) + r.Events.filter(e => e.EventType === 'Car_Departure').length);
+    }
+    const storeSummary = Array.from(storeRecordCounts.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([store, count]) => `${store}:${count}`)
+      .join(', ');
+    console.log(`[HME] Raw car events by store: ${storeSummary}`);
+
     // Get restaurant mapping (store number -> restaurant ID)
     const allRestaurants = await db.select().from(restaurants);
     const storeMap = new Map<string, string>();
+    const storeNameMap = new Map<string, string>();
     
     for (const r of allRestaurants) {
-      // Match by unit number first
       if (r.unitNumber) {
         storeMap.set(r.unitNumber, r.id);
+        storeNameMap.set(r.unitNumber, r.name);
       }
-      // Fallback: extract unit number from name (e.g., "1237 - Athens" -> "1237")
       const nameMatch = r.name.match(/^(\d{4})\s*-/);
       if (nameMatch && !storeMap.has(nameMatch[1])) {
         storeMap.set(nameMatch[1], r.id);
+        storeNameMap.set(nameMatch[1], r.name);
       }
     }
     
     console.log(`[HME] Store mapping: ${storeMap.size} stores mapped`);
+    
+    // Log which mapped stores have no data in this sync
+    const storesWithData = new Set(metrics.map(m => m.storeNumber));
+    const missingStores = Array.from(storeMap.keys()).filter(s => !storesWithData.has(s));
+    if (missingStores.length > 0) {
+      console.log(`[HME] Mapped stores with NO data this sync: ${missingStores.map(s => storeNameMap.get(s) || s).join(', ')}`);
+    }
 
     let saved = 0;
     for (const m of metrics) {
