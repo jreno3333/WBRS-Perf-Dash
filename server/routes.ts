@@ -2299,7 +2299,8 @@ export async function registerRoutes(
         // Only include if they have minimum required hours
         if (totalHoursWorked >= MIN_HOURS_REQUIRED && dailyGrades.length > 0) {
           const totalGradeHours = dailyGrades.reduce((s, d) => s + d.hours, 0);
-          const avgScore = dailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours;
+          const avgScoreRaw = dailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours;
+          const avgScore = Math.round(avgScoreRaw);
           
           let grade = 'F';
           if (avgScore >= 95) grade = 'A+';
