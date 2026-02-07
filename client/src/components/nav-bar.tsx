@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Trophy, Grid3X3, TrendingUp, Users, MapPin, Settings } from "lucide-react";
+import { Trophy, Grid3X3, TrendingUp, Users, MapPin } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
@@ -9,7 +9,6 @@ const navItems = [
   { href: "/history", icon: TrendingUp, title: "Performance Trends", testId: "nav-history" },
   { href: "/crew", icon: Users, title: "People", testId: "nav-crew" },
   { href: "/map", icon: MapPin, title: "Map", testId: "nav-map" },
-  { href: "/settings", icon: Settings, title: "Settings", testId: "nav-settings" },
 ];
 
 export function NavBar() {
