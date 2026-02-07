@@ -237,7 +237,15 @@ async function sendDailyReportsIfNeeded() {
     const leaderMinute = leaderSchedule?.sendMinute ?? 0;
     const leaderEnabled = leaderSchedule?.isEnabled ?? true;
 
-    if (dailyEnabled && isWithinSendWindow(centralHour, centralMinute, dailyHour, dailyMinute)) {
+    const dailyInWindow = dailyEnabled && isWithinSendWindow(centralHour, centralMinute, dailyHour, dailyMinute);
+    const leaderInWindow = leaderEnabled && isWithinSendWindow(centralHour, centralMinute, leaderHour, leaderMinute);
+    
+    // Log report check status periodically (on the hour) for diagnostics
+    if (centralMinute < 5) {
+      log(`Report schedule check: CT ${centralHour}:${String(centralMinute).padStart(2, '0')} | Daily=${dailyEnabled ? `${dailyHour}:${String(dailyMinute).padStart(2, '0')}` : 'off'}(${dailyInWindow ? 'IN WINDOW' : 'outside'}) | Leader=${leaderEnabled ? `${leaderHour}:${String(leaderMinute).padStart(2, '0')}` : 'off'}(${leaderInWindow ? 'IN WINDOW' : 'outside'}) | lastSent: daily=${lastDailyReportSend}, leader=${lastLeaderReportSend}`);
+    }
+
+    if (dailyInWindow) {
       if (lastDailyReportSend !== centralDate) {
         lastDailyReportSend = centralDate;
         log("Sending daily performance reports...");
@@ -246,11 +254,12 @@ async function sendDailyReportsIfNeeded() {
           log(`Daily reports: ${result.sent} sent, ${result.failed} failed`);
         } catch (error) {
           log(`Daily report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          lastDailyReportSend = null; // Reset so it retries next cycle
         }
       }
     }
 
-    if (leaderEnabled && isWithinSendWindow(centralHour, centralMinute, leaderHour, leaderMinute)) {
+    if (leaderInWindow) {
       if (lastLeaderReportSend !== centralDate) {
         lastLeaderReportSend = centralDate;
         log("Sending leader ranking reports...");
@@ -259,6 +268,7 @@ async function sendDailyReportsIfNeeded() {
           log(`Leader reports: ${leaderResult.sent} sent, ${leaderResult.failed} failed`);
         } catch (error) {
           log(`Leader report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          lastLeaderReportSend = null; // Reset so it retries next cycle
         }
       }
     }

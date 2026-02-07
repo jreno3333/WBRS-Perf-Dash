@@ -71,10 +71,11 @@ export async function sendDailyReports(): Promise<{ sent: number; failed: number
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = centralFormatter.format(yesterday);
 
+    const reportKey = `daily-${yesterdayStr}`;
     const alreadySent = await db.select()
       .from(emailSendLog)
       .where(and(
-        eq(emailSendLog.reportDate, yesterdayStr),
+        eq(emailSendLog.reportDate, reportKey),
         eq(emailSendLog.status, "sent")
       ));
     const sentEmails = new Set(alreadySent.map(s => s.email));
@@ -104,7 +105,7 @@ export async function sendDailyReports(): Promise<{ sent: number; failed: number
       const sent = await sendDailyReportEmail(subscriber.email, subject, reportHtml);
 
       await db.insert(emailSendLog).values({
-        reportDate: yesterdayStr,
+        reportDate: reportKey,
         email: subscriber.email,
         status: sent ? "sent" : "failed",
       });
