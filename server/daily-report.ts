@@ -37,6 +37,7 @@ function formatTime(seconds: number): string {
 }
 
 interface RestaurantSummary {
+  id: string;
   name: string;
   sales: number;
   lastWeekSales: number;
@@ -240,6 +241,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       totalLastWeek += lastWeekSalesAmount;
 
       summaries.push({
+        id: restaurant.id,
         name: restaurant.name,
         sales: todaySalesAmount,
         lastWeekSales: lastWeekSalesAmount,
@@ -319,7 +321,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       ${top3.map((r, i) => `
         <div style="display: flex; align-items: center; padding: 8px 0; ${i < top3.length - 1 ? 'border-bottom: 1px solid #f4f4f5;' : ''}">
           <span style="width: 20px; font-size: 12px; color: #a1a1aa; font-weight: 600;">${i + 1}</span>
-          <span style="flex: 1; font-size: 13px; font-weight: 500;">${r.name}</span>
+          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.id}" style="flex: 1; font-size: 13px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.name}</a>
           <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; width: 36px; text-align: center;">${r.gradeLabel}</span>
           <span style="font-size: 12px; color: #71717a; width: 55px; text-align: right;">${formatCurrency(r.sales)}</span>
           <span style="font-size: 12px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
@@ -343,7 +345,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       ${bottom3.map((r, i) => `
         <div style="display: flex; align-items: center; padding: 8px 0; ${i < bottom3.length - 1 ? 'border-bottom: 1px solid #f4f4f5;' : ''}">
           <span style="width: 20px; font-size: 12px; color: #a1a1aa; font-weight: 600;">${summaries.length - bottom3.length + i + 1}</span>
-          <span style="flex: 1; font-size: 13px; font-weight: 500;">${r.name}</span>
+          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.id}" style="flex: 1; font-size: 13px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.name}</a>
           <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; width: 36px; text-align: center;">${r.gradeLabel}</span>
           <span style="font-size: 12px; color: #71717a; width: 55px; text-align: right;">${formatCurrency(r.sales)}</span>
           <span style="font-size: 12px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
@@ -367,7 +369,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       ${summaries.map((r, i) => `
         <div style="display: flex; align-items: center; padding: 6px 0; ${i < summaries.length - 1 ? 'border-bottom: 1px solid #fafafa;' : ''}">
           <span style="width: 20px; font-size: 11px; color: #a1a1aa;">${i + 1}</span>
-          <span style="flex: 1; font-size: 12px;">${r.name}</span>
+          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.id}" style="flex: 1; font-size: 12px; color: inherit; text-decoration: none; border-bottom: 1px dashed #a1a1aa;">${r.name}</a>
           <span style="font-size: 12px; font-weight: 600; color: ${getGradeColor(r.gradeLabel)}; width: 28px; text-align: center;">${r.gradeLabel}</span>
           <span style="font-size: 11px; color: #71717a; width: 50px; text-align: right;">${formatCurrency(r.sales)}</span>
           <span style="font-size: 11px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>

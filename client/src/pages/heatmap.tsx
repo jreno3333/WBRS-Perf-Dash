@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,11 +62,24 @@ export default function HeatmapPage() {
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [heatmapCollapsed, setHeatmapCollapsed] = useState(true);
   
+  // Read URL params for deep linking from email reports
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const urlDate = urlParams.get('date');
+  const urlUnit = urlParams.get('unit');
+  const [expandUnitId, setExpandUnitId] = useState<string | null>(urlUnit);
+  
   // Date selection state
   const todayStr = getCentralDateStr();
-  const [startDate, setStartDate] = useState<string>(todayStr);
-  const [endDate, setEndDate] = useState<string>(todayStr);
+  const [startDate, setStartDate] = useState<string>(urlDate || todayStr);
+  const [endDate, setEndDate] = useState<string>(urlDate || todayStr);
   const [isDateRangeMode, setIsDateRangeMode] = useState(false);
+  
+  // When coming from email link, ensure summary is expanded
+  useEffect(() => {
+    if (urlUnit) {
+      setSummaryCollapsed(false);
+    }
+  }, []);
   
   // Auto-adjust endDate if startDate changes to be after endDate
   const handleStartDateChange = (newStartDate: string) => {
@@ -528,6 +541,8 @@ export default function HeatmapPage() {
             onCollapseChange={setSummaryCollapsed}
             selectedDate={startDate}
             dateRange={analysisDateRange}
+            expandUnitId={expandUnitId}
+            onUnitExpanded={() => setExpandUnitId(null)}
           />
         )}
         

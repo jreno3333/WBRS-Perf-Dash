@@ -444,7 +444,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
 
     ${storeEntries.map(store => `
     <div style="background: white; padding: 16px 24px; border: 1px solid #e4e4e7; border-top: none;">
-      <h4 style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #18181b;">${store.restaurantName}</h4>
+      <h4 style="margin: 0 0 8px; font-size: 13px; font-weight: 600;"><a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${store.restaurantId}" style="color: #18181b; text-decoration: none; border-bottom: 1px dashed #71717a;">${store.restaurantName}</a></h4>
       <div style="display: flex; align-items: center; padding: 3px 0; border-bottom: 1px solid #e4e4e7;">
         <span style="width: 20px; font-size: 9px; color: #a1a1aa; font-weight: 600;">#</span>
         <span style="flex: 1; font-size: 9px; color: #a1a1aa; font-weight: 600;">LEADER</span>

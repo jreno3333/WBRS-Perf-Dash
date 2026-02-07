@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,8 @@ interface DailySummaryProps {
   onCollapseChange?: (collapsed: boolean) => void;
   selectedDate?: string;
   dateRange?: string[];
+  expandUnitId?: string | null;
+  onUnitExpanded?: () => void;
 }
 
 // Tennessee stores are identified by name pattern
@@ -487,10 +489,22 @@ function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSum
   };
 }
 
-function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
-  const [isOpen, setIsOpen] = useState(false);
+function UnitSummaryCard({ insight, defaultOpen = false, onExpanded }: { insight: UnitInsight; defaultOpen?: boolean; onExpanded?: () => void }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (defaultOpen) {
+      setIsOpen(true);
+      setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        onExpanded?.();
+      }, 300);
+    }
+  }, [defaultOpen]);
   
   return (
+    <div ref={scrollRef}>
     <Card className="hover-elevate" data-testid={`summary-unit-${insight.restaurantId}`}>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger asChild>
@@ -712,6 +726,7 @@ function UnitSummaryCard({ insight }: { insight: UnitInsight }) {
         </CollapsibleContent>
       </Collapsible>
     </Card>
+    </div>
   );
 }
 
@@ -818,7 +833,9 @@ export function DailySummary({
   isCollapsed = false,
   onCollapseChange,
   selectedDate,
-  dateRange
+  dateRange,
+  expandUnitId,
+  onUnitExpanded,
 }: DailySummaryProps) {
   // Fetch category issues for all dates in range
   const datesToFetch = dateRange && dateRange.length > 0 ? dateRange : (selectedDate ? [selectedDate] : []);
@@ -1042,7 +1059,7 @@ export function DailySummary({
               
               <TabsContent value="units" className="space-y-3">
                 {unitInsights.map(insight => (
-                  <UnitSummaryCard key={insight.restaurantId} insight={insight} />
+                  <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} />
                 ))}
               </TabsContent>
               
