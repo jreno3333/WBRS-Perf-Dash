@@ -1389,6 +1389,43 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/hme/stores", async (req, res) => {
+    try {
+      const { fetchHMEStores } = await import("./scraper/hme-api");
+      const hmeStores = await fetchHMEStores();
+      
+      const allRestaurants = await storage.getRestaurants();
+      const restaurantMap = new Map<string, string>();
+      for (const r of allRestaurants) {
+        if (r.unitNumber) restaurantMap.set(r.unitNumber, r.name);
+        const nameMatch = r.name.match(/^(\d{4})\s*-/);
+        if (nameMatch && !restaurantMap.has(nameMatch[1])) restaurantMap.set(nameMatch[1], r.name);
+      }
+      
+      const storeList = hmeStores.map(s => ({
+        storeNumber: s.StoreNumber,
+        storeName: s.StoreName,
+        city: s.City,
+        state: s.State,
+        laneConfig: s.LaneConfig,
+        brand: s.Brand,
+        matchedRestaurant: restaurantMap.get(s.StoreNumber) || null,
+      }));
+      
+      const unmatchedRestaurants = Array.from(restaurantMap.entries())
+        .filter(([num]) => !hmeStores.some(s => s.StoreNumber === num))
+        .map(([num, name]) => ({ unitNumber: num, name }));
+      
+      res.json({
+        hmeStoreCount: hmeStores.length,
+        stores: storeList.sort((a, b) => a.storeNumber.localeCompare(b.storeNumber)),
+        unmatchedRestaurants,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch HME stores" });
+    }
+  });
+
   // Sync restaurant coordinates from 7shifts
   app.post("/api/sync-restaurants", async (req, res) => {
     try {
