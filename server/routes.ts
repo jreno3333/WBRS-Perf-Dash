@@ -241,7 +241,9 @@ export async function registerRoutes(
       "/api/db-status",
       "/api/xenial/",
     ];
-    if (openPaths.some(p => req.path.startsWith(p))) {
+    // Use originalUrl for path matching since mounted middleware may strip prefix
+    const fullPath = req.originalUrl.split('?')[0];
+    if (openPaths.some(p => fullPath.startsWith(p))) {
       return next();
     }
     return requireAuth(req, res, next);

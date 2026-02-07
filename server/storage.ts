@@ -768,7 +768,6 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Fetch HME timer data for the selected date
-    // Use LIKE pattern since dates are stored as full ISO timestamps (e.g., "2026-01-29T12:00:00.000+00:00")
     const allHmeData = await db.select().from(hmeTimerData).where(sql`${hmeTimerData.date} LIKE ${selectedDateStr + '%'}`);
     
     // Fetch hourly labor data from separate table
