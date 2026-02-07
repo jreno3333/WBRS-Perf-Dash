@@ -199,8 +199,8 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       const osat = osatByRestaurant.get(restaurant.id);
       const hme = hmeByRestaurant.get(restaurant.id);
 
-      const todaySalesAmount = sales ? Number(sales.totalSales) : 0;
-      const lastWeekSalesAmount = lastWeek ? Number(lastWeek.totalSales) : 0;
+      const todaySalesAmount = sales ? Number(sales.totalSales) / 100 : 0;
+      const lastWeekSalesAmount = lastWeek ? Number(lastWeek.totalSales) / 100 : 0;
 
       if (todaySalesAmount === 0 && lastWeekSalesAmount === 0) continue;
 
