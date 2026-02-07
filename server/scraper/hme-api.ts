@@ -272,9 +272,12 @@ export function aggregateCarDataToHourly(records: HMECarRecord[]): DriveThruMetr
 export async function syncHMETimerData(targetDate?: Date): Promise<{ saved: number; errors: string[] }> {
   const errors: string[] = [];
   
-  // Default to last 6 hours if no date specified
-  const endTime = targetDate || new Date();
-  const startTime = new Date(endTime.getTime() - 6 * 60 * 60 * 1000);
+  // Fetch full day's data to ensure complete hourly coverage
+  const now = new Date();
+  const endTime = targetDate || now;
+  
+  // Use 24 hours before end time to capture the full day (within 72hr API limit)
+  const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
 
   console.log(`[HME] Fetching timer data from ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
