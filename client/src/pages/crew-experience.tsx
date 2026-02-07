@@ -140,9 +140,9 @@ function formatSpeed(seconds: number): string {
 function getVolumeLabel(avgVolume: number | null, companyAvg: number | null): { label: string; color: string } | null {
   if (avgVolume === null || companyAvg === null || companyAvg === 0) return null;
   const ratio = avgVolume / companyAvg;
-  if (ratio >= 1.25) return { label: 'High', color: 'text-red-600 dark:text-red-400' };
-  if (ratio >= 0.75) return { label: 'Med', color: 'text-muted-foreground' };
-  return { label: 'Low', color: 'text-blue-600 dark:text-blue-400' };
+  if (ratio >= 1.25) return { label: 'High', color: 'text-green-600 dark:text-green-400' };
+  if (ratio >= 0.75) return { label: 'Med', color: 'text-blue-600 dark:text-blue-400' };
+  return { label: 'Low', color: 'text-muted-foreground' };
 }
 
 function formatDollars(amount: number): string {
