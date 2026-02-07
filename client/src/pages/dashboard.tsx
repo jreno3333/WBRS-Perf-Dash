@@ -6,9 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Trophy, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, MapPin, CalendarDays, Grid3X3, Users, TrendingUp } from "lucide-react";
-import { Link } from "wouter";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Trophy, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
+import { NavBar } from "@/components/nav-bar";
 import { LeaderboardCard } from "@/components/leaderboard-card";
 import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
@@ -376,27 +375,7 @@ export default function Dashboard() {
                   Live
                 </Badge>
               )}
-              <Link href="/dashboard-view">
-                <Button variant="ghost" size="icon" data-testid="link-dashboard-view" title="Daily Performance">
-                  <Grid3X3 className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Link href="/history">
-                <Button variant="ghost" size="icon" data-testid="link-history" title="Performance Trends">
-                  <TrendingUp className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Link href="/crew">
-                <Button variant="ghost" size="icon" data-testid="link-crew" title="People">
-                  <Users className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Link href="/map">
-                <Button variant="ghost" size="icon" data-testid="link-map" title="Map">
-                  <MapPin className="h-5 w-5" />
-                </Button>
-              </Link>
-              <ThemeToggle />
+              <NavBar />
             </div>
           </div>
         </div>

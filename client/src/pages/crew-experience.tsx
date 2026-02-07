@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Link } from "wouter";
-import { ArrowLeft, Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, Search, ArrowRight, CheckCircle, AlertTriangle, X } from "lucide-react";
+import { Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, Search, ArrowRight, CheckCircle, AlertTriangle, X } from "lucide-react";
+import { NavBar } from "@/components/nav-bar";
 import { format } from "date-fns";
 
 interface CrewMember {
@@ -257,11 +258,6 @@ export default function CrewExperiencePage() {
       <div className="max-w-7xl mx-auto space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon" data-testid="button-back">
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-            </Link>
             <Users className="w-6 h-6 text-primary" />
             <h1 className="text-xl font-bold">People Tenure & Performance</h1>
             <Badge variant="outline">{storesWithData.length} stores</Badge>
@@ -285,6 +281,7 @@ export default function CrewExperiencePage() {
               </PopoverContent>
             </Popover>
             
+            <NavBar />
             <Button 
               variant="outline" 
               size="icon" 

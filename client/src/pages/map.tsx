@@ -3,7 +3,8 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { Icon, DivIcon } from "leaflet";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Cloud, Sun, CloudRain, CloudSnow, Wind, Thermometer, Droplets, ArrowLeft, CalendarDays } from "lucide-react";
+import { Cloud, Sun, CloudRain, CloudSnow, Wind, Thermometer, Droplets, CalendarDays, MapPin as MapPinIcon } from "lucide-react";
+import { NavBar } from "@/components/nav-bar";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import "leaflet/dist/leaflet.css";
@@ -122,13 +123,9 @@ export default function MapPage() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <header className="flex items-center justify-between p-3 border-b bg-card">
+      <header className="flex items-center justify-between p-3 border-b bg-card gap-2">
         <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
+          <MapPinIcon className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-semibold">Restaurant Map</h1>
         </div>
         <div className="flex items-center gap-4 text-sm flex-wrap">
@@ -161,6 +158,7 @@ export default function MapPage() {
             <div className="w-3 h-3 rounded-full bg-gray-500" />
             <span className="text-muted-foreground">Training</span>
           </div>
+          <NavBar />
         </div>
       </header>
 

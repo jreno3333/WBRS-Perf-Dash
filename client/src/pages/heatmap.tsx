@@ -7,9 +7,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
-import { ArrowLeft, Calendar, Clock, AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lucide-react";
+import { Calendar, Clock, AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
+import { NavBar } from "@/components/nav-bar";
 import { format, subDays, addDays, parseISO, isValid, startOfDay, endOfDay, eachDayOfInterval } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, RestaurantSales } from "@shared/schema";
 
@@ -449,12 +450,8 @@ export default function HeatmapPage() {
       <div className="max-w-7xl mx-auto space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon" data-testid="button-back">
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-            </Link>
-            <h1 className="text-xl font-bold">MWB Dashboard</h1>
+            <Grid3X3 className="w-6 h-6 text-primary" />
+            <h1 className="text-xl font-bold">Daily Performance</h1>
           </div>
           
           {/* Date Selection Controls */}
@@ -518,6 +515,7 @@ export default function HeatmapPage() {
                 Today
               </Button>
             )}
+            <NavBar />
           </div>
         </div>
         

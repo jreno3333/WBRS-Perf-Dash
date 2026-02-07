@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown } from "lucide-react";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { NavBar } from "@/components/nav-bar";
 import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -219,15 +219,7 @@ export default function SettingsPage() {
               <Settings className="h-6 w-6 text-primary" />
               <h1 className="text-2xl font-bold">Settings</h1>
             </div>
-            <div className="flex items-center gap-2">
-              <Link href="/">
-                <Button variant="outline" size="sm" data-testid="link-dashboard">
-                  <Home className="h-4 w-4 mr-2" />
-                  Dashboard
-                </Button>
-              </Link>
-              <ThemeToggle />
-            </div>
+            <NavBar />
           </div>
         </div>
       </header>

@@ -6,14 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { NavBar } from "@/components/nav-bar";
 import { Link } from "wouter";
 import {
   ChevronDown,
   ChevronUp,
   TrendingUp,
   TrendingDown,
-  ArrowLeft,
   Calendar,
   Building2,
   MapPin,
@@ -404,11 +403,7 @@ export default function PerformanceHistoryPage() {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <Link href="/">
-                <Button variant="ghost" size="icon" data-testid="button-back">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-              </Link>
+              <TrendingUp className="h-6 w-6 text-primary" />
               <div>
                 <h1 className="text-xl font-bold">Performance History</h1>
                 <p className="text-sm text-muted-foreground">
@@ -458,7 +453,7 @@ export default function PerformanceHistoryPage() {
                 </Select>
               )}
 
-              <ThemeToggle />
+              <NavBar />
             </div>
           </div>
         </div>
