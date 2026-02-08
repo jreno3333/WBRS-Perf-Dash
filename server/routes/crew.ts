@@ -154,7 +154,17 @@ router.get("/api/people/performance", async (req, res) => {
     const { date, days = "7", restaurantId: filterRestaurantId, search: searchQuery } = req.query;
     const endDate = date ? new Date(String(date)) : new Date();
     const numDays = Math.min(parseInt(String(days)) || 7, 180);
-    const MIN_HOURS_REQUIRED = 40;
+
+    const getScalingRequirements = (periodDays: number): { minHours: number; minSurveys: number } => {
+      if (periodDays <= 7) return { minHours: 30, minSurveys: 2 };
+      if (periodDays <= 14) return { minHours: 40, minSurveys: 4 };
+      if (periodDays <= 30) return { minHours: 60, minSurveys: 8 };
+      if (periodDays <= 60) return { minHours: 100, minSurveys: 14 };
+      if (periodDays <= 90) return { minHours: 140, minSurveys: 20 };
+      return { minHours: 200, minSurveys: 30 };
+    };
+
+    const { minHours: MIN_HOURS_REQUIRED, minSurveys: MIN_SURVEYS_REQUIRED } = getScalingRequirements(numDays);
 
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - numDays + 1);
@@ -253,6 +263,7 @@ router.get("/api/people/performance", async (req, res) => {
       avgGradeScore: number;
       grade: string;
       avgTransactionsPerHour: number | null;
+      surveyResponses: number;
     };
 
     const allRestaurants = await db.select().from(restaurants);
@@ -275,6 +286,7 @@ router.get("/api/people/performance", async (req, res) => {
       const workedAtRestaurants = new Map<string, number>();
       let totalHoursWorked = 0;
       let totalSalesAllHours = 0;
+      let totalSurveyResponses = 0;
 
       for (const crew of crewData) {
         const members = (crew.crewMembers as any[]) || [];
@@ -327,6 +339,7 @@ router.get("/api/people/performance", async (req, res) => {
             const osatResponses = osatHour && osatHour.totalResponses > 0 ? osatHour.totalResponses : 0;
             if (osatPercent !== undefined) {
               day.osatWeighted.push({ percent: osatPercent, responses: osatResponses });
+              totalSurveyResponses += osatResponses;
             }
           }
         }
@@ -378,7 +391,7 @@ router.get("/api/people/performance", async (req, res) => {
         }
       }
 
-      if (totalHoursWorked >= MIN_HOURS_REQUIRED && dailyGrades.length > 0) {
+      if (totalHoursWorked >= MIN_HOURS_REQUIRED && totalSurveyResponses >= MIN_SURVEYS_REQUIRED && dailyGrades.length > 0) {
         const totalGradeHours = dailyGrades.reduce((s, d) => s + d.hours, 0);
         const avgScoreRaw = dailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours;
         const avgScore = Math.round(avgScoreRaw);
@@ -414,12 +427,13 @@ router.get("/api/people/performance", async (req, res) => {
         if (!displayPosition) {
           if (leader.type === 'asst_manager') displayPosition = 'Manager';
           else if (leader.type === 'manager') displayPosition = 'Manager';
-          else if (leader.type === 'employee') displayPosition = 'Team Member';
           else displayPosition = 'Leader';
         }
         if (displayPosition === 'asst_manager') displayPosition = 'Manager';
         if (displayPosition.toLowerCase().includes('supervisor')) displayPosition = 'Shift Supervisor';
-        if (displayPosition.toLowerCase().includes('manager') && displayPosition !== 'Shift Supervisor') displayPosition = 'Manager';
+        else if (displayPosition.toLowerCase().includes('manager')) displayPosition = 'Manager';
+
+        if (displayPosition.toLowerCase().includes('team member')) continue;
 
         leaderPerformance.push({
           employeeId: leader.id,
@@ -431,6 +445,7 @@ router.get("/api/people/performance", async (req, res) => {
           avgGradeScore: Math.round(avgScore),
           grade,
           avgTransactionsPerHour: totalHoursWorked > 0 ? Math.round(totalSalesAllHours / totalHoursWorked) : null,
+          surveyResponses: totalSurveyResponses,
         });
       }
     }
@@ -472,6 +487,7 @@ router.get("/api/people/performance", async (req, res) => {
       byStore,
       companyRankings: filtered,
       companyAvgHourlyVolume,
+      requirements: { minHours: MIN_HOURS_REQUIRED, minSurveys: MIN_SURVEYS_REQUIRED },
     });
   } catch (error) {
     console.error("Error fetching people performance:", error);

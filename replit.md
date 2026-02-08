@@ -69,7 +69,13 @@ Preferred communication style: Simple, everyday language.
   - **OSAT**: 25% weight (100 points if >= 85%, 70 if >= 80%, 40 if < 80%) - only if customer satisfaction data available
   - **Staffing**: 15% weight (100 points if within ±1, 60 if outside range) - only if valid staffing data available
   - Weights are normalized based on available components, so a restaurant without OSAT data is graded fairly against its available metrics
-- **People Tenure & Performance**: Tracks employee tenure, experience levels, and manager performance based on 7shifts data and time punches. Calculates an "Experience Score" and ranks leaders by average execution grade during their shifts. Includes average hourly sales volume ($/hr) per leader compared to company average (weighted by hours worked), classified as Low (<75%), Med (75-125%), or High (>125%) to provide volume context for performance grades.
+- **People Tenure & Performance**: Tracks employee tenure, experience levels, and manager/supervisor performance (never Team Members) based on 7shifts data and time punches. Calculates an "Experience Score" and ranks leaders by average execution grade during their shifts. Includes average hourly sales volume ($/hr) per leader compared to company average (weighted by hours worked), classified as Low (<75%), Med (75-125%), or High (>125%) to provide volume context for performance grades. Leader eligibility scales by time period:
+  - 7 days: min 30 hours + 2 survey responses
+  - 14 days: min 40 hours + 4 survey responses
+  - 30 days: min 60 hours + 8 survey responses
+  - 60 days: min 100 hours + 14 survey responses
+  - 90 days: min 140 hours + 20 survey responses
+  - 180 days: min 200 hours + 30 survey responses
 - **Performance History**: Displays historical performance trends over configurable date ranges (7/14/30 days) at /history. Features:
   - Date range selector for viewing different time periods (uses last N days with actual data, not calendar days)
   - State and market filters for focused analysis

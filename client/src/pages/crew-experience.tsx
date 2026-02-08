@@ -62,6 +62,7 @@ interface PerformanceResponse {
   byStore: Record<string, LeaderPerformance[]>;
   companyRankings: LeaderPerformance[];
   companyAvgHourlyVolume: number | null;
+  requirements?: { minHours: number; minSurveys: number };
 }
 
 interface DayFeedback {
@@ -314,7 +315,10 @@ export default function CrewExperiencePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm text-muted-foreground">
-                  Top managers and shift supervisors ranked by execution score (min 40 hours)
+                  Top managers and shift supervisors ranked by execution score
+                  {performanceData?.requirements 
+                    ? ` (min ${performanceData.requirements.minHours} hrs + ${performanceData.requirements.minSurveys} surveys)`
+                    : ''}
                 </p>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Period:</span>

@@ -83,8 +83,9 @@ function formatLeaderTenure(hireDate: string | null | undefined, invitedAt: Date
   return `${totalDays}d`;
 }
 
-const MIN_HOURS_REQUIRED = 40;
-const MIN_HOURS_TOP10 = 40;
+const MIN_HOURS_REQUIRED = 30;
+const MIN_HOURS_TOP10 = 30;
+const MIN_SURVEYS_REQUIRED = 2;
 
 export async function sendLeaderReports(): Promise<{ sent: number; failed: number }> {
   const result = { sent: 0, failed: 0 };
@@ -243,6 +244,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
       let totalSalesAllHours = 0;
       let allSpeedValues: number[] = [];
       let allOsatWeighted: { percent: number; responses: number }[] = [];
+      let leaderTotalSurveys = 0;
 
       for (const crew of crewData) {
         const members = (crew.crewMembers as any[]) || [];
@@ -291,6 +293,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           if (osatHour && osatHour.totalResponses > 0) {
             day.osatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
             allOsatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
+            leaderTotalSurveys += osatHour.totalResponses;
           }
         }
       }
@@ -333,7 +336,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         }
       }
 
-      if (totalHoursWorked >= MIN_HOURS_REQUIRED && dailyGrades.length > 0) {
+      if (totalHoursWorked >= MIN_HOURS_REQUIRED && leaderTotalSurveys >= MIN_SURVEYS_REQUIRED && dailyGrades.length > 0) {
         const totalGradeHours = dailyGrades.reduce((s, d) => s + d.hours, 0);
         const avgScore = dailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours;
 
@@ -349,12 +352,13 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         let displayPosition = leader.position || "";
         if (!displayPosition) {
           if (leader.type === "asst_manager" || leader.type === "manager") displayPosition = "Manager";
-          else if (leader.type === "employee") displayPosition = "Team Member";
           else displayPosition = "Leader";
         }
         if (displayPosition === "asst_manager") displayPosition = "Manager";
         if (displayPosition.toLowerCase().includes("supervisor")) displayPosition = "Shift Supervisor";
-        else if (displayPosition.toLowerCase().includes("manager") && displayPosition !== "Team Member") displayPosition = "Manager";
+        else if (displayPosition.toLowerCase().includes("manager")) displayPosition = "Manager";
+
+        if (displayPosition.toLowerCase().includes("team member")) continue;
 
         const overallAvgSpeed = allSpeedValues.length > 0
           ? allSpeedValues.reduce((a, b) => a + b, 0) / allSpeedValues.length : null;
@@ -384,7 +388,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
     if (leaders.length === 0) return null;
 
     const top10Eligible = leaders
-      .filter(l => l.hoursWorked >= MIN_HOURS_TOP10)
+      .filter(l => l.hoursWorked >= MIN_HOURS_TOP10 && l.surveyCount >= MIN_SURVEYS_REQUIRED)
       .sort((a, b) => b.avgGradeScore - a.avgGradeScore || b.hoursWorked - a.hoursWorked);
 
     top10Eligible.forEach((l, i) => { l.companyRank = i + 1; l.totalLeaders = top10Eligible.length; });
@@ -442,7 +446,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
 
     <div style="background: white; padding: 20px 24px; border: 1px solid #e4e4e7; border-top: none;">
       <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 600; color: #18181b;">Top 10 Leaders - Company Wide</h3>
-      <p style="margin: 0 0 12px; font-size: 11px; color: #71717a;">${top10Eligible.length} eligible leaders (min ${MIN_HOURS_TOP10} hours)</p>
+      <p style="margin: 0 0 12px; font-size: 11px; color: #71717a;">${top10Eligible.length} eligible leaders (min ${MIN_HOURS_TOP10} hrs + ${MIN_SURVEYS_REQUIRED} surveys)</p>
       <div style="display: flex; align-items: center; padding: 4px 0; border-bottom: 2px solid #e4e4e7;">
         <span style="width: 24px; font-size: 10px; color: #a1a1aa; font-weight: 600;">#</span>
         <span style="flex: 1; font-size: 10px; color: #a1a1aa; font-weight: 600;">LEADER</span>
@@ -511,7 +515,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         View Full Leader Rankings
       </a>
       <p style="font-size: 11px; color: #a1a1aa; margin-top: 12px;">
-        Top 10 requires min ${MIN_HOURS_TOP10} hrs + surveys &middot; Per-store min ${MIN_HOURS_REQUIRED} hrs
+        Requires min ${MIN_HOURS_TOP10} hrs + ${MIN_SURVEYS_REQUIRED} surveys on shift
       </p>
     </div>
   </div>
