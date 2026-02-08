@@ -168,13 +168,12 @@ function analyzeUnit(
       // SALES SURGE EXCEPTION: Don't count as understaffed if sales are 20%+ above last week
       // (recognizes unexpected rushes that couldn't have been anticipated)
       if (hasValidStaffing) {
-        const isSalesSurge = hourVariance >= 20;
+        const isSalesSurge = hourVariance >= 20 || !hasComparableSales;
         
         if (staffingDiff > 1) {
           overstaffedHours++;
           staffingIssues.push({ hour: hour.hour, type: "over", diff: staffingDiff, leaders: hourLeaders });
         } else if (staffingDiff < -1 && !isSalesSurge) {
-          // Only flag understaffing if it's NOT during a sales surge
           understaffedHours++;
           staffingIssues.push({ hour: hour.hour, type: "under", diff: Math.abs(staffingDiff), leaders: hourLeaders });
         }
@@ -215,10 +214,13 @@ function analyzeUnit(
       // WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
       const gradeComponents: { name: string; score: number; weight: number }[] = [];
       
-      // Sales component (weight: 35%) - only if we have comparable data
+      // Sales component (weight: 35%)
+      // When last week had $0, treat as positive (store was likely closed last week)
       if (hasComparableSales) {
         const salesScore = hourVariance >= -5 ? 100 : 50;
         gradeComponents.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
+      } else {
+        gradeComponents.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
       }
       
       // Speed component (weight: 25%) - only if we have valid drive-thru data
@@ -239,7 +241,7 @@ function analyzeUnit(
       
       // Staffing component (weight: 15%) - only if we have valid staffing data
       if (hasValidStaffing) {
-        const isSalesSurge = hourVariance >= 20;
+        const isSalesSurge = hourVariance >= 20 || !hasComparableSales;
         const isUnderstaffed = staffingDiff < -1;
         const isOverstaffed = staffingDiff > 1;
         

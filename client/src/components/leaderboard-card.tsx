@@ -61,13 +61,11 @@ function getExecutionGrade(
   
   // Sales component (weight: 35%)
   // For first-week units with no comparable data, give them credit (score 100)
-  // For established units without comparable data, skip the sales component
+  // When last week had $0 but we have sales now, treat as positive (store was likely closed last week)
   if (hasComparableSales) {
-    // Within -5% to +infinity = 100, Below -5% = 50
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
     components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
-  } else if (isFirstWeek) {
-    // First week units get neutral sales score since no historical data exists
+  } else {
     components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
   }
   
@@ -94,17 +92,16 @@ function getExecutionGrade(
   // Skip when employee count is near-zero (indicates missing/incomplete API data)
   // PROPER = 100, UNDER/OVER = 60
   // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
-  // (recognizes unexpected rushes that couldn't have been anticipated)
+  // or when last week had no sales (store was closed/no data - can't plan staffing for that)
   if (hasValidStaffing) {
     let staffingScore = 100;
-    const isSalesSurge = salesVariancePct >= 20;
+    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
     const isUnderstaffed = staffingDiff < -1;
     const isOverstaffed = staffingDiff > 1;
     
     if (isOverstaffed) {
       staffingScore = 60;
     } else if (isUnderstaffed && !isSalesSurge) {
-      // Only penalize understaffing if it's NOT during a sales surge
       staffingScore = 60;
     }
     components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
@@ -296,31 +293,13 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
-  // Calculate OSAT component score for overall grade
-  // 85%+ = 100 (excellent), 80-85% = 70 (acceptable), <80% = 40 (needs improvement)
-  let osatScore: number | undefined = undefined;
-  if (restaurant.osat && restaurant.osat.totalResponses > 0) {
-    const osatPct = restaurant.osat.osatPercent;
-    osatScore = osatPct >= 85 ? 100 : osatPct >= 80 ? 70 : 40;
-  }
-  
-  // Blend hourly execution with OSAT as equal weight component
+  // Overall grade is the straight average of hourly execution grades
+  // (OSAT is already factored into each hourly grade when available)
   let overallScore = 0;
-  let componentCount = 0;
-  
   if (hourlyGradeScores.length > 0) {
-    const hourlyAvg = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
-    overallScore += hourlyAvg;
-    componentCount++;
+    overallScore = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
   }
-  
-  if (osatScore !== undefined) {
-    overallScore += osatScore;
-    componentCount++;
-  }
-  
-  overallScore = componentCount > 0 ? overallScore / componentCount : 0;
-  const overallGrade = componentCount > 0 ? scoreToGrade(overallScore) : null;
+  const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
   
   // No in-progress hour needed since we only show completed hours now
 

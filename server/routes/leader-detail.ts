@@ -137,12 +137,15 @@ router.get("/api/people/leader-detail", async (req, res) => {
         if (hasComparableSales) {
           const salesScore = salesVariancePct >= -5 ? 100 : 50;
           components.push({ weight: 35, score: salesScore });
+        } else {
+          components.push({ weight: 35, score: 100 });
         }
 
+        const effectiveSurge = salesSurge || !hasComparableSales;
         let staffingScore: number;
         if (Math.abs(staffingDiff) <= 1) staffingScore = 100;
         else if (staffingDiff > 1) staffingScore = 60;
-        else staffingScore = salesSurge ? 100 : 60;
+        else staffingScore = effectiveSurge ? 100 : 60;
         components.push({ weight: 15, score: staffingScore });
 
         const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
@@ -250,11 +253,14 @@ router.get("/api/people/leader-detail", async (req, res) => {
       const gradeComponents: { weight: number; score: number }[] = [];
       if (hasComparableSales) {
         gradeComponents.push({ weight: 35, score: dailySalesVariancePct >= -5 ? 100 : 50 });
+      } else {
+        gradeComponents.push({ weight: 35, score: 100 });
       }
+      const effectiveDailySurge = salesSurge || !hasComparableSales;
       let staffingScore = 100;
       if (Math.abs(avgStaffingDiff) <= 1) staffingScore = 100;
       else if (avgStaffingDiff > 1) staffingScore = 60;
-      else staffingScore = salesSurge ? 100 : 60;
+      else staffingScore = effectiveDailySurge ? 100 : 60;
       gradeComponents.push({ weight: 15, score: staffingScore });
       if (avgSpeed !== undefined) {
         let speedScore = 100;

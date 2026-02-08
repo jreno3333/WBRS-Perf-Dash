@@ -289,10 +289,15 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         const salesSurge = salesVariancePct >= 20;
 
         const components: { weight: number; score: number }[] = [];
-        if (hasComparableSales) components.push({ weight: 35, score: salesVariancePct >= -5 ? 100 : 50 });
+        if (hasComparableSales) {
+          components.push({ weight: 35, score: salesVariancePct >= -5 ? 100 : 50 });
+        } else {
+          components.push({ weight: 35, score: 100 });
+        }
 
+        const effectiveSurge = salesSurge || !hasComparableSales;
         let staffingScore = 100;
-        if (Math.abs(avgStaffingDiff) > 1) staffingScore = avgStaffingDiff > 1 ? 60 : (salesSurge ? 100 : 60);
+        if (Math.abs(avgStaffingDiff) > 1) staffingScore = avgStaffingDiff > 1 ? 60 : (effectiveSurge ? 100 : 60);
         components.push({ weight: 15, score: staffingScore });
 
         if (avgSpeed !== undefined) {

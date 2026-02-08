@@ -135,13 +135,11 @@ router.get("/api/performance-history", async (req, res) => {
 
       // Sales component (weight: 35%)
       // For units with comparable data: Within -5% to +infinity = 100, Below -5% = 50
-      // For first-week units without comparable data: give neutral score (100)
-      // For established units without comparable data: skip the sales component
+      // When last week had $0, treat as positive (store was likely closed last week)
       if (hasComparableSales) {
         const salesScore = salesVariancePct >= -5 ? 100 : 50;
         components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
-      } else if (isFirstWeek) {
-        // First week units get neutral sales score since no historical data exists
+      } else {
         components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
       }
 
@@ -166,9 +164,10 @@ router.get("/api/performance-history", async (req, res) => {
       // Staffing component (weight: 15%) - only if we have valid staffing data
       // PROPER (within +/-1) = 100, UNDER/OVER = 60
       // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
+      // or when last week had no sales (can't plan staffing for unexpected activity)
       if (hasValidStaffing) {
         let staffingScore = 100;
-        const isSalesSurge = salesVariancePct >= 20;
+        const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
         const isUnderstaffed = staffingDiff < -1;
         const isOverstaffed = staffingDiff > 1;
 
