@@ -12,75 +12,8 @@ import { syncOsatData, getOsatForDate } from "./scraper/qualtrics-api";
 import { sendMagicLinkEmail } from "./email";
 import crypto from "crypto";
 
-// Weather code to condition mapping
-function getWeatherCondition(weatherCode: number): string {
-  if (weatherCode === 0) return "clear";
-  if (weatherCode >= 1 && weatherCode <= 3) return "partly cloudy";
-  if (weatherCode >= 45 && weatherCode <= 48) return "foggy";
-  if (weatherCode >= 51 && weatherCode <= 67) return "rain";
-  if (weatherCode >= 71 && weatherCode <= 77) return "snow";
-  if (weatherCode >= 80 && weatherCode <= 82) return "showers";
-  if (weatherCode >= 95) return "thunderstorm";
-  return "clear";
-}
-
-// Fetch weather for a location with timeout
-async function fetchWeather(latitude: number, longitude: number): Promise<{ temp: number; condition: string; humidity: number; windSpeed: number; } | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-    
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
-    const weatherRes = await fetch(weatherUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    
-    if (weatherRes.ok) {
-      const weatherData = await weatherRes.json();
-      const current = weatherData.current;
-      return {
-        temp: current.temperature_2m,
-        condition: getWeatherCondition(current.weather_code),
-        humidity: current.relative_humidity_2m,
-        windSpeed: current.wind_speed_10m,
-      };
-    }
-  } catch (e) {
-    // Silently handle timeout/network errors
-  }
-  return null;
-}
-
-// Helper to add delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Fetch historical daily weather (actual high/low for a specific date)
-async function fetchHistoricalWeather(latitude: number, longitude: number, date: string): Promise<{ highTemp: number; lowTemp: number; avgTemp: number; condition: string } | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
-    // Open-Meteo Archive API for historical daily data
-    const weatherUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${date}&end_date=${date}&daily=temperature_2m_max,temperature_2m_min,temperature_2m_mean,weather_code&temperature_unit=fahrenheit`;
-    const weatherRes = await fetch(weatherUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    
-    if (weatherRes.ok) {
-      const weatherData = await weatherRes.json();
-      const daily = weatherData.daily;
-      if (daily && daily.temperature_2m_max?.[0] !== undefined) {
-        return {
-          highTemp: daily.temperature_2m_max[0],
-          lowTemp: daily.temperature_2m_min[0],
-          avgTemp: daily.temperature_2m_mean[0],
-          condition: getWeatherCondition(daily.weather_code?.[0] || 0),
-        };
-      }
-    }
-  } catch (e) {
-    // Silently handle timeout/network errors
-  }
-  return null;
-}
+import { fetchWeather, fetchHistoricalWeather } from "./utils/weather";
+import { delay } from "./utils/db-helpers";
 
 // Allowed emails for magic link login (configured via env or defaults to any)
 function getAllowedEmails(): string[] | null {
@@ -824,12 +757,16 @@ export async function registerRoutes(
       const targetDate = date ? new Date(date as string) : new Date();
       const dateStr = targetDate.toISOString().split('T')[0];
       
-      // Fetch hourly data with position breakdown
-      const allHourly = await db.select().from(hourlySales);
-      const records = allHourly.filter(s => {
-        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
-        return saleDate === dateStr && s.restaurantId === restaurantId;
-      });
+      // Fetch hourly data with position breakdown (filtered at DB level)
+      const dateStart = new Date(`${dateStr}T00:00:00.000Z`);
+      const dateEnd = new Date(`${dateStr}T23:59:59.999Z`);
+      const records = await db.select().from(hourlySales).where(
+        and(
+          eq(hourlySales.restaurantId, restaurantId),
+          gte(hourlySales.salesDate, dateStart),
+          lte(hourlySales.salesDate, dateEnd)
+        )
+      );
       
       // Build response with position data per hour
       // Compute totalHours directly from position breakdown sum (authoritative)
@@ -894,30 +831,34 @@ export async function registerRoutes(
       const targetDate = date ? new Date(date as string) : new Date();
       const dateStr = targetDate.toISOString().split('T')[0];
       
-      const allHourly = await db.select().from(hourlySales);
-      const dayRecords = allHourly.filter(s => {
-        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
-        return saleDate === dateStr;
-      });
-      
+      // OPTIMIZED: Filter at DB level
+      const checkDateStart = new Date(`${dateStr}T00:00:00.000Z`);
+      const checkDateEnd = new Date(`${dateStr}T23:59:59.999Z`);
+      const dayRecords = await db.select().from(hourlySales).where(
+        and(
+          gte(hourlySales.salesDate, checkDateStart),
+          lte(hourlySales.salesDate, checkDateEnd)
+        )
+      );
+
       // Count records per restaurant/hour
       const counts: Record<string, number> = {};
       const duplicates: Array<{restaurantId: string, hour: number, count: number}> = [];
-      
+
       dayRecords.forEach(r => {
         const key = `${r.restaurantId}-${r.hour}`;
         counts[key] = (counts[key] || 0) + 1;
       });
-      
+
       Object.entries(counts).forEach(([key, count]) => {
         if (count > 1) {
           const [restaurantId, hour] = key.split('-');
           duplicates.push({ restaurantId, hour: parseInt(hour), count });
         }
       });
-      
+
       const totalSales = dayRecords.reduce((sum, r) => sum + parseFloat(r.actualSales || '0'), 0);
-      
+
       res.json({
         date: dateStr,
         totalRecords: dayRecords.length,
@@ -938,13 +879,17 @@ export async function registerRoutes(
       const { date } = req.body;
       const targetDate = date ? new Date(date as string) : new Date();
       const dateStr = targetDate.toISOString().split('T')[0];
-      
-      const allHourly = await db.select().from(hourlySales);
-      const dayRecords = allHourly.filter(s => {
-        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
-        return saleDate === dateStr;
-      });
-      
+
+      // OPTIMIZED: Filter at DB level
+      const cleanupDateStart = new Date(`${dateStr}T00:00:00.000Z`);
+      const cleanupDateEnd = new Date(`${dateStr}T23:59:59.999Z`);
+      const dayRecords = await db.select().from(hourlySales).where(
+        and(
+          gte(hourlySales.salesDate, cleanupDateStart),
+          lte(hourlySales.salesDate, cleanupDateEnd)
+        )
+      );
+
       // Group by restaurant/hour
       const groups: Record<string, typeof dayRecords> = {};
       dayRecords.forEach(r => {
@@ -952,7 +897,7 @@ export async function registerRoutes(
         if (!groups[key]) groups[key] = [];
         groups[key].push(r);
       });
-      
+
       let deletedCount = 0;
       for (const records of Object.values(groups)) {
         if (records.length > 1) {
@@ -964,13 +909,14 @@ export async function registerRoutes(
           }
         }
       }
-      
-      // Get new total
-      const remainingRecords = await db.select().from(hourlySales);
-      const newDayRecords = remainingRecords.filter(s => {
-        const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
-        return saleDate === dateStr;
-      });
+
+      // Get new total (re-query only for this date)
+      const newDayRecords = await db.select().from(hourlySales).where(
+        and(
+          gte(hourlySales.salesDate, cleanupDateStart),
+          lte(hourlySales.salesDate, cleanupDateEnd)
+        )
+      );
       const newTotal = newDayRecords.reduce((sum, r) => sum + parseFloat(r.actualSales || '0'), 0);
       
       res.json({
@@ -1305,7 +1251,7 @@ export async function registerRoutes(
 
       res.json({
         status: "operational",
-        version: "2.1.0", // Force rebuild
+        version: process.env.npm_package_version || "2.1.0",
         webhookEndpoint: "/api/xenial/order",
         webhookEnabled: true,
         serverTime: now.toISOString(),
@@ -1509,17 +1455,6 @@ export async function registerRoutes(
   });
 
   // Get HME stores list (for validation/debugging)
-  app.get("/api/hme/stores", async (req, res) => {
-    try {
-      const { fetchHMEStores } = await import("./scraper/hme-api");
-      const stores = await fetchHMEStores();
-      res.json({ total: stores.length, stores });
-    } catch (error) {
-      console.error("Error fetching HME stores:", error);
-      res.status(500).json({ error: "Failed to fetch HME stores" });
-    }
-  });
-
   // Detailed HME data validation - shows per-store data coverage for recent days (single aggregated query)
   app.get("/api/hme/validate", async (req, res) => {
     try {
@@ -3672,7 +3607,7 @@ export async function registerRoutes(
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {
     res.json({
-      version: "2.1.0",
+      version: process.env.npm_package_version || "2.1.0",
       buildTime: new Date().toISOString(),
       features: {
         leaderNames: true,

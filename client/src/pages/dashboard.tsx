@@ -100,11 +100,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const res = await fetch(`/api/leaderboard?date=${dateStr}`);
       if (!res.ok) throw new Error("Failed to fetch");
-      const data = await res.json();
-      // Debug: log driveThru data presence
-      const withDT = data.restaurants?.filter((r: any) => r.driveThru)?.length || 0;
-      console.log(`[Dashboard] Loaded ${data.restaurants?.length || 0} restaurants, ${withDT} with driveThru data`);
-      return data;
+      return await res.json();
     },
     refetchInterval,
   });
@@ -198,7 +194,7 @@ export default function Dashboard() {
   };
 
   const goToToday = () => {
-    setSelectedDate(new Date());
+    setSelectedDate(getCentralDate());
   };
 
   // Helper to check if restaurant has missing manager (will be computed from hourly data)

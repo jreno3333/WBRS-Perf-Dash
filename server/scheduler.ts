@@ -8,6 +8,8 @@ import { db } from "./db";
 import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews, reportSchedules } from "@shared/schema";
 import { sql, isNotNull, lt, eq } from "drizzle-orm";
 import { storage } from "./storage";
+import { getCentralTime } from "./utils/dates";
+import { fetchWeather } from "./utils/weather";
 
 // Data retention period: 2 years (730 days)
 const DATA_RETENTION_DAYS = 730;
@@ -194,24 +196,7 @@ let lastWeatherSave: string | null = null;
 let lastDailyReportSend: string | null = null;
 let lastLeaderReportSend: string | null = null;
 
-function getCentralTime(now: Date) {
-  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
-    timeZone: 'America/Chicago',
-    hour: 'numeric',
-    hour12: false
-  }).format(now));
-  const centralMinute = parseInt(new Intl.DateTimeFormat('en-US', { 
-    timeZone: 'America/Chicago',
-    minute: 'numeric'
-  }).format(now));
-  const centralDate = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Chicago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now);
-  return { hour: centralHour, minute: centralMinute, date: centralDate };
-}
+// getCentralTime imported from ./utils/dates
 
 function isWithinSendWindow(currentHour: number, currentMinute: number, targetHour: number, targetMinute: number): boolean {
   const currentTotalMinutes = currentHour * 60 + currentMinute;
@@ -277,43 +262,7 @@ async function sendDailyReportsIfNeeded() {
   }
 }
 
-// Fetch weather for a location (helper function)
-async function fetchWeatherForLocation(latitude: number, longitude: number): Promise<{ temp: number; condition: string; humidity: number; windSpeed: number } | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
-    const weatherRes = await fetch(weatherUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    
-    if (weatherRes.ok) {
-      const weatherData = await weatherRes.json();
-      const current = weatherData.current;
-      const weatherCode = current.weather_code;
-      let condition = "clear";
-      if (weatherCode >= 0 && weatherCode <= 1) condition = "clear";
-      else if (weatherCode >= 2 && weatherCode <= 3) condition = "partly cloudy";
-      else if (weatherCode >= 45 && weatherCode <= 48) condition = "foggy";
-      else if (weatherCode >= 51 && weatherCode <= 57) condition = "showers";
-      else if (weatherCode >= 61 && weatherCode <= 67) condition = "rain";
-      else if (weatherCode >= 71 && weatherCode <= 77) condition = "snow";
-      else if (weatherCode >= 80 && weatherCode <= 82) condition = "showers";
-      else if (weatherCode >= 85 && weatherCode <= 86) condition = "snow";
-      else if (weatherCode >= 95 && weatherCode <= 99) condition = "thunderstorm";
-      
-      return {
-        temp: current.temperature_2m,
-        condition,
-        humidity: current.relative_humidity_2m,
-        windSpeed: current.wind_speed_10m,
-      };
-    }
-  } catch (e) {
-    // Silently handle timeout/network errors
-  }
-  return null;
-}
+// fetchWeather imported from ./utils/weather (unified weather code mapping)
 
 // Save daily weather snapshot for all restaurants
 async function saveDailyWeatherSnapshot(date: string): Promise<number> {
@@ -322,7 +271,7 @@ async function saveDailyWeatherSnapshot(date: string): Promise<number> {
   
   for (const restaurant of allRestaurants) {
     if (restaurant.latitude && restaurant.longitude) {
-      const weather = await fetchWeatherForLocation(
+      const weather = await fetchWeather(
         parseFloat(String(restaurant.latitude)),
         parseFloat(String(restaurant.longitude))
       );
@@ -534,13 +483,14 @@ async function checkAndSeedHistoricalData() {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const lastWeekDateStr = sevenDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD in UTC
     
-    // Query hourly sales and filter by date string (matching getLeaderboard logic)
-    const allHourlySales = await db.select().from(hourlySales);
-    const lastWeekRecords = allHourlySales.filter(s => {
-      const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
-      return saleDate === lastWeekDateStr;
-    });
-    const lastWeekHourlyCount = lastWeekRecords.length;
+    // OPTIMIZED: Count at DB level instead of fetching all rows
+    const lastWeekStart = new Date(`${lastWeekDateStr}T00:00:00.000Z`);
+    const lastWeekEnd = new Date(`${lastWeekDateStr}T23:59:59.999Z`);
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(hourlySales)
+      .where(sql`${hourlySales.salesDate} >= ${lastWeekStart} AND ${hourlySales.salesDate} <= ${lastWeekEnd}`);
+    const lastWeekHourlyCount = Number(countResult[0]?.count || 0);
     
     // We need at least some data for 7 days ago (22 restaurants × ~17 hours = ~374 rows expected)
     const expectedLastWeekMin = 300;
