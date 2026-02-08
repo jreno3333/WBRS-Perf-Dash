@@ -5,8 +5,8 @@ import { syncOsatData } from "./scraper/qualtrics-api";
 import { sendDailyReports } from "./daily-report";
 import { sendLeaderReports } from "./leader-report";
 import { db } from "./db";
-import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews, reportSchedules } from "@shared/schema";
-import { sql, isNotNull, lt, eq } from "drizzle-orm";
+import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews, reportSchedules, emailSendLog } from "@shared/schema";
+import { sql, isNotNull, lt, eq, and, like } from "drizzle-orm";
 import { storage } from "./storage";
 import { getCentralTime } from "./utils/dates";
 import { fetchWeather } from "./utils/weather";
@@ -198,15 +198,31 @@ let lastLeaderReportSend: string | null = null;
 
 // getCentralTime imported from ./utils/dates
 
-function isWithinSendWindow(currentHour: number, currentMinute: number, targetHour: number, targetMinute: number): boolean {
+function isPastScheduledTime(currentHour: number, currentMinute: number, targetHour: number, targetMinute: number): boolean {
   const currentTotalMinutes = currentHour * 60 + currentMinute;
   const targetTotalMinutes = targetHour * 60 + targetMinute;
-  return currentTotalMinutes >= targetTotalMinutes && currentTotalMinutes < targetTotalMinutes + 10;
+  return currentTotalMinutes >= targetTotalMinutes;
+}
+
+async function hasReportBeenSentToday(reportPrefix: string, reportDate: string): Promise<boolean> {
+  const reportKey = `${reportPrefix}-${reportDate}`;
+  const existing = await db.select({ id: emailSendLog.id })
+    .from(emailSendLog)
+    .where(eq(emailSendLog.reportDate, reportKey))
+    .limit(1);
+  return existing.length > 0;
 }
 
 async function sendDailyReportsIfNeeded() {
   const now = new Date();
   const { hour: centralHour, minute: centralMinute, date: centralDate } = getCentralTime(now);
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(yesterday);
 
   try {
     const schedules = await db.select().from(reportSchedules);
@@ -222,38 +238,49 @@ async function sendDailyReportsIfNeeded() {
     const leaderMinute = leaderSchedule?.sendMinute ?? 0;
     const leaderEnabled = leaderSchedule?.isEnabled ?? true;
 
-    const dailyInWindow = dailyEnabled && isWithinSendWindow(centralHour, centralMinute, dailyHour, dailyMinute);
-    const leaderInWindow = leaderEnabled && isWithinSendWindow(centralHour, centralMinute, leaderHour, leaderMinute);
+    const dailyPastTime = dailyEnabled && isPastScheduledTime(centralHour, centralMinute, dailyHour, dailyMinute);
+    const leaderPastTime = leaderEnabled && isPastScheduledTime(centralHour, centralMinute, leaderHour, leaderMinute);
     
-    // Log report check status periodically (on the hour) for diagnostics
     if (centralMinute < 5) {
-      log(`Report schedule check: CT ${centralHour}:${String(centralMinute).padStart(2, '0')} | Daily=${dailyEnabled ? `${dailyHour}:${String(dailyMinute).padStart(2, '0')}` : 'off'}(${dailyInWindow ? 'IN WINDOW' : 'outside'}) | Leader=${leaderEnabled ? `${leaderHour}:${String(leaderMinute).padStart(2, '0')}` : 'off'}(${leaderInWindow ? 'IN WINDOW' : 'outside'}) | lastSent: daily=${lastDailyReportSend}, leader=${lastLeaderReportSend}`);
+      log(`Report schedule check: CT ${centralHour}:${String(centralMinute).padStart(2, '0')} | Daily=${dailyEnabled ? `${dailyHour}:${String(dailyMinute).padStart(2, '0')}` : 'off'}(${dailyPastTime ? 'PAST TIME' : 'not yet'}) | Leader=${leaderEnabled ? `${leaderHour}:${String(leaderMinute).padStart(2, '0')}` : 'off'}(${leaderPastTime ? 'PAST TIME' : 'not yet'}) | lastSent: daily=${lastDailyReportSend}, leader=${lastLeaderReportSend}`);
     }
 
-    if (dailyInWindow) {
+    if (dailyPastTime) {
       if (lastDailyReportSend !== centralDate) {
-        lastDailyReportSend = centralDate;
-        log("Sending daily performance reports...");
-        try {
-          const result = await sendDailyReports();
-          log(`Daily reports: ${result.sent} sent, ${result.failed} failed`);
-        } catch (error) {
-          log(`Daily report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          lastDailyReportSend = null; // Reset so it retries next cycle
+        const alreadySent = await hasReportBeenSentToday('daily', yesterdayDate);
+        if (!alreadySent) {
+          lastDailyReportSend = centralDate;
+          log("Sending daily performance reports...");
+          try {
+            const result = await sendDailyReports();
+            log(`Daily reports: ${result.sent} sent, ${result.failed} failed`);
+          } catch (error) {
+            log(`Daily report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            lastDailyReportSend = null;
+          }
+        } else {
+          lastDailyReportSend = centralDate;
+          log("Daily reports already sent today (found in DB log) - skipping");
         }
       }
     }
 
-    if (leaderInWindow) {
+    if (leaderPastTime) {
       if (lastLeaderReportSend !== centralDate) {
-        lastLeaderReportSend = centralDate;
-        log("Sending leader ranking reports...");
-        try {
-          const leaderResult = await sendLeaderReports();
-          log(`Leader reports: ${leaderResult.sent} sent, ${leaderResult.failed} failed`);
-        } catch (error) {
-          log(`Leader report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          lastLeaderReportSend = null; // Reset so it retries next cycle
+        const alreadySent = await hasReportBeenSentToday('leader', yesterdayDate);
+        if (!alreadySent) {
+          lastLeaderReportSend = centralDate;
+          log("Sending leader ranking reports...");
+          try {
+            const leaderResult = await sendLeaderReports();
+            log(`Leader reports: ${leaderResult.sent} sent, ${leaderResult.failed} failed`);
+          } catch (error) {
+            log(`Leader report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            lastLeaderReportSend = null;
+          }
+        } else {
+          lastLeaderReportSend = centralDate;
+          log("Leader reports already sent today (found in DB log) - skipping");
         }
       }
     }
