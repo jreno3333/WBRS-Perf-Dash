@@ -134,16 +134,22 @@ function TrendIndicator({ value }: { value: number }) {
 function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
   return (
     <div className="flex gap-1 flex-wrap">
-      {grades.map((grade, idx) => (
-        <div
-          key={idx}
-          className={`flex flex-col items-center p-1.5 rounded ${getGradeBgColor(grade.gradeLabel)} min-w-[50px]`}
-          title={`${formatDate(grade.date)}: ${grade.gradeLabel} (${grade.grade.toFixed(0)})`}
-        >
-          <span className="text-[10px] text-muted-foreground">{formatDate(grade.date).split(",")[0]}</span>
-          <span className={`text-sm font-bold ${getGradeColor(grade.gradeLabel)}`}>{grade.gradeLabel}</span>
-        </div>
-      ))}
+      {grades.map((grade, idx) => {
+        const formatted = formatDate(grade.date);
+        const dayName = formatted.split(",")[0];
+        const datePart = formatted.split(",")[1]?.trim() || "";
+        return (
+          <div
+            key={idx}
+            className={`flex flex-col items-center p-1.5 rounded ${getGradeBgColor(grade.gradeLabel)} min-w-[50px]`}
+            title={`${formatted}: ${grade.gradeLabel} (${grade.grade.toFixed(0)})`}
+          >
+            <span className="text-[10px] text-muted-foreground">{dayName}</span>
+            <span className={`text-sm font-bold ${getGradeColor(grade.gradeLabel)}`}>{grade.gradeLabel}</span>
+            <span className="text-[9px] text-muted-foreground">{datePart}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
