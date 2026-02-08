@@ -616,3 +616,94 @@ export const insertOsatCategoryIssuesSchema = createInsertSchema(osatCategoryIss
 
 export type InsertOsatCategoryIssues = z.infer<typeof insertOsatCategoryIssuesSchema>;
 export type OsatCategoryIssues = typeof osatCategoryIssues.$inferSelect;
+
+// ─── Arena (Gamification / Recognition Engine) ─────────────────────────────
+
+// Arena configuration - single JSON document with all badge rules, streak config, notification settings
+export const arenaConfig = pgTable("arena_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  config: jsonb("config").notNull(), // Full arena config JSON
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: text("updated_by"), // User email or "system"
+});
+
+export type ArenaConfig = typeof arenaConfig.$inferSelect;
+
+// Arena badges earned - log of every badge earned
+export const arenaBadgesEarned = pgTable("arena_badges_earned", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  badgeId: text("badge_id").notNull(), // References badge config id
+  entityId: text("entity_id").notNull(), // Leader sevenShiftsUserId or restaurantId
+  entityType: text("entity_type").notNull(), // "leader" or "unit"
+  entityName: text("entity_name"), // Display name at time of earning
+  restaurantId: varchar("restaurant_id"), // Store where badge was earned
+  earnedAt: timestamp("earned_at").defaultNow(),
+  evalDate: text("eval_date"), // YYYY-MM-DD date being evaluated
+  evalHour: integer("eval_hour"), // Hour being evaluated (0-23)
+  metricValue: decimal("metric_value", { precision: 10, scale: 2 }), // Actual metric value that earned the badge
+  shiftTeamMembers: jsonb("shift_team_members").$type<{ userId: number; name: string; role: string }[]>(),
+  configSnapshot: jsonb("config_snapshot"), // Badge config at time of earning
+});
+
+export type ArenaBadgeEarned = typeof arenaBadgesEarned.$inferSelect;
+
+// Arena streaks - active and historical streaks
+export const arenaStreaks = pgTable("arena_streaks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityId: text("entity_id").notNull(), // Leader or restaurant ID
+  entityType: text("entity_type").notNull(), // "leader" or "unit"
+  entityName: text("entity_name"),
+  restaurantId: varchar("restaurant_id"),
+  streakStart: text("streak_start").notNull(), // YYYY-MM-DD
+  streakCount: integer("streak_count").notNull().default(0),
+  streakActive: boolean("streak_active").notNull().default(true),
+  lastEvaluated: text("last_evaluated"), // YYYY-MM-DD
+  highestMilestone: integer("highest_milestone").default(0), // Highest milestone days reached
+  endedAt: text("ended_at"), // YYYY-MM-DD when streak broke (null if active)
+});
+
+export type ArenaStreak = typeof arenaStreaks.$inferSelect;
+
+// Arena records - company records
+export const arenaRecords = pgTable("arena_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recordType: text("record_type").notNull(), // e.g., "most_transactions_hour", "fastest_dt_avg"
+  holderId: text("holder_id").notNull(), // Restaurant or leader ID
+  holderType: text("holder_type").notNull(), // "leader" or "unit"
+  holderName: text("holder_name"),
+  restaurantId: varchar("restaurant_id"),
+  value: decimal("value", { precision: 10, scale: 2 }).notNull(),
+  setAt: timestamp("set_at").defaultNow(),
+  evalDate: text("eval_date"), // YYYY-MM-DD
+  evalHour: integer("eval_hour"), // 0-23
+  teamMembers: jsonb("team_members").$type<{ userId: number; name: string; role: string }[]>(),
+});
+
+export type ArenaRecord = typeof arenaRecords.$inferSelect;
+
+// Arena messages - push message log
+export const arenaMessages = pgTable("arena_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipientEmail: text("recipient_email"),
+  recipientName: text("recipient_name"),
+  restaurantId: varchar("restaurant_id"),
+  messageType: text("message_type").notNull(), // "praise", "coaching", "badge_earned", "streak_milestone", etc.
+  subject: text("subject"),
+  message: text("message").notNull(),
+  sentAt: timestamp("sent_at").defaultNow(),
+  auto: boolean("auto").notNull().default(true), // true = auto-generated, false = manual
+  team: boolean("team").notNull().default(false), // true = sent to shift team
+  badgeId: text("badge_id"), // Optional reference to badge that triggered message
+});
+
+export type ArenaMessage = typeof arenaMessages.$inferSelect;
+
+// Arena badge images - custom badge images
+export const arenaBadgeImages = pgTable("arena_badge_images", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  badgeId: text("badge_id").notNull().unique(),
+  imageUrl: text("image_url").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+export type ArenaBadgeImage = typeof arenaBadgeImages.$inferSelect;
