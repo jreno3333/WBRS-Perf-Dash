@@ -62,6 +62,25 @@ interface LeaderSummary {
   surveyCount: number;
   companyRank: number;
   totalLeaders: number;
+  tenure: string;
+}
+
+function formatLeaderTenure(hireDate: string | null | undefined, invitedAt: Date | null | undefined): string {
+  const startDate = hireDate ? new Date(hireDate) : invitedAt ? new Date(invitedAt) : null;
+  if (!startDate || isNaN(startDate.getTime())) return '--';
+  const now = new Date();
+  const diffMs = now.getTime() - startDate.getTime();
+  if (diffMs < 0) return 'New';
+  const totalDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const years = Math.floor(totalDays / 365);
+  const months = Math.floor((totalDays % 365) / 30);
+  const weeks = Math.floor(((totalDays % 365) % 30) / 7);
+  if (years >= 2) return `${years}y`;
+  if (years >= 1) return months > 0 ? `${years}y${months}m` : `${years}y`;
+  if (months >= 6) return `${months}m`;
+  if (months >= 1) return weeks > 0 ? `${months}m${weeks}w` : `${months}m`;
+  if (weeks >= 1) return `${weeks}w`;
+  return `${totalDays}d`;
 }
 
 const MIN_HOURS_REQUIRED = 8;
@@ -356,6 +375,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           surveyCount: totalSurveyResponses,
           companyRank: 0,
           totalLeaders: 0,
+          tenure: formatLeaderTenure(leader.hireDate, leader.invitedAt),
         });
       }
     }
@@ -426,6 +446,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         <span style="width: 24px; font-size: 10px; color: #a1a1aa; font-weight: 600;">#</span>
         <span style="flex: 1; font-size: 10px; color: #a1a1aa; font-weight: 600;">LEADER</span>
         <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: center;">GRD</span>
+        <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: right;">TNR</span>
         <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">$/HR</span>
         <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 44px; text-align: right;">SOS</span>
         <span style="font-size: 10px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">OSAT</span>
@@ -439,6 +460,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
             <div style="font-size: 11px; color: #a1a1aa;">${l.restaurantName} &middot; ${l.position}</div>
           </div>
           <span style="font-size: 14px; font-weight: 700; color: ${getGradeColor(l.grade)}; width: 36px; text-align: center;">${l.grade}</span>
+          <span style="font-size: 11px; color: #a1a1aa; width: 36px; text-align: right;">${l.tenure}</span>
           <span style="font-size: 12px; color: #71717a; width: 44px; text-align: right;">${l.avgHourlySales !== null ? formatCurrency(l.avgHourlySales) : '--'}</span>
           <span style="font-size: 12px; color: ${l.avgSpeed !== null ? getSpeedColor(l.avgSpeed) : '#71717a'}; width: 44px; text-align: right;">${l.avgSpeed !== null ? formatSpeed(l.avgSpeed) : '--'}</span>
           <span style="font-size: 12px; font-weight: 500; color: ${l.osatPercent !== null ? getOsatColor(l.osatPercent) : '#71717a'}; width: 40px; text-align: right;">${l.osatPercent !== null ? l.osatPercent + '%' : '--'}</span>
@@ -454,6 +476,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         <span style="width: 20px; font-size: 9px; color: #a1a1aa; font-weight: 600;">#</span>
         <span style="flex: 1; font-size: 9px; color: #a1a1aa; font-weight: 600;">LEADER</span>
         <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 32px; text-align: center;">GRD</span>
+        <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 32px; text-align: right;">TNR</span>
         <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">$/HR</span>
         <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 40px; text-align: right;">SOS</span>
         <span style="font-size: 9px; color: #a1a1aa; font-weight: 600; width: 36px; text-align: right;">OSAT</span>
@@ -471,6 +494,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
             <span style="font-size: 10px; color: #a1a1aa; margin-left: 4px;">${l.position}</span>
           </div>
           <span style="font-size: 12px; font-weight: 600; color: ${getGradeColor(l.grade)}; width: 32px; text-align: center;">${l.grade}</span>
+          <span style="font-size: 10px; color: #a1a1aa; width: 32px; text-align: right;">${l.tenure}</span>
           <span style="font-size: 11px; color: #71717a; width: 40px; text-align: right;">${l.avgHourlySales !== null ? formatCurrency(l.avgHourlySales) : '--'}</span>
           <span style="font-size: 11px; color: ${l.avgSpeed !== null ? getSpeedColor(l.avgSpeed) : '#71717a'}; width: 40px; text-align: right;">${l.avgSpeed !== null ? formatSpeed(l.avgSpeed) : '--'}</span>
           <span style="font-size: 11px; font-weight: 500; color: ${l.osatPercent !== null ? getOsatColor(l.osatPercent) : '#71717a'}; width: 36px; text-align: right;">${l.osatPercent !== null ? l.osatPercent + '%' : '--'}</span>
