@@ -31,24 +31,24 @@ const NON_PRODUCTION_BY_HOUR: Record<number, HourlyNonProdStaff> = {
   3: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
   4: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
   5: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
-  6: { pic: 0, porter: 1, prep: 0, training: 0, drAttendant: 0, curbside: 0 },  // Porter 6-11
-  7: { pic: 0, porter: 1, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
-  8: { pic: 0, porter: 1, prep: 1, training: 0, drAttendant: 0, curbside: 0 },  // +Prep 8-9
-  9: { pic: 0, porter: 1, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
-  10: { pic: 0, porter: 1, prep: 0, training: 0, drAttendant: 0, curbside: 1 }, // +Curbside 10-2
-  11: { pic: 1, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 1 }, // PIC 11-2, Curbside
-  12: { pic: 1, porter: 0, prep: 0, training: 0, drAttendant: 1, curbside: 1 }, // +DR 12-1:30
-  13: { pic: 1, porter: 0, prep: 0, training: 0, drAttendant: 1, curbside: 1 }, // DR partial, Curbside ends at 2
+  6: { pic: 0, porter: 0.5, prep: 0, training: 0, drAttendant: 0, curbside: 0 },  // Porter 6-11
+  7: { pic: 0, porter: 0.5, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
+  8: { pic: 0, porter: 0.5, prep: 0.5, training: 0, drAttendant: 0, curbside: 0 },  // +Prep 8-9
+  9: { pic: 0, porter: 0.5, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
+  10: { pic: 0, porter: 0.5, prep: 0, training: 0, drAttendant: 0, curbside: 0.5 }, // +Curbside 10-2
+  11: { pic: 0.5, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0.5 }, // PIC 11-2, Curbside
+  12: { pic: 0.5, porter: 0, prep: 0, training: 0, drAttendant: 0.5, curbside: 0.5 }, // +DR 12-1:30
+  13: { pic: 0.5, porter: 0, prep: 0, training: 0, drAttendant: 0.5, curbside: 0.5 }, // DR partial, Curbside ends at 2
   14: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0 }, // Gap 2-3pm
-  15: { pic: 0, porter: 0, prep: 0, training: 1, drAttendant: 0, curbside: 0 }, // Training 3-5
-  16: { pic: 0, porter: 0, prep: 1, training: 1, drAttendant: 0, curbside: 0 }, // +Prep 4-5
-  17: { pic: 1, porter: 0, prep: 0, training: 0, drAttendant: 1, curbside: 1 }, // PIC 5-8, DR 5-6:30, Curbside 5-9
-  18: { pic: 1, porter: 0, prep: 0, training: 0, drAttendant: 1, curbside: 1 }, // DR partial ends 6:30
-  19: { pic: 1, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 1 }, // PIC ends at 8pm
-  20: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 1 }, // Curbside ends at 9pm
+  15: { pic: 0, porter: 0, prep: 0, training: 0.5, drAttendant: 0, curbside: 0 }, // Training 3-5
+  16: { pic: 0, porter: 0, prep: 0.5, training: 0.5, drAttendant: 0, curbside: 0 }, // +Prep 4-5
+  17: { pic: 0.5, porter: 0, prep: 0, training: 0, drAttendant: 0.5, curbside: 0.5 }, // PIC 5-8, DR 5-6:30, Curbside 5-9
+  18: { pic: 0.5, porter: 0, prep: 0, training: 0, drAttendant: 0.5, curbside: 0.5 }, // DR partial ends 6:30
+  19: { pic: 0.5, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0.5 }, // PIC ends at 8pm
+  20: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0.5 }, // Curbside ends at 9pm
   21: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
   22: { pic: 0, porter: 0, prep: 0, training: 0, drAttendant: 0, curbside: 0 },
-  23: { pic: 0, porter: 0, prep: 1, training: 0, drAttendant: 0, curbside: 0 }, // Prep 11pm-12am
+  23: { pic: 0, porter: 0, prep: 0.5, training: 0, drAttendant: 0, curbside: 0 }, // Prep 11pm-12am
 };
 
 function getNonProductionStaff(hour: number): number {
