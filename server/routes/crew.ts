@@ -1,0 +1,479 @@
+import { Router } from "express";
+import { db } from "../db";
+import { restaurants, employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable } from "@shared/schema";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
+
+const router = Router();
+
+// Sync employees from 7shifts
+router.post("/api/crew/sync-employees", async (req, res) => {
+  try {
+    const { syncEmployees } = await import("../scraper/7shifts-api");
+    const result = await syncEmployees();
+    res.json(result);
+  } catch (error) {
+    console.error("Error syncing employees:", error);
+    res.status(500).json({ error: "Failed to sync employees" });
+  }
+});
+
+// Sync hourly crew data for a specific date
+router.post("/api/crew/sync", async (req, res) => {
+  try {
+    const date = req.body?.date || req.query?.date;
+    const { syncHourlyCrew } = await import("../scraper/7shifts-api");
+    const targetDate = date ? new Date(String(date)) : undefined;
+    const result = await syncHourlyCrew(targetDate);
+    res.json(result);
+  } catch (error) {
+    console.error("Error syncing crew data:", error);
+    res.status(500).json({ error: "Failed to sync crew data" });
+  }
+});
+
+// Get crew experience data for all restaurants on a specific date
+router.get("/api/crew/experience", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const dateStr = date ? String(date) : new Date().toISOString().split('T')[0];
+
+    const { formatTenure, formatTenureMix } = await import("../scraper/7shifts-api");
+
+    const allRestaurants = await db.select().from(restaurants);
+
+    const crewData = await db
+      .select()
+      .from(hourlyCrew)
+      .where(eq(hourlyCrew.date, dateStr));
+
+    const allEmployees = await db.select().from(employees).where(eq(employees.active, true));
+
+    const restaurantCrewMap = new Map<string, typeof crewData>();
+    for (const row of crewData) {
+      const existing = restaurantCrewMap.get(row.restaurantId) || [];
+      existing.push(row);
+      restaurantCrewMap.set(row.restaurantId, existing);
+    }
+
+    const result = allRestaurants.map(r => {
+      const hourlyData = restaurantCrewMap.get(r.id) || [];
+
+      let totalMonths = 0;
+      let totalCrew = 0;
+
+      const hourlyFormatted = hourlyData.map(h => {
+        const members = (h.crewMembers as any[]) || [];
+        totalCrew += members.length;
+        members.forEach(m => totalMonths += m.tenureMonths || 0);
+
+        return {
+          hour: h.hour,
+          label: `${h.hour === 0 ? 12 : h.hour > 12 ? h.hour - 12 : h.hour}${h.hour < 12 ? 'am' : 'pm'}`,
+          crewCount: h.crewCount,
+          avgTenure: formatTenure(Number(h.avgTenureMonths) || 0),
+          score: h.experienceScore || 0,
+          mix: formatTenureMix(h.tenureMix as any || { trainee: 0, developing: 0, experienced: 0, veteran: 0 }),
+          team: members.map(m => ({
+            name: `${m.firstName} ${m.lastName?.charAt(0) || ''}.`,
+            tenureMonths: m.tenureMonths,
+            category: m.category as 'trainee' | 'developing' | 'experienced' | 'veteran',
+          })),
+        };
+      }).sort((a, b) => a.hour - b.hour);
+
+      const avgTenureMonths = totalCrew > 0 ? totalMonths / totalCrew : 0;
+
+      return {
+        restaurantId: r.id,
+        restaurantName: r.name,
+        employeeCount: allEmployees.filter(e => e.restaurantId === r.id).length,
+        avgTenure: formatTenure(avgTenureMonths),
+        avgScore: hourlyFormatted.length > 0
+          ? Math.round(hourlyFormatted.reduce((sum, h) => sum + h.score, 0) / hourlyFormatted.length)
+          : 0,
+        hourly: hourlyFormatted,
+      };
+    });
+
+    const dataMap: Record<string, { hour: number; crewCount: number; experienceScore: number; tenureMix: { trainee: number; developing: number; experienced: number; veteran: number } }[]> = {};
+    for (const r of result) {
+      if (r.hourly.length > 0) {
+        dataMap[r.restaurantId] = r.hourly.map(h => ({
+          hour: h.hour,
+          crewCount: h.crewCount,
+          experienceScore: h.score,
+          tenureMix: (restaurantCrewMap.get(r.restaurantId)?.find(d => d.hour === h.hour)?.tenureMix as any) || { trainee: 0, developing: 0, experienced: 0, veteran: 0 },
+        }));
+      }
+    }
+
+    res.json({ date: dateStr, restaurants: result, data: dataMap });
+  } catch (error) {
+    console.error("Error fetching crew experience:", error);
+    res.status(500).json({ error: "Failed to fetch crew experience data" });
+  }
+});
+
+// Get crew experience summary for leaderboard (daily average scores)
+router.get("/api/crew/summary", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const dateStr = date ? String(date) : new Date().toISOString().split('T')[0];
+
+    const crewData = await db
+      .select({
+        restaurantId: hourlyCrew.restaurantId,
+        avgScore: sql<number>`avg(${hourlyCrew.experienceScore})`,
+        avgCrewCount: sql<number>`avg(${hourlyCrew.crewCount})`,
+        avgTenureMonths: sql<number>`avg(${hourlyCrew.avgTenureMonths}::numeric)`,
+        hourCount: sql<number>`count(*)`,
+      })
+      .from(hourlyCrew)
+      .where(eq(hourlyCrew.date, dateStr))
+      .groupBy(hourlyCrew.restaurantId);
+
+    const summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> = {};
+    for (const row of crewData) {
+      summary[row.restaurantId] = {
+        avgScore: Math.round(Number(row.avgScore) || 0),
+        avgCrewCount: Math.round((Number(row.avgCrewCount) || 0) * 10) / 10,
+        avgTenureMonths: Math.round((Number(row.avgTenureMonths) || 0) * 10) / 10,
+      };
+    }
+
+    res.json({ date: dateStr, summary });
+  } catch (error) {
+    console.error("Error fetching crew summary:", error);
+    res.status(500).json({ error: "Failed to fetch crew summary" });
+  }
+});
+
+// Get manager/supervisor performance rankings
+router.get("/api/people/performance", async (req, res) => {
+  try {
+    const { date, days = "7", restaurantId: filterRestaurantId, search: searchQuery } = req.query;
+    const endDate = date ? new Date(String(date)) : new Date();
+    const numDays = Math.min(parseInt(String(days)) || 7, 180);
+    const MIN_HOURS_REQUIRED = 40;
+
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - numDays + 1);
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+
+    const leaderEmployees = await db
+      .select()
+      .from(employees)
+      .where(
+        and(
+          eq(employees.active, true),
+          sql`(${employees.position} ILIKE '%manager%' OR ${employees.position} ILIKE '%supervisor%' OR ${employees.type} IN ('manager', 'asst_manager'))`,
+          sql`${employees.position} NOT ILIKE '%team member trainer%'`
+        )
+      );
+
+    if (leaderEmployees.length === 0) {
+      return res.json({
+        dateRange: { start: startDateStr, end: endDateStr },
+        byStore: {},
+        companyRankings: [],
+      });
+    }
+
+    const crewData = await db
+      .select()
+      .from(hourlyCrew)
+      .where(
+        and(
+          gte(hourlyCrew.date, startDateStr),
+          sql`${hourlyCrew.date} <= ${endDateStr}`
+        )
+      );
+
+    const laborData = await db
+      .select()
+      .from(hourlyLabor)
+      .where(
+        and(
+          gte(hourlyLabor.date, startDateStr),
+          sql`${hourlyLabor.date} <= ${endDateStr}`
+        )
+      );
+
+    const extendedStartDate = new Date(startDate);
+    extendedStartDate.setDate(extendedStartDate.getDate() - 7);
+    const extendedStartDateStr = extendedStartDate.toISOString().split('T')[0];
+
+    const salesData = await db
+      .select()
+      .from(hourlySales)
+      .where(
+        and(
+          gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, extendedStartDateStr),
+          sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
+        )
+      );
+
+    const hmeData = await db.select().from(hmeTimerData).where(
+      and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
+    );
+
+    const hourlyOsatData = await db.select().from(osatDataTable).where(
+      and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
+    );
+
+    const laborByKey = new Map<string, typeof laborData[0]>();
+    for (const l of laborData) {
+      laborByKey.set(`${l.restaurantId}-${l.date}-${l.hour}`, l);
+    }
+
+    const salesByKey = new Map<string, typeof salesData[0]>();
+    for (const s of salesData) {
+      const dateStr = s.salesDate.toISOString().split('T')[0];
+      salesByKey.set(`${s.restaurantId}-${dateStr}-${s.hour}`, s);
+    }
+
+    const hmeByKey = new Map<string, typeof hmeData[0]>();
+    for (const h of hmeData) {
+      hmeByKey.set(`${h.restaurantId}-${h.date}-${h.hour}`, h);
+    }
+
+    const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
+    for (const o of hourlyOsatData) {
+      osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
+    }
+
+    type LeaderPerformance = {
+      employeeId: string;
+      name: string;
+      position: string;
+      restaurantId: string;
+      restaurantName: string;
+      hoursWorked: number;
+      avgGradeScore: number;
+      grade: string;
+      avgTransactionsPerHour: number | null;
+    };
+
+    const allRestaurants = await db.select().from(restaurants);
+    const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+
+    const leaderPerformance: LeaderPerformance[] = [];
+
+    for (const leader of leaderEmployees) {
+      const userId = leader.sevenShiftsUserId;
+
+      const dailyAggregates = new Map<string, {
+        restaurantId: string;
+        totalSalesToday: number;
+        totalSalesLastWeek: number;
+        staffingDiffs: number[];
+        speedValues: number[];
+        osatWeighted: { percent: number; responses: number }[];
+        hoursCount: number;
+      }>();
+      const workedAtRestaurants = new Map<string, number>();
+      let totalHoursWorked = 0;
+      let totalSalesAllHours = 0;
+
+      for (const crew of crewData) {
+        const members = (crew.crewMembers as any[]) || [];
+        const wasWorking = members.some(m => m.userId === userId);
+
+        if (wasWorking) {
+          workedAtRestaurants.set(crew.restaurantId, (workedAtRestaurants.get(crew.restaurantId) || 0) + 1);
+
+          const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+          const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+          const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+          const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+
+          const hourSales = sales ? (Number(sales.actualSales) || 0) : 0;
+          if (labor && sales && hourSales > 0) {
+            totalHoursWorked++;
+            totalSalesAllHours += hourSales;
+            const dayKey = crew.date;
+            if (!dailyAggregates.has(dayKey)) {
+              dailyAggregates.set(dayKey, {
+                restaurantId: crew.restaurantId,
+                totalSalesToday: 0, totalSalesLastWeek: 0,
+                staffingDiffs: [], speedValues: [], osatWeighted: [], hoursCount: 0,
+              });
+            }
+            const day = dailyAggregates.get(dayKey)!;
+            day.hoursCount++;
+
+            const todaySales = Number(sales.actualSales) || 0;
+            day.totalSalesToday += todaySales;
+
+            const crewDate = new Date(crew.date + 'T12:00:00');
+            const lastWeekDate = new Date(crewDate);
+            lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+            const lastWeekDateStr = lastWeekDate.toISOString().split('T')[0];
+            const lastWeekSalesRecord = salesByKey.get(`${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`);
+            const lastWeekSales = lastWeekSalesRecord ? Number(lastWeekSalesRecord.actualSales) || 0 : 0;
+            day.totalSalesLastWeek += lastWeekSales;
+
+            const actualStaff = Number(labor.employeeCount) || 0;
+            const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
+            day.staffingDiffs.push(actualStaff - projectedStaff);
+
+            const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
+            if (speedSeconds !== undefined && speedSeconds > 0) {
+              day.speedValues.push(speedSeconds);
+            }
+
+            const osatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
+            const osatResponses = osatHour && osatHour.totalResponses > 0 ? osatHour.totalResponses : 0;
+            if (osatPercent !== undefined) {
+              day.osatWeighted.push({ percent: osatPercent, responses: osatResponses });
+            }
+          }
+        }
+      }
+
+      const dailyGrades: { score: number; hours: number }[] = [];
+      for (const [, day] of Array.from(dailyAggregates)) {
+        const hasComparableSales = day.totalSalesLastWeek > 0;
+        const salesVariancePct = hasComparableSales
+          ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100
+          : 0;
+        const avgStaffingDiff = day.staffingDiffs.reduce((a: number, b: number) => a + b, 0) / day.staffingDiffs.length;
+        const avgSpeed = day.speedValues.length > 0 ? day.speedValues.reduce((a: number, b: number) => a + b, 0) / day.speedValues.length : undefined;
+        const totalOsatResponses = day.osatWeighted.reduce((s: number, o: { percent: number; responses: number }) => s + o.responses, 0);
+        const osatPercent = totalOsatResponses > 0
+          ? day.osatWeighted.reduce((s: number, o: { percent: number; responses: number }) => s + o.percent * o.responses, 0) / totalOsatResponses
+          : undefined;
+        const salesSurge = salesVariancePct >= 20;
+
+        const components: { weight: number; score: number }[] = [];
+        if (hasComparableSales) {
+          components.push({ weight: 35, score: salesVariancePct >= -5 ? 100 : 50 });
+        }
+        let staffingScore = 100;
+        if (Math.abs(avgStaffingDiff) <= 1) staffingScore = 100;
+        else if (avgStaffingDiff > 1) staffingScore = 60;
+        else staffingScore = salesSurge ? 100 : 60;
+        components.push({ weight: 15, score: staffingScore });
+        if (avgSpeed !== undefined) {
+          let speedScore = 100;
+          if (avgSpeed > 420) speedScore = 40;
+          else if (avgSpeed > 300) speedScore = 70;
+          components.push({ weight: 25, score: speedScore });
+        }
+        if (osatPercent !== undefined) {
+          let osatScore = 100;
+          if (osatPercent < 80) osatScore = 40;
+          else if (osatPercent < 85) osatScore = 70;
+          components.push({ weight: 25, score: osatScore });
+        }
+
+        if (components.length > 0) {
+          const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+          const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+          dailyGrades.push({ score, hours: day.hoursCount });
+        }
+      }
+
+      if (totalHoursWorked >= MIN_HOURS_REQUIRED && dailyGrades.length > 0) {
+        const totalGradeHours = dailyGrades.reduce((s, d) => s + d.hours, 0);
+        const avgScoreRaw = dailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours;
+        const avgScore = Math.round(avgScoreRaw);
+
+        let grade = 'F';
+        if (avgScore >= 95) grade = 'A+';
+        else if (avgScore >= 90) grade = 'A';
+        else if (avgScore >= 85) grade = 'A-';
+        else if (avgScore >= 80) grade = 'B+';
+        else if (avgScore >= 75) grade = 'B';
+        else if (avgScore >= 70) grade = 'B-';
+        else if (avgScore >= 65) grade = 'C+';
+        else if (avgScore >= 60) grade = 'C';
+        else if (avgScore >= 55) grade = 'C-';
+        else if (avgScore >= 50) grade = 'D';
+
+        let primaryRestaurantId = '';
+        let maxHours = 0;
+        workedAtRestaurants.forEach((hours, rid) => {
+          if (hours > maxHours) {
+            maxHours = hours;
+            primaryRestaurantId = rid;
+          }
+        });
+
+        const restaurantName = restaurantNameMap.get(primaryRestaurantId) || '';
+
+        if (!primaryRestaurantId || !restaurantName) {
+          continue;
+        }
+
+        let displayPosition = leader.position || '';
+        if (!displayPosition) {
+          if (leader.type === 'asst_manager') displayPosition = 'Manager';
+          else if (leader.type === 'manager') displayPosition = 'Manager';
+          else if (leader.type === 'employee') displayPosition = 'Team Member';
+          else displayPosition = 'Leader';
+        }
+        if (displayPosition === 'asst_manager') displayPosition = 'Manager';
+        if (displayPosition.toLowerCase().includes('supervisor')) displayPosition = 'Shift Supervisor';
+        if (displayPosition.toLowerCase().includes('manager') && displayPosition !== 'Shift Supervisor') displayPosition = 'Manager';
+
+        leaderPerformance.push({
+          employeeId: leader.id,
+          name: `${leader.firstName} ${leader.lastName}`,
+          position: displayPosition,
+          restaurantId: primaryRestaurantId,
+          restaurantName: restaurantName,
+          hoursWorked: totalHoursWorked,
+          avgGradeScore: Math.round(avgScore),
+          grade,
+          avgTransactionsPerHour: totalHoursWorked > 0 ? Math.round(totalSalesAllHours / totalHoursWorked) : null,
+        });
+      }
+    }
+
+    leaderPerformance.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
+
+    let filtered = leaderPerformance;
+    if (filterRestaurantId) {
+      filtered = filtered.filter(lp => lp.restaurantId === String(filterRestaurantId));
+    }
+    if (searchQuery) {
+      const q = String(searchQuery).toLowerCase();
+      filtered = filtered.filter(lp => lp.name.toLowerCase().includes(q));
+    }
+
+    const byStore: Record<string, LeaderPerformance[]> = {};
+    for (const lp of filtered) {
+      if (lp.restaurantId) {
+        if (!byStore[lp.restaurantId]) {
+          byStore[lp.restaurantId] = [];
+        }
+        byStore[lp.restaurantId].push(lp);
+      }
+    }
+
+    for (const rid of Object.keys(byStore)) {
+      byStore[rid].sort((a, b) => b.avgGradeScore - a.avgGradeScore);
+    }
+
+    const leadersWithVolume = leaderPerformance.filter(lp => lp.avgTransactionsPerHour !== null);
+    const totalWeightedSales = leadersWithVolume.reduce((s, lp) => s + (lp.avgTransactionsPerHour as number) * lp.hoursWorked, 0);
+    const totalWeightedHours = leadersWithVolume.reduce((s, lp) => s + lp.hoursWorked, 0);
+    const companyAvgHourlyVolume = totalWeightedHours > 0
+      ? Math.round(totalWeightedSales / totalWeightedHours)
+      : null;
+
+    res.json({
+      dateRange: { start: startDateStr, end: endDateStr },
+      byStore,
+      companyRankings: filtered,
+      companyAvgHourlyVolume,
+    });
+  } catch (error) {
+    console.error("Error fetching people performance:", error);
+    res.status(500).json({ error: "Failed to fetch people performance data" });
+  }
+});
+
+export default router;

@@ -25,60 +25,82 @@ function getCentralDate(): Date {
   return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-// X-Score calculation helpers (matches leaderboard-card component-based approach)
-// Returns numeric score for sorting (higher = better)
-function getExecutionGrade(salesVariancePct: number, speedSeconds: number | undefined, staffingDiff: number, hasComparableSales: boolean = true): number {
-  const components: number[] = [];
-  
-  // Sales component (only if we have comparable data)
+// X-Score calculation helpers — aligned with leaderboard-card weighted approach
+// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
+const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
+
+// Returns numeric weighted score for sorting (higher = better)
+function getExecutionGrade(
+  salesVariancePct: number,
+  speedSeconds: number | undefined,
+  staffingDiff: number,
+  hasComparableSales: boolean = true,
+  isFirstWeek: boolean = false,
+  hasValidStaffing: boolean = true,
+  osatPercent: number | undefined = undefined
+): number {
+  const components: { score: number; weight: number }[] = [];
+
+  // Sales component (weight: 35%)
   if (hasComparableSales) {
-    // Within -5% to +infinity = 100, Below -5% = 50
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
-    components.push(salesScore);
+    components.push({ score: salesScore, weight: GRADE_WEIGHTS.sales });
+  } else if (isFirstWeek) {
+    components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
   }
-  
-  // Speed component (only if we have drive-thru data)
-  if (speedSeconds !== undefined) {
-    // GREEN (<5min) = 100, YELLOW (5-7min) = 70, RED (>7min) = 40
+
+  // Speed component (weight: 25%)
+  if (speedSeconds !== undefined && speedSeconds > 0) {
     let speedScore = 100;
     if (speedSeconds > 420) speedScore = 40;
     else if (speedSeconds > 300) speedScore = 70;
-    components.push(speedScore);
+    components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
-  
-  // Staffing component (always included)
-  // PROPER = 100, UNDER = 60, OVER = 60
-  let staffingScore = 100;
-  if (staffingDiff > 1) staffingScore = 60; // OVER
-  else if (staffingDiff < -1) staffingScore = 60; // UNDER
-  components.push(staffingScore);
-  
-  // Return average of all available components
+
+  // OSAT component (weight: 25%)
+  if (osatPercent !== undefined && osatPercent > 0) {
+    let osatScore = 100;
+    if (osatPercent < 80) osatScore = 40;
+    else if (osatPercent < 85) osatScore = 70;
+    components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
+  }
+
+  // Staffing component (weight: 15%)
+  if (hasValidStaffing) {
+    let staffingScore = 100;
+    const isSalesSurge = salesVariancePct >= 20;
+    if (staffingDiff > 1) staffingScore = 60;
+    else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
+    components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
+  }
+
   if (components.length === 0) return 0;
-  return components.reduce((a, b) => a + b, 0) / components.length;
+  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
+  return components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
 }
 
-function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number): number {
-  if (!hourlyData || hourlyData.length === 0) return -1; // No data = -1 to sort to bottom
-  
-  // Filter to completed hours only (matching leaderboard-card logic)
+function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }): number {
+  if (!hourlyData || hourlyData.length === 0) return -1;
+
+  const isFirstWeek = (restaurant?.daysOpen !== undefined && restaurant.daysOpen < 7);
   const cutoff = localCutoff ?? 23;
   const completedHours = hourlyData.filter(hour => hour.hour <= cutoff);
-  
+
   const scores = completedHours
-    .filter(hour => hour.todaySales > 0) // Only hours with sales
+    .filter(hour => hour.todaySales > 0)
     .map(hour => {
       const hasComparableSales = hour.lastWeekSales > 0;
-      const salesVariancePct = hasComparableSales 
-        ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+      const salesVariancePct = hasComparableSales
+        ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
         : 0;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-      // Exclude operator hours from labor count (same as leaderboard-card)
       const positions = hour.positionBreakdown || {};
       const operatorHrs = positions['_operatorScheduled'] || 0;
-      const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
+      const rawEmployeeCount = Number(hour.employeeCount) || 0;
+      const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
-      return getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales);
+      const hasValidStaffing = rawEmployeeCount >= 1;
+      return getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }
@@ -276,8 +298,8 @@ export default function Dashboard() {
               // Use each restaurant's localCurrentHour for consistent scoring with display
               const aLocalCutoff = (a as any).localCurrentHour ?? a.normalizedHour;
               const bLocalCutoff = (b as any).localCurrentHour ?? b.normalizedHour;
-              const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId], aLocalCutoff);
-              const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId], bLocalCutoff);
+              const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId], aLocalCutoff, a);
+              const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId], bLocalCutoff, b);
               return bScore - aScore;
             case "google_reviews":
               // Sort by Google rating descending (highest first)

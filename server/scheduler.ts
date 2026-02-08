@@ -311,20 +311,8 @@ async function syncCrewExperienceIfNeeded() {
     return;
   }
   
-  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
-    timeZone: 'America/Chicago',
-    hour: 'numeric',
-    hour12: false
-  }).format(now));
-  
-  // Use Central timezone date for sync key to avoid UTC/Central date mismatch around midnight
-  const centralDate = new Intl.DateTimeFormat('en-CA', { 
-    timeZone: 'America/Chicago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(now);
-  
+  const { hour: centralHour, date: centralDate } = getCentralTime(now);
+
   const syncKey = `${centralDate}-${centralHour}`;
   
   // Don't sync more than once per hour
@@ -349,12 +337,8 @@ let lastGoogleReviewsSync: string | null = null;
 // Sync Google reviews once per hour
 async function syncGoogleReviewsIfNeeded() {
   const now = new Date();
-  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
-    timeZone: 'America/Chicago',
-    hour: 'numeric',
-    hour12: false
-  }).format(now));
-  
+  const { hour: centralHour } = getCentralTime(now);
+
   const currentMinute = now.getMinutes();
   
   // Sync within the first 5 minutes of each hour (scheduler runs every 5 minutes)
@@ -401,18 +385,7 @@ async function syncOsatIfNeeded() {
 
 // Save weather at end of day (11 PM Central)
 async function saveEndOfDayWeatherIfNeeded() {
-  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
-    timeZone: 'America/Chicago',
-    hour: 'numeric',
-    hour12: false
-  }).format(new Date()));
-  
-  const todayCentral = new Intl.DateTimeFormat('en-CA', { 
-    timeZone: 'America/Chicago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date());
+  const { hour: centralHour, date: todayCentral } = getCentralTime();
   
   // Save weather at 11 PM Central, once per day
   if (centralHour === 23 && lastWeatherSave !== todayCentral) {
@@ -428,20 +401,7 @@ async function saveEndOfDayWeatherIfNeeded() {
 }
 
 async function syncYesterdayIfNeeded() {
-  // Get current hour in Central timezone
-  const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { 
-    timeZone: 'America/Chicago',
-    hour: 'numeric',
-    hour12: false
-  }).format(new Date()));
-  
-  // Get today's date in Central timezone
-  const todayCentral = new Intl.DateTimeFormat('en-CA', { 
-    timeZone: 'America/Chicago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date());
+  const { hour: centralHour, date: todayCentral } = getCentralTime();
   
   // Only sync yesterday between 12 AM and 6 AM Central, and only once per day
   if (centralHour >= 0 && centralHour < 6 && lastYesterdaySync !== todayCentral) {

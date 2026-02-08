@@ -1,0 +1,264 @@
+import { Router } from "express";
+import { db, posDb } from "../db";
+import { posOrders } from "@shared/schema";
+import { desc, sql, gte, lt, and } from "drizzle-orm";
+import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "../xenial-webhook";
+
+const router = Router();
+
+// Test endpoint to verify webhook connectivity (no auth required)
+router.get("/api/xenial/ping", async (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Xenial webhook endpoint is reachable",
+    timestamp: new Date().toISOString(),
+    webhookUrl: "/api/xenial/order",
+    authRequired: !!process.env.MWBURGER_POS_TOKEN,
+  });
+});
+
+// Test endpoint to send a sample order (for debugging)
+router.post("/api/xenial/test-order", async (req, res) => {
+  try {
+    const testPayload = {
+      entityName: "Order",
+      data: {
+        _id: `test-${Date.now()}`,
+        origin: "1237",
+        net_sales: 9.99,
+        business_date: new Date().toISOString().split('T')[0],
+        closed: new Date().toISOString(),
+        order_source: "TEST",
+      }
+    };
+
+    const result = await processXenialOrder(testPayload);
+    res.json({
+      message: "Test order processed",
+      result,
+      payload: testPayload,
+    });
+  } catch (error) {
+    console.error("Test order error:", error);
+    res.status(500).json({ error: "Failed to process test order" });
+  }
+});
+
+// Receive order from Xenial POS (webhook endpoint)
+router.post("/api/xenial/order", async (req, res) => {
+  const receivedAt = new Date().toISOString();
+  console.log(`[Xenial] Webhook received at ${receivedAt}`);
+
+  try {
+    const authHeader = req.headers.authorization as string | undefined;
+
+    console.log(`[Xenial] Headers: content-type=${req.headers['content-type']}, auth=${authHeader ? 'present' : 'missing'}`);
+    console.log(`[Xenial] Body preview: ${JSON.stringify(req.body).substring(0, 200)}`);
+
+    if (!validateWebhookToken(authHeader)) {
+      console.warn("[Xenial] REJECTED: Invalid or missing auth token");
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const payload = req.body;
+
+    if (!payload || !payload.data) {
+      console.warn("[Xenial] REJECTED: Invalid payload structure");
+      res.status(400).json({ error: "Invalid payload" });
+      return;
+    }
+
+    const result = await processXenialOrder(payload);
+
+    if (result.success) {
+      console.log(`[Xenial] SUCCESS: Order ${result.orderId} saved`);
+      res.json({ success: true, orderId: result.orderId });
+    } else {
+      console.warn(`[Xenial] FAILED: ${result.error}`);
+      res.status(400).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error("Error processing Xenial order:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get POS sales summary for a date
+router.get("/api/pos/sales", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date as string) : new Date();
+
+    const summary = await getPosOrdersSummary(targetDate);
+
+    const result: Record<string, { orders: number; total: number }> = {};
+    summary.forEach((value, key) => {
+      result[key] = value;
+    });
+
+    res.json({
+      date: targetDate.toISOString().split('T')[0],
+      stores: result,
+      totalOrders: Array.from(summary.values()).reduce((sum, s) => sum + s.orders, 0),
+      totalSales: Array.from(summary.values()).reduce((sum, s) => sum + s.total, 0),
+    });
+  } catch (error) {
+    console.error("Error fetching POS sales:", error);
+    res.status(500).json({ error: "Failed to fetch POS sales" });
+  }
+});
+
+// Get recent POS orders (for debugging)
+router.get("/api/pos/recent", async (req, res) => {
+  try {
+    const { limit = 20 } = req.query;
+
+    const orders = await db
+      .select({
+        id: posOrders.id,
+        xenialOrderId: posOrders.xenialOrderId,
+        storeNumber: posOrders.storeNumber,
+        orderTotal: posOrders.orderTotal,
+        businessDate: posOrders.businessDate,
+        orderClosedAt: posOrders.orderClosedAt,
+        orderSource: posOrders.orderSource,
+        receivedAt: posOrders.receivedAt,
+      })
+      .from(posOrders)
+      .orderBy(desc(posOrders.receivedAt))
+      .limit(Number(limit));
+
+    res.json(orders);
+  } catch (error) {
+    console.error("Error fetching recent orders:", error);
+    res.status(500).json({ error: "Failed to fetch recent orders" });
+  }
+});
+
+// Seed location mappings
+router.post("/api/pos/seed-mappings", async (req, res) => {
+  try {
+    const count = await seedLocationMappings();
+    res.json({ message: `Seeded ${count} location mappings`, count });
+  } catch (error) {
+    console.error("Error seeding mappings:", error);
+    res.status(500).json({ error: "Failed to seed mappings" });
+  }
+});
+
+// POS webhook status - comprehensive order flow monitoring
+router.get("/api/pos/status", async (req, res) => {
+  try {
+    const now = new Date();
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    const todayOrders = await posDb
+      .select({
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, today),
+          lt(posOrders.businessDate, tomorrow)
+        )
+      );
+
+    const lastHourOrders = await posDb
+      .select({
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+      })
+      .from(posOrders)
+      .where(gte(posOrders.receivedAt, oneHourAgo));
+
+    const totalOrders = await posDb
+      .select({
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+      })
+      .from(posOrders);
+
+    const storeBreakdown = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, today),
+          lt(posOrders.businessDate, tomorrow)
+        )
+      )
+      .groupBy(posOrders.storeNumber)
+      .orderBy(desc(sql`count(*)`));
+
+    const recentOrders = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        orderTotal: posOrders.orderTotal,
+        orderSource: posOrders.orderSource,
+        receivedAt: posOrders.receivedAt,
+      })
+      .from(posOrders)
+      .orderBy(desc(posOrders.receivedAt))
+      .limit(5);
+
+    const lastOrder = recentOrders[0];
+
+    res.json({
+      status: "operational",
+      version: process.env.npm_package_version || "2.1.0",
+      webhookEndpoint: "/api/xenial/order",
+      webhookEnabled: true,
+      serverTime: now.toISOString(),
+      today: {
+        date: today.toISOString().split('T')[0],
+        orderCount: todayOrders[0]?.count || 0,
+        salesTotal: Number(todayOrders[0]?.total) || 0,
+      },
+      lastHour: {
+        orderCount: lastHourOrders[0]?.count || 0,
+        salesTotal: Number(lastHourOrders[0]?.total) || 0,
+      },
+      allTime: {
+        orderCount: totalOrders[0]?.count || 0,
+        salesTotal: Number(totalOrders[0]?.total) || 0,
+      },
+      lastOrderReceived: lastOrder?.receivedAt || null,
+      lastOrderStore: lastOrder?.storeNumber || null,
+      lastOrderAmount: lastOrder ? Number(lastOrder.orderTotal) : null,
+      storeBreakdown: storeBreakdown.map(s => ({
+        store: s.storeNumber,
+        orders: s.count,
+        total: Number(s.total),
+      })),
+      recentOrders: recentOrders.map(o => ({
+        store: o.storeNumber,
+        amount: Number(o.orderTotal),
+        source: o.orderSource,
+        receivedAt: o.receivedAt,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching POS status:", error);
+    res.status(500).json({ error: "Failed to fetch POS status" });
+  }
+});
+
+// Simple alias for Xenial status
+router.get("/api/xenial/status", async (req, res) => {
+  res.redirect("/api/pos/status");
+});
+
+export default router;
