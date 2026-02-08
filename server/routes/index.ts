@@ -15,6 +15,7 @@ import emailRouter from "./email";
 import leaderDetailRouter from "./leader-detail";
 import marketsRouter from "./markets";
 import performanceHistoryRouter from "./performance-history";
+import leadersRouter from "./leaders";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (req.session?.userId) {
@@ -59,6 +60,7 @@ export async function registerRoutes(
   app.use(leaderDetailRouter);
   app.use(marketsRouter);
   app.use(performanceHistoryRouter);
+  app.use(leadersRouter);
 
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {

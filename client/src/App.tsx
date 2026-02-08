@@ -10,6 +10,7 @@ import HMETest from "@/pages/hme-test";
 import HeatmapPage from "@/pages/heatmap";
 import CrewExperiencePage from "@/pages/crew-experience";
 import PerformanceHistoryPage from "@/pages/performance-history";
+import LeadersPage from "@/pages/leaders";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
@@ -47,6 +48,7 @@ function ProtectedRoutes() {
         <Route path="/dashboard-view" component={HeatmapPage} />
         <Route path="/crew" component={CrewExperiencePage} />
         <Route path="/history" component={PerformanceHistoryPage} />
+        <Route path="/leaders" component={LeadersPage} />
         <Route component={NotFound} />
       </Switch>
     </AuthGuard>
