@@ -226,9 +226,14 @@ export default function ArenaPage() {
     queryKey: ["/api/arena/config", accessKey],
     queryFn: async () => {
       const res = await fetch(`/api/arena/config?key=${accessKey || ""}`);
-      if (!res.ok) throw new Error("Access denied or config error");
+      if (res.status === 403) throw new Error("ACCESS_DENIED");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Server error (${res.status})`);
+      }
       return res.json();
     },
+    retry: false,
   });
 
   const [cfg, setCfg] = useState<ArenaConfigData | null>(null);
@@ -283,11 +288,22 @@ export default function ArenaPage() {
   }
 
   if (error || !configData) {
+    const isAccessDenied = error?.message === "ACCESS_DENIED";
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#111" }}>
-        <Card className="p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <h2 className="text-xl font-bold text-white mb-2">Arena Access Required</h2>
-          <p className="text-muted-foreground text-sm">Access this page with <code className="px-1 py-0.5 rounded text-xs" style={{ background: "rgba(255,255,255,0.1)", color: ORANGE }}>/arena?key=mwb2026</code></p>
+        <Card className="p-8 text-center max-w-md" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          {isAccessDenied || !accessKey ? (
+            <>
+              <h2 className="text-xl font-bold text-white mb-2">Arena Access Required</h2>
+              <p className="text-muted-foreground text-sm">Access this page with <code className="px-1 py-0.5 rounded text-xs" style={{ background: "rgba(255,255,255,0.1)", color: ORANGE }}>/arena?key=mwb2026</code></p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-bold text-white mb-2">Arena Loading Error</h2>
+              <p className="text-muted-foreground text-sm mb-3">{error?.message || "Unable to load arena config"}</p>
+              <p className="text-muted-foreground text-xs">Have you run <code className="px-1 py-0.5 rounded text-xs" style={{ background: "rgba(255,255,255,0.1)", color: ORANGE }}>npm run db:push</code> to create the Arena tables?</p>
+            </>
+          )}
         </Card>
       </div>
     );
