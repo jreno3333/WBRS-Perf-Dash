@@ -655,6 +655,32 @@ router.get("/api/arena/units", requireArenaAccess, async (req: Request, res: Res
   }
 });
 
+// GET /api/arena/debug — diagnostic: shows data counts for today
+router.get("/api/arena/debug", requireArenaAccess, async (req: Request, res: Response) => {
+  try {
+    const { loadDayData } = await import("../arena-engine");
+    const today = getCentralTime().date;
+    const dateOverride = req.query.date as string || today;
+    const data = await loadDayData(dateOverride);
+
+    return res.json({
+      queryDate: dateOverride,
+      centralTimeNow: getCentralTime(),
+      salesRowCount: data.salesByKey.size,
+      laborRowCount: data.laborByKey.size,
+      hmeRowCount: data.hmeByKey.size,
+      osatRowCount: data.osatByKey.size,
+      crewRowCount: data.crewByKey.size,
+      activeRestaurants: data.activeRestaurants.length,
+      leaderEmployees: data.leaderEmployees.length,
+      sampleSalesKeys: Array.from(data.salesByKey.keys()).slice(0, 5),
+      sampleLaborKeys: Array.from(data.laborByKey.keys()).slice(0, 5),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/arena/evaluate — manual trigger for debug/backfill
 router.post("/api/arena/evaluate", requireArenaAccess, async (req: Request, res: Response) => {
   try {
