@@ -257,7 +257,7 @@ export default function ArenaPage() {
   });
 
   // Fetch leader rankings
-  const { data: leaderboard } = useQuery<{ leaders: any[] }>({
+  const { data: leaderboard, isLoading: leadersLoading } = useQuery<{ leaders: any[] }>({
     queryKey: ["/api/arena/leaderboard", accessKey],
     queryFn: async () => {
       const res = await fetch(`/api/arena/leaderboard?key=${accessKey || ""}`);
@@ -269,7 +269,7 @@ export default function ArenaPage() {
   });
 
   // Fetch unit rankings
-  const { data: unitRankings } = useQuery<{ units: any[] }>({
+  const { data: unitRankings, isLoading: unitsLoading } = useQuery<{ units: any[] }>({
     queryKey: ["/api/arena/units", accessKey],
     queryFn: async () => {
       const res = await fetch(`/api/arena/units?key=${accessKey || ""}`);
@@ -540,10 +540,14 @@ export default function ArenaPage() {
         {mainTab === "leaders" && (
           <div>
             <h2 className="text-white text-base font-semibold mb-3">Community Member Rankings</h2>
-            {!leaderboard?.leaders?.length ? (
+            {leadersLoading ? (
               <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" style={{ color: ORANGE }} />
                 <div className="text-muted-foreground text-xs">Loading leader rankings...</div>
+              </div>
+            ) : !leaderboard?.leaders?.length ? (
+              <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="text-muted-foreground text-xs">No leader data available yet for today. Rankings will populate as shifts are worked.</div>
               </div>
             ) : (
               <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -585,10 +589,14 @@ export default function ArenaPage() {
         {mainTab === "units" && (
           <div>
             <h2 className="text-white text-base font-semibold mb-3">Unit Rankings</h2>
-            {!unitRankings?.units?.length ? (
+            {unitsLoading ? (
               <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" style={{ color: ORANGE }} />
                 <div className="text-muted-foreground text-xs">Loading unit rankings...</div>
+              </div>
+            ) : !unitRankings?.units?.length ? (
+              <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="text-muted-foreground text-xs">No unit data available yet for today. Rankings will populate as sales data comes in.</div>
               </div>
             ) : (
               unitRankings.units.map((u: any, i: number) => (
