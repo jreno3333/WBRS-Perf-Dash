@@ -99,10 +99,10 @@ export async function loadDayData(dateStr: string): Promise<DayData> {
 
   const [salesRows, lwSalesRows, laborRows, hmeRows, osatRows, crewRows, restRows, empRows] = await Promise.all([
     db.select().from(hourlySales).where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${dateStr}`
+      sql`${hourlySales.salesDate}::date = ${dateStr}::date`
     ),
     db.select().from(hourlySales).where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${lastWeekDateStr}`
+      sql`${hourlySales.salesDate}::date = ${lastWeekDateStr}::date`
     ),
     db.select().from(hourlyLabor).where(eq(hourlyLabor.date, dateStr)),
     db.select().from(hmeTimerData).where(eq(hmeTimerData.date, dateStr)),

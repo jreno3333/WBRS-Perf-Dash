@@ -663,10 +663,14 @@ router.get("/api/arena/debug", requireArenaAccess, async (req: Request, res: Res
     const dateOverride = req.query.date as string || today;
     const data = await loadDayData(dateOverride);
 
+    // Count today-only sales (exclude last-week keys)
+    const todaySalesCount = Array.from(data.salesByKey.keys()).filter(k => k.includes(dateOverride)).length;
+
     return res.json({
       queryDate: dateOverride,
       centralTimeNow: getCentralTime(),
       salesRowCount: data.salesByKey.size,
+      todaySalesCount,
       laborRowCount: data.laborByKey.size,
       hmeRowCount: data.hmeByKey.size,
       osatRowCount: data.osatByKey.size,
