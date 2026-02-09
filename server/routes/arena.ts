@@ -88,6 +88,17 @@ async function ensureArenaTables() {
         uploaded_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    // Dedup indexes for idempotent badge awarding
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS arena_badges_earned_dedup_idx
+        ON arena_badges_earned (badge_id, entity_id, eval_date, eval_hour)
+        WHERE eval_hour IS NOT NULL
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS arena_badges_earned_dedup_daily_idx
+        ON arena_badges_earned (badge_id, entity_id, eval_date)
+        WHERE eval_hour IS NULL
+    `);
     tablesEnsured = true;
     console.log("Arena tables ensured.");
   } catch (err) {
@@ -300,6 +311,330 @@ router.get("/api/arena/summary", requireArenaAccess, async (req: Request, res: R
   } catch (err: any) {
     console.error("Error fetching arena summary:", err);
     return res.status(500).json({ message: "Failed to load summary", error: err.message });
+  }
+});
+
+// GET /api/arena/command-center — enhanced summary with real data
+router.get("/api/arena/command-center", requireArenaAccess, async (req: Request, res: Response) => {
+  try {
+    await ensureArenaTables();
+    const { loadDayData, computeHourlyGradeScore, getGradeLabel } = await import("../arena-engine");
+
+    const today = new Date().toISOString().split("T")[0];
+    const data = await loadDayData(today);
+
+    // Count badges earned today
+    const badgesToday = await db.select({ count: sql<number>`count(*)` })
+      .from(arenaBadgesEarned)
+      .where(eq(arenaBadgesEarned.evalDate, today));
+
+    // Count team badges (where shift_team_members is not null)
+    const teamBadgesToday = await db.select({ count: sql<number>`count(*)` })
+      .from(arenaBadgesEarned)
+      .where(and(eq(arenaBadgesEarned.evalDate, today), sql`shift_team_members IS NOT NULL`));
+
+    // Count A+ hours today across all restaurants
+    let aplusHoursToday = 0;
+    for (const rest of data.activeRestaurants) {
+      for (let h = 0; h < 24; h++) {
+        const salesKey = `${rest.id}-${today}-${h}`;
+        const sales = data.salesByKey.get(salesKey);
+        if (!sales || sales.actualSales <= 0) continue;
+        const labor = data.laborByKey.get(salesKey);
+        if (!labor) continue;
+
+        const lwDate = new Date(today + "T12:00:00Z");
+        lwDate.setDate(lwDate.getDate() - 7);
+        const lwDateStr = lwDate.toISOString().split("T")[0];
+        const lwSales = data.salesByKey.get(`${rest.id}-${lwDateStr}-${h}`);
+        const hme = data.hmeByKey.get(salesKey);
+        const osat = data.osatByKey.get(salesKey);
+
+        const score = computeHourlyGradeScore({
+          actualSales: sales.actualSales,
+          lastWeekSales: lwSales?.actualSales || 0,
+          actualStaff: labor.employeeCount,
+          projectedStaff: labor.projectedLabor / 10,
+          avgDtTime: hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : null,
+          osatPercent: osat && osat.totalResponses > 0 ? osat.osatPercent : null,
+          osatResponses: osat?.totalResponses || 0,
+        });
+        if (score >= 95) aplusHoursToday++;
+      }
+    }
+
+    // Active streaks count
+    const activeStreakCount = await db.select({ count: sql<number>`count(*)` })
+      .from(arenaStreaks).where(eq(arenaStreaks.streakActive, true));
+
+    // Top streak leaders
+    const streakLeaders = await db.select().from(arenaStreaks)
+      .where(eq(arenaStreaks.streakActive, true))
+      .orderBy(desc(arenaStreaks.streakCount)).limit(10);
+
+    // Company records (latest per type)
+    const records = await db.execute(sql`
+      SELECT DISTINCT ON (record_type) * FROM arena_records
+      ORDER BY record_type, set_at DESC
+    `);
+
+    // Spotlight — leader with longest active streak or most badges today
+    const spotlightBadges = await db.execute(sql`
+      SELECT entity_id, entity_name, entity_type, restaurant_id, count(*) as badge_count,
+             array_agg(badge_id) as badges, max(shift_team_members::text) as team
+      FROM arena_badges_earned WHERE eval_date = ${today}
+      GROUP BY entity_id, entity_name, entity_type, restaurant_id
+      ORDER BY badge_count DESC LIMIT 1
+    `);
+
+    let spotlight = null;
+    if (spotlightBadges.rows && spotlightBadges.rows.length > 0) {
+      const s = spotlightBadges.rows[0] as any;
+      spotlight = {
+        entityName: s.entity_name, entityType: s.entity_type,
+        restaurantId: s.restaurant_id, badgeCount: Number(s.badge_count),
+        badges: s.badges || [],
+      };
+    } else if (streakLeaders.length > 0) {
+      const top = streakLeaders[0];
+      spotlight = {
+        entityName: top.entityName, entityType: top.entityType,
+        restaurantId: top.restaurantId, streakCount: top.streakCount,
+        badges: [],
+      };
+    }
+
+    return res.json({
+      badgesToday: Number(badgesToday[0]?.count || 0),
+      teamBadgesToday: Number(teamBadgesToday[0]?.count || 0),
+      aplusHoursToday,
+      activeStreaks: Number(activeStreakCount[0]?.count || 0),
+      streakLeaders,
+      companyRecords: records.rows || [],
+      spotlight,
+      date: today,
+    });
+  } catch (err: any) {
+    console.error("Error fetching arena command center:", err);
+    return res.status(500).json({ message: "Failed to load command center", error: err.message });
+  }
+});
+
+// GET /api/arena/leaderboard — leader rankings with grades, streaks, badges
+router.get("/api/arena/leaderboard", requireArenaAccess, async (req: Request, res: Response) => {
+  try {
+    await ensureArenaTables();
+    const { loadDayData, computeHourlyGradeScore, getGradeLabel } = await import("../arena-engine");
+
+    const today = new Date().toISOString().split("T")[0];
+    const data = await loadDayData(today);
+
+    // Get badges earned in last 30 days per leader
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+
+    const recentBadges = await db.select().from(arenaBadgesEarned)
+      .where(and(
+        eq(arenaBadgesEarned.entityType, "leader"),
+        sql`eval_date >= ${thirtyDaysAgoStr}`
+      ));
+
+    // Get active streaks for leaders
+    const activeStreaks = await db.select().from(arenaStreaks)
+      .where(and(eq(arenaStreaks.entityType, "leader"), eq(arenaStreaks.streakActive, true)));
+
+    const streakByEntity = new Map(activeStreaks.map(s => [s.entityId, s.streakCount ?? 0]));
+    const badgesByEntity = new Map<string, string[]>();
+    for (const b of recentBadges) {
+      const list = badgesByEntity.get(b.entityId) || [];
+      if (!list.includes(b.badgeId)) list.push(b.badgeId);
+      badgesByEntity.set(b.entityId, list);
+    }
+
+    const leaders: any[] = [];
+
+    for (const leader of data.leaderEmployees) {
+      const userId = leader.sevenShiftsUserId;
+      const hourlyScores: number[] = [];
+      let primaryRestaurantId = "";
+      const restHours = new Map<string, number>();
+      let teamMembers: any[] = [];
+
+      for (const rest of data.activeRestaurants) {
+        for (let h = 0; h < 24; h++) {
+          const crew = data.crewByKey.get(`${rest.id}-${today}-${h}`);
+          if (!crew?.crewMembers?.length) continue;
+          const wasWorking = crew.crewMembers.some((m: any) => m.userId === userId);
+          if (!wasWorking) continue;
+
+          restHours.set(rest.id, (restHours.get(rest.id) || 0) + 1);
+
+          const salesKey = `${rest.id}-${today}-${h}`;
+          const sales = data.salesByKey.get(salesKey);
+          if (!sales || sales.actualSales <= 0) continue;
+          const labor = data.laborByKey.get(salesKey);
+          if (!labor) continue;
+
+          const lwDate = new Date(today + "T12:00:00Z");
+          lwDate.setDate(lwDate.getDate() - 7);
+          const lwDateStr = lwDate.toISOString().split("T")[0];
+          const lwSales = data.salesByKey.get(`${rest.id}-${lwDateStr}-${h}`);
+          const hme = data.hmeByKey.get(salesKey);
+          const osat = data.osatByKey.get(salesKey);
+
+          const score = computeHourlyGradeScore({
+            actualSales: sales.actualSales,
+            lastWeekSales: lwSales?.actualSales || 0,
+            actualStaff: labor.employeeCount,
+            projectedStaff: labor.projectedLabor / 10,
+            avgDtTime: hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : null,
+            osatPercent: osat && osat.totalResponses > 0 ? osat.osatPercent : null,
+            osatResponses: osat?.totalResponses || 0,
+          });
+          hourlyScores.push(score);
+
+          // Track last crew for team display
+          if (h === Math.max(...Array.from({ length: 24 }, (_, i) => i).filter(hr => {
+            const c = data.crewByKey.get(`${rest.id}-${today}-${hr}`);
+            return c?.crewMembers?.some((m: any) => m.userId === userId);
+          }))) {
+            teamMembers = crew.crewMembers.map((m: any) => `${m.firstName} ${m.lastName}`);
+          }
+        }
+      }
+
+      if (hourlyScores.length < 1) continue;
+
+      // Determine primary restaurant
+      let maxH = 0;
+      restHours.forEach((hrs, rid) => { if (hrs > maxH) { maxH = hrs; primaryRestaurantId = rid; } });
+      const rest = data.activeRestaurants.find(r => r.id === primaryRestaurantId);
+
+      const avgScore = hourlyScores.reduce((a, b) => a + b, 0) / hourlyScores.length;
+      const entityId = String(userId);
+
+      let displayPosition = leader.position || "";
+      if (!displayPosition) displayPosition = leader.type === "asst_manager" || leader.type === "manager" ? "Manager" : "Leader";
+      if (displayPosition === "asst_manager") displayPosition = "Manager";
+      if (displayPosition.toLowerCase().includes("supervisor")) displayPosition = "Shift Supervisor";
+      else if (displayPosition.toLowerCase().includes("manager")) displayPosition = "Manager";
+
+      leaders.push({
+        id: userId,
+        name: `${leader.firstName} ${leader.lastName}`,
+        store: rest?.unitNumber ? `#${rest.unitNumber}` : "",
+        storeName: rest?.name || "",
+        role: displayPosition,
+        avgGradeScore: Math.round(avgScore * 10) / 10,
+        todayGrade: getGradeLabel(avgScore),
+        streak: streakByEntity.get(entityId) || 0,
+        badges: badgesByEntity.get(entityId) || [],
+        team: teamMembers,
+      });
+    }
+
+    // Sort by avgGradeScore descending
+    leaders.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
+
+    return res.json({ leaders });
+  } catch (err: any) {
+    console.error("Error fetching arena leaderboard:", err);
+    return res.status(500).json({ message: "Failed to load leaderboard", error: err.message });
+  }
+});
+
+// GET /api/arena/units — unit rankings with grades, streaks, badges
+router.get("/api/arena/units", requireArenaAccess, async (req: Request, res: Response) => {
+  try {
+    await ensureArenaTables();
+    const { loadDayData, computeHourlyGradeScore, getGradeLabel } = await import("../arena-engine");
+
+    const today = new Date().toISOString().split("T")[0];
+    const data = await loadDayData(today);
+
+    // Get badges for units in last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+
+    const recentBadges = await db.select().from(arenaBadgesEarned)
+      .where(and(eq(arenaBadgesEarned.entityType, "unit"), sql`eval_date >= ${thirtyDaysAgoStr}`));
+
+    const activeStreaks = await db.select().from(arenaStreaks)
+      .where(and(eq(arenaStreaks.entityType, "unit"), eq(arenaStreaks.streakActive, true)));
+
+    const streakByEntity = new Map(activeStreaks.map(s => [s.entityId, s.streakCount ?? 0]));
+    const badgesByEntity = new Map<string, string[]>();
+    for (const b of recentBadges) {
+      const list = badgesByEntity.get(b.entityId) || [];
+      if (!list.includes(b.badgeId)) list.push(b.badgeId);
+      badgesByEntity.set(b.entityId, list);
+    }
+
+    const units: any[] = [];
+    for (const rest of data.activeRestaurants) {
+      const hourlyScores: number[] = [];
+      for (let h = 0; h < 24; h++) {
+        const salesKey = `${rest.id}-${today}-${h}`;
+        const sales = data.salesByKey.get(salesKey);
+        if (!sales || sales.actualSales <= 0) continue;
+        const labor = data.laborByKey.get(salesKey);
+        if (!labor) continue;
+
+        const lwDate = new Date(today + "T12:00:00Z");
+        lwDate.setDate(lwDate.getDate() - 7);
+        const lwDateStr = lwDate.toISOString().split("T")[0];
+        const lwSales = data.salesByKey.get(`${rest.id}-${lwDateStr}-${h}`);
+        const hme = data.hmeByKey.get(salesKey);
+        const osat = data.osatByKey.get(salesKey);
+
+        const score = computeHourlyGradeScore({
+          actualSales: sales.actualSales,
+          lastWeekSales: lwSales?.actualSales || 0,
+          actualStaff: labor.employeeCount,
+          projectedStaff: labor.projectedLabor / 10,
+          avgDtTime: hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : null,
+          osatPercent: osat && osat.totalResponses > 0 ? osat.osatPercent : null,
+          osatResponses: osat?.totalResponses || 0,
+        });
+        hourlyScores.push(score);
+      }
+
+      if (hourlyScores.length < 1) continue;
+      const avgScore = hourlyScores.reduce((a, b) => a + b, 0) / hourlyScores.length;
+
+      units.push({
+        id: rest.unitNumber ? `#${rest.unitNumber}` : rest.id,
+        name: rest.name,
+        dailyGrade: getGradeLabel(avgScore),
+        score: Math.round(avgScore * 10) / 10,
+        streak: streakByEntity.get(rest.id) || 0,
+        badges: badgesByEntity.get(rest.id) || [],
+      });
+    }
+
+    units.sort((a, b) => b.score - a.score);
+    return res.json({ units });
+  } catch (err: any) {
+    console.error("Error fetching arena units:", err);
+    return res.status(500).json({ message: "Failed to load units", error: err.message });
+  }
+});
+
+// POST /api/arena/evaluate — manual trigger for debug/backfill
+router.post("/api/arena/evaluate", requireArenaAccess, async (req: Request, res: Response) => {
+  try {
+    await ensureArenaTables();
+    const { runFullEvaluation } = await import("../arena-engine");
+    const { date, type = "all" } = req.body;
+    if (!date) return res.status(400).json({ message: "Missing date" });
+
+    const result = await runFullEvaluation(date, type);
+    return res.json({ success: true, ...result });
+  } catch (err: any) {
+    console.error("Error running arena evaluation:", err);
+    return res.status(500).json({ message: "Failed to run evaluation", error: err.message });
   }
 });
 
