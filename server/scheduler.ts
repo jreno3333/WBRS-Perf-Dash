@@ -573,9 +573,77 @@ async function checkAndSeedHistoricalData() {
       }
     } else {
       log("Historical data already present - skipping seed");
+      // Even if 7-day-ago data exists, check for gaps in recent days (1-6 days ago)
+      // Deployments/restarts can cause the "yesterday resync" to miss days
+      await backfillRecentHourlySalesGaps();
     }
   } catch (error) {
     log(`Error checking database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Check for and backfill any recent days that have labor data but missing hourly sales
+// This handles gaps caused by app restarts/deployments during the midnight-6am resync window
+async function backfillRecentHourlySalesGaps() {
+  try {
+    const centralFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const todayStr = centralFormatter.format(new Date());
+    
+    // Check the last 9 days (excluding today since today uses POS/live data)
+    const daysToCheck = 9;
+    const gapDates: string[] = [];
+    
+    for (let i = 1; i <= daysToCheck; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = centralFormatter.format(d);
+      
+      const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
+      const dayEnd = new Date(`${dateStr}T23:59:59.999Z`);
+      
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(hourlySales)
+        .where(sql`${hourlySales.salesDate} >= ${dayStart} AND ${hourlySales.salesDate} <= ${dayEnd}`);
+      const count = Number(countResult[0]?.count || 0);
+      
+      // If fewer than 100 records, this day likely has no sales data
+      // (22 restaurants × ~17 hours = ~374 expected)
+      if (count < 100) {
+        gapDates.push(dateStr);
+      }
+    }
+    
+    if (gapDates.length === 0) {
+      log("No hourly sales gaps found in recent days");
+      return;
+    }
+    
+    log(`Found hourly sales gaps for ${gapDates.length} day(s): ${gapDates.join(', ')} - backfilling...`);
+    
+    for (const dateStr of gapDates) {
+      try {
+        const normalizedDate = new Date(dateStr + 'T12:00:00.000Z');
+        const result = await fetchHourlySalesFromAPI(normalizedDate);
+        if (result.success) {
+          log(`Backfilled ${dateStr}: ${result.recordsScraped} hourly records`);
+        } else {
+          log(`Backfill failed for ${dateStr}: ${result.error}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (err) {
+        log(`Backfill error for ${dateStr}: ${err instanceof Error ? err.message : 'Unknown'}`);
+      }
+    }
+    
+    log("Hourly sales gap backfill complete");
+  } catch (error) {
+    log(`Backfill check error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
