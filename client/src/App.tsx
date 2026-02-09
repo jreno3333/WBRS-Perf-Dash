@@ -12,6 +12,7 @@ import CrewExperiencePage from "@/pages/crew-experience";
 import PerformanceHistoryPage from "@/pages/performance-history";
 import LeadersPage from "@/pages/leaders";
 import LoginPage from "@/pages/login";
+import ArenaPage from "@/pages/arena";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -62,6 +63,7 @@ function App() {
         <Toaster />
         <Switch>
           <Route path="/login" component={LoginPage} />
+          <Route path="/arena" component={ArenaPage} />
           <Route>
             <ProtectedRoutes />
           </Route>
