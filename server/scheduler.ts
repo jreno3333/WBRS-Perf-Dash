@@ -185,6 +185,10 @@ async function runScheduledSync() {
     
     // Send daily email reports (at 6 AM Central)
     await sendDailyReportsIfNeeded();
+
+    // Arena evaluation hooks
+    await runArenaHourlyIfNeeded();
+    await runArenaEndOfDayIfNeeded();
   } catch (error) {
     log(`Sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
@@ -195,6 +199,69 @@ let lastYesterdaySync: string | null = null;
 let lastWeatherSave: string | null = null;
 let lastDailyReportSend: string | null = null;
 let lastLeaderReportSend: string | null = null;
+
+// Arena evaluation tracking
+let lastArenaHourlyEval: string | null = null;
+let lastArenaDailyEval: string | null = null;
+
+// Run hourly arena badge evaluation (top of each hour)
+async function runArenaHourlyIfNeeded() {
+  const now = new Date();
+  const currentMinute = now.getMinutes();
+  if (currentMinute > 4) return; // Only in first 5 minutes of each hour
+
+  const { hour: centralHour, date: centralDate } = getCentralTime(now);
+  const evalKey = `${centralDate}-${centralHour}`;
+  if (lastArenaHourlyEval === evalKey) return;
+
+  // Evaluate the PREVIOUS hour (the one that just completed)
+  const prevHour = centralHour === 0 ? 23 : centralHour - 1;
+  const evalDate = centralHour === 0
+    ? (() => { const d = new Date(now); d.setDate(d.getDate() - 1); return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(d); })()
+    : centralDate;
+
+  log(`Running Arena hourly evaluation for ${evalDate} hour ${prevHour}...`);
+  try {
+    const { evaluateHourlyBadges } = await import("./arena-engine");
+    const result = await evaluateHourlyBadges(evalDate, prevHour);
+    lastArenaHourlyEval = evalKey;
+    log(`Arena hourly eval completed: ${result.awarded} badges awarded for ${evalDate} hour ${prevHour}`);
+  } catch (error) {
+    log(`Arena hourly eval error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Run end-of-day arena evaluation at 2 AM Central (evaluates yesterday's data)
+// 2 AM ensures all 24-hour data is finalized (incl. Eastern timezone units closing at midnight ET = 11 PM CT)
+async function runArenaEndOfDayIfNeeded() {
+  const { hour: centralHour, date: centralDate } = getCentralTime();
+  if (centralHour !== 2) return;
+
+  // Calculate yesterday's date in Central timezone
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(yesterday);
+
+  if (lastArenaDailyEval === yesterdayStr) return;
+
+  log(`Running Arena end-of-day evaluation for ${yesterdayStr}...`);
+  try {
+    const { evaluateEndOfDayBadges, evaluateStreaks, evaluateRecords } = await import("./arena-engine");
+    const badgeResult = await evaluateEndOfDayBadges(yesterdayStr);
+    log(`Arena EOD badges: ${badgeResult.awarded} awarded`);
+
+    const streakResult = await evaluateStreaks(yesterdayStr);
+    log(`Arena streaks: ${streakResult.updated} updated`);
+
+    const recordResult = await evaluateRecords(yesterdayStr);
+    log(`Arena records: ${recordResult.newRecords} new records`);
+
+    lastArenaDailyEval = yesterdayStr;
+    log(`Arena end-of-day evaluation completed for ${yesterdayStr}`);
+  } catch (error) {
+    log(`Arena end-of-day eval error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
 // getCentralTime imported from ./utils/dates
 

@@ -94,37 +94,14 @@ interface ArenaConfigData {
   fiscalWeekStart: string;
 }
 
-// ─── MOCK DATA for initial display (replaced by real data as engine populates) ───
-const MOCK_LEADERS = [
-  { id: 1, name: "Marcus Johnson", store: "#1247", sn: "Cullman", role: "Manager", avg: 96.2, streak: 12, badges: ["orangeSpirit", "aFrameStandard", "rushHour", "madeToOrder"], tr: "up", tg: "A+", team: ["Marcus Johnson (M)", "Tyrell Hayes (SS)"] },
-  { id: 2, name: "Sarah Chen", store: "#1183", sn: "Athens", role: "Manager", avg: 94.8, streak: 8, badges: ["whatAnHour", "firstLight", "communityBuilder"], tr: "up", tg: "A+", team: ["Sarah Chen (M)", "Diego Ruiz (SS)"] },
-  { id: 3, name: "DeAndre Williams", store: "#1302", sn: "Decatur", role: "Shift Supervisor", avg: 93.1, streak: 5, badges: ["driveThruFlyer", "rushHour"], tr: "stable", tg: "A", team: ["Pam Carter (M)", "DeAndre Williams (SS)"] },
-  { id: 4, name: "Ashley Rivera", store: "#1095", sn: "Huntsville-U", role: "Manager", avg: 91.7, streak: 3, badges: ["biggerBetterHour", "closingTime"], tr: "up", tg: "A", team: ["Ashley Rivera (M)"] },
-  { id: 5, name: "Tyler Brooks", store: "#1421", sn: "Cleveland TN", role: "Shift Supervisor", avg: 89.4, streak: 0, badges: ["firstLight", "fancyKetchup"], tr: "down", tg: "B", team: ["Tyler Brooks (SS)", "Nina Patel (M)"] },
-  { id: 6, name: "Maria Santos", store: "#1156", sn: "Hartselle", role: "Manager", avg: 88.9, streak: 2, badges: ["justLikeYouLikeIt", "whatAnHour"], tr: "up", tg: "A", team: ["Maria Santos (M)"] },
-  { id: 7, name: "James Mitchell", store: "#1378", sn: "Albertville", role: "Manager", avg: 87.2, streak: 0, badges: ["tableStakes"], tr: "stable", tg: "B", team: ["James Mitchell (M)", "Kyle Foster (SS)"] },
-  { id: 8, name: "Kayla Thompson", store: "#1219", sn: "Guntersville", role: "Shift Supervisor", avg: 85.6, streak: 1, badges: ["driveThruFlyer"], tr: "down", tg: "C", team: ["Kayla Thompson (SS)"] },
-];
-const MOCK_UNITS = [
-  { id: "#1247", name: "Cullman", dg: "A+", sc: 97.1, streak: 9, rec: "147 txns/hr", badges: ["tableStakes", "whatAnHour", "driveThruFlyer", "goodnessLives"] },
-  { id: "#1183", name: "Athens", dg: "A+", sc: 95.3, streak: 7, rec: "$2,847/hr", badges: ["honeyButter", "fancyKetchup", "justLikeYouLikeIt"] },
-  { id: "#1302", name: "Decatur", dg: "A", sc: 92.4, streak: 4, rec: "3:42 DT avg", badges: ["driveThruFlyer", "whatAnHour"] },
-  { id: "#1095", name: "Huntsville-U", dg: "A", sc: 91.0, streak: 3, rec: "OSAT 92%", badges: ["justLikeYouLikeIt", "biggerBetterHour"] },
-  { id: "#1421", name: "Cleveland TN", dg: "B", sc: 84.2, streak: 0, rec: "5 five-star reviews", badges: ["fancyKetchup"] },
-];
-const MOCK_RECORDS = [
-  { type: "Table Stakes", holder: "#1247 Cullman", value: "147 txns/hr", date: "Feb 6", leader: "Marcus Johnson & Tyrell Hayes", icon: "👑" },
-  { type: "Honey Butter", holder: "#1183 Athens", value: "$2,847/hr", date: "Feb 5", leader: "Sarah Chen & Diego Ruiz", icon: "💰" },
-  { type: "Drive-Thru Flyer", holder: "#1302 Decatur", value: "3:42 avg", date: "Feb 7", leader: "Pam Carter & DeAndre Williams", icon: "🏁" },
-  { type: "Just Like You Like It", holder: "#1095 Huntsville-U", value: "92% (47)", date: "Feb 4", leader: "Ashley Rivera", icon: "🏆" },
-  { type: "Orange Legend", holder: "Marcus Johnson", value: "12 days", date: "Current", leader: "#1247", icon: "🔥" },
-];
-const MOCK_MESSAGES = [
-  { to: "#1247 Lunch Crew", store: "#1247", type: "praise", msg: "Marcus & Tyrell — Drive-Thru Flyer earned! 3:38 avg as a team during lunch. That's Orange Spirit.", time: "Today 2:15 PM", auto: true, isTeam: true },
-  { to: "Sarah Chen & Diego Ruiz", store: "#1183", type: "praise", msg: "Honey Butter unlocked — $2,847 in a single hour. Shift team credited.", time: "Today 1:30 PM", auto: true, isTeam: true },
-  { to: "Kayla Thompson", store: "#1219", type: "coaching", msg: "DT slipped to 7:20 at lunch. Let's review deployment for tomorrow's rush.", time: "Today 12:45 PM", auto: false, isTeam: false },
-  { to: "Ashley Rivera", store: "#1095", type: "praise", msg: "Last Call badge earned — A+ on close. Strong finish.", time: "Yesterday 6:00 PM", auto: true, isTeam: false },
-];
+// Record type display names and icons
+const RECORD_TYPE_MAP: Record<string, { name: string; icon: string; format: (v: number) => string }> = {
+  highest_hourly_sales: { name: "Honey Butter", icon: "💰", format: (v) => `$${v.toLocaleString()}/hr` },
+  fastest_dt_avg: { name: "Drive-Thru Flyer", icon: "🏁", format: (v) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")} avg` },
+  best_daily_osat: { name: "Just Like You Like It", icon: "🏆", format: (v) => `${v}%` },
+  longest_streak: { name: "Orange Legend", icon: "🔥", format: (v) => `${v} days` },
+  most_transactions_hour: { name: "Table Stakes", icon: "👑", format: (v) => `${v} txns/hr` },
+};
 
 // ─── HELPER COMPONENTS ───
 function BadgeIcon({ badge, size = 34, config }: { badge: string | BadgeConfig; size?: number; config?: ArenaConfigData }) {
@@ -267,12 +244,59 @@ export default function ArenaPage() {
     },
   });
 
-  // Fetch summary
-  const { data: summary } = useQuery({
-    queryKey: ["/api/arena/summary", accessKey],
+  // Fetch command center data
+  const { data: commandCenter } = useQuery({
+    queryKey: ["/api/arena/command-center", accessKey],
     queryFn: async () => {
-      const res = await fetch(`/api/arena/summary?key=${accessKey || ""}`);
+      const res = await fetch(`/api/arena/command-center?key=${accessKey || ""}`);
       if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!configData,
+    refetchInterval: 60000,
+  });
+
+  // Fetch leader rankings
+  const { data: leaderboard } = useQuery<{ leaders: any[] }>({
+    queryKey: ["/api/arena/leaderboard", accessKey],
+    queryFn: async () => {
+      const res = await fetch(`/api/arena/leaderboard?key=${accessKey || ""}`);
+      if (!res.ok) return { leaders: [] };
+      return res.json();
+    },
+    enabled: !!configData,
+    refetchInterval: 60000,
+  });
+
+  // Fetch unit rankings
+  const { data: unitRankings } = useQuery<{ units: any[] }>({
+    queryKey: ["/api/arena/units", accessKey],
+    queryFn: async () => {
+      const res = await fetch(`/api/arena/units?key=${accessKey || ""}`);
+      if (!res.ok) return { units: [] };
+      return res.json();
+    },
+    enabled: !!configData,
+    refetchInterval: 60000,
+  });
+
+  // Fetch records
+  const { data: records } = useQuery<any[]>({
+    queryKey: ["/api/arena/records", accessKey],
+    queryFn: async () => {
+      const res = await fetch(`/api/arena/records?key=${accessKey || ""}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!configData,
+  });
+
+  // Fetch messages
+  const { data: messages } = useQuery<any[]>({
+    queryKey: ["/api/arena/messages", accessKey],
+    queryFn: async () => {
+      const res = await fetch(`/api/arena/messages?key=${accessKey || ""}`);
+      if (!res.ok) return [];
       return res.json();
     },
     enabled: !!configData,
@@ -421,10 +445,10 @@ export default function ArenaPage() {
             {/* Quick stats */}
             <div className="grid grid-cols-4 gap-3 mb-4">
               {[
-                { l: "Active Streaks", v: summary?.activeStreaks ?? "5", i: "🔥" },
-                { l: "Badges Today", v: summary?.badgesToday ?? "18", i: "🏅" },
-                { l: "A+ Hours Today", v: "47", i: "🍔" },
-                { l: "Team Badges", v: "7", i: "👥" },
+                { l: "Active Streaks", v: commandCenter?.activeStreaks ?? 0, i: "🔥" },
+                { l: "Badges Today", v: commandCenter?.badgesToday ?? 0, i: "🏅" },
+                { l: "A+ Hours Today", v: commandCenter?.aplusHoursToday ?? 0, i: "🍔" },
+                { l: "Team Badges", v: commandCenter?.teamBadgesToday ?? 0, i: "👥" },
               ].map((s, i) => (
                 <div key={i} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
                   <div className="flex justify-between">
@@ -439,54 +463,74 @@ export default function ArenaPage() {
             </div>
 
             {/* Spotlight */}
-            <div className="rounded-xl p-4 mb-4 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${ORANGE}40` }}>
-              <div className="absolute -right-2 -top-2 text-6xl opacity-5">👑</div>
-              <div className="text-[10px] uppercase tracking-[2px] font-bold" style={{ color: ORANGE }}>Today's Spotlight</div>
-              <div className="flex justify-between items-center mt-2">
-                <div>
-                  <div className="text-white text-lg font-bold">Marcus Johnson & Tyrell Hayes — #1247 Cullman</div>
-                  <div className="text-muted-foreground text-xs mt-1">12-day A+ streak · 147 txns/hr (team record) · Drive-Thru Flyer + Table Stakes as shift team</div>
-                </div>
-                <div className="flex gap-1">
-                  {["orangeSpirit", "aFrameStandard", "madeToOrder", "tableStakes"].map(b => (
-                    <BadgeIcon key={b} badge={b} size={32} config={cfg} />
-                  ))}
+            {commandCenter?.spotlight ? (
+              <div className="rounded-xl p-4 mb-4 relative overflow-hidden" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${ORANGE}40` }}>
+                <div className="absolute -right-2 -top-2 text-6xl opacity-5">👑</div>
+                <div className="text-[10px] uppercase tracking-[2px] font-bold" style={{ color: ORANGE }}>Today's Spotlight</div>
+                <div className="flex justify-between items-center mt-2">
+                  <div>
+                    <div className="text-white text-lg font-bold">{commandCenter.spotlight.entityName}</div>
+                    <div className="text-muted-foreground text-xs mt-1">
+                      {commandCenter.spotlight.badgeCount ? `${commandCenter.spotlight.badgeCount} badges earned today` : ""}
+                      {commandCenter.spotlight.streakCount ? `${commandCenter.spotlight.streakCount}-day streak` : ""}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    {(commandCenter.spotlight.badges || []).slice(0, 4).map((b: string) => (
+                      <BadgeIcon key={b} badge={b} size={32} config={cfg} />
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-xl p-4 mb-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="text-muted-foreground text-xs text-center py-2">No spotlight data yet — badges will appear as they're earned</div>
+              </div>
+            )}
 
             {/* Two columns */}
             <div className="grid grid-cols-2 gap-3">
               {/* Streak Leaderboard */}
               <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <h3 className="text-white text-sm font-semibold mb-3">🔥 Streak Leaderboard</h3>
-                {MOCK_LEADERS.filter(l => l.streak > 0).sort((a, b) => b.streak - a.streak).map((l, i) => (
-                  <div key={l.id} className="flex items-center justify-between px-2.5 py-2 rounded-md mb-1"
-                    style={{ background: i === 0 ? "rgba(245,130,32,0.07)" : "transparent" }}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs w-5 font-mono" style={{ color: i === 0 ? ORANGE : "#555" }}>#{i + 1}</span>
-                      <div>
-                        <div className="text-white font-semibold text-xs">{l.name}</div>
-                        <div className="text-muted-foreground text-[10px]">{l.store} · {l.sn}</div>
+                {(commandCenter?.streakLeaders || []).length === 0 ? (
+                  <div className="text-muted-foreground text-xs text-center py-4">No active streaks yet</div>
+                ) : (
+                  (commandCenter.streakLeaders as any[]).map((s: any, i: number) => (
+                    <div key={s.id} className="flex items-center justify-between px-2.5 py-2 rounded-md mb-1"
+                      style={{ background: i === 0 ? "rgba(245,130,32,0.07)" : "transparent" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs w-5 font-mono" style={{ color: i === 0 ? ORANGE : "#555" }}>#{i + 1}</span>
+                        <div>
+                          <div className="text-white font-semibold text-xs">{s.entityName || s.entity_name}</div>
+                          <div className="text-muted-foreground text-[10px]">{s.entityType || s.entity_type}</div>
+                        </div>
                       </div>
+                      <StreakFire count={s.streakCount ?? s.streak_count ?? 0} />
                     </div>
-                    <StreakFire count={l.streak} />
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
 
               {/* Company Records */}
               <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <h3 className="text-white text-sm font-semibold mb-3">🏆 Company Records</h3>
-                {MOCK_RECORDS.map((r, i) => (
-                  <div key={i} className="px-2.5 py-2 rounded-md mb-1" style={{ borderLeft: `3px solid ${ORANGE}`, background: "rgba(255,255,255,0.02)" }}>
-                    <div className="text-white font-semibold text-[11px]">{r.icon} {r.type}</div>
-                    <div className="flex justify-between mt-1">
-                      <span className="font-bold text-xs font-mono" style={{ color: ORANGE }}>{r.value}</span>
-                      <span className="text-muted-foreground text-[10px]">{r.leader}</span>
-                    </div>
-                  </div>
-                ))}
+                {(commandCenter?.companyRecords || []).length === 0 ? (
+                  <div className="text-muted-foreground text-xs text-center py-4">No records set yet</div>
+                ) : (
+                  (commandCenter.companyRecords as any[]).map((r: any, i: number) => {
+                    const rt = RECORD_TYPE_MAP[r.record_type] || { name: r.record_type, icon: "📊", format: (v: number) => String(v) };
+                    return (
+                      <div key={i} className="px-2.5 py-2 rounded-md mb-1" style={{ borderLeft: `3px solid ${ORANGE}`, background: "rgba(255,255,255,0.02)" }}>
+                        <div className="text-white font-semibold text-[11px]">{rt.icon} {rt.name}</div>
+                        <div className="flex justify-between mt-1">
+                          <span className="font-bold text-xs font-mono" style={{ color: ORANGE }}>{rt.format(Number(r.value))}</span>
+                          <span className="text-muted-foreground text-[10px]">{r.holder_name}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -496,38 +540,44 @@ export default function ArenaPage() {
         {mainTab === "leaders" && (
           <div>
             <h2 className="text-white text-base font-semibold mb-3">Community Member Rankings</h2>
-            <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              {/* Header */}
-              <div className="grid px-3.5 py-2.5" style={{ gridTemplateColumns: "40px 1fr 70px 60px 70px 40px 140px", background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                {["#", "Leader", "Avg", "Today", "Streak", "Δ", "Badges"].map(h => (
-                  <div key={h} className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{h}</div>
+            {!leaderboard?.leaders?.length ? (
+              <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" style={{ color: ORANGE }} />
+                <div className="text-muted-foreground text-xs">Loading leader rankings...</div>
+              </div>
+            ) : (
+              <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {/* Header */}
+                <div className="grid px-3.5 py-2.5" style={{ gridTemplateColumns: "40px 1fr 70px 60px 70px 140px", background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  {["#", "Leader", "Avg", "Today", "Streak", "Badges"].map(h => (
+                    <div key={h} className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{h}</div>
+                  ))}
+                </div>
+                {/* Rows */}
+                {leaderboard.leaders.map((l: any, i: number) => (
+                  <div key={l.id} className="grid items-center px-3.5 py-3" style={{
+                    gridTemplateColumns: "40px 1fr 70px 60px 70px 140px",
+                    borderBottom: "1px solid rgba(255,255,255,0.04)",
+                    background: i === 0 ? "rgba(245,130,32,0.04)" : "transparent"
+                  }}>
+                    <span className="font-bold text-sm font-mono" style={{ color: i < 3 ? ORANGE : "#555" }}>
+                      {i === 0 ? "👑" : i + 1}
+                    </span>
+                    <div>
+                      <div className="text-white font-semibold text-xs">{l.name}</div>
+                      <div className="text-muted-foreground text-[10px]">{l.store} · {l.storeName} · {l.role}</div>
+                      {l.team?.length > 1 && <div className="text-[9px] mt-0.5" style={{ color: "#444" }}>Shift team: {l.team.join(", ")}</div>}
+                    </div>
+                    <span className="text-white font-bold font-mono text-sm">{l.avgGradeScore}</span>
+                    <GradeChip grade={l.todayGrade} />
+                    <StreakFire count={l.streak} />
+                    <div className="flex gap-1 flex-wrap">
+                      {(l.badges || []).slice(0, 4).map((b: string) => <BadgeIcon key={b} badge={b} size={24} config={cfg} />)}
+                    </div>
+                  </div>
                 ))}
               </div>
-              {/* Rows */}
-              {MOCK_LEADERS.map((l, i) => (
-                <div key={l.id} className="grid items-center px-3.5 py-3" style={{
-                  gridTemplateColumns: "40px 1fr 70px 60px 70px 40px 140px",
-                  borderBottom: "1px solid rgba(255,255,255,0.04)",
-                  background: i === 0 ? "rgba(245,130,32,0.04)" : "transparent"
-                }}>
-                  <span className="font-bold text-sm font-mono" style={{ color: i < 3 ? ORANGE : "#555" }}>
-                    {i === 0 ? "👑" : i + 1}
-                  </span>
-                  <div>
-                    <div className="text-white font-semibold text-xs">{l.name}</div>
-                    <div className="text-muted-foreground text-[10px]">{l.store} · {l.sn} · {l.role}</div>
-                    {l.team.length > 1 && <div className="text-[9px] mt-0.5" style={{ color: "#444" }}>Shift team: {l.team.join(", ")}</div>}
-                  </div>
-                  <span className="text-white font-bold font-mono text-sm">{l.avg}</span>
-                  <GradeChip grade={l.tg} />
-                  <StreakFire count={l.streak} />
-                  <TrendArrow t={l.tr} />
-                  <div className="flex gap-1 flex-wrap">
-                    {l.badges.slice(0, 4).map(b => <BadgeIcon key={b} badge={b} size={24} config={cfg} />)}
-                  </div>
-                </div>
-              ))}
-            </div>
+            )}
           </div>
         )}
 
@@ -535,32 +585,38 @@ export default function ArenaPage() {
         {mainTab === "units" && (
           <div>
             <h2 className="text-white text-base font-semibold mb-3">Unit Rankings</h2>
-            {MOCK_UNITS.map((u, i) => (
-              <div key={u.id} className="rounded-xl p-4 mb-2" style={{
-                background: "rgba(255,255,255,0.04)",
-                border: i === 0 ? `1px solid ${ORANGE}40` : "1px solid rgba(255,255,255,0.08)"
-              }}>
-                <div className="grid items-center gap-3" style={{ gridTemplateColumns: "50px 1fr auto" }}>
-                  <div className="text-center">
-                    <div className="font-bold text-lg font-mono" style={{ color: i < 3 ? ORANGE : "#555" }}>
-                      {i === 0 ? "👑" : `#${i + 1}`}
+            {!unitRankings?.units?.length ? (
+              <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" style={{ color: ORANGE }} />
+                <div className="text-muted-foreground text-xs">Loading unit rankings...</div>
+              </div>
+            ) : (
+              unitRankings.units.map((u: any, i: number) => (
+                <div key={u.id} className="rounded-xl p-4 mb-2" style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: i === 0 ? `1px solid ${ORANGE}40` : "1px solid rgba(255,255,255,0.08)"
+                }}>
+                  <div className="grid items-center gap-3" style={{ gridTemplateColumns: "50px 1fr auto" }}>
+                    <div className="text-center">
+                      <div className="font-bold text-lg font-mono" style={{ color: i < 3 ? ORANGE : "#555" }}>
+                        {i === 0 ? "👑" : `#${i + 1}`}
+                      </div>
+                      <GradeChip grade={u.dailyGrade} />
                     </div>
-                    <GradeChip grade={u.dg} />
-                  </div>
-                  <div>
-                    <div className="text-white font-bold text-sm">{u.id} — {u.name}</div>
-                    <div className="text-muted-foreground text-[11px] mt-0.5">
-                      Score: <span className="font-mono" style={{ color: ORANGE }}>{u.sc}</span>
-                      {u.streak > 0 && <span className="ml-2 inline-flex"><StreakFire count={u.streak} /></span>}
+                    <div>
+                      <div className="text-white font-bold text-sm">{u.id} — {u.name}</div>
+                      <div className="text-muted-foreground text-[11px] mt-0.5">
+                        Score: <span className="font-mono" style={{ color: ORANGE }}>{u.score}</span>
+                        {u.streak > 0 && <span className="ml-2 inline-flex"><StreakFire count={u.streak} /></span>}
+                      </div>
                     </div>
-                    <div className="text-muted-foreground text-[10px] mt-1 italic">📌 {u.rec}</div>
-                  </div>
-                  <div className="flex gap-1">
-                    {u.badges.map(b => <BadgeIcon key={b} badge={b} size={28} config={cfg} />)}
+                    <div className="flex gap-1">
+                      {(u.badges || []).map((b: string) => <BadgeIcon key={b} badge={b} size={28} config={cfg} />)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         )}
 
@@ -611,21 +667,30 @@ export default function ArenaPage() {
         {mainTab === "records" && (
           <div>
             <h2 className="text-white text-base font-semibold mb-3">Company Records</h2>
-            {MOCK_RECORDS.map((r, i) => (
-              <div key={i} className="rounded-xl p-4 mb-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto" }}>
-                  <div>
-                    <div className="text-white font-bold text-sm">{r.icon} {r.type}</div>
-                    <div className="text-muted-foreground text-[11px] mt-1">
-                      {r.holder} — <span style={{ color: ORANGE }}>{r.leader}</span>
+            {!records?.length ? (
+              <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="text-muted-foreground text-xs">No records set yet — records are tracked as badges are earned</div>
+              </div>
+            ) : (
+              records.map((r: any, i: number) => {
+                const rt = RECORD_TYPE_MAP[r.recordType || r.record_type] || { name: r.recordType || r.record_type, icon: "📊", format: (v: number) => String(v) };
+                return (
+                  <div key={r.id || i} className="rounded-xl p-4 mb-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto" }}>
+                      <div>
+                        <div className="text-white font-bold text-sm">{rt.icon} {rt.name}</div>
+                        <div className="text-muted-foreground text-[11px] mt-1">
+                          {r.holderName || r.holder_name} — <span style={{ color: ORANGE }}>{r.evalDate || r.eval_date}</span>
+                        </div>
+                      </div>
+                      <div className="rounded-lg px-4 py-2 text-center" style={{ background: `${ORANGE}12` }}>
+                        <div className="font-bold text-lg font-mono" style={{ color: ORANGE }}>{rt.format(Number(r.value))}</div>
+                      </div>
                     </div>
                   </div>
-                  <div className="rounded-lg px-4 py-2 text-center" style={{ background: `${ORANGE}12` }}>
-                    <div className="font-bold text-lg font-mono" style={{ color: ORANGE }}>{r.value}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         )}
 
@@ -647,7 +712,7 @@ export default function ArenaPage() {
                       style={{ background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.15)" }}>
                       <option value="">Select...</option>
                       <option value="__team__">— Entire Shift Team —</option>
-                      {MOCK_LEADERS.map(l => <option key={l.id} value={l.name}>{l.name} — {l.store}</option>)}
+                      {(leaderboard?.leaders || []).map((l: any) => <option key={l.id} value={l.name}>{l.name} — {l.store}</option>)}
                     </select>
                   </div>
                   <div>
@@ -673,29 +738,43 @@ export default function ArenaPage() {
               </div>
             )}
 
-            {MOCK_MESSAGES.map((m, i) => (
-              <div key={i} className="rounded-xl p-3 mb-1.5" style={{
-                background: "rgba(255,255,255,0.04)",
-                borderLeft: `3px solid ${m.type === "praise" ? "#22c55e" : "#3b82f6"}`,
-                border: "1px solid rgba(255,255,255,0.08)",
-              }}>
-                <div className="flex justify-between">
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase"
-                        style={{ background: m.type === "praise" ? "rgba(34,197,94,0.15)" : "rgba(59,130,246,0.15)", color: m.type === "praise" ? "#22c55e" : "#3b82f6" }}>
-                        {m.type}
-                      </span>
-                      {m.auto && <span className="text-muted-foreground text-[9px]">Auto</span>}
-                      {m.isTeam && <span className="text-[9px] px-1 py-0.5 rounded" style={{ color: ORANGE, background: `${ORANGE}15` }}>👥 Team</span>}
-                    </div>
-                    <div className="text-white font-semibold text-xs mt-1">To: {m.to} <span className="text-muted-foreground">({m.store})</span></div>
-                    <div className="text-muted-foreground text-[11px] mt-1">{m.msg}</div>
-                  </div>
-                  <span className="text-muted-foreground text-[10px] whitespace-nowrap ml-4">{m.time}</span>
-                </div>
+            {!messages?.length ? (
+              <div className="rounded-xl p-8 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="text-muted-foreground text-xs">No messages yet</div>
               </div>
-            ))}
+            ) : (
+              messages.map((m: any, i: number) => {
+                const msgType = m.messageType || m.message_type || "praise";
+                const isAuto = m.auto ?? true;
+                const isTeam = m.team ?? false;
+                const sentTime = m.sentAt || m.sent_at ? new Date(m.sentAt || m.sent_at).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" }) : "";
+                return (
+                  <div key={m.id || i} className="rounded-xl p-3 mb-1.5" style={{
+                    background: "rgba(255,255,255,0.04)",
+                    borderLeft: `3px solid ${msgType === "praise" ? "#22c55e" : "#3b82f6"}`,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}>
+                    <div className="flex justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase"
+                            style={{ background: msgType === "praise" ? "rgba(34,197,94,0.15)" : "rgba(59,130,246,0.15)", color: msgType === "praise" ? "#22c55e" : "#3b82f6" }}>
+                            {msgType}
+                          </span>
+                          {isAuto && <span className="text-muted-foreground text-[9px]">Auto</span>}
+                          {isTeam && <span className="text-[9px] px-1 py-0.5 rounded" style={{ color: ORANGE, background: `${ORANGE}15` }}>👥 Team</span>}
+                        </div>
+                        <div className="text-white font-semibold text-xs mt-1">
+                          To: {m.recipientName || m.recipient_name || "—"} <span className="text-muted-foreground">({m.restaurantId || m.restaurant_id || ""})</span>
+                        </div>
+                        <div className="text-muted-foreground text-[11px] mt-1">{m.message}</div>
+                      </div>
+                      <span className="text-muted-foreground text-[10px] whitespace-nowrap ml-4">{sentTime}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 
