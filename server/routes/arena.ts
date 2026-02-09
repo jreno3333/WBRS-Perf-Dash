@@ -3,6 +3,7 @@ import { db } from "../db";
 import { arenaConfig, arenaBadgesEarned, arenaStreaks, arenaRecords, arenaMessages } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { DEFAULT_ARENA_CONFIG } from "../arena-default-config";
+import { getCentralTime } from "../utils/dates";
 
 const router = Router();
 
@@ -271,7 +272,7 @@ router.post("/api/arena/messages", requireArenaAccess, async (req: Request, res:
 router.get("/api/arena/summary", requireArenaAccess, async (req: Request, res: Response) => {
   try {
     await ensureArenaTables();
-    const today = new Date().toISOString().split("T")[0];
+    const today = getCentralTime().date;
 
     // Count badges earned today
     const badgesToday = await db.select({ count: sql<number>`count(*)` })
@@ -320,7 +321,7 @@ router.get("/api/arena/command-center", requireArenaAccess, async (req: Request,
     await ensureArenaTables();
     const { loadDayData, computeHourlyGradeScore, getGradeLabel } = await import("../arena-engine");
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getCentralTime().date;
     const data = await loadDayData(today);
 
     // Count badges earned today
@@ -426,7 +427,7 @@ router.get("/api/arena/leaderboard", requireArenaAccess, async (req: Request, re
     await ensureArenaTables();
     const { loadDayData, computeHourlyGradeScore, getGradeLabel } = await import("../arena-engine");
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getCentralTime().date;
     const data = await loadDayData(today);
 
     // Get badges earned in last 30 days per leader
@@ -550,7 +551,7 @@ router.get("/api/arena/units", requireArenaAccess, async (req: Request, res: Res
     await ensureArenaTables();
     const { loadDayData, computeHourlyGradeScore, getGradeLabel } = await import("../arena-engine");
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getCentralTime().date;
     const data = await loadDayData(today);
 
     // Get badges for units in last 30 days
