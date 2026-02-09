@@ -497,12 +497,12 @@ async function saveEndOfDayWeatherIfNeeded() {
 async function syncYesterdayIfNeeded() {
   const { hour: centralHour, date: todayCentral } = getCentralTime();
   
-  // Only sync yesterday between 12 AM and 6 AM Central, and only once per day
+  // Sync yesterday between 12 AM and 6 AM Central, once per day
+  // This finalizes yesterday's data with 7shifts labor + POS sales (preserving POS as primary)
   if (centralHour >= 0 && centralHour < 6 && lastYesterdaySync !== todayCentral) {
-    log("Running post-midnight yesterday resync to capture late hours...");
+    log("Running post-midnight yesterday resync to finalize labor data...");
     
     try {
-      // Calculate yesterday's date in Central timezone
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = new Intl.DateTimeFormat('en-CA', { 
@@ -512,13 +512,19 @@ async function syncYesterdayIfNeeded() {
         day: '2-digit'
       }).format(yesterday);
       
-      // Create a date object for yesterday at noon UTC
       const yesterdayDate = new Date(yesterdayStr + 'T12:00:00.000Z');
       
-      // Resync yesterday's hourly data
+      // Use fetchHourlySalesFromAPI for yesterday (it's now a historical date,
+      // so it writes 7shifts sales). Then overlay with POS sales via hybrid sync.
       const result = await fetchHourlySalesFromAPI(yesterdayDate);
       if (result.success) {
-        log(`Yesterday resync completed: ${result.recordsScraped} hourly records for ${yesterdayStr}`);
+        log(`Yesterday labor/sales resync: ${result.recordsScraped} hourly records for ${yesterdayStr}`);
+      }
+      
+      // Overlay with POS sales to ensure POS data takes priority
+      const hybridResult = await syncSalesWithXenialPOS(yesterdayDate);
+      if (hybridResult.success && hybridResult.recordsScraped > 0) {
+        log(`Yesterday POS overlay: ${hybridResult.recordsScraped} records updated for ${yesterdayStr}`);
       }
       
       lastYesterdaySync = todayCentral;
@@ -629,11 +635,17 @@ async function backfillRecentHourlySalesGaps() {
     for (const dateStr of gapDates) {
       try {
         const normalizedDate = new Date(dateStr + 'T12:00:00.000Z');
+        // First get 7shifts labor + sales baseline
         const result = await fetchHourlySalesFromAPI(normalizedDate);
         if (result.success) {
           log(`Backfilled ${dateStr}: ${result.recordsScraped} hourly records`);
         } else {
           log(`Backfill failed for ${dateStr}: ${result.error}`);
+        }
+        // Then overlay with POS sales (POS takes priority over 7shifts)
+        const hybridResult = await syncSalesWithXenialPOS(normalizedDate);
+        if (hybridResult.success && hybridResult.recordsScraped > 0) {
+          log(`Backfill POS overlay ${dateStr}: ${hybridResult.recordsScraped} records`);
         }
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (err) {
