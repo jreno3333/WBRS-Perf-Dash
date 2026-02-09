@@ -40,11 +40,11 @@ Preferred communication style: Simple, everyday language.
 - **Map Page**: Interactive map displaying restaurant locations with sales performance indicators and real-time weather data.
 - **Holiday Context**: Displays US Federal Holiday information on the dashboard and map.
 - **Settings/Admin Page**: Manages restaurant open dates and unit statuses.
-- **Sales Display & Ranking**: Uses `actualSales` for consistent ranking and display across deployments, prioritizing POS data for current day sales and falling back to 7shifts for historical data.
+- **Sales Display & Ranking**: Uses `actualSales` for consistent ranking and display across deployments, sourced exclusively from Xenial POS data stored in pos_orders table.
 - **Daily Performance Summary**: Provides comprehensive daily analysis per unit, including sales variance tracking, staffing pattern analysis, drive-thru speed issue detection, and actionable recommendations. Aggregation occurs at Unit, Market, State, and Company levels.
 - **Markets/Grouping System**: Allows creation of custom regional groups for restaurants, enabling filtering and aggregated metrics.
 - **7shifts Integration**: Syncs sales, labor, and employee data, performing timezone-aware data normalization and calculating projected labor percentages.
-- **Xenial POS Integration**: Receives real-time order data via webhooks as the primary source for current sales. Hourly sales sync always writes complete records (sales + labor) every 5 minutes — POS sales are used when available, with 7shifts sales as fallback. This eliminates overnight backfill dependency and prevents data gaps from app restarts.
+- **Xenial POS Integration**: Receives real-time order data via webhooks as the sole source for sales data. Hourly sales sync writes complete records (POS sales + 7shifts labor) every 5 minutes. 7shifts is only used for labor/projected data — never for actual sales (same POS source with added delay). Historical sales data is retained in our own database, eliminating any dependency on 7shifts for sales.
 - **HME Drive-Thru Timer Integration**: Fetches and aggregates drive-thru timing data from HME CLOUD (ZOOM Nitro), displaying speed indicators on leaderboard cards.
 - **Google Reviews Integration**: Tracks Google business review ratings using the Google Places API, with badges indicating performance and a scheduled hourly sync.
 - **Qualtrics OSAT Integration**: Collects and processes Qualtrics survey responses via the Imported Data Project (IDP) API to calculate customer satisfaction (OSAT) scores. Surveys are assigned to the correct hour based on transaction time (`d` and `t` fields) for hourly analysis. Features:

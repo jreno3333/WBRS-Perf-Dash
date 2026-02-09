@@ -955,23 +955,12 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
     
     let recordsScraped = 0;
     
-    // Determine if target date is today (for POS sales lookup)
-    const todayInCentral = new Intl.DateTimeFormat('en-CA', { 
-      timeZone: 'America/Chicago',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(new Date());
-    const isToday = dateStr === todayInCentral;
-    
     // Preload location mappings once for POS store number lookups
-    let xenialMappingByRestaurantId = new Map<string, string>();
-    if (isToday) {
-      const allMappings = await db.select().from(locationMapping);
-      for (const m of allMappings) {
-        if (m.restaurantId && m.xenialStoreNumber) {
-          xenialMappingByRestaurantId.set(m.restaurantId, m.xenialStoreNumber);
-        }
+    const allMappings = await db.select().from(locationMapping);
+    const xenialMappingByRestaurantId = new Map<string, string>();
+    for (const m of allMappings) {
+      if (m.restaurantId && m.xenialStoreNumber) {
+        xenialMappingByRestaurantId.set(m.restaurantId, m.xenialStoreNumber);
       }
     }
     
@@ -997,38 +986,32 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
       const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
       
-      // For today: query POS sales from pos_orders table. If POS data exists,
-      // use it (real-time, accurate). If not, fall back to 7shifts sales.
-      // This ensures hourly_sales always has complete data — no overnight backfill needed.
-      // For historical dates: use 7shifts sales (finalized end-of-day numbers).
-      let posSalesByHour = new Map<number, number>();
-      let hasPosData = false;
-      if (isToday) {
-        const xenialStoreNumber = xenialMappingByRestaurantId.get(restaurant.id);
-        
-        if (xenialStoreNumber) {
-          const posStartOfDay = new Date(dateStr + 'T00:00:00.000Z');
-          const posEndOfDay = new Date(dateStr + 'T23:59:59.999Z');
-          const tzLiteral = sql.raw(`'${locationTimezone}'`);
-          const posResults = await db
-            .select({
-              hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})::int`,
-              totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
-            })
-            .from(posOrders)
-            .where(
-              and(
-                eq(posOrders.storeNumber, xenialStoreNumber),
-                gte(posOrders.businessDate, posStartOfDay),
-                lt(posOrders.businessDate, posEndOfDay)
-              )
+      // Query POS sales from pos_orders table — POS is the sole source of sales data.
+      // 7shifts sales data is redundant (same POS source with added delay).
+      const posSalesByHour = new Map<number, number>();
+      const xenialStoreNumber = xenialMappingByRestaurantId.get(restaurant.id);
+      
+      if (xenialStoreNumber) {
+        const posStartOfDay = new Date(dateStr + 'T00:00:00.000Z');
+        const posEndOfDay = new Date(dateStr + 'T23:59:59.999Z');
+        const tzLiteral = sql.raw(`'${locationTimezone}'`);
+        const posResults = await db
+          .select({
+            hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})::int`,
+            totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+          })
+          .from(posOrders)
+          .where(
+            and(
+              eq(posOrders.storeNumber, xenialStoreNumber),
+              gte(posOrders.businessDate, posStartOfDay),
+              lt(posOrders.businessDate, posEndOfDay)
             )
-            .groupBy(sql`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})`);
-          
-          for (const row of posResults) {
-            posSalesByHour.set(row.hour, Number(row.totalSales) || 0);
-          }
-          hasPosData = posSalesByHour.size > 0;
+          )
+          .groupBy(sql`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})`);
+        
+        for (const row of posResults) {
+          posSalesByHour.set(row.hour, Number(row.totalSales) || 0);
         }
       }
       
@@ -1060,16 +1043,9 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               roundedPositions['_operatorScheduled'] = 1;
             }
             
-            // Sales priority: POS data (if available for today) > 7shifts actual_sales
-            // For today with POS: use POS sales (real-time from webhook)
-            // For today without POS: use 7shifts sales (so data isn't lost)
-            // For historical: use 7shifts sales (finalized numbers)
-            let salesAmount: number;
-            if (isToday && hasPosData) {
-              salesAmount = posSalesByHour.get(hour) || 0;
-            } else {
-              salesAmount = interval.actual_sales / 100;
-            }
+            // POS is the sole source of sales data — 7shifts sales are redundant
+            // (same Xenial POS source with added delay)
+            const salesAmount = posSalesByHour.get(hour) || 0;
             
             await tx.insert(hourlySales).values({
               restaurantId: restaurant.id,
@@ -1077,7 +1053,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               hour,
               actualSales: salesAmount.toFixed(2),
               projectedSales: (interval.projected_sales / 100).toFixed(2),
-              pastActualSales: isToday ? '0.00' : (interval.past_actual_sales / 100).toFixed(2),
+              pastActualSales: '0.00',
             });
             
             const dateStr2 = targetDate.toISOString().split('T')[0];
@@ -1102,10 +1078,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
           }
         });
         
-        const salesNote = isToday 
-          ? (hasPosData ? ` (POS: ${posSalesByHour.size} hours)` : ' (7shifts sales - no POS data)')
-          : '';
-        console.log(`Saved ${intervals.length} hourly records for ${location.name} (${timePunches.length} time punches)${salesNote}`);
+        console.log(`Saved ${intervals.length} hourly records for ${location.name} (POS: ${posSalesByHour.size} hours, ${timePunches.length} time punches)`);
       }
     }
     
@@ -1241,10 +1214,8 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       
       const hasPosData = restaurantSales.size > 0;
       
-      // If no POS data, skip this restaurant and keep existing hourly_sales data
-      // The original 7shifts hourly sync will have populated correct data
+      // If no POS data, skip — no sales to write for this restaurant
       if (!hasPosData) {
-        console.log(`No POS data for ${restaurant.name} - skipping (will use existing 7shifts data)`);
         continue;
       }
       
@@ -1253,40 +1224,12 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       const roleMap = await api.getRoles(location.id);
       const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
       
-      // DEBUG: Log time punch details for East Ridge (1679) to diagnose labor dropoff issue
-      if (restaurant.name.includes('1679') || restaurant.name.includes('East Ridge')) {
-        console.log(`[East Ridge Debug] ${timePunches.length} time punches for ${dateStr}, timezone: ${locationTimezone}`);
-        
-        // Analyze punches that would cover afternoon hours (12pm-8pm local)
-        const afternoonPunches = timePunches.filter(p => {
-          const clockIn = new Date(p.clocked_in);
-          const clockOut = p.clocked_out ? new Date(p.clocked_out) : new Date();
-          // Convert to local hours
-          const clockInHour = parseInt(clockIn.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', hour12: false }));
-          const clockOutHour = parseInt(clockOut.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', hour12: false }));
-          // Punch overlaps afternoon if clock_in < 20 and clock_out >= 12
-          return clockInHour < 20 && clockOutHour >= 12;
-        });
-        console.log(`[East Ridge Debug] ${afternoonPunches.length} punches covering 12pm-8pm:`);
-        afternoonPunches.forEach(p => {
-          const clockIn = new Date(p.clocked_in);
-          const clockOut = p.clocked_out ? new Date(p.clocked_out) : null;
-          const inLocal = clockIn.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', minute: '2-digit', hour12: true });
-          const outLocal = clockOut ? clockOut.toLocaleString('en-US', { timeZone: locationTimezone, hour: '2-digit', minute: '2-digit', hour12: true }) : 'OPEN';
-          console.log(`  - ${roleMap.get(p.role_id) || 'Unknown'}: ${inLocal} - ${outLocal}`);
-        });
-        
-        // Currently clocked in
-        const clockedIn = timePunches.filter(p => !p.clocked_out);
-        console.log(`[East Ridge Debug] ${clockedIn.length} employees still clocked in`);
-      }
-      
       // Get labor hours with position breakdown from 7shifts
       const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
       
-      // Get projected labor/sales from 7shifts for forecasting (and as fallback for sales)
+      // Get projected labor/sales from 7shifts for forecasting only (not for actual sales)
       const intervals = await api.getHourlySales(location.id, dateStr);
-      const projectedByHour = new Map<number, { projectedSales: number; projectedLabor: number; actualLabor: number; actualSales: number }>();
+      const projectedByHour = new Map<number, { projectedSales: number; projectedLabor: number; actualLabor: number }>();
       for (const interval of intervals) {
         const hourMatch = interval.start.match(/T(\d{2}):/);
         const hour = hourMatch ? parseInt(hourMatch[1]) : 0;
@@ -1294,11 +1237,10 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
           projectedSales: interval.projected_sales / 100,
           projectedLabor: interval.projected_labor / 100,
           actualLabor: interval.actual_labor / 100,
-          actualSales: interval.actual_sales / 100, // 7shifts sales as fallback
         });
       }
       
-      // Determine which hours have data (POS sales, 7shifts sales, or labor)
+      // Determine which hours have data (POS sales or labor)
       const hoursWithData = new Set<number>();
       Array.from(restaurantSales.keys()).forEach(h => hoursWithData.add(h));
       Array.from(laborByHour.entries()).forEach(([h, labor]) => {
@@ -1322,12 +1264,11 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
           
           // Insert new hourly records
           for (const hour of Array.from(hoursWithData).sort((a, b) => a - b)) {
-            const posSales = restaurantSales.get(hour);
             const hourLabor = laborByHour.get(hour) || { totalHours: 0, byPosition: {} };
-            const projected = projectedByHour.get(hour) || { projectedSales: 0, projectedLabor: 0, actualLabor: 0, actualSales: 0 };
+            const projected = projectedByHour.get(hour) || { projectedSales: 0, projectedLabor: 0, actualLabor: 0 };
             
-            // Use POS sales if available, otherwise fall back to 7shifts actualSales
-            const finalSales = posSales !== undefined ? posSales : projected.actualSales;
+            // POS is the sole source of sales data
+            const finalSales = restaurantSales.get(hour) || 0;
             
             // Round position hours
             const roundedPositions: Record<string, number> = {};

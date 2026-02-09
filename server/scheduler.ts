@@ -514,17 +514,16 @@ async function syncYesterdayIfNeeded() {
       
       const yesterdayDate = new Date(yesterdayStr + 'T12:00:00.000Z');
       
-      // Use fetchHourlySalesFromAPI for yesterday (it's now a historical date,
-      // so it writes 7shifts sales). Then overlay with POS sales via hybrid sync.
+      // Resync yesterday's hourly data: POS sales + finalized labor from 7shifts
       const result = await fetchHourlySalesFromAPI(yesterdayDate);
       if (result.success) {
-        log(`Yesterday labor/sales resync: ${result.recordsScraped} hourly records for ${yesterdayStr}`);
+        log(`Yesterday resync: ${result.recordsScraped} hourly records for ${yesterdayStr}`);
       }
       
-      // Overlay with POS sales to ensure POS data takes priority
+      // Also run hybrid sync to ensure POS sales are fully written
       const hybridResult = await syncSalesWithXenialPOS(yesterdayDate);
       if (hybridResult.success && hybridResult.recordsScraped > 0) {
-        log(`Yesterday POS overlay: ${hybridResult.recordsScraped} records updated for ${yesterdayStr}`);
+        log(`Yesterday hybrid sync: ${hybridResult.recordsScraped} records for ${yesterdayStr}`);
       }
       
       lastYesterdaySync = todayCentral;
@@ -635,17 +634,16 @@ async function backfillRecentHourlySalesGaps() {
     for (const dateStr of gapDates) {
       try {
         const normalizedDate = new Date(dateStr + 'T12:00:00.000Z');
-        // First get 7shifts labor + sales baseline
+        // Sync POS sales + 7shifts labor for this date
         const result = await fetchHourlySalesFromAPI(normalizedDate);
         if (result.success) {
           log(`Backfilled ${dateStr}: ${result.recordsScraped} hourly records`);
         } else {
           log(`Backfill failed for ${dateStr}: ${result.error}`);
         }
-        // Then overlay with POS sales (POS takes priority over 7shifts)
         const hybridResult = await syncSalesWithXenialPOS(normalizedDate);
         if (hybridResult.success && hybridResult.recordsScraped > 0) {
-          log(`Backfill POS overlay ${dateStr}: ${hybridResult.recordsScraped} records`);
+          log(`Backfill hybrid ${dateStr}: ${hybridResult.recordsScraped} records`);
         }
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (err) {
