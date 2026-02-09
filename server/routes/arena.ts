@@ -462,6 +462,7 @@ router.get("/api/arena/leaderboard", requireArenaAccess, async (req: Request, re
       const restHours = new Map<string, number>();
       let teamMembers: any[] = [];
 
+      // Try to find leader in crew data first
       for (const rest of data.activeRestaurants) {
         for (let h = 0; h < 24; h++) {
           const crew = data.crewByKey.get(`${rest.id}-${today}-${h}`);
@@ -495,12 +496,40 @@ router.get("/api/arena/leaderboard", requireArenaAccess, async (req: Request, re
           });
           hourlyScores.push(score);
 
-          // Track last crew for team display
-          if (h === Math.max(...Array.from({ length: 24 }, (_, i) => i).filter(hr => {
-            const c = data.crewByKey.get(`${rest.id}-${today}-${hr}`);
-            return c?.crewMembers?.some((m: any) => m.userId === userId);
-          }))) {
-            teamMembers = crew.crewMembers.map((m: any) => `${m.firstName} ${m.lastName}`);
+          // Track team from last working hour
+          teamMembers = crew.crewMembers.map((m: any) => `${m.firstName} ${m.lastName}`);
+        }
+      }
+
+      // Fallback: if no crew data matched, use leader's assigned restaurant
+      if (hourlyScores.length === 0 && leader.restaurantId) {
+        const assignedRest = data.activeRestaurants.find(r => r.id === leader.restaurantId);
+        if (assignedRest) {
+          primaryRestaurantId = assignedRest.id;
+          for (let h = 0; h < 24; h++) {
+            const salesKey = `${assignedRest.id}-${today}-${h}`;
+            const sales = data.salesByKey.get(salesKey);
+            if (!sales || sales.actualSales <= 0) continue;
+            const labor = data.laborByKey.get(salesKey);
+            if (!labor) continue;
+
+            const lwDate = new Date(today + "T12:00:00Z");
+            lwDate.setDate(lwDate.getDate() - 7);
+            const lwDateStr = lwDate.toISOString().split("T")[0];
+            const lwSales = data.salesByKey.get(`${assignedRest.id}-${lwDateStr}-${h}`);
+            const hme = data.hmeByKey.get(salesKey);
+            const osat = data.osatByKey.get(salesKey);
+
+            const score = computeHourlyGradeScore({
+              actualSales: sales.actualSales,
+              lastWeekSales: lwSales?.actualSales || 0,
+              actualStaff: labor.employeeCount,
+              projectedStaff: labor.projectedLabor / 10,
+              avgDtTime: hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : null,
+              osatPercent: osat && osat.totalResponses > 0 ? osat.osatPercent : null,
+              osatResponses: osat?.totalResponses || 0,
+            });
+            hourlyScores.push(score);
           }
         }
       }
@@ -508,9 +537,12 @@ router.get("/api/arena/leaderboard", requireArenaAccess, async (req: Request, re
       if (hourlyScores.length < 1) continue;
 
       // Determine primary restaurant
-      let maxH = 0;
-      restHours.forEach((hrs, rid) => { if (hrs > maxH) { maxH = hrs; primaryRestaurantId = rid; } });
-      const rest = data.activeRestaurants.find(r => r.id === primaryRestaurantId);
+      if (!primaryRestaurantId) {
+        let maxH = 0;
+        restHours.forEach((hrs, rid) => { if (hrs > maxH) { maxH = hrs; primaryRestaurantId = rid; } });
+      }
+      const rest = data.activeRestaurants.find(r => r.id === primaryRestaurantId)
+        || (leader.restaurantId ? data.activeRestaurants.find(r => r.id === leader.restaurantId) : null);
 
       const avgScore = hourlyScores.reduce((a, b) => a + b, 0) / hourlyScores.length;
       const entityId = String(userId);

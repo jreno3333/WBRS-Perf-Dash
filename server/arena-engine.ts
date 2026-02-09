@@ -97,17 +97,12 @@ export async function loadDayData(dateStr: string): Promise<DayData> {
   lastWeekDate.setDate(lastWeekDate.getDate() - 7);
   const lastWeekDateStr = lastWeekDate.toISOString().split("T")[0];
 
-  const dateStart = new Date(`${dateStr}T00:00:00.000Z`);
-  const dateEnd = new Date(`${dateStr}T23:59:59.999Z`);
-  const lwStart = new Date(`${lastWeekDateStr}T00:00:00.000Z`);
-  const lwEnd = new Date(`${lastWeekDateStr}T23:59:59.999Z`);
-
   const [salesRows, lwSalesRows, laborRows, hmeRows, osatRows, crewRows, restRows, empRows] = await Promise.all([
     db.select().from(hourlySales).where(
-      and(gte(hourlySales.salesDate, dateStart), lte(hourlySales.salesDate, dateEnd))
+      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${dateStr}`
     ),
     db.select().from(hourlySales).where(
-      and(gte(hourlySales.salesDate, lwStart), lte(hourlySales.salesDate, lwEnd))
+      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${lastWeekDateStr}`
     ),
     db.select().from(hourlyLabor).where(eq(hourlyLabor.date, dateStr)),
     db.select().from(hmeTimerData).where(eq(hmeTimerData.date, dateStr)),
@@ -131,8 +126,7 @@ export async function loadDayData(dateStr: string): Promise<DayData> {
   }
   // Also add last week sales with last week's date key
   for (const s of lwSalesRows) {
-    const d = s.salesDate.toISOString().split("T")[0];
-    const key = `${s.restaurantId}-${d}-${s.hour}`;
+    const key = `${s.restaurantId}-${lastWeekDateStr}-${s.hour}`;
     if (!salesByKey.has(key)) {
       salesByKey.set(key, { actualSales: Number(s.actualSales) || 0, restaurantId: s.restaurantId, hour: s.hour });
     }
