@@ -418,7 +418,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                 {dailyOsatTotals.totalResponses > 0 && (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <span className={`font-medium cursor-help ${dailyOsatPercent >= 85 ? 'text-purple-600 dark:text-purple-400' : dailyOsatPercent >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                      <span className={`font-medium cursor-help ${dailyOsatPercent >= 85 ? 'text-green-600 dark:text-green-400' : dailyOsatPercent >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
                         OSAT: {Math.round(dailyOsatPercent)}% ({dailyOsatTotals.totalResponses})
                       </span>
                     </PopoverTrigger>

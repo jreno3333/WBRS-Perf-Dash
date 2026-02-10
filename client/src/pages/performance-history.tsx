@@ -353,7 +353,7 @@ function SummaryCard({
         {avgOsat !== undefined && (
           <div className="mt-3 pt-3 border-t">
             <div className="flex items-center gap-2">
-              <ThumbsUp className="w-4 h-4 text-purple-500" />
+              <ThumbsUp className="w-4 h-4 text-green-500" />
               <span className={`font-semibold ${avgOsat >= 85 ? "text-green-600" : avgOsat >= 80 ? "text-yellow-600" : "text-red-600"}`}>
                 {avgOsat.toFixed(0)}% OSAT
               </span>

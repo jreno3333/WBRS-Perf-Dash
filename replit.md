@@ -57,9 +57,9 @@ Preferred communication style: Simple, everyday language.
   - **Rating Conversion**: Converts text labels ("Extremely satisfied", "Highly satisfied", etc.) to numeric scores (1-5)
   - **Sync Options**: Regular sync (last 3 days) and historical sync (7+ days) from Settings page
   - **Hourly Granularity**: Tracks OSAT by hour and displays in hourly chart tooltips (green 85%+, yellow 80-85%, red <80%)
-  - **Hourly Chart Display**: Purple OSAT legend indicator; tooltip shows "OSAT X% (N)" where N is response count
+  - **Hourly Chart Display**: Green OSAT legend indicator; tooltip shows "OSAT X% (N)" where N is response count
   - **Scheduled Sync**: Runs every 5 minutes automatically
-  - **Summary Cards Display**: Shows aggregate OSAT percentage and response count with color-coded badge (purple for 85%+, yellow for 80-85%, red for <80%)
+  - **Summary Cards Display**: Shows aggregate OSAT percentage and response count with color-coded badge (green for 85%+, yellow for 80-85%, red for <80%)
   - **Daily Summary Display**: OSAT badge on unit cards, OSAT issues section (hours with <80% OSAT), survey issue areas for coaching, and OSAT in strengths/concerns with recommendations
   - **Surveys Received Section**: Shows each hour with surveys, color-coded satisfaction badges, response count, and the leader(s) on duty for recognition/coaching
   - **Aggregated Views**: State/Market summary cards show aggregate OSAT metrics and count of units with low OSAT

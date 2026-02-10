@@ -639,7 +639,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 )}
                 {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
                   <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-purple-500" />
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
                     OSAT
                   </span>
                 )}
@@ -802,18 +802,19 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   />
                 </svg>
               )}
-              {/* OSAT Dots Overlay - purple dots on hours with survey responses */}
+              {/* OSAT Dots Overlay - colored dots on hours with survey responses */}
               {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
                 <div className="absolute inset-0 w-full h-full pointer-events-none flex">
                   {activeHours.map((hour, idx) => {
                     const hasOsat = hour.osatResponses && hour.osatResponses > 0;
                     const osatPct = hour.osatPercent || 0;
                     const fillColor = osatPct >= 85 ? "bg-green-500" : osatPct >= 80 ? "bg-yellow-500" : "bg-red-500";
+                    const borderColor = osatPct >= 85 ? "border-green-700" : osatPct >= 80 ? "border-yellow-700" : "border-red-700";
                     return (
                       <div key={`osat-${hour.hour}`} className="flex-1 flex justify-center">
                         {hasOsat && (
                           <div 
-                            className={`w-3 h-3 rounded-full ${fillColor} border-2 border-purple-500 mt-1`}
+                            className={`w-3 h-3 rounded-full ${fillColor} border-2 ${borderColor} mt-1`}
                           />
                         )}
                       </div>

@@ -32,7 +32,7 @@ function getSpeedColor(seconds: number): string {
 }
 
 function getOsatColor(pct: number): string {
-  if (pct >= 85) return "text-purple-500";
+  if (pct >= 85) return "text-green-500";
   if (pct >= 80) return "text-amber-500";
   return "text-red-500";
 }
