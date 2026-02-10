@@ -111,6 +111,7 @@ router.get("/api/leaderboard", async (req, res) => {
           avgTotalTime: hmeData.avgTotalTime,
           avgServiceTime: hmeData.avgServiceTime,
           speedAttainment: hmeData.speedAttainment,
+          carsUnder6Min: hmeData.carsUnder6Min,
         };
       }
     }
