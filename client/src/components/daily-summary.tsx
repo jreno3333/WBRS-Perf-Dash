@@ -413,9 +413,12 @@ interface AggregatedSummary {
   recommendation: string;
   avgOsatPercent?: number;
   totalOsatResponses?: number;
+  avgSpeedAttainment?: number;
+  totalDTCars?: number;
+  dtStoresReporting?: number;
 }
 
-function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSummary {
+function aggregateInsights(insights: UnitInsight[], name: string, groupRestaurants?: RestaurantSales[]): AggregatedSummary {
   const unitCount = insights.length;
   const totalSales = insights.reduce((sum, i) => sum + i.totalSales, 0);
   const avgVariance = insights.reduce((sum, i) => sum + i.salesVariance, 0) / unitCount;
@@ -435,6 +438,29 @@ function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSum
   const avgOsatPercent = totalOsatResponses > 0
     ? unitsWithOsat.reduce((sum, i) => sum + ((i.osatPercent || 0) * (i.osatResponses || 0)), 0) / totalOsatResponses
     : undefined;
+
+  // Calculate aggregate speed attainment from restaurant driveThru data
+  let avgSpeedAttainment: number | undefined;
+  let totalDTCars: number | undefined;
+  let dtStoresReporting: number | undefined;
+  if (groupRestaurants) {
+    let totalCars = 0;
+    let totalUnder6 = 0;
+    let storesWithData = 0;
+    for (const r of groupRestaurants) {
+      const dt = (r as any).driveThru;
+      if (dt && dt.carCount > 0) {
+        totalCars += dt.carCount;
+        totalUnder6 += dt.carsUnder6Min || 0;
+        storesWithData++;
+      }
+    }
+    if (totalCars > 0) {
+      avgSpeedAttainment = Math.round((totalUnder6 / totalCars) * 100);
+      totalDTCars = totalCars;
+      dtStoresReporting = storesWithData;
+    }
+  }
   
   // Find most common strength and concern
   const allStrengths = insights.flatMap(i => i.strengths);
@@ -487,6 +513,9 @@ function aggregateInsights(insights: UnitInsight[], name: string): AggregatedSum
     recommendation,
     avgOsatPercent,
     totalOsatResponses: totalOsatResponses > 0 ? totalOsatResponses : undefined,
+    avgSpeedAttainment,
+    totalDTCars,
+    dtStoresReporting,
   };
 }
 
@@ -784,8 +813,17 @@ function AggregatedSummaryCard({ summary, icon }: { summary: AggregatedSummary; 
           <p className="text-sm">{summary.recommendation}</p>
         </div>
         
-        {(summary.understaffedUnits > 0 || summary.overstaffedUnits > 0 || summary.slowSpeedUnits > 0 || summary.lowOsatUnits > 0 || summary.avgOsatPercent !== undefined) && (
+        {(summary.understaffedUnits > 0 || summary.overstaffedUnits > 0 || summary.slowSpeedUnits > 0 || summary.lowOsatUnits > 0 || summary.avgOsatPercent !== undefined || summary.avgSpeedAttainment !== undefined) && (
           <div className="flex flex-wrap gap-2 pt-2">
+            {summary.avgSpeedAttainment !== undefined && (
+              <Badge 
+                variant="secondary" 
+                className={`text-xs ${summary.avgSpeedAttainment >= 70 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : summary.avgSpeedAttainment >= 50 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"}`}
+              >
+                <Clock className="w-3 h-3 mr-1" />
+                Speed {summary.avgSpeedAttainment}% ({summary.dtStoresReporting} stores)
+              </Badge>
+            )}
             {summary.avgOsatPercent !== undefined && summary.totalOsatResponses && summary.totalOsatResponses > 0 && (
               <Badge 
                 variant="secondary" 
@@ -985,10 +1023,12 @@ export function DailySummary({
       if (!byState.has(state)) byState.set(state, []);
       byState.get(state)!.push(insight);
     }
-    return Array.from(byState.entries()).map(([state, insights]) => 
-      aggregateInsights(insights, state)
-    ).sort((a, b) => b.totalSales - a.totalSales);
-  }, [unitInsights]);
+    return Array.from(byState.entries()).map(([state, insights]) => {
+      const stateRestaurantIds = new Set(insights.map(i => i.restaurantId));
+      const stateRestaurants = restaurants.filter(r => stateRestaurantIds.has(r.restaurantId));
+      return aggregateInsights(insights, state, stateRestaurants);
+    }).sort((a, b) => b.totalSales - a.totalSales);
+  }, [unitInsights, restaurants]);
   
   // Aggregate by market
   const marketSummaries = useMemo(() => {
@@ -1002,14 +1042,16 @@ export function DailySummary({
     }
     return Array.from(byMarket.entries()).map(([marketId, insights]) => {
       const market = markets.find(m => m.id === marketId);
-      return aggregateInsights(insights, market?.name || "Unknown Market");
+      const marketRestaurantIds = new Set(insights.map(i => i.restaurantId));
+      const marketRestaurants = restaurants.filter(r => marketRestaurantIds.has(r.restaurantId));
+      return aggregateInsights(insights, market?.name || "Unknown Market", marketRestaurants);
     }).sort((a, b) => b.totalSales - a.totalSales);
-  }, [unitInsights, markets]);
+  }, [unitInsights, markets, restaurants]);
   
   // Company-wide summary
   const companySummary = useMemo(() => {
-    return aggregateInsights(unitInsights, "Company Overview");
-  }, [unitInsights]);
+    return aggregateInsights(unitInsights, "Company Overview", restaurants);
+  }, [unitInsights, restaurants]);
   
   if (restaurants.length === 0) return null;
   

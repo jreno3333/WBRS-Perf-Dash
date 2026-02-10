@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -137,11 +137,38 @@ function calculateStateOsat(restaurants: RestaurantSales[]): { osatPercent: numb
   };
 }
 
-// Get OSAT badge color based on percentage
 function getOsatColor(percent: number): string {
   if (percent >= 85) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
   if (percent >= 80) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
   return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+}
+
+function getSpeedColor(attainment: number): string {
+  if (attainment >= 70) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+  if (attainment >= 50) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+}
+
+function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttainment: number | undefined; totalCars: number; carsUnder6Min: number; storesWithData: number } {
+  let totalCars = 0;
+  let totalUnder6 = 0;
+  let storesWithData = 0;
+
+  for (const r of stateRestaurants) {
+    const dt = (r as any).driveThru;
+    if (dt && dt.carCount > 0) {
+      totalCars += dt.carCount;
+      totalUnder6 += dt.carsUnder6Min || 0;
+      storesWithData++;
+    }
+  }
+
+  return {
+    speedAttainment: totalCars > 0 ? Math.round((totalUnder6 / totalCars) * 100) : undefined,
+    totalCars,
+    carsUnder6Min: totalUnder6,
+    storesWithData,
+  };
 }
 
 export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }: StateBreakdownProps) {
@@ -202,6 +229,10 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
   const alabamaOsat = calculateStateOsat(alabamaRestaurants);
   const tennesseeOsat = calculateStateOsat(tennesseeRestaurants);
 
+  // Calculate speed attainment for each state
+  const alabamaSpeed = calculateStateSpeed(alabamaRestaurants);
+  const tennesseeSpeed = calculateStateSpeed(tennesseeRestaurants);
+
   const getGradeColor = (grade: string) => {
     if (grade === 'A+' || grade === 'A') return 'text-green-600 dark:text-green-400 bg-green-500/20 border-green-500/50';
     if (grade === 'B') return 'text-blue-600 dark:text-blue-400 bg-blue-500/20 border-blue-500/50';
@@ -228,6 +259,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
       xScore: alabamaXScore,
       crewScore: alabamaCrewScore,
       osat: alabamaOsat,
+      speed: alabamaSpeed,
     },
     {
       name: "Tennessee",
@@ -241,6 +273,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
       xScore: tennesseeXScore,
       crewScore: tennesseeCrewScore,
       osat: tennesseeOsat,
+      speed: tennesseeSpeed,
     },
   ];
 
@@ -283,6 +316,22 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
                   </div>
                   <div className="text-xs text-muted-foreground">ahead of LW</div>
                 </div>
+                {state.speed.speedAttainment !== undefined && (
+                  <div className="relative group">
+                    <Badge 
+                      className={`${getSpeedColor(state.speed.speedAttainment)} border-0 gap-1 cursor-help`}
+                      data-testid={`badge-speed-state-${state.abbr.toLowerCase()}`}
+                    >
+                      <Timer className="w-3 h-3" />
+                      <span className="font-medium">{state.speed.speedAttainment}%</span>
+                    </Badge>
+                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                      <div className="font-medium">Speed Attainment</div>
+                      <div className="text-muted-foreground">{state.speed.carsUnder6Min}/{state.speed.totalCars} cars under 6 min</div>
+                      <div className="text-muted-foreground">{state.speed.storesWithData} stores reporting</div>
+                    </div>
+                  </div>
+                )}
                 {state.osat.osatPercent !== undefined && (
                   <div className="relative group">
                     <Badge 
