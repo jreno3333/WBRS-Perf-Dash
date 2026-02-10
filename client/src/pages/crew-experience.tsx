@@ -789,8 +789,8 @@ export default function CrewExperiencePage() {
                               </span>
                             )}
                             {day.avgSpeed !== undefined && (
-                              <span className={`text-xs ${day.avgSpeed <= 300 ? 'text-green-600 dark:text-green-400' : day.avgSpeed <= 420 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
-                                {formatSpeed(day.avgSpeed)}
+                              <span className={`text-xs ${day.avgSpeed >= 70 ? 'text-green-600 dark:text-green-400' : day.avgSpeed >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {Math.round(day.avgSpeed)}%
                               </span>
                             )}
                             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -808,9 +808,9 @@ export default function CrewExperiencePage() {
                               </div>
                               {day.avgSpeed !== undefined && (
                                 <div>
-                                  <div className="text-xs text-muted-foreground">Avg Speed</div>
-                                  <div className={`text-sm font-medium ${day.avgSpeed <= 300 ? 'text-green-600 dark:text-green-400' : day.avgSpeed <= 420 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {formatSpeed(day.avgSpeed)}
+                                  <div className="text-xs text-muted-foreground">Speed Att.</div>
+                                  <div className={`text-sm font-medium ${day.avgSpeed >= 70 ? 'text-green-600 dark:text-green-400' : day.avgSpeed >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {Math.round(day.avgSpeed)}%
                                   </div>
                                 </div>
                               )}

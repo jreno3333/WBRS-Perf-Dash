@@ -30,20 +30,18 @@ function formatCurrency(amount: number): string {
   return `$${Math.round(amount).toLocaleString('en-US')}`;
 }
 
-function formatSpeed(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+function formatSpeed(attainment: number): string {
+  return `${Math.round(attainment)}%`;
 }
 
-function getSpeedColor(seconds: number): string {
-  if (seconds <= 300) return "#16a34a";
-  if (seconds <= 420) return "#d97706";
+function getSpeedColor(attainment: number): string {
+  if (attainment >= 70) return "#16a34a";
+  if (attainment >= 50) return "#d97706";
   return "#dc2626";
 }
 
 function getOsatColor(pct: number): string {
-  if (pct >= 85) return "#7c3aed";
+  if (pct >= 85) return "#16a34a";
   if (pct >= 80) return "#d97706";
   return "#dc2626";
 }
@@ -286,9 +284,10 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
           day.staffingDiffs.push(actualStaff - projectedStaff);
 
-          if (hme && hme.avgTotalTime && hme.avgTotalTime > 0) {
-            day.speedValues.push(hme.avgTotalTime);
-            allSpeedValues.push(hme.avgTotalTime);
+          if (hme && hme.carCount > 0) {
+            const attainment = Math.round((hme.carsUnder6Min / hme.carCount) * 100);
+            day.speedValues.push(attainment);
+            allSpeedValues.push(attainment);
           }
           if (osatHour && osatHour.totalResponses > 0) {
             day.osatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
@@ -323,7 +322,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         components.push({ weight: 15, score: staffingScore });
 
         if (avgSpeed !== undefined) {
-          components.push({ weight: 25, score: avgSpeed > 420 ? 40 : avgSpeed > 300 ? 70 : 100 });
+          components.push({ weight: 25, score: avgSpeed < 50 ? 40 : avgSpeed < 70 ? 70 : 100 });
         }
         if (osatPercent !== undefined) {
           components.push({ weight: 25, score: osatPercent < 80 ? 40 : osatPercent < 85 ? 70 : 100 });

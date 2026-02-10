@@ -25,9 +25,9 @@ function getGradeColor(grade: string): string {
   return "text-red-500";
 }
 
-function getSpeedColor(seconds: number): string {
-  if (seconds <= 300) return "text-green-500";
-  if (seconds <= 420) return "text-amber-500";
+function getSpeedColor(attainment: number): string {
+  if (attainment >= 70) return "text-green-500";
+  if (attainment >= 50) return "text-amber-500";
   return "text-red-500";
 }
 
@@ -37,10 +37,8 @@ function getOsatColor(pct: number): string {
   return "text-red-500";
 }
 
-function formatSpeed(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
+function formatSpeed(attainment: number): string {
+  return `${Math.round(attainment)}%`;
 }
 
 function formatTenure(hours: number): string {

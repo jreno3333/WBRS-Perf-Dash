@@ -143,12 +143,12 @@ router.get("/api/performance-history", async (req, res) => {
         components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
       }
 
-      // Speed component (weight: 25%) - only if we have valid drive-thru data
-      // GREEN (<5min/300s) = 100, YELLOW (5-7min/300-420s) = 70, RED (>7min/420s) = 40
-      if (speedSeconds !== undefined && speedSeconds > 0) {
+      // Speed component (weight: 25%) - uses attainment (% of cars under 6 min)
+      // >=70% = 100 (green), >=50% = 70 (yellow), <50% = 40 (red)
+      if (speedSeconds !== undefined && speedSeconds >= 0) {
         let speedScore = 100;
-        if (speedSeconds > 420) speedScore = 40;
-        else if (speedSeconds > 300) speedScore = 70;
+        if (speedSeconds < 50) speedScore = 40;
+        else if (speedSeconds < 70) speedScore = 70;
         components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
       }
 
@@ -307,13 +307,13 @@ router.get("/api/performance-history", async (req, res) => {
         const hasComparableSales = weekAgoSales > 0;
         const salesVariance = hasComparableSales ? ((totalSales - weekAgoSales) / weekAgoSales) * 100 : 0;
 
-        // Calculate average speed from HME timer data (weighted by car count)
+        // Calculate speed attainment (% of cars under 6 min) from HME timer data
         let avgSpeed: number | undefined;
-        const hmeWithCars = restaurantHme.filter(h => h.carCount > 0 && h.avgTotalTime > 0);
+        const hmeWithCars = restaurantHme.filter(h => h.carCount > 0);
         if (hmeWithCars.length > 0) {
           const totalCars = hmeWithCars.reduce((sum, h) => sum + h.carCount, 0);
-          const weightedTime = hmeWithCars.reduce((sum, h) => sum + (h.avgTotalTime * h.carCount), 0);
-          avgSpeed = totalCars > 0 ? weightedTime / totalCars : undefined;
+          const totalUnder6 = hmeWithCars.reduce((sum, h) => sum + h.carsUnder6Min, 0);
+          avgSpeed = totalCars > 0 ? Math.round((totalUnder6 / totalCars) * 100) : undefined;
         }
 
         // Calculate staffing diff using labor cost variance as a proxy

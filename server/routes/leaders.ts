@@ -172,9 +172,10 @@ router.get("/api/leaders", async (req, res) => {
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
           day.staffingDiffs.push(actualStaff - projectedStaff);
 
-          if (hme && hme.avgTotalTime && hme.avgTotalTime > 0) {
-            day.speedValues.push(hme.avgTotalTime);
-            allSpeedValues.push(hme.avgTotalTime);
+          if (hme && hme.carCount > 0) {
+            const attainment = hme.carCount > 0 ? Math.round((hme.carsUnder6Min / hme.carCount) * 100) : 0;
+            day.speedValues.push(attainment);
+            allSpeedValues.push(attainment);
           }
           if (osatHour && osatHour.totalResponses > 0) {
             day.osatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
@@ -203,7 +204,7 @@ router.get("/api/leaders", async (req, res) => {
         components.push({ weight: 15, score: staffingScore });
 
         if (avgSpeed !== undefined) {
-          components.push({ weight: 25, score: avgSpeed > 420 ? 40 : avgSpeed > 300 ? 70 : 100 });
+          components.push({ weight: 25, score: avgSpeed < 50 ? 40 : avgSpeed < 70 ? 70 : 100 });
         }
         if (osatPercent !== undefined) {
           components.push({ weight: 25, score: osatPercent < 80 ? 40 : osatPercent < 85 ? 70 : 100 });

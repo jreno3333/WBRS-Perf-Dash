@@ -182,6 +182,7 @@ export interface DriveThruMetrics {
   avgMenuBoardTime: number;
   avgServiceTime: number;
   avgQueueTime: number;
+  carsUnder6Min: number;
   maxTotalTime: number;
   minTotalTime: number;
 }
@@ -211,13 +212,11 @@ export function aggregateCarDataToHourly(records: HMECarRecord[]): DriveThruMetr
       if (event.EventType !== "Car_Departure") continue;
       if (!event.TotalTimeInLane) continue;
 
-      // HME returns time in local timezone with offset (e.g., "2026-01-22T15:06:05-05:00")
-      // Extract date and hour from the local time portion (before the timezone offset)
       const dtMatch = event.DepartureTime.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):/);
       if (!dtMatch) continue;
       
-      const dateStr = dtMatch[1]; // "2026-01-22"
-      const hour = parseInt(dtMatch[2]); // 15
+      const dateStr = dtMatch[1];
+      const hour = parseInt(dtMatch[2]);
       const key = `${record.StoreNumber}|${dateStr}|${hour}`;
 
       if (!hourlyMap.has(key)) {
@@ -233,7 +232,6 @@ export function aggregateCarDataToHourly(records: HMECarRecord[]): DriveThruMetr
       bucket.times.push(event.TotalTimeInLane);
       bucket.queueTimes.push(event.QueueTimeInLane || 0);
 
-      // Extract specific detector times
       const menuTime = extractDetectorTime(event.Detectors, ["menu", "order"]);
       const serviceTime = extractDetectorTime(event.Detectors, ["service", "window", "present", "delivery"]);
       
@@ -251,6 +249,7 @@ export function aggregateCarDataToHourly(records: HMECarRecord[]): DriveThruMetr
     if (bucket.times.length === 0) continue;
 
     const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const carsUnder6Min = bucket.times.filter(t => t < 360).length;
 
     metrics.push({
       storeNumber,
@@ -261,6 +260,7 @@ export function aggregateCarDataToHourly(records: HMECarRecord[]): DriveThruMetr
       avgMenuBoardTime: Math.round(avg(bucket.menuBoardTimes)),
       avgServiceTime: Math.round(avg(bucket.serviceTimes)),
       avgQueueTime: Math.round(avg(bucket.queueTimes)),
+      carsUnder6Min,
       maxTotalTime: Math.max(...bucket.times),
       minTotalTime: Math.min(...bucket.times),
     });
@@ -355,6 +355,7 @@ export async function syncHMETimerData(targetDate?: Date): Promise<{ saved: numb
           avgMenuBoardTime: m.avgMenuBoardTime,
           avgServiceTime: m.avgServiceTime,
           avgQueueTime: m.avgQueueTime,
+          carsUnder6Min: m.carsUnder6Min,
           maxTotalTime: m.maxTotalTime,
           minTotalTime: m.minTotalTime,
         });
@@ -388,6 +389,7 @@ export async function getHMETimerMetrics(restaurantId: string, date: string): Pr
     avgMenuBoardTime: d.avgMenuBoardTime,
     avgServiceTime: d.avgServiceTime,
     avgQueueTime: d.avgQueueTime,
+    carsUnder6Min: d.carsUnder6Min,
     maxTotalTime: d.maxTotalTime,
     minTotalTime: d.minTotalTime,
   }));
@@ -397,6 +399,7 @@ export async function getDailyDriveThruSummary(date: string): Promise<Map<string
   carCount: number;
   avgTotalTime: number;
   avgServiceTime: number;
+  speedAttainment: number;
 }>> {
   const data = await db.select()
     .from(hmeTimerData)
@@ -406,6 +409,7 @@ export async function getDailyDriveThruSummary(date: string): Promise<Map<string
     totalCars: number;
     totalTimeSum: number;
     serviceTimeSum: number;
+    carsUnder6Min: number;
     count: number;
   }>();
 
@@ -415,6 +419,7 @@ export async function getDailyDriveThruSummary(date: string): Promise<Map<string
         totalCars: 0,
         totalTimeSum: 0,
         serviceTimeSum: 0,
+        carsUnder6Min: 0,
         count: 0,
       });
     }
@@ -422,15 +427,18 @@ export async function getDailyDriveThruSummary(date: string): Promise<Map<string
     s.totalCars += d.carCount;
     s.totalTimeSum += d.avgTotalTime * d.carCount;
     s.serviceTimeSum += d.avgServiceTime * d.carCount;
+    s.carsUnder6Min += d.carsUnder6Min;
     s.count += d.carCount;
   }
 
-  const result = new Map<string, { carCount: number; avgTotalTime: number; avgServiceTime: number }>();
+  const result = new Map<string, { carCount: number; avgTotalTime: number; avgServiceTime: number; speedAttainment: number; carsUnder6Min: number }>();
   for (const [id, s] of Array.from(summaryMap.entries())) {
     result.set(id, {
       carCount: s.totalCars,
       avgTotalTime: s.count > 0 ? Math.round(s.totalTimeSum / s.count) : 0,
       avgServiceTime: s.count > 0 ? Math.round(s.serviceTimeSum / s.count) : 0,
+      speedAttainment: s.totalCars > 0 ? Math.round((s.carsUnder6Min / s.totalCars) * 100) : 0,
+      carsUnder6Min: s.carsUnder6Min,
     });
   }
 

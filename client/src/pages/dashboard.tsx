@@ -32,7 +32,7 @@ const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
 // Returns numeric weighted score for sorting (higher = better)
 function getExecutionGrade(
   salesVariancePct: number,
-  speedSeconds: number | undefined,
+  speedAttainment: number | undefined,
   staffingDiff: number,
   hasComparableSales: boolean = true,
   isFirstWeek: boolean = false,
@@ -49,11 +49,11 @@ function getExecutionGrade(
     components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
   }
 
-  // Speed component (weight: 25%)
-  if (speedSeconds !== undefined && speedSeconds > 0) {
+  // Speed component (weight: 25%) - uses attainment (% under 6 min)
+  if (speedAttainment !== undefined && speedAttainment >= 0) {
     let speedScore = 100;
-    if (speedSeconds > 420) speedScore = 40;
-    else if (speedSeconds > 300) speedScore = 70;
+    if (speedAttainment < 50) speedScore = 40;
+    else if (speedAttainment < 70) speedScore = 70;
     components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
 
@@ -100,7 +100,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
       const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
       const hasValidStaffing = rawEmployeeCount >= 1;
-      return getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+      return getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }
@@ -289,10 +289,10 @@ export default function Dashboard() {
               const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
               return bVariance - aVariance;
             case "dt_time":
-              // Sort by drive-thru service time ascending (fastest first)
-              const aTime = a.driveThru?.avgServiceTime ?? Infinity;
-              const bTime = b.driveThru?.avgServiceTime ?? Infinity;
-              return aTime - bTime;
+              // Sort by speed attainment descending (highest % first)
+              const aAtt = a.driveThru ? ((a.driveThru as any).carsUnder6Min / (a.driveThru.carCount || 1)) * 100 : -1;
+              const bAtt = b.driveThru ? ((b.driveThru as any).carsUnder6Min / (b.driveThru.carCount || 1)) * 100 : -1;
+              return bAtt - aAtt;
             case "xscore":
               // Sort by X-Score descending (highest first)
               // Use each restaurant's localCurrentHour for consistent scoring with display

@@ -34,27 +34,24 @@ const GRADE_WEIGHTS = {
 };
 
 function getExecutionGrade(
-  salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
-  avgServiceTime: number | undefined, 
+  salesVariancePct: number,
+  speedAttainment: number | undefined,
   staffingDiff: number,
   hasComparableSales: boolean = true,
   osatPercent: number | undefined = undefined,
   hasValidStaffing: boolean = true
 ): { grade: string; hasGrade: boolean } {
-  // Track which components are available for grading with their weights
   const components: { name: string; score: number; weight: number }[] = [];
   
-  // Sales component (weight: 35%) - only if we have comparable data
   if (hasComparableSales) {
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
     components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
   }
   
-  // Speed component (weight: 25%) - only if we have drive-thru data
-  if (avgServiceTime !== undefined && avgServiceTime > 0) {
+  if (speedAttainment !== undefined && speedAttainment >= 0) {
     let speedScore = 100;
-    if (avgServiceTime > 420) speedScore = 40;
-    else if (avgServiceTime > 300) speedScore = 70;
+    if (speedAttainment < 50) speedScore = 40;
+    else if (speedAttainment < 70) speedScore = 70;
     components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
   
@@ -211,12 +208,13 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
           }
         }
         
-        // Track speed metrics (only if drive-thru data exists)
-        if (hour.avgServiceTime !== undefined && hour.avgServiceTime > 0) {
+        // Track speed metrics using attainment (% of cars under 6 min)
+        const speedAtt = (hour as any).speedAttainment;
+        if (speedAtt !== undefined && speedAtt >= 0) {
           totalSpeedHours++;
-          if (hour.avgServiceTime <= 300) {
+          if (speedAtt >= 70) {
             speedGreenCount++;
-          } else if (hour.avgServiceTime <= 420) {
+          } else if (speedAtt >= 50) {
             speedYellowCount++;
           } else {
             speedRedCount++;
@@ -236,7 +234,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
           }
         }
         
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing);
+        const gradeInfo = getExecutionGrade(salesVariancePct, speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing);
         if (gradeInfo.hasGrade) {
           const score = gradeToScore(gradeInfo.grade);
           if (score > 0) {

@@ -110,6 +110,7 @@ router.get("/api/leaderboard", async (req, res) => {
           carCount: hmeData.carCount,
           avgTotalTime: hmeData.avgTotalTime,
           avgServiceTime: hmeData.avgServiceTime,
+          speedAttainment: hmeData.speedAttainment,
         };
       }
     }

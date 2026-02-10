@@ -589,7 +589,7 @@ export class DatabaseStorage {
       const employeeCountByHour: Map<number, number> = new Map();
       const leadersByHour: Map<number, { firstName: string; position: string }[]> = new Map();
       const positionByHour: Map<number, Record<string, number>> = new Map();
-      const hmeByHour: Map<number, { avgServiceTime: number; carCount: number }> = new Map();
+      const hmeByHour: Map<number, { avgServiceTime: number; carCount: number; carsUnder6Min: number }> = new Map();
       const osatByHour: Map<number, { osatPercent: number; totalResponses: number }> = new Map();
 
       const restaurantOsatData = hourlyOsatData[restaurant.id];
@@ -600,7 +600,7 @@ export class DatabaseStorage {
       }
 
       restaurantHmeData.forEach(h => {
-        hmeByHour.set(h.hour, { avgServiceTime: h.avgTotalTime, carCount: h.carCount });
+        hmeByHour.set(h.hour, { avgServiceTime: h.avgTotalTime, carCount: h.carCount, carsUnder6Min: h.carsUnder6Min });
       });
 
       const posSalesForRestaurant = posHourlySales.get(restaurant.id);
@@ -720,6 +720,7 @@ export class DatabaseStorage {
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
             avgServiceTime: hmeHourData?.avgServiceTime,
             carCount: hmeHourData?.carCount,
+            speedAttainment: hmeHourData && hmeHourData.carCount > 0 ? Math.round((hmeHourData.carsUnder6Min / hmeHourData.carCount) * 100) : undefined,
             osatPercent: osatHourData?.osatPercent,
             osatResponses: osatHourData?.totalResponses,
           });

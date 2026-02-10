@@ -37,7 +37,7 @@ function WeatherIcon({ condition }: { condition: string }) {
 }
 
 // Execution Grade Calculator
-// Sales: UP/DOWN (with 5% tolerance), Speed: GREEN(<300s)/YELLOW(300-420s)/RED(>420s), Staffing: PROPER/UNDER/OVER
+// Sales: UP/DOWN (with 5% tolerance), Speed: attainment %, Staffing: PROPER/UNDER/OVER
 // OSAT: 85%+ = excellent, 80-85% = acceptable, <80% = needs improvement
 // WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
 const GRADE_WEIGHTS = {
@@ -48,20 +48,16 @@ const GRADE_WEIGHTS = {
 };
 
 function getExecutionGrade(
-  salesVariancePct: number, // Percentage variance from last week (e.g., -3 means 3% down)
-  speedSeconds: number | undefined,
+  salesVariancePct: number,
+  speedAttainment: number | undefined,
   staffingDiff: number,
-  hasComparableSales: boolean = true, // Whether last week had sales to compare against
-  isFirstWeek: boolean = false, // Whether restaurant is in first week (no historical data expected)
-  hasValidStaffing: boolean = true, // Whether staffing data is valid (employee count >= 1)
-  osatPercent: number | undefined = undefined // Customer satisfaction (5-star %)
+  hasComparableSales: boolean = true,
+  isFirstWeek: boolean = false,
+  hasValidStaffing: boolean = true,
+  osatPercent: number | undefined = undefined
 ): { grade: string; color: string; hasGrade: boolean } {
-  // Track which components are available for grading with their weights
   const components: { name: string; score: number; weight: number }[] = [];
   
-  // Sales component (weight: 35%)
-  // For first-week units with no comparable data, give them credit (score 100)
-  // When last week had $0 but we have sales now, treat as positive (store was likely closed last week)
   if (hasComparableSales) {
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
     components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
@@ -69,13 +65,12 @@ function getExecutionGrade(
     components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
   }
   
-  // Speed component (weight: 25%) - only if we have valid drive-thru data
-  // Skip when speedSeconds is undefined or 0 (no cars = no data, not fast service)
-  if (speedSeconds !== undefined && speedSeconds > 0) {
-    // GREEN (<5min) = 100, YELLOW (5-7min) = 70, RED (>7min) = 40
+  // Speed component (weight: 25%) - uses attainment (% of cars under 6 min)
+  // >=70% = 100 (green), >=50% = 70 (yellow), <50% = 40 (red)
+  if (speedAttainment !== undefined && speedAttainment >= 0) {
     let speedScore = 100;
-    if (speedSeconds > 420) speedScore = 40;
-    else if (speedSeconds > 300) speedScore = 70;
+    if (speedAttainment < 50) speedScore = 40;
+    else if (speedAttainment < 70) speedScore = 70;
     components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
   
@@ -289,7 +284,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       const staffingDiff = actualStaff - staffing.total;
       // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
       const hasValidStaffing = rawEmployeeCount >= 1;
-      const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+      const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
   
@@ -423,36 +418,38 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
               )}
               {/* Drive-Thru SOS Badge - Always visible */}
               {restaurant.driveThru && (() => {
-                const avgTime = restaurant.driveThru.avgTotalTime;
-                const timeColor = avgTime > 420 
-                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  : avgTime > 300 
+                const carCount = restaurant.driveThru.carCount || 0;
+                const carsUnder6 = (restaurant.driveThru as any).carsUnder6Min || 0;
+                const attainment = carCount > 0 ? Math.round((carsUnder6 / carCount) * 100) : 0;
+                const attColor = attainment >= 70 
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                  : attainment >= 50 
                     ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                    : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-                const timeStr = `${Math.floor(avgTime / 60)}:${(avgTime % 60).toString().padStart(2, '0')}`;
+                    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
                 
-                const isRed = avgTime > 420;
+                const isRed = attainment < 50;
+                const avgTime = restaurant.driveThru.avgTotalTime;
+                const timeStr = `${Math.floor(avgTime / 60)}:${(avgTime % 60).toString().padStart(2, '0')}`;
                 return (
                   <div className="relative group">
                     <Badge 
-                      className={`${timeColor} border-0 flex-shrink-0 text-xs px-1.5 cursor-help gap-1 ${isRed ? 'animate-pulse' : ''}`}
+                      className={`${attColor} border-0 flex-shrink-0 text-xs px-1.5 cursor-help gap-1 ${isRed ? 'animate-pulse' : ''}`}
                       data-testid={`badge-sos-${restaurant.restaurantId}`}
                     >
                       <Car className="w-3 h-3" />
-                      <span>{timeStr}</span>
+                      <span>{attainment}%</span>
                     </Badge>
-                    <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="absolute -top-24 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
                       <div className="font-medium">Drive-Thru Speed</div>
+                      <div className="text-muted-foreground">
+                        Attainment: {attainment}% under 6 min
+                      </div>
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Clock className="w-3 h-3" />
                         Avg total: {timeStr}
                       </div>
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Car className="w-3 h-3" />
-                        Window: {Math.floor(restaurant.driveThru.avgServiceTime / 60)}:{(restaurant.driveThru.avgServiceTime % 60).toString().padStart(2, '0')}
-                      </div>
                       <div className="text-muted-foreground">
-                        Cars today: {restaurant.driveThru.carCount}
+                        Cars today: {carCount} ({carsUnder6} under 6 min)
                       </div>
                     </div>
                   </div>
@@ -631,7 +628,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   <div className="w-2 h-2 rounded-sm bg-red-500" />
                   Below
                 </span>
-                {activeHours.some(h => h.avgServiceTime) && (
+                {activeHours.some(h => (h as any).speedAttainment !== undefined) && (
                   <span className="flex items-center gap-1">
                     <div className="w-3 h-0.5 bg-cyan-500" />
                     SOS
@@ -662,7 +659,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 const staffingDiff = actualStaff - staffing.total;
                 // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
                 const hasValidStaffing = rawEmployeeCount >= 1;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
                 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -705,7 +702,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 const staffingDiff = actualStaff - staffing.total;
                 // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
                 const hasValidStaffing = rawEmployeeCount >= 1;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
@@ -737,13 +734,13 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           ${hour.todaySales.toLocaleString()}
                         </span>
                         <span className="text-muted-foreground">LW ${hour.lastWeekSales.toLocaleString()}</span>
-                        {isCompleted && hour.avgServiceTime && (
+                        {isCompleted && (hour as any).speedAttainment !== undefined && (
                           <span className={
-                            hour.avgServiceTime > 420 ? "text-red-600 dark:text-red-400" :
-                            hour.avgServiceTime > 300 ? "text-yellow-600 dark:text-yellow-400" :
+                            (hour as any).speedAttainment < 50 ? "text-red-600 dark:text-red-400" :
+                            (hour as any).speedAttainment < 70 ? "text-yellow-600 dark:text-yellow-400" :
                             "text-green-600 dark:text-green-400"
                           }>
-                            {Math.floor(hour.avgServiceTime / 60)}:{(hour.avgServiceTime % 60).toString().padStart(2, '0')}
+                            {(hour as any).speedAttainment}%
                           </span>
                         )}
                         {isCompleted && (() => {
@@ -773,8 +770,8 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   </div>
                 );
               })}
-              {/* SOS Line Overlay */}
-              {activeHours.some(h => h.avgServiceTime) && (
+              {/* SOS Line Overlay - speed attainment */}
+              {activeHours.some(h => (h as any).speedAttainment !== undefined) && (
                 <svg 
                   className="absolute inset-0 w-full h-full pointer-events-none" 
                   viewBox="0 0 100 100"
@@ -789,12 +786,11 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                     vectorEffect="non-scaling-stroke"
                     points={activeHours
                       .map((hour, idx) => {
-                        if (!hour.avgServiceTime) return null;
+                        const att = (hour as any).speedAttainment;
+                        if (att === undefined) return null;
                         const x = ((idx + 0.5) / activeHours.length) * 100;
-                        // Scale: 0-600s maps to chart height (600s = 10min max for display)
-                        const maxTime = 600;
-                        const normalizedTime = Math.min(hour.avgServiceTime, maxTime) / maxTime;
-                        const y = (1 - normalizedTime) * 100;
+                        // Scale: 0-100% attainment maps to chart height (higher = better = higher on chart)
+                        const y = (1 - att / 100) * 100;
                         return `${x},${y}`;
                       })
                       .filter(Boolean)

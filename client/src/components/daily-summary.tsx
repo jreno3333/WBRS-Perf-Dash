@@ -179,11 +179,12 @@ function analyzeUnit(
         }
       }
       
-      // Speed analysis - only include if we have valid drive-thru data (avgServiceTime > 0)
-      const hasValidSpeed = hour.avgServiceTime !== undefined && hour.avgServiceTime > 0;
-      if (hasValidSpeed && hour.avgServiceTime! > 420) { // > 7 min
+      // Speed analysis - uses attainment (% of cars under 6 min)
+      const hourSpeedAtt = (hour as any).speedAttainment;
+      const hasValidSpeed = hourSpeedAtt !== undefined && hourSpeedAtt >= 0;
+      if (hasValidSpeed && hourSpeedAtt < 50) { // < 50% attainment
         slowSpeedHours++;
-        speedIssues.push({ hour: hour.hour, avgTime: hour.avgServiceTime!, leaders: hourLeaders });
+        speedIssues.push({ hour: hour.hour, avgTime: hourSpeedAtt, leaders: hourLeaders });
       }
       
       // OSAT analysis - only include if we have customer satisfaction data
@@ -223,11 +224,11 @@ function analyzeUnit(
         gradeComponents.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
       }
       
-      // Speed component (weight: 25%) - only if we have valid drive-thru data
+      // Speed component (weight: 25%) - uses attainment (% under 6 min)
       if (hasValidSpeed) {
         let speedScore = 100;
-        if (hour.avgServiceTime! > 420) speedScore = 40;
-        else if (hour.avgServiceTime! > 300) speedScore = 70;
+        if (hourSpeedAtt < 50) speedScore = 40;
+        else if (hourSpeedAtt < 70) speedScore = 70;
         gradeComponents.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
       }
       
@@ -274,9 +275,9 @@ function analyzeUnit(
     strengths.push(`${aboveExpectationHours} hours with sales 20%+ above expectations`);
   }
   // Only show good speed if there's drive-thru data AND no slow hours
-  const hasDriveThruData = hourlyData?.some(h => h.avgServiceTime && h.avgServiceTime > 0);
+  const hasDriveThruData = hourlyData?.some(h => (h as any).speedAttainment !== undefined);
   if (slowSpeedHours === 0 && hasDriveThruData) {
-    strengths.push("Drive-thru speed consistently under 7 minutes");
+    strengths.push("Drive-thru speed attainment above 50% every hour");
   }
   if (understaffedHours === 0 && overstaffedHours === 0 && staffingIssues.length === 0) {
     strengths.push("Properly staffed throughout the day");
@@ -301,14 +302,12 @@ function analyzeUnit(
   }
   // Flag speed issues even if just 1 hour has slow SOS
   if (slowSpeedHours >= 1) {
-    const worstSpeed = speedIssues.sort((a, b) => b.avgTime - a.avgTime)[0];
-    const worstTimeFormatted = worstSpeed 
-      ? `${Math.floor(worstSpeed.avgTime / 60)}:${String(Math.round(worstSpeed.avgTime % 60)).padStart(2, '0')}`
-      : "";
+    const worstSpeed = speedIssues.sort((a, b) => a.avgTime - b.avgTime)[0];
+    const worstFormatted = worstSpeed ? `${Math.round(worstSpeed.avgTime)}%` : "";
     if (slowSpeedHours === 1) {
-      concerns.push(`Drive-thru slow at ${formatHour(worstSpeed?.hour || 0)} (${worstTimeFormatted} avg)`);
+      concerns.push(`Low speed attainment at ${formatHour(worstSpeed?.hour || 0)} (${worstFormatted})`);
     } else {
-      concerns.push(`Drive-thru over 7 min for ${slowSpeedHours} hours (worst: ${worstTimeFormatted})`);
+      concerns.push(`Speed attainment below 50% for ${slowSpeedHours} hours (worst: ${worstFormatted})`);
     }
   }
   if (belowExpectationHours >= 2) {
@@ -598,7 +597,7 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded }: { insight
               <div className="space-y-1">
                 <div className="flex items-center gap-1 text-sm font-medium text-red-600">
                   <Clock className="w-4 h-4" />
-                  Drive-thru speed issues (&gt;7 min)
+                  Low speed attainment (&lt;50%)
                 </div>
                 <div className="space-y-1 pl-5">
                   {insight.speedIssues.map((s, i) => (
@@ -607,7 +606,7 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded }: { insight
                         variant="secondary" 
                         className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                       >
-                        {formatHour(s.hour)}: {Math.floor(s.avgTime / 60)}:{String(Math.round(s.avgTime % 60)).padStart(2, '0')} avg
+                        {formatHour(s.hour)}: {Math.round(s.avgTime)}% attainment
                       </Badge>
                       {s.leaders.length > 0 && (
                         <span className="text-xs text-muted-foreground">

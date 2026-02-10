@@ -32,8 +32,8 @@ const scoreToGrade = (score: number): string => {
 };
 
 // Sales within -5% still counts as "UP" for grading purposes
-function getExecutionGrade(salesVariancePct: number, avgServiceTime: number | undefined, staffingDiff: number): string {
-  const speed = !avgServiceTime ? 'GREEN' : avgServiceTime <= 300 ? 'GREEN' : avgServiceTime <= 420 ? 'YELLOW' : 'RED';
+function getExecutionGrade(salesVariancePct: number, speedAttainment: number | undefined, staffingDiff: number): string {
+  const speed = speedAttainment === undefined ? 'GREEN' : speedAttainment >= 70 ? 'GREEN' : speedAttainment >= 50 ? 'YELLOW' : 'RED';
   const staffing = staffingDiff > 1 ? 'OVER' : staffingDiff < -1 ? 'UNDER' : 'PROPER';
   // Allow 5% variance to still count as "UP"
   const salesStatus = salesVariancePct >= -5 ? 'UP' : 'DOWN';
@@ -67,7 +67,7 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
         const operatorHrs = positions['_operatorScheduled'] || 0;
         const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
-        const grade = getExecutionGrade(salesVariancePct, hour.avgServiceTime, staffingDiff);
+        const grade = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff);
         const score = gradeToScore(grade);
         if (score > 0) allScores.push(score);
       }

@@ -133,7 +133,7 @@ router.get("/api/hme/daily-summary", async (req, res) => {
     const { getDailyDriveThruSummary } = await import("../scraper/hme-api");
     const summary = await getDailyDriveThruSummary(dateStr);
 
-    const result: Record<string, { carCount: number; avgTotalTime: number; avgServiceTime: number }> = {};
+    const result: Record<string, { carCount: number; avgTotalTime: number; avgServiceTime: number; speedAttainment: number; carsUnder6Min: number }> = {};
     summary.forEach((value, key) => {
       result[key] = value;
     });

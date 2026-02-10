@@ -4,6 +4,7 @@ interface DriveThruData {
   carCount: number;
   avgTotalTime: number;
   avgServiceTime: number;
+  speedAttainment: number;
 }
 
 interface Restaurant {
@@ -43,7 +44,7 @@ export default function HMETest() {
               <div className="text-green-600">
                 DT Time: {Math.floor(r.driveThru.avgTotalTime / 60)}:{(r.driveThru.avgTotalTime % 60).toString().padStart(2, '0')} | 
                 Cars: {r.driveThru.carCount} | 
-                Window: {Math.floor(r.driveThru.avgServiceTime / 60)}:{(r.driveThru.avgServiceTime % 60).toString().padStart(2, '0')}
+                Speed Attainment: {r.driveThru.speedAttainment}%
               </div>
             ) : (
               <div className="text-gray-400">No drive-thru data</div>

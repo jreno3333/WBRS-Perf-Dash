@@ -45,7 +45,7 @@ Preferred communication style: Simple, everyday language.
 - **Markets/Grouping System**: Allows creation of custom regional groups for restaurants, enabling filtering and aggregated metrics.
 - **7shifts Integration**: Syncs sales, labor, and employee data, performing timezone-aware data normalization and calculating projected labor percentages.
 - **Xenial POS Integration**: Receives real-time order data via webhooks as the sole source for sales data. Hourly sales sync writes complete records (POS sales + 7shifts labor) every 5 minutes. 7shifts is only used for labor/projected data — never for actual sales (same POS source with added delay). Historical sales data is retained in our own database, eliminating any dependency on 7shifts for sales.
-- **HME Drive-Thru Timer Integration**: Fetches and aggregates drive-thru timing data from HME CLOUD (ZOOM Nitro), displaying speed indicators on leaderboard cards.
+- **HME Drive-Thru Timer Integration**: Fetches and aggregates drive-thru timing data from HME CLOUD (ZOOM Nitro). Displays **speed attainment** (% of cars served under 6 minutes) rather than average service time. The `hme_timer_data` table stores `cars_under_6_min` for each hourly record. Speed attainment = (cars under 6 min / total cars) x 100. Color-coded: green >=70%, yellow >=50%, red <50%.
 - **Google Reviews Integration**: Tracks Google business review ratings using the Google Places API, with badges indicating performance and a scheduled hourly sync.
 - **Qualtrics OSAT Integration**: Collects and processes Qualtrics survey responses via the Imported Data Project (IDP) API to calculate customer satisfaction (OSAT) scores. Surveys are assigned to the correct hour based on transaction time (`d` and `t` fields) for hourly analysis. Features:
   - **Field Mapping**: `s` (store number), `QID1319640445` (satisfaction rating), `d` (transaction date), `t` (transaction time)
@@ -65,7 +65,7 @@ Preferred communication style: Simple, everyday language.
   - **Aggregated Views**: State/Market summary cards show aggregate OSAT metrics and count of units with low OSAT
 - **Weighted Execution Grading System**: All execution grades use a weighted formula with normalization:
   - **Sales**: 35% weight (100 points if variance >= -5%, 50 points if below)
-  - **Speed**: 25% weight (100 points if <= 5 min, 70 if <= 7 min, 40 if > 7 min) - only if drive-thru data available
+  - **Speed**: 25% weight (100 points if attainment >= 70%, 70 if >= 50%, 40 if < 50%) - only if drive-thru data available
   - **OSAT**: 25% weight (100 points if >= 85%, 70 if >= 80%, 40 if < 80%) - only if customer satisfaction data available
   - **Staffing**: 15% weight (100 points if within ±1, 60 if outside range) - only if valid staffing data available
   - Weights are normalized based on available components, so a restaurant without OSAT data is graded fairly against its available metrics
@@ -81,9 +81,9 @@ Preferred communication style: Simple, everyday language.
   - State and market filters for focused analysis
   - Company, state, and market summary cards showing aggregate grades
   - Expandable restaurant cards with daily grade timelines (shows all 7/14/30 days)
-  - Six metrics in expanded view: Avg Grade, Total Sales, Avg Speed (mm:ss format), OSAT, Avg XP, Grade Trend
+  - Six metrics in expanded view: Avg Grade, Total Sales, Avg Speed Attainment (%), OSAT, Avg XP, Grade Trend
   - Grade calculation aligned with dashboard logic including hasComparableSales, isFirstWeek handling, and sales surge exception
-  - Speed metrics from HME timer data (color-coded: green <5min, yellow 5-7min, red >7min), displayed as minutes:seconds
+  - Speed metrics from HME timer data as attainment % (color-coded: green >=70%, yellow >=50%, red <50%)
   - OSAT from Qualtrics surveys
   - XP (experience score) from hourly_crew data (color-coded: green 85+, yellow 70-84, orange 50-69, red <50)
   - Grade Trend shows improvement comparing second half to first half of the date range

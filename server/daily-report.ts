@@ -200,17 +200,18 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
     const osatByRestaurant = new Map(osatData.map(o => [o.restaurantId, o]));
 
-    const hmeByRestaurant = new Map<string, { totalTime: number; count: number }>();
+    const hmeByRestaurant = new Map<string, { totalTime: number; count: number; carsUnder6Min: number }>();
     hmeData.forEach(h => {
       const rid = h.restaurantId;
       if (!hmeByRestaurant.has(rid)) {
-        hmeByRestaurant.set(rid, { totalTime: 0, count: 0 });
+        hmeByRestaurant.set(rid, { totalTime: 0, count: 0, carsUnder6Min: 0 });
       }
       const entry = hmeByRestaurant.get(rid)!;
       if (h.avgTotalTime) {
         entry.totalTime += Number(h.avgTotalTime) * (h.carCount || 1);
         entry.count += h.carCount || 1;
       }
+      entry.carsUnder6Min += h.carsUnder6Min || 0;
     });
 
     const summaries: RestaurantSummary[] = [];
@@ -263,8 +264,8 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       components++;
 
       if (hme && hme.count > 0) {
-        const avgSpeed = hme.totalTime / hme.count;
-        const speedScore = avgSpeed <= 300 ? 100 : avgSpeed <= 420 ? 70 : 40;
+        const attainment = Math.round((hme.carsUnder6Min / hme.count) * 100);
+        const speedScore = attainment >= 70 ? 100 : attainment >= 50 ? 70 : 40;
         grade += speedScore * 25;
         totalWeight += 25;
         components++;
@@ -291,7 +292,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         variance,
         grade: normalizedGrade,
         gradeLabel: getGradeLabel(normalizedGrade),
-        avgSpeed: hme && hme.count > 0 ? hme.totalTime / hme.count : null,
+        avgSpeed: hme && hme.count > 0 ? Math.round((hme.carsUnder6Min / hme.count) * 100) : null,
         osatPercent: osat && osat.totalResponses > 0 ? (osat.fiveStarCount / osat.totalResponses) * 100 : null,
       });
     }
@@ -368,7 +369,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
           <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; width: 36px; text-align: center;">${r.gradeLabel}</span>
           <span style="font-size: 12px; font-weight: 500; width: 55px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${formatCurrency(r.sales)}</span>
           <span style="font-size: 12px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
-          ${r.avgSpeed !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.avgSpeed <= 300 ? '#16a34a' : r.avgSpeed <= 420 ? '#d97706' : '#dc2626'};">${formatTime(r.avgSpeed)}</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
+          ${r.avgSpeed !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.avgSpeed >= 70 ? '#16a34a' : r.avgSpeed >= 50 ? '#d97706' : '#dc2626'};">${r.avgSpeed}%</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
           ${r.osatPercent !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626'};">${Math.round(r.osatPercent)}%</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
         </div>
       `).join("")}
@@ -392,7 +393,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
           <span style="font-size: 13px; font-weight: 700; color: ${getGradeColor(r.gradeLabel)}; width: 36px; text-align: center;">${r.gradeLabel}</span>
           <span style="font-size: 12px; font-weight: 500; width: 55px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${formatCurrency(r.sales)}</span>
           <span style="font-size: 12px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
-          ${r.avgSpeed !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.avgSpeed <= 300 ? '#16a34a' : r.avgSpeed <= 420 ? '#d97706' : '#dc2626'};">${formatTime(r.avgSpeed)}</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
+          ${r.avgSpeed !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.avgSpeed >= 70 ? '#16a34a' : r.avgSpeed >= 50 ? '#d97706' : '#dc2626'};">${r.avgSpeed}%</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
           ${r.osatPercent !== null ? `<span style="font-size: 12px; width: 44px; text-align: right; color: ${r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626'};">${Math.round(r.osatPercent)}%</span>` : '<span style="font-size: 12px; width: 44px; text-align: right; color: #a1a1aa;">--</span>'}
         </div>
       `).join("")}
@@ -416,7 +417,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
           <span style="font-size: 12px; font-weight: 600; color: ${getGradeColor(r.gradeLabel)}; width: 28px; text-align: center;">${r.gradeLabel}</span>
           <span style="font-size: 11px; font-weight: 500; width: 50px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${formatCurrency(r.sales)}</span>
           <span style="font-size: 11px; width: 48px; text-align: right; color: ${r.variance >= 0 ? '#16a34a' : '#dc2626'};">${r.variance >= 0 ? '+' : ''}${r.variance.toFixed(1)}%</span>
-          ${r.avgSpeed !== null ? `<span style="font-size: 11px; width: 40px; text-align: right; color: ${r.avgSpeed <= 300 ? '#16a34a' : r.avgSpeed <= 420 ? '#d97706' : '#dc2626'};">${formatTime(r.avgSpeed)}</span>` : '<span style="font-size: 11px; width: 40px; text-align: right; color: #a1a1aa;">--</span>'}
+          ${r.avgSpeed !== null ? `<span style="font-size: 11px; width: 40px; text-align: right; color: ${r.avgSpeed >= 70 ? '#16a34a' : r.avgSpeed >= 50 ? '#d97706' : '#dc2626'};">${r.avgSpeed}%</span>` : '<span style="font-size: 11px; width: 40px; text-align: right; color: #a1a1aa;">--</span>'}
           ${r.osatPercent !== null ? `<span style="font-size: 11px; width: 40px; text-align: right; color: ${r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626'};">${Math.round(r.osatPercent)}%</span>` : '<span style="font-size: 11px; width: 40px; text-align: right; color: #a1a1aa;">--</span>'}
         </div>
       `).join("")}
