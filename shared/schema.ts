@@ -284,6 +284,7 @@ export const hmeTimerData = pgTable("hme_timer_data", {
   avgMenuBoardTime: integer("avg_menu_board_time").notNull().default(0), // seconds
   avgServiceTime: integer("avg_service_time").notNull().default(0), // seconds
   avgQueueTime: integer("avg_queue_time").notNull().default(0), // seconds
+  carsUnder6Min: integer("cars_under_6_min").notNull().default(0),
   maxTotalTime: integer("max_total_time").notNull().default(0),
   minTotalTime: integer("min_total_time").notNull().default(0),
   syncedAt: timestamp("synced_at").defaultNow(),
