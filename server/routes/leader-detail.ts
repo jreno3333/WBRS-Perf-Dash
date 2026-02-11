@@ -248,7 +248,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
         ? ((totalSales - totalLastWeekSales) / totalLastWeekSales) * 100
         : 0;
       const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
-      const speedHours = dayData.hours.filter((h: HourDetail) => h.carCount !== undefined && h.carCount! > 0);
+      const speedHours = dayData.hours.filter((h: HourDetail) => h.carCount !== undefined && h.carCount! > 0 && h.carsUnder6Min !== undefined && h.carsUnder6Min! > 0);
       let avgSpeed: number | undefined = undefined;
       let dailyAvgSpeedSeconds: number | undefined = undefined;
       if (speedHours.length > 0) {
