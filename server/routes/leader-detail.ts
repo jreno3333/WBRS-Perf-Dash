@@ -153,9 +153,11 @@ router.get("/api/people/leader-detail", async (req, res) => {
 
         const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
         const hmeCarCount = hme && hme.carCount > 0 ? hme.carCount : undefined;
-        const hmeCarsUnder6Min = hme ? (hme.carsUnder6Min || 0) : undefined;
-        const hourSpeedAttainment = hmeCarCount && hmeCarCount > 0 && hmeCarsUnder6Min !== undefined
-          ? Math.round((hmeCarsUnder6Min / hmeCarCount) * 100)
+        const rawCarsUnder6 = hme ? (hme.carsUnder6Min || 0) : 0;
+        const hasValidAttainmentData = hmeCarCount && hmeCarCount > 0 && rawCarsUnder6 > 0;
+        const hmeCarsUnder6Min = hasValidAttainmentData ? rawCarsUnder6 : undefined;
+        const hourSpeedAttainment = hasValidAttainmentData
+          ? Math.round((rawCarsUnder6 / hmeCarCount!) * 100)
           : undefined;
         if (hourSpeedAttainment !== undefined) {
           let speedScore = 100;

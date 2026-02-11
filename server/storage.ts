@@ -720,7 +720,7 @@ export class DatabaseStorage {
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
             avgServiceTime: hmeHourData?.avgServiceTime,
             carCount: hmeHourData?.carCount,
-            speedAttainment: hmeHourData && hmeHourData.carCount > 0 ? Math.round((hmeHourData.carsUnder6Min / hmeHourData.carCount) * 100) : undefined,
+            speedAttainment: hmeHourData && hmeHourData.carCount > 0 && hmeHourData.carsUnder6Min > 0 ? Math.round((hmeHourData.carsUnder6Min / hmeHourData.carCount) * 100) : undefined,
             osatPercent: osatHourData?.osatPercent,
             osatResponses: osatHourData?.totalResponses,
           });

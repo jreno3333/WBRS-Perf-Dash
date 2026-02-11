@@ -284,7 +284,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
           day.staffingDiffs.push(actualStaff - projectedStaff);
 
-          if (hme && hme.carCount > 0) {
+          if (hme && hme.carCount > 0 && hme.carsUnder6Min > 0) {
             const attainment = Math.round((hme.carsUnder6Min / hme.carCount) * 100);
             day.speedValues.push(attainment);
             allSpeedValues.push(attainment);

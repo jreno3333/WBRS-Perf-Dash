@@ -309,7 +309,7 @@ router.get("/api/performance-history", async (req, res) => {
 
         // Calculate speed attainment (% of cars under 6 min) from HME timer data
         let avgSpeed: number | undefined;
-        const hmeWithCars = restaurantHme.filter(h => h.carCount > 0);
+        const hmeWithCars = restaurantHme.filter(h => h.carCount > 0 && h.carsUnder6Min > 0);
         if (hmeWithCars.length > 0) {
           const totalCars = hmeWithCars.reduce((sum, h) => sum + h.carCount, 0);
           const totalUnder6 = hmeWithCars.reduce((sum, h) => sum + h.carsUnder6Min, 0);
