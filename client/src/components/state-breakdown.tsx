@@ -193,14 +193,14 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
   // Use actualSales and actualLastWeekSales (all available hours) for display to match 7shifts
   const alabamaTodaySales = alabamaRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
   const alabamaLastWeekSales = alabamaRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-  const alabamaAheadCount = alabamaRestaurants.filter(r => r.isAheadOfPace).length;
+  const alabamaAheadCount = alabamaRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
   const alabamaVariance = alabamaLastWeekSales > 0 
     ? ((alabamaTodaySales / alabamaLastWeekSales) - 1) * 100 
     : 0;
 
   const tennesseeTodaySales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
   const tennesseeLastWeekSales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-  const tennesseeAheadCount = tennesseeRestaurants.filter(r => r.isAheadOfPace).length;
+  const tennesseeAheadCount = tennesseeRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
   const tennesseeVariance = tennesseeLastWeekSales > 0 
     ? ((tennesseeTodaySales / tennesseeLastWeekSales) - 1) * 100 
     : 0;

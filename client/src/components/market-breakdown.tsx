@@ -175,7 +175,7 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
     
     const todaySales = marketRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
     const lastWeekSales = marketRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-    const aheadCount = marketRestaurants.filter(r => r.isAheadOfPace).length;
+    const aheadCount = marketRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
     const variance = lastWeekSales > 0 ? ((todaySales / lastWeekSales) - 1) * 100 : 0;
     
     const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant);
