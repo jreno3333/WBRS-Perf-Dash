@@ -85,6 +85,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
       todaySales: number;
       lastWeekSales: number;
       speedSeconds?: number;
+      speedAttainment?: number;
+      carCount?: number;
+      carsUnder6Min?: number;
       staffingDiff: number;
       actualStaff: number;
       projectedStaff: number;
@@ -149,10 +152,15 @@ router.get("/api/people/leader-detail", async (req, res) => {
         components.push({ weight: 15, score: staffingScore });
 
         const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
-        if (speedSeconds !== undefined && speedSeconds > 0) {
+        const hmeCarCount = hme && hme.carCount > 0 ? hme.carCount : undefined;
+        const hmeCarsUnder6Min = hme ? (hme.carsUnder6Min || 0) : undefined;
+        const hourSpeedAttainment = hmeCarCount && hmeCarCount > 0 && hmeCarsUnder6Min !== undefined
+          ? Math.round((hmeCarsUnder6Min / hmeCarCount) * 100)
+          : undefined;
+        if (hourSpeedAttainment !== undefined) {
           let speedScore = 100;
-          if (speedSeconds > 420) speedScore = 40;
-          else if (speedSeconds > 300) speedScore = 70;
+          if (hourSpeedAttainment < 50) speedScore = 40;
+          else if (hourSpeedAttainment < 70) speedScore = 70;
           components.push({ weight: 25, score: speedScore });
         }
 
@@ -175,6 +183,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
           todaySales,
           lastWeekSales,
           speedSeconds,
+          speedAttainment: hourSpeedAttainment,
+          carCount: hmeCarCount,
+          carsUnder6Min: hmeCarsUnder6Min,
           staffingDiff,
           actualStaff,
           projectedStaff,
@@ -235,8 +246,16 @@ router.get("/api/people/leader-detail", async (req, res) => {
         ? ((totalSales - totalLastWeekSales) / totalLastWeekSales) * 100
         : 0;
       const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
-      const speedHours = dayData.hours.filter((h: HourDetail) => h.speedSeconds !== undefined && h.speedSeconds! > 0);
-      const avgSpeed = speedHours.length > 0 ? speedHours.reduce((s: number, h: HourDetail) => s + h.speedSeconds!, 0) / speedHours.length : undefined;
+      const speedHours = dayData.hours.filter((h: HourDetail) => h.carCount !== undefined && h.carCount! > 0);
+      let avgSpeed: number | undefined = undefined;
+      let dailyAvgSpeedSeconds: number | undefined = undefined;
+      if (speedHours.length > 0) {
+        const totalCars = speedHours.reduce((s: number, h: HourDetail) => s + (h.carCount || 0), 0);
+        const totalUnder6 = speedHours.reduce((s: number, h: HourDetail) => s + (h.carsUnder6Min || 0), 0);
+        avgSpeed = totalCars > 0 ? Math.round((totalUnder6 / totalCars) * 100) : undefined;
+        const totalSpeedSeconds = speedHours.reduce((s: number, h: HourDetail) => s + (h.speedSeconds || 0) * (h.carCount || 0), 0);
+        dailyAvgSpeedSeconds = totalCars > 0 ? totalSpeedSeconds / totalCars : undefined;
+      }
 
       const osatHours = dayData.hours.filter((h: HourDetail) => h.osatPercent !== undefined && h.osatResponses !== undefined && h.osatResponses > 0);
       let osatPercent: number | undefined = undefined;
@@ -264,8 +283,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
       gradeComponents.push({ weight: 15, score: staffingScore });
       if (avgSpeed !== undefined) {
         let speedScore = 100;
-        if (avgSpeed > 420) speedScore = 40;
-        else if (avgSpeed > 300) speedScore = 70;
+        if (avgSpeed < 50) speedScore = 40;
+        else if (avgSpeed < 70) speedScore = 70;
         gradeComponents.push({ weight: 25, score: speedScore });
       }
       if (osatPercent !== undefined) {
@@ -293,15 +312,15 @@ router.get("/api/people/leader-detail", async (req, res) => {
       }
 
       if (avgSpeed !== undefined) {
-        const minutes = Math.floor(avgSpeed / 60);
-        const seconds = Math.round(avgSpeed % 60);
-        const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        if (avgSpeed <= 300) {
-          wentWell.push(`Drive-thru speed was excellent at ${timeStr}`);
-        } else if (avgSpeed <= 420) {
-          needsImprovement.push(`Drive-thru speed was ${timeStr} - aim for under 5:00`);
+        const timeStr = dailyAvgSpeedSeconds !== undefined
+          ? `${Math.floor(dailyAvgSpeedSeconds / 60)}:${Math.round(dailyAvgSpeedSeconds % 60).toString().padStart(2, '0')}`
+          : '';
+        if (avgSpeed >= 70) {
+          wentWell.push(`Drive-thru speed attainment was ${avgSpeed}%${timeStr ? ` (avg ${timeStr})` : ''}`);
+        } else if (avgSpeed >= 50) {
+          needsImprovement.push(`Drive-thru speed attainment was ${avgSpeed}%${timeStr ? ` (avg ${timeStr})` : ''} - aim for 70%+`);
         } else {
-          needsImprovement.push(`Drive-thru speed was slow at ${timeStr} - needs significant improvement (target: under 5:00)`);
+          needsImprovement.push(`Drive-thru speed attainment was only ${avgSpeed}%${timeStr ? ` (avg ${timeStr})` : ''} - needs significant improvement (target: 70%+)`);
         }
       }
 
