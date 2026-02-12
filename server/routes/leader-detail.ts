@@ -20,6 +20,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = endDate.toISOString().split('T')[0];
 
+    console.log(`[LEADER-DETAIL] Query: employeeId=${employeeId}, date=${date}, days=${days}, startDateStr=${startDateStr}, endDateStr=${endDateStr}`);
+
     const leader = await db.select().from(employees).where(eq(employees.id, String(employeeId))).limit(1);
     if (leader.length === 0) {
       return res.status(404).json({ error: "Leader not found" });
@@ -30,6 +32,14 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const crewData = await db.select().from(hourlyCrew).where(
       and(gte(hourlyCrew.date, startDateStr), sql`${hourlyCrew.date} <= ${endDateStr}`)
     );
+    
+    // Debug: Check how many crew records match this leader
+    const leaderCrewRecords = crewData.filter(c => {
+      const members = (c.crewMembers as any[]) || [];
+      return members.some((m: any) => m.userId === userId);
+    });
+    const leaderDates = [...new Set(leaderCrewRecords.map(c => c.date))].sort();
+    console.log(`[LEADER-DETAIL] userId=${userId}, crewData total=${crewData.length}, leaderCrewRecords=${leaderCrewRecords.length}, dates=${leaderDates.join(', ')}`);
 
     const laborData = await db.select().from(hourlyLabor).where(
       and(gte(hourlyLabor.date, startDateStr), sql`${hourlyLabor.date} <= ${endDateStr}`)

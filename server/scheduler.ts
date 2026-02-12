@@ -168,7 +168,7 @@ async function runScheduledSync() {
       log(`HME sync failed: ${hmeError instanceof Error ? hmeError.message : 'Unknown error'}`);
     }
     
-    // Sync crew experience data (once per hour at the top of the hour)
+    // Sync crew experience data (every 5 minutes alongside hourly sales)
     await syncCrewExperienceIfNeeded();
     
     // Sync Google reviews (once per hour at the top of the hour)
@@ -392,34 +392,14 @@ async function saveDailyWeatherSnapshot(date: string): Promise<number> {
   return saved;
 }
 
-// Track last crew experience sync to avoid syncing too frequently
-let lastCrewSync: string | null = null;
-
-// Sync crew experience data once per hour
+// Sync crew experience data every 5 minutes (aligned with hourly sales sync)
+// This ensures crew/leader data stays current so leader rankings and detail views are accurate
 async function syncCrewExperienceIfNeeded() {
-  const now = new Date();
-  const currentMinute = now.getMinutes();
-  
-  // Sync within the first 5 minutes of each hour (scheduler runs every 5 minutes)
-  if (currentMinute > 4) {
-    return;
-  }
-  
-  const { hour: centralHour, date: centralDate } = getCentralTime(now);
-
-  const syncKey = `${centralDate}-${centralHour}`;
-  
-  // Don't sync more than once per hour
-  if (lastCrewSync === syncKey) {
-    return;
-  }
-  
   log("Syncing crew experience data...");
   try {
     const { syncHourlyCrew } = await import("./scraper/7shifts-api");
     const result = await syncHourlyCrew();
     log(`Crew experience sync completed: ${result.count} hourly records updated`);
-    lastCrewSync = syncKey;
   } catch (error) {
     log(`Crew experience sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
@@ -524,6 +504,15 @@ async function syncYesterdayIfNeeded() {
       const hybridResult = await syncSalesWithXenialPOS(yesterdayDate);
       if (hybridResult.success && hybridResult.recordsScraped > 0) {
         log(`Yesterday hybrid sync: ${hybridResult.recordsScraped} records for ${yesterdayStr}`);
+      }
+      
+      // Sync crew data for yesterday to ensure leader rankings are complete
+      try {
+        const { syncHourlyCrew } = await import("./scraper/7shifts-api");
+        const crewResult = await syncHourlyCrew(yesterdayDate);
+        log(`Yesterday crew sync: ${crewResult.count} hourly crew records for ${yesterdayStr}`);
+      } catch (crewError) {
+        log(`Yesterday crew sync error: ${crewError instanceof Error ? crewError.message : 'Unknown error'}`);
       }
       
       lastYesterdaySync = todayCentral;
