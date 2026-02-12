@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { db, posDb } from '../db';
 import { restaurants, dailySales, dailyLabor, hourlySales, hourlyLabor, scraperRuns, locationMapping, posOrders } from '@shared/schema';
 import { eq, and, gte, lte, lt, sql } from 'drizzle-orm';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
@@ -995,7 +995,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
         const posStartOfDay = new Date(dateStr + 'T00:00:00.000Z');
         const posEndOfDay = new Date(dateStr + 'T23:59:59.999Z');
         const tzLiteral = sql.raw(`'${locationTimezone}'`);
-        const posResults = await db
+        const posResults = await posDb
           .select({
             hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})::int`,
             totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
@@ -1043,9 +1043,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               roundedPositions['_operatorScheduled'] = 1;
             }
             
-            // POS is preferred source; fall back to 7shifts actual_sales when POS data unavailable
-            const posSales = posSalesByHour.get(hour);
-            const salesAmount = posSales !== undefined ? posSales : (interval.actual_sales / 100);
+            const salesAmount = posSalesByHour.get(hour) || 0;
             
             await tx.insert(hourlySales).values({
               restaurantId: restaurant.id,
@@ -1192,7 +1190,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
         // Extract hour in restaurant's local timezone using AT TIME ZONE
         // Use sql.raw for the timezone string since it's a known safe value from our database
         const tzLiteral = sql.raw(`'${locationTimezone}'`);
-        const posResults = await db
+        const posResults = await posDb
           .select({
             hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})::int`,
             totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
@@ -1214,6 +1212,11 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       
       const hasPosData = restaurantSales.size > 0;
       
+      // If no POS data, skip — no sales to write for this restaurant
+      if (!hasPosData) {
+        continue;
+      }
+      
       // Still need 7shifts for labor data (time punches, roles, operator schedules)
       const timePunches = await api.getTimePunches(location.id, dateStr, locationTimezone);
       const roleMap = await api.getRoles(location.id);
@@ -1224,7 +1227,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       
       // Get projected labor/sales from 7shifts for forecasting only (not for actual sales)
       const intervals = await api.getHourlySales(location.id, dateStr);
-      const projectedByHour = new Map<number, { projectedSales: number; projectedLabor: number; actualLabor: number; sevenShiftsActualSales: number }>();
+      const projectedByHour = new Map<number, { projectedSales: number; projectedLabor: number; actualLabor: number }>();
       for (const interval of intervals) {
         const hourMatch = interval.start.match(/T(\d{2}):/);
         const hour = hourMatch ? parseInt(hourMatch[1]) : 0;
@@ -1232,7 +1235,6 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
           projectedSales: interval.projected_sales / 100,
           projectedLabor: interval.projected_labor / 100,
           actualLabor: interval.actual_labor / 100,
-          sevenShiftsActualSales: interval.actual_sales / 100,
         });
       }
       
@@ -1261,11 +1263,9 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
           // Insert new hourly records
           for (const hour of Array.from(hoursWithData).sort((a, b) => a - b)) {
             const hourLabor = laborByHour.get(hour) || { totalHours: 0, byPosition: {} };
-            const projected = projectedByHour.get(hour) || { projectedSales: 0, projectedLabor: 0, actualLabor: 0, sevenShiftsActualSales: 0 };
+            const projected = projectedByHour.get(hour) || { projectedSales: 0, projectedLabor: 0, actualLabor: 0 };
             
-            // POS is preferred source; fall back to 7shifts actual_sales when POS data unavailable
-            const posSalesVal = restaurantSales.get(hour);
-            const finalSales = posSalesVal !== undefined ? posSalesVal : (projected.sevenShiftsActualSales || 0);
+            const finalSales = restaurantSales.get(hour) || 0;
             
             // Round position hours
             const roundedPositions: Record<string, number> = {};

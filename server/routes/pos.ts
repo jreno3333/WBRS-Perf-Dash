@@ -114,7 +114,7 @@ router.get("/api/pos/recent", async (req, res) => {
   try {
     const { limit = 20 } = req.query;
 
-    const orders = await db
+    const orders = await posDb
       .select({
         id: posOrders.id,
         xenialOrderId: posOrders.xenialOrderId,
