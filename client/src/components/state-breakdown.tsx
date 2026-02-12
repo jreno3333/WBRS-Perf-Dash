@@ -308,92 +308,92 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
       {states.map((state) => (
         <Card key={state.abbr} data-testid={`card-state-${state.abbr.toLowerCase()}`}>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-muted-foreground" />
-                <span className="font-semibold">{state.name}</span>
-                <Badge variant="secondary" className="text-xs">
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="font-semibold truncate">{state.name}</span>
+                <Badge variant="secondary" className="text-xs shrink-0">
                   {state.totalCount} stores
                 </Badge>
               </div>
               {state.isAhead ? (
-                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0">
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0 shrink-0">
                   <TrendingUp className="w-3.5 h-3.5 mr-1" />
                   +{state.variance.toFixed(1)}%
                 </Badge>
               ) : (
-                <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0">
+                <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0 shrink-0">
                   <TrendingDown className="w-3.5 h-3.5 mr-1" />
                   {state.variance.toFixed(1)}%
                 </Badge>
               )}
             </div>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
                 <div className="text-2xl font-bold">{formatCurrency(state.todaySales)}</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground truncate">
                   vs {formatCurrency(state.lastWeekSales)} last week
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="text-lg font-semibold">
-                    {state.aheadCount}/{state.totalCount}
-                  </div>
-                  <div className="text-xs text-muted-foreground">ahead of LW</div>
+              <div className="text-right shrink-0">
+                <div className="text-lg font-semibold">
+                  {state.aheadCount}/{state.totalCount}
                 </div>
-                {state.speed.speedAttainment !== undefined && (
-                  <div className="relative group">
-                    <Badge 
-                      className={`${getSpeedColor(state.speed.speedAttainment)} border-0 gap-1 cursor-help`}
-                      data-testid={`badge-speed-state-${state.abbr.toLowerCase()}`}
-                    >
-                      <Timer className="w-3 h-3" />
-                      <span className="font-medium">{state.speed.speedAttainment}%</span>
-                    </Badge>
-                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                      <div className="font-medium">Speed Attainment</div>
-                      <div className="text-muted-foreground">{state.speed.carsUnder6Min}/{state.speed.totalCars} cars under 6 min</div>
-                      <div className="text-muted-foreground">{state.speed.storesWithData} stores reporting</div>
-                    </div>
-                  </div>
-                )}
-                {state.osat.osatPercent !== undefined && (
-                  <div className="relative group">
-                    <Badge 
-                      className={`${getOsatColor(state.osat.osatPercent)} border-0 gap-1 cursor-help`}
-                      data-testid={`badge-osat-state-${state.abbr.toLowerCase()}`}
-                    >
-                      <ThumbsUp className="w-3 h-3" />
-                      <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
-                    </Badge>
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                      <div className="font-medium">Customer Satisfaction</div>
-                      <div className="text-muted-foreground">{state.osat.totalResponses} responses</div>
-                    </div>
-                  </div>
-                )}
-                {state.crewScore.count > 0 && (
-                  <div className="relative group">
-                    <Badge 
-                      className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1 cursor-help`}
-                      data-testid={`badge-crew-state-${state.abbr.toLowerCase()}`}
-                    >
-                      <GraduationCap className="w-3 h-3" />
-                      <span className="font-medium">{state.crewScore.avgScore}</span>
-                    </Badge>
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                      <div className="font-medium">Crew Experience</div>
-                      <div className="text-muted-foreground">Avg tenure: {formatTenure(state.crewScore.avgTenureMonths)}</div>
-                    </div>
-                  </div>
-                )}
-                {state.xScore.hoursGraded > 0 && (
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getGradeBadgeColor(state.xScore.grade)}`}>
-                    <span className="text-lg font-bold">{state.xScore.grade}</span>
-                  </div>
-                )}
+                <div className="text-xs text-muted-foreground">ahead of LW</div>
               </div>
+            </div>
+            <div className="flex items-center gap-2 mt-2 flex-wrap justify-end">
+              {state.speed.speedAttainment !== undefined && (
+                <div className="relative group">
+                  <Badge 
+                    className={`${getSpeedColor(state.speed.speedAttainment)} border-0 gap-1 cursor-help`}
+                    data-testid={`badge-speed-state-${state.abbr.toLowerCase()}`}
+                  >
+                    <Timer className="w-3 h-3" />
+                    <span className="font-medium">{state.speed.speedAttainment}%</span>
+                  </Badge>
+                  <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Speed Attainment</div>
+                    <div className="text-muted-foreground">{state.speed.carsUnder6Min}/{state.speed.totalCars} cars under 6 min</div>
+                    <div className="text-muted-foreground">{state.speed.storesWithData} stores reporting</div>
+                  </div>
+                </div>
+              )}
+              {state.osat.osatPercent !== undefined && (
+                <div className="relative group">
+                  <Badge 
+                    className={`${getOsatColor(state.osat.osatPercent)} border-0 gap-1 cursor-help`}
+                    data-testid={`badge-osat-state-${state.abbr.toLowerCase()}`}
+                  >
+                    <ThumbsUp className="w-3 h-3" />
+                    <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
+                  </Badge>
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Customer Satisfaction</div>
+                    <div className="text-muted-foreground">{state.osat.totalResponses} responses</div>
+                  </div>
+                </div>
+              )}
+              {state.crewScore.count > 0 && (
+                <div className="relative group">
+                  <Badge 
+                    className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1 cursor-help`}
+                    data-testid={`badge-crew-state-${state.abbr.toLowerCase()}`}
+                  >
+                    <GraduationCap className="w-3 h-3" />
+                    <span className="font-medium">{state.crewScore.avgScore}</span>
+                  </Badge>
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Crew Experience</div>
+                    <div className="text-muted-foreground">Avg tenure: {formatTenure(state.crewScore.avgTenureMonths)}</div>
+                  </div>
+                </div>
+              )}
+              {state.xScore.hoursGraded > 0 && (
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center border shrink-0 ${getGradeBadgeColor(state.xScore.grade)}`}>
+                  <span className="text-lg font-bold">{state.xScore.grade}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

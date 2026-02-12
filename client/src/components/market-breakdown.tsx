@@ -253,95 +253,95 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
       {marketStats.map((market) => (
         <Card key={market.id} data-testid={`card-market-${market.id}`}>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
                 <div 
                   className="w-3 h-3 rounded-full shrink-0" 
                   style={{ backgroundColor: market.color }}
                 />
-                <span className="font-semibold">{market.name}</span>
-                <Badge variant="secondary" className="text-xs">
+                <span className="font-semibold truncate">{market.name}</span>
+                <Badge variant="secondary" className="text-xs shrink-0">
                   {market.totalCount} stores
                 </Badge>
               </div>
               {market.isAhead ? (
-                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0">
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0 shrink-0">
                   <TrendingUp className="w-3.5 h-3.5 mr-1" />
                   +{market.variance.toFixed(1)}%
                 </Badge>
               ) : (
-                <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0">
+                <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0 shrink-0">
                   <TrendingDown className="w-3.5 h-3.5 mr-1" />
                   {market.variance.toFixed(1)}%
                 </Badge>
               )}
             </div>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
                 <div className="text-2xl font-bold">{formatCurrency(market.todaySales)}</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground truncate">
                   vs {formatCurrency(market.lastWeekSales)} last week
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="text-lg font-semibold">
-                    {market.aheadCount}/{market.totalCount}
-                  </div>
-                  <div className="text-xs text-muted-foreground">ahead of LW</div>
+              <div className="text-right shrink-0">
+                <div className="text-lg font-semibold">
+                  {market.aheadCount}/{market.totalCount}
                 </div>
-                {market.speed.speedAttainment !== undefined && (
-                  <div className="relative group">
-                    <Badge 
-                      className={`${getSpeedColor(market.speed.speedAttainment)} border-0 gap-1 cursor-help`}
-                      data-testid={`badge-speed-market-${market.id}`}
-                    >
-                      <Timer className="w-3 h-3" />
-                      <span className="font-medium">{market.speed.speedAttainment}%</span>
-                    </Badge>
-                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                      <div className="font-medium">Speed Attainment</div>
-                      <div className="text-muted-foreground">{market.speed.carsUnder6Min}/{market.speed.totalCars} cars under 6 min</div>
-                      <div className="text-muted-foreground">{market.speed.storesWithData} stores reporting</div>
-                    </div>
-                  </div>
-                )}
-                {market.osat.osatPercent !== undefined && (
-                  <div className="relative group">
-                    <Badge 
-                      className={`${getOsatColor(market.osat.osatPercent)} border-0 gap-1 cursor-help`}
-                      data-testid={`badge-osat-market-${market.id}`}
-                    >
-                      <ThumbsUp className="w-3 h-3" />
-                      <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
-                    </Badge>
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                      <div className="font-medium">Customer Satisfaction</div>
-                      <div className="text-muted-foreground">{market.osat.totalResponses} responses</div>
-                    </div>
-                  </div>
-                )}
-                {market.crewScore.count > 0 && (
-                  <div className="relative group">
-                    <Badge 
-                      className={`${getCrewScoreColor(market.crewScore.avgScore)} border-0 gap-1 cursor-help`}
-                      data-testid={`badge-crew-market-${market.id}`}
-                    >
-                      <GraduationCap className="w-3 h-3" />
-                      <span className="font-medium">{market.crewScore.avgScore}</span>
-                    </Badge>
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                      <div className="font-medium">Crew Experience</div>
-                      <div className="text-muted-foreground">Avg tenure: {formatTenure(market.crewScore.avgTenureMonths)}</div>
-                    </div>
-                  </div>
-                )}
-                {market.xScore.hoursGraded > 0 && (
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getGradeBadgeColor(market.xScore.grade)}`}>
-                    <span className="text-lg font-bold">{market.xScore.grade}</span>
-                  </div>
-                )}
+                <div className="text-xs text-muted-foreground">ahead of LW</div>
               </div>
+            </div>
+            <div className="flex items-center gap-2 mt-2 flex-wrap justify-end">
+              {market.speed.speedAttainment !== undefined && (
+                <div className="relative group">
+                  <Badge 
+                    className={`${getSpeedColor(market.speed.speedAttainment)} border-0 gap-1 cursor-help`}
+                    data-testid={`badge-speed-market-${market.id}`}
+                  >
+                    <Timer className="w-3 h-3" />
+                    <span className="font-medium">{market.speed.speedAttainment}%</span>
+                  </Badge>
+                  <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Speed Attainment</div>
+                    <div className="text-muted-foreground">{market.speed.carsUnder6Min}/{market.speed.totalCars} cars under 6 min</div>
+                    <div className="text-muted-foreground">{market.speed.storesWithData} stores reporting</div>
+                  </div>
+                </div>
+              )}
+              {market.osat.osatPercent !== undefined && (
+                <div className="relative group">
+                  <Badge 
+                    className={`${getOsatColor(market.osat.osatPercent)} border-0 gap-1 cursor-help`}
+                    data-testid={`badge-osat-market-${market.id}`}
+                  >
+                    <ThumbsUp className="w-3 h-3" />
+                    <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
+                  </Badge>
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Customer Satisfaction</div>
+                    <div className="text-muted-foreground">{market.osat.totalResponses} responses</div>
+                  </div>
+                </div>
+              )}
+              {market.crewScore.count > 0 && (
+                <div className="relative group">
+                  <Badge 
+                    className={`${getCrewScoreColor(market.crewScore.avgScore)} border-0 gap-1 cursor-help`}
+                    data-testid={`badge-crew-market-${market.id}`}
+                  >
+                    <GraduationCap className="w-3 h-3" />
+                    <span className="font-medium">{market.crewScore.avgScore}</span>
+                  </Badge>
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
+                    <div className="font-medium">Crew Experience</div>
+                    <div className="text-muted-foreground">Avg tenure: {formatTenure(market.crewScore.avgTenureMonths)}</div>
+                  </div>
+                </div>
+              )}
+              {market.xScore.hoursGraded > 0 && (
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center border shrink-0 ${getGradeBadgeColor(market.xScore.grade)}`}>
+                  <span className="text-lg font-bold">{market.xScore.grade}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
