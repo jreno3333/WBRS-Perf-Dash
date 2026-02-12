@@ -286,19 +286,14 @@ router.get("/api/performance-history", async (req, res) => {
         const totalSales = restaurantSales.reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
 
         // Calculate variance by looking up actual sales from 7 days ago in our own data
-        // Use America/Chicago timezone for consistent business date handling
-        const centralFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' });
-
-        // Parse current date and calculate 7 days ago
+        // Use simple ISO date string comparison (salesDate stored at noon, toISOString is safe)
         const [year, month, day] = dateStr.split('-').map(Number);
-        // Use noon to avoid timezone boundary issues when formatting
-        const weekAgoDate = new Date(year, month - 1, day - 7, 12, 0, 0); // month is 0-indexed
-        const weekAgoDateStr = centralFormatter.format(weekAgoDate); // YYYY-MM-DD in Central time
+        const weekAgoDate = new Date(Date.UTC(year, month - 1, day - 7, 12, 0, 0));
+        const weekAgoDateStr = weekAgoDate.toISOString().split('T')[0];
 
         const weekAgoSales = allHourlySales
           .filter(s => {
-            // Extract date portion in Central timezone for consistent comparison
-            const salesDateStr = centralFormatter.format(new Date(s.salesDate));
+            const salesDateStr = s.salesDate.toISOString().split('T')[0];
             return salesDateStr === weekAgoDateStr && s.restaurantId === restaurant.id;
           })
           .reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
