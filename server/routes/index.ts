@@ -40,7 +40,7 @@ export async function registerRoutes(
       "/api/diagnostics",
       "/api/db-status",
       "/api/xenial/",
-      "/api/arena/",  // Arena has its own key-gate auth
+      "/api/arena/",
     ];
     const fullPath = req.originalUrl.split('?')[0];
     if (openPaths.some(p => fullPath.startsWith(p))) {
