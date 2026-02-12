@@ -16,36 +16,63 @@ interface StateBreakdownProps {
   crewSummary?: Record<string, CrewSummary>;
 }
 
-// Grade scoring for X-Score calculation
-const gradeToScore = (grade: string): number => {
-  const scores: Record<string, number> = { 'A+': 100, 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'F': 50 };
-  return scores[grade] || 0;
-};
+const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
 
 const scoreToGrade = (score: number): string => {
   if (score >= 95) return 'A+';
-  if (score >= 85) return 'A';
+  if (score >= 90) return 'A';
+  if (score >= 85) return 'A-';
+  if (score >= 80) return 'B+';
   if (score >= 75) return 'B';
-  if (score >= 65) return 'C';
-  if (score >= 55) return 'D';
+  if (score >= 70) return 'B-';
+  if (score >= 65) return 'C+';
+  if (score >= 60) return 'C';
+  if (score >= 55) return 'C-';
+  if (score >= 50) return 'D';
   return 'F';
 };
 
-// Sales within -5% still counts as "UP" for grading purposes
-function getExecutionGrade(salesVariancePct: number, speedAttainment: number | undefined, staffingDiff: number): string {
-  const speed = speedAttainment === undefined ? 'GREEN' : speedAttainment >= 70 ? 'GREEN' : speedAttainment >= 50 ? 'YELLOW' : 'RED';
-  const staffing = staffingDiff > 1 ? 'OVER' : staffingDiff < -1 ? 'UNDER' : 'PROPER';
-  // Allow 5% variance to still count as "UP"
-  const salesStatus = salesVariancePct >= -5 ? 'UP' : 'DOWN';
-  const scores: Record<string, string> = {
-    'UP-GREEN-PROPER': 'A+', 'UP-GREEN-UNDER': 'A', 'UP-GREEN-OVER': 'B',
-    'UP-YELLOW-PROPER': 'A', 'UP-YELLOW-UNDER': 'B', 'UP-YELLOW-OVER': 'C',
-    'UP-RED-PROPER': 'B', 'UP-RED-UNDER': 'C', 'UP-RED-OVER': 'D',
-    'DOWN-GREEN-PROPER': 'B', 'DOWN-GREEN-UNDER': 'C', 'DOWN-GREEN-OVER': 'D',
-    'DOWN-YELLOW-PROPER': 'C', 'DOWN-YELLOW-UNDER': 'D', 'DOWN-YELLOW-OVER': 'F',
-    'DOWN-RED-PROPER': 'D', 'DOWN-RED-UNDER': 'F', 'DOWN-RED-OVER': 'F',
-  };
-  return scores[`${salesStatus}-${speed}-${staffing}`] ?? 'C';
+function getExecutionGradeScore(
+  salesVariancePct: number,
+  speedAttainment: number | undefined,
+  staffingDiff: number,
+  hasComparableSales: boolean = true,
+  osatPercent: number | undefined = undefined,
+  hasValidStaffing: boolean = true
+): number {
+  const components: { score: number; weight: number }[] = [];
+
+  if (hasComparableSales) {
+    components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
+  } else {
+    components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
+  }
+
+  if (speedAttainment !== undefined && speedAttainment >= 0) {
+    let speedScore = 100;
+    if (speedAttainment < 50) speedScore = 40;
+    else if (speedAttainment < 70) speedScore = 70;
+    components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
+  }
+
+  if (osatPercent !== undefined && osatPercent > 0) {
+    let osatScore = 100;
+    if (osatPercent < 80) osatScore = 40;
+    else if (osatPercent < 85) osatScore = 70;
+    components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
+  }
+
+  if (hasValidStaffing) {
+    let staffingScore = 100;
+    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
+    if (staffingDiff > 1) staffingScore = 60;
+    else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
+    components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
+  }
+
+  if (components.length === 0) return 0;
+  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
+  return components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
 }
 
 function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>): { grade: string; hoursGraded: number } {
@@ -55,20 +82,18 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
       const hours = hourlyByRestaurant[restaurantId];
       if (!hours) continue;
       for (const hour of hours) {
-        // Include all hours with sales data
         if (!hour.todaySales && !hour.lastWeekSales) continue;
         const hasComparableSales = hour.lastWeekSales > 0;
         const salesVariancePct = hasComparableSales 
           ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
           : 0;
         const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-        // Exclude operator from labor hours (matching leaderboard card logic)
         const positions = hour.positionBreakdown || {};
         const operatorHrs = positions['_operatorScheduled'] || 0;
         const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
-        const grade = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff);
-        const score = gradeToScore(grade);
+        const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
+        const score = getExecutionGradeScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing);
         if (score > 0) allScores.push(score);
       }
     }
@@ -233,10 +258,11 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
   const alabamaSpeed = calculateStateSpeed(alabamaRestaurants);
   const tennesseeSpeed = calculateStateSpeed(tennesseeRestaurants);
 
-  const getGradeColor = (grade: string) => {
-    if (grade === 'A+' || grade === 'A') return 'text-green-600 dark:text-green-400 bg-green-500/20 border-green-500/50';
-    if (grade === 'B') return 'text-blue-600 dark:text-blue-400 bg-blue-500/20 border-blue-500/50';
-    if (grade === 'C') return 'text-yellow-600 dark:text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
+  const getGradeBadgeColor = (grade: string) => {
+    if (grade.startsWith('A')) return 'text-green-600 dark:text-green-400 bg-green-500/20 border-green-500/50';
+    if (grade.startsWith('B')) return 'text-blue-600 dark:text-blue-400 bg-blue-500/20 border-blue-500/50';
+    if (grade.startsWith('C')) return 'text-yellow-600 dark:text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
+    if (grade === 'D') return 'text-orange-600 dark:text-orange-400 bg-orange-500/20 border-orange-500/50';
     return 'text-red-600 dark:text-red-400 bg-red-500/20 border-red-500/50';
   };
 
@@ -363,7 +389,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
                   </div>
                 )}
                 {state.xScore.hoursGraded > 0 && (
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getGradeColor(state.xScore.grade)}`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${getGradeBadgeColor(state.xScore.grade)}`}>
                     <span className="text-lg font-bold">{state.xScore.grade}</span>
                   </div>
                 )}

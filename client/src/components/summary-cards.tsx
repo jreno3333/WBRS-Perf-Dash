@@ -88,9 +88,12 @@ function getExecutionGrade(
   }
   
   // Staffing component (weight: 15%) - only if we have valid staffing data
+  // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
   if (hasValidStaffing) {
     let staffingScore = 100;
-    if (staffingDiff > 1 || staffingDiff < -1) staffingScore = 60;
+    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
+    if (staffingDiff > 1) staffingScore = 60;
+    else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
     components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
   }
   
@@ -307,10 +310,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
   };
 
   // Grade background color for the large display
-  const gradeBgColor = overallGrade === 'A+' || overallGrade === 'A' ? 'bg-green-500/20 border-green-500/50' 
-    : overallGrade === 'B' ? 'bg-blue-500/20 border-blue-500/50' 
-    : overallGrade === 'C' ? 'bg-yellow-500/20 border-yellow-500/50'
-    : 'bg-red-500/20 border-red-500/50';
+  const gradeBgColor = getGradeBgColor(overallGrade);
 
   // Calculate 3-hour execution trend
   const hoursWithScores = Object.keys(scoresByHour)
@@ -464,11 +464,6 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                 </Popover>
               </div>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {gradeCounts['A+'] > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    A+ <span className="font-bold">{gradeCounts['A+']}</span>
-                  </span>
-                )}
                 {gradeCounts['A'] > 0 && (
                   <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                     A <span className="font-bold">{gradeCounts['A']}</span>
@@ -510,12 +505,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                     <div className="flex items-center gap-0.5">
                       {hourlyAvgScores.map((h, i) => (
                         <span key={h.hour} className="flex items-center">
-                          <span className={`font-semibold ${
-                            h.grade === 'A+' || h.grade === 'A' ? 'text-green-600 dark:text-green-400' :
-                            h.grade === 'B' ? 'text-blue-600 dark:text-blue-400' :
-                            h.grade === 'C' ? 'text-yellow-600 dark:text-yellow-400' :
-                            'text-red-600 dark:text-red-400'
-                          }`}>{h.grade}</span>
+                          <span className={`font-semibold ${getGradeColor(h.grade)}`}>{h.grade}</span>
                           {i < hourlyAvgScores.length - 1 && <span className="text-muted-foreground mx-0.5">→</span>}
                         </span>
                       ))}
