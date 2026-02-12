@@ -7,11 +7,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
-import { Calendar, Clock, AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
 import { NavBar } from "@/components/nav-bar";
-import { format, subDays, addDays, parseISO, isValid, startOfDay, endOfDay, eachDayOfInterval } from "date-fns";
+import { format, parseISO, isValid, eachDayOfInterval } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, RestaurantSales } from "@shared/schema";
 
 interface HeatmapData {
@@ -59,7 +59,6 @@ function getCentralDateStr(): string {
 }
 
 export default function HeatmapPage() {
-  const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [heatmapCollapsed, setHeatmapCollapsed] = useState(true);
   
@@ -303,36 +302,12 @@ export default function HeatmapPage() {
   // Use first date in range for single-date dependent queries
   const dateStr = startDate;
   
-  const toggleDate = (dateStr: string) => {
-    setSelectedDates(prev => 
-      prev.includes(dateStr) 
-        ? prev.filter(d => d !== dateStr)
-        : [...prev, dateStr]
-    );
-  };
-  
-  const selectAllDates = () => {
-    if (data) {
-      setSelectedDates(data.dateRange);
-    }
-  };
-  
-  const clearDates = () => {
-    setSelectedDates([]);
-  };
-  
-  // activeDates for heatmap - use date picker range if not default, otherwise use selectedDates or all
   const activeDates = useMemo(() => {
     if (!data) return [];
-    // If date picker has a custom selection (not just today), use the analysisDateRange
-    // Filter to only include dates that exist in the heatmap data
     const availableDates = new Set(data.dateRange);
     const filteredAnalysisRange = analysisDateRange.filter(d => availableDates.has(d));
-    if (filteredAnalysisRange.length > 0) {
-      return filteredAnalysisRange;
-    }
-    return selectedDates.length > 0 ? selectedDates : data.dateRange;
-  }, [data, selectedDates, analysisDateRange]);
+    return filteredAnalysisRange.length > 0 ? filteredAnalysisRange : data.dateRange;
+  }, [data, analysisDateRange]);
   
   const stats = useMemo(() => {
     if (!data) return { totalZeroHours: 0, totalHours: 0 };
@@ -568,37 +543,8 @@ export default function HeatmapPage() {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <CardContent className="pt-0 space-y-4">
-                {/* Date selector */}
-                <div className="flex items-center justify-between flex-wrap gap-2 border-b pb-3">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Select Days</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={selectAllDates} data-testid="button-select-all">
-                      All
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={clearDates} data-testid="button-clear-dates">
-                      Clear
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {data.dateRange.map(dateStr => (
-                    <Button
-                      key={dateStr}
-                      variant={selectedDates.includes(dateStr) ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => toggleDate(dateStr)}
-                      data-testid={`button-date-${dateStr}`}
-                    >
-                      {formatDate(dateStr)}
-                    </Button>
-                  ))}
-                </div>
-                
                 {/* Legend */}
-                <div className="flex items-center gap-2 text-xs border-t pt-3">
+                <div className="flex items-center gap-2 text-xs">
                   <span className="text-muted-foreground">Volume:</span>
                   <div className="flex items-center gap-1">
                     <div className="w-4 h-4 rounded bg-gray-200 dark:bg-gray-700" />
