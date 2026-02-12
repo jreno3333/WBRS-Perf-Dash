@@ -11,14 +11,6 @@ interface SummaryCardsProps {
 }
 
 // Grade scoring for X-Score calculation
-const gradeToScore = (grade: string): number => {
-  const scores: Record<string, number> = {
-    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
-    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
-  };
-  return scores[grade] || 0;
-};
-
 const scoreToGrade = (score: number): string => {
   if (score >= 95) return 'A+';
   if (score >= 90) return 'A';
@@ -64,7 +56,7 @@ function getExecutionGrade(
   hasComparableSales: boolean = true,
   osatPercent: number | undefined = undefined,
   hasValidStaffing: boolean = true
-): { grade: string; hasGrade: boolean } {
+): { grade: string; score: number; hasGrade: boolean } {
   const components: { name: string; score: number; weight: number }[] = [];
   
   if (hasComparableSales) {
@@ -98,7 +90,7 @@ function getExecutionGrade(
   }
   
   if (components.length === 0) {
-    return { grade: '-', hasGrade: false };
+    return { grade: '-', score: 0, hasGrade: false };
   }
   
   // Calculate weighted average - normalize weights based on available components
@@ -106,7 +98,7 @@ function getExecutionGrade(
   const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
   
   const grade = scoreToGrade(avgScore);
-  return { grade, hasGrade: true };
+  return { grade, score: avgScore, hasGrade: true };
 }
 
 export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: SummaryCardsProps) {
@@ -256,13 +248,12 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
         
         const gradeInfo = getExecutionGrade(salesVariancePct, speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing);
         if (gradeInfo.hasGrade) {
-          const score = gradeToScore(gradeInfo.grade);
-          if (score > 0) {
-            allHourlyScores.push(score);
-            restaurantHourlyScores.push(score);
+          if (gradeInfo.score > 0) {
+            allHourlyScores.push(gradeInfo.score);
+            restaurantHourlyScores.push(gradeInfo.score);
             // Track by hour for trend calculation
             if (!scoresByHour[hour.hour]) scoresByHour[hour.hour] = [];
-            scoresByHour[hour.hour].push(score);
+            scoresByHour[hour.hour].push(gradeInfo.score);
           }
         }
       }
