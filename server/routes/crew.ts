@@ -279,7 +279,7 @@ router.get("/api/people/performance", async (req, res) => {
         totalSalesToday: number;
         totalSalesLastWeek: number;
         staffingDiffs: number[];
-        speedValues: number[];
+        speedCars: { carCount: number; carsUnder6Min: number }[];
         osatWeighted: { percent: number; responses: number }[];
         hoursCount: number;
       }>();
@@ -309,7 +309,7 @@ router.get("/api/people/performance", async (req, res) => {
               dailyAggregates.set(dayKey, {
                 restaurantId: crew.restaurantId,
                 totalSalesToday: 0, totalSalesLastWeek: 0,
-                staffingDiffs: [], speedValues: [], osatWeighted: [], hoursCount: 0,
+                staffingDiffs: [], speedCars: [], osatWeighted: [], hoursCount: 0,
               });
             }
             const day = dailyAggregates.get(dayKey)!;
@@ -330,9 +330,8 @@ router.get("/api/people/performance", async (req, res) => {
             const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
             day.staffingDiffs.push(actualStaff - projectedStaff);
 
-            const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
-            if (speedSeconds !== undefined && speedSeconds > 0) {
-              day.speedValues.push(speedSeconds);
+            if (hme && hme.carCount > 0 && (hme.carsUnder6Min || 0) > 0) {
+              day.speedCars.push({ carCount: hme.carCount, carsUnder6Min: hme.carsUnder6Min || 0 });
             }
 
             const osatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
@@ -352,7 +351,9 @@ router.get("/api/people/performance", async (req, res) => {
           ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100
           : 0;
         const avgStaffingDiff = day.staffingDiffs.reduce((a: number, b: number) => a + b, 0) / day.staffingDiffs.length;
-        const avgSpeed = day.speedValues.length > 0 ? day.speedValues.reduce((a: number, b: number) => a + b, 0) / day.speedValues.length : undefined;
+        const totalCars = day.speedCars.reduce((s: number, h: { carCount: number; carsUnder6Min: number }) => s + h.carCount, 0);
+        const totalUnder6 = day.speedCars.reduce((s: number, h: { carCount: number; carsUnder6Min: number }) => s + h.carsUnder6Min, 0);
+        const avgSpeed = totalCars > 0 ? Math.round((totalUnder6 / totalCars) * 100) : undefined;
         const totalOsatResponses = day.osatWeighted.reduce((s: number, o: { percent: number; responses: number }) => s + o.responses, 0);
         const osatPercent = totalOsatResponses > 0
           ? day.osatWeighted.reduce((s: number, o: { percent: number; responses: number }) => s + o.percent * o.responses, 0) / totalOsatResponses
@@ -373,8 +374,8 @@ router.get("/api/people/performance", async (req, res) => {
         components.push({ weight: 15, score: staffingScore });
         if (avgSpeed !== undefined) {
           let speedScore = 100;
-          if (avgSpeed > 420) speedScore = 40;
-          else if (avgSpeed > 300) speedScore = 70;
+          if (avgSpeed < 50) speedScore = 40;
+          else if (avgSpeed < 70) speedScore = 70;
           components.push({ weight: 25, score: speedScore });
         }
         if (osatPercent !== undefined) {
