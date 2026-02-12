@@ -111,42 +111,43 @@ function getExecutionGrade(
   const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
   const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
   
-  // Convert score to letter grade
-  let grade: string;
-  let color: string;
-  if (avgScore >= 95) {
-    grade = 'A+'; color = 'text-green-600 dark:text-green-400';
-  } else if (avgScore >= 85) {
-    grade = 'A'; color = 'text-green-600 dark:text-green-400';
-  } else if (avgScore >= 75) {
-    grade = 'B'; color = 'text-blue-600 dark:text-blue-400';
-  } else if (avgScore >= 65) {
-    grade = 'C'; color = 'text-yellow-600 dark:text-yellow-400';
-  } else if (avgScore >= 55) {
-    grade = 'D'; color = 'text-orange-600 dark:text-orange-400';
-  } else {
-    grade = 'F'; color = 'text-red-600 dark:text-red-400';
-  }
-  
+  // Convert score to detailed letter grade
+  const { grade, color } = scoreToGrade(avgScore);
   return { grade, color, hasGrade: true };
 }
 
-// Convert letter grade to numeric score for averaging
+function getGradeColor(grade: string): string {
+  if (grade.startsWith('A')) return 'text-green-600 dark:text-green-400';
+  if (grade.startsWith('B')) return 'text-blue-600 dark:text-blue-400';
+  if (grade.startsWith('C')) return 'text-yellow-600 dark:text-yellow-400';
+  if (grade === 'D') return 'text-orange-600 dark:text-orange-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
+// Convert letter grade to numeric score for averaging (midpoint of each range)
 function gradeToScore(grade: string): number {
   const scores: Record<string, number> = {
-    'A+': 100, 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'F': 50
+    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
+    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
   };
   return scores[grade] ?? 0;
 }
 
-// Convert average score back to letter grade
+// Convert average score back to detailed letter grade
 function scoreToGrade(score: number): { grade: string; color: string } {
-  if (score >= 95) return { grade: 'A+', color: 'text-green-600 dark:text-green-400' };
-  if (score >= 85) return { grade: 'A', color: 'text-green-600 dark:text-green-400' };
-  if (score >= 75) return { grade: 'B', color: 'text-blue-600 dark:text-blue-400' };
-  if (score >= 65) return { grade: 'C', color: 'text-yellow-600 dark:text-yellow-400' };
-  if (score >= 55) return { grade: 'D', color: 'text-orange-600 dark:text-orange-400' };
-  return { grade: 'F', color: 'text-red-600 dark:text-red-400' };
+  let grade: string;
+  if (score >= 95) grade = 'A+';
+  else if (score >= 90) grade = 'A';
+  else if (score >= 85) grade = 'A-';
+  else if (score >= 80) grade = 'B+';
+  else if (score >= 75) grade = 'B';
+  else if (score >= 70) grade = 'B-';
+  else if (score >= 65) grade = 'C+';
+  else if (score >= 60) grade = 'C';
+  else if (score >= 55) grade = 'C-';
+  else if (score >= 50) grade = 'D';
+  else grade = 'F';
+  return { grade, color: getGradeColor(grade) };
 }
 
 interface CrewSummary {

@@ -12,17 +12,41 @@ interface SummaryCardsProps {
 
 // Grade scoring for X-Score calculation
 const gradeToScore = (grade: string): number => {
-  const scores: Record<string, number> = { 'A+': 100, 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'F': 50 };
+  const scores: Record<string, number> = {
+    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
+    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
+  };
   return scores[grade] || 0;
 };
 
 const scoreToGrade = (score: number): string => {
   if (score >= 95) return 'A+';
-  if (score >= 85) return 'A';
+  if (score >= 90) return 'A';
+  if (score >= 85) return 'A-';
+  if (score >= 80) return 'B+';
   if (score >= 75) return 'B';
-  if (score >= 65) return 'C';
-  if (score >= 55) return 'D';
+  if (score >= 70) return 'B-';
+  if (score >= 65) return 'C+';
+  if (score >= 60) return 'C';
+  if (score >= 55) return 'C-';
+  if (score >= 50) return 'D';
   return 'F';
+};
+
+const getGradeColor = (grade: string): string => {
+  if (grade.startsWith('A')) return 'text-green-600 dark:text-green-400';
+  if (grade.startsWith('B')) return 'text-blue-600 dark:text-blue-400';
+  if (grade.startsWith('C')) return 'text-yellow-600 dark:text-yellow-400';
+  if (grade === 'D') return 'text-orange-600 dark:text-orange-400';
+  return 'text-red-600 dark:text-red-400';
+};
+
+const getGradeBgColor = (grade: string): string => {
+  if (grade.startsWith('A')) return 'bg-green-500/20 border-green-500/50';
+  if (grade.startsWith('B')) return 'bg-blue-500/20 border-blue-500/50';
+  if (grade.startsWith('C')) return 'bg-yellow-500/20 border-yellow-500/50';
+  if (grade === 'D') return 'bg-orange-500/20 border-orange-500/50';
+  return 'bg-red-500/20 border-red-500/50';
 };
 
 // WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
@@ -78,14 +102,7 @@ function getExecutionGrade(
   const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
   const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
   
-  let grade: string;
-  if (avgScore >= 95) grade = 'A+';
-  else if (avgScore >= 85) grade = 'A';
-  else if (avgScore >= 75) grade = 'B';
-  else if (avgScore >= 65) grade = 'C';
-  else if (avgScore >= 55) grade = 'D';
-  else grade = 'F';
-  
+  const grade = scoreToGrade(avgScore);
   return { grade, hasGrade: true };
 }
 
@@ -260,22 +277,18 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
   const speedGreenPct = totalSpeedHours > 0 ? Math.round((speedGreenCount / totalSpeedHours) * 100) : 0;
   const osatGoodPct = totalOsatHours > 0 ? Math.round((osatGoodCount / totalOsatHours) * 100) : 0;
   
-  // Count stores by execution grade
-  const gradeCounts = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
+  // Count stores by execution grade (group by letter family)
+  const gradeCounts = { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
   Object.values(restaurantGrades).forEach(grade => {
-    if (grade in gradeCounts) {
-      gradeCounts[grade as keyof typeof gradeCounts]++;
-    }
+    const family = grade.startsWith('A') ? 'A' : grade.startsWith('B') ? 'B' : grade.startsWith('C') ? 'C' : grade === 'D' ? 'D' : 'F';
+    gradeCounts[family as keyof typeof gradeCounts]++;
   });
   
   const overallXScore = allHourlyScores.length > 0 
     ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length 
     : 0;
   const overallGrade = scoreToGrade(overallXScore);
-  const gradeColor = overallGrade === 'A+' || overallGrade === 'A' ? 'text-green-600 dark:text-green-400' 
-    : overallGrade === 'B' ? 'text-blue-600 dark:text-blue-400' 
-    : overallGrade === 'C' ? 'text-yellow-600 dark:text-yellow-400'
-    : 'text-red-600 dark:text-red-400';
+  const gradeColor = getGradeColor(overallGrade);
 
   // Calculate projected daily: sum of all restaurant forecast sales
   // Each restaurant's forecastSales = actual + LW remaining hours (same methodology)
