@@ -528,26 +528,6 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   Comparison to same day last week at this time
                 </PopoverContent>
               </Popover>
-              {yoyData && (() => {
-                const yoyTotalPrior = sssRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
-                if (yoyTotalPrior > 0) {
-                  const yoyVariance = ((totalTodaySales - yoyTotalPrior) / yoyTotalPrior) * 100;
-                  const yoyDiff = totalTodaySales - yoyTotalPrior;
-                  const projectedSSSTotal = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
-                  const projectedYoYVariance = ((projectedSSSTotal - yoyTotalPrior) / yoyTotalPrior) * 100;
-                  return (
-                    <>
-                      <p className={`text-xs font-medium cursor-help ${yoyVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-summary">
-                        SSS YoY: {yoyVariance >= 0 ? "+" : ""}{Math.round(yoyVariance)}% ({yoyDiff >= 0 ? "+" : ""}{formatCurrency(yoyDiff)})
-                      </p>
-                      <p className={`text-xs font-medium cursor-help ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
-                        Proj YoY: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}%
-                      </p>
-                    </>
-                  );
-                }
-                return null;
-              })()}
             </div>
           </div>
         </CardContent>
@@ -591,20 +571,6 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">Day complete</p>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <div className="mt-1 text-xs cursor-help">
-                        <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
-                        <span className="text-muted-foreground"> ahead</span>
-                        <span className="mx-1 text-muted-foreground">·</span>
-                        <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
-                        <span className="text-muted-foreground"> behind LW</span>
-                      </div>
-                    </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
-                      Stores beating or trailing last week's pace
-                    </PopoverContent>
-                  </Popover>
                 </>
               ) : (
                 <>
@@ -634,22 +600,23 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                       Uses last week's remaining hours to estimate today's total
                     </PopoverContent>
                   </Popover>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <div className="mt-1 text-xs cursor-help">
-                        <span className="font-semibold text-green-600 dark:text-green-400">{aheadOfPaceCount}</span>
-                        <span className="text-muted-foreground"> ahead</span>
-                        <span className="mx-1 text-muted-foreground">·</span>
-                        <span className="font-semibold text-red-600 dark:text-red-400">{activeRestaurants.length - aheadOfPaceCount}</span>
-                        <span className="text-muted-foreground"> behind LW</span>
-                      </div>
-                    </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
-                      Stores beating or trailing last week's pace
-                    </PopoverContent>
-                  </Popover>
                 </>
               )}
+              {yoyData && (() => {
+                const yoyTotalPrior = sssRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
+                if (yoyTotalPrior > 0) {
+                  const projectedSSSTotal = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+                  const projectedYoYVariance = ((projectedSSSTotal - yoyTotalPrior) / yoyTotalPrior) * 100;
+                  const projYoYDiff = projectedSSSTotal - yoyTotalPrior;
+                  return (
+                    <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
+                      {projectedYoYVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                      Proj YoY: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
         </CardContent>
