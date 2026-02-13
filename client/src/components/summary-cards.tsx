@@ -491,31 +491,6 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   </span>
                 )}
               </div>
-              {/* 4-Hour Execution Trend */}
-              {hourlyAvgScores.length >= 2 && (
-                <div className="mt-2 pt-2 border-t border-border/50">
-                  <div className="flex items-center gap-1 text-xs">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <span className="text-muted-foreground cursor-help">4hr trend:</span>
-                      </PopoverTrigger>
-                      <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
-                        Average grade across all stores for each of the last 4 hours
-                      </PopoverContent>
-                    </Popover>
-                    <div className="flex items-center gap-0.5">
-                      {hourlyAvgScores.map((h, i) => (
-                        <span key={h.hour} className="flex items-center">
-                          <span className={`font-semibold ${getGradeColor(h.grade)}`}>{h.grade}</span>
-                          {i < hourlyAvgScores.length - 1 && <span className="text-muted-foreground mx-0.5">→</span>}
-                        </span>
-                      ))}
-                    </div>
-                    {executionTrend === 'up' && <TrendingUp className="w-3.5 h-3.5 text-green-600 dark:text-green-400 ml-1" />}
-                    {executionTrend === 'down' && <TrendingDown className="w-3.5 h-3.5 text-red-600 dark:text-red-400 ml-1" />}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </CardContent>
@@ -530,7 +505,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-sm text-muted-foreground">SSS Today ({sssRestaurants.length}/{activeRestaurants.length})</p>
+                <p className="text-sm text-muted-foreground">Total Sales ({sssRestaurants.length}/{activeRestaurants.length})</p>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground cursor-help" />
