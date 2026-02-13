@@ -104,7 +104,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "yoy" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
@@ -277,6 +277,9 @@ export default function Dashboard() {
             case "osat":
               // Only units with OSAT data
               return r.osat != null && r.osat.totalResponses > 0;
+            case "yoy":
+              // Only units with YoY data
+              return yoyBulkData?.data?.[r.restaurantId] != null;
             default:
               return true; // No filter for sales/variance/xscore
           }
@@ -319,6 +322,15 @@ export default function Dashboard() {
               const aOsat = a.osat?.osatPercent ?? 0;
               const bOsat = b.osat?.osatPercent ?? 0;
               return bOsat - aOsat;
+            case "yoy": {
+              const aYoy = yoyBulkData?.data?.[a.restaurantId];
+              const bYoy = yoyBulkData?.data?.[b.restaurantId];
+              const aProjected = a.normalizedHour < 23 ? a.forecastSales : a.actualSales;
+              const bProjected = b.normalizedHour < 23 ? b.forecastSales : b.actualSales;
+              const aYoyVar = aYoy ? ((aProjected / aYoy.priorNetSales) - 1) * 100 : -999;
+              const bYoyVar = bYoy ? ((bProjected / bYoy.priorNetSales) - 1) * 100 : -999;
+              return bYoyVar - aYoyVar;
+            }
             default:
               // Default sort by actualSales (total sales so far today)
               return b.actualSales - a.actualSales;
@@ -522,6 +534,7 @@ export default function Dashboard() {
                         <SelectContent>
                           <SelectItem value="sales">Total Sales</SelectItem>
                           <SelectItem value="variance">% vs LW</SelectItem>
+                          <SelectItem value="yoy">% vs LY</SelectItem>
                           <SelectItem value="new_unit">New Units</SelectItem>
                           <SelectItem value="missing_manager">Missing Mgr</SelectItem>
                           <SelectItem value="dt_time">DT Time</SelectItem>
