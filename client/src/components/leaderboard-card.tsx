@@ -205,26 +205,6 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
     return `${sign}${Math.round(value)}%`;
   };
 
-  const getTimezoneDisplay = (tz: string) => {
-    // Show compact time format: "5P-EST"
-    const now = new Date();
-    const hour = parseInt(now.toLocaleTimeString('en-US', { 
-      timeZone: tz, 
-      hour: 'numeric', 
-      hour12: true 
-    }));
-    const isPM = now.toLocaleTimeString('en-US', { 
-      timeZone: tz, 
-      hour: 'numeric', 
-      hour12: true 
-    }).includes('PM');
-    const ampm = isPM ? 'P' : 'A';
-    
-    if (tz.includes("New_York") || tz.includes("Eastern")) return `${hour}${ampm}-EST`;
-    if (tz.includes("Chicago") || tz.includes("Central")) return `${hour}${ampm}-CST`;
-    return `${hour}${ampm}`;
-  };
-
   // Use normalized sales for pace variance comparison (fair timezone comparison for rankings)
   const paceVariance = restaurant.lastWeekSales > 0 
     ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
@@ -311,19 +291,19 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       className="hover-elevate transition-all duration-200"
       data-testid={`card-restaurant-${restaurant.restaurantId}`}
     >
-      <CardContent className="p-4">
-        <div className="flex items-center gap-4">
+      <CardContent className="p-3">
+        <div className="flex items-center gap-3">
           <div className="flex-shrink-0">
             {restaurant.status === "training" ? (
               <div 
-                className="w-12 h-12 rounded-full flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
                 data-testid={`text-rank-${restaurant.restaurantId}`}
               >
-                N/A
+                --
               </div>
             ) : (
               <div 
-                className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
                   restaurant.rank === 1 
                     ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" 
                     : restaurant.rank === 2 
@@ -340,9 +320,9 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
               <h3 
-                className="font-semibold text-base truncate"
+                className="font-semibold text-sm truncate"
                 data-testid={`text-restaurant-name-${restaurant.restaurantId}`}
               >
                 {restaurant.restaurantName}
@@ -355,12 +335,6 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
               {restaurant.status === "new" && (
                 <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
                   NU {restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`}
-                </Badge>
-              )}
-              {isToday && (
-                <Badge variant="secondary" className="flex-shrink-0 text-xs">
-                  <Clock className="w-3 h-3 mr-1" />
-                  {getTimezoneDisplay(restaurant.timezone)}
                 </Badge>
               )}
               {/* Overall Execution Grade - Always visible */}
@@ -547,14 +521,9 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
               <span className="text-xs">
-                LW up to {(() => {
-                  const upToHour = (restaurant.normalizedHour + 1) % 24;
-                  const displayHour = upToHour === 0 ? 12 : upToHour > 12 ? upToHour - 12 : upToHour;
-                  const ampm = upToHour >= 12 ? 'pm' : 'am';
-                  return `${displayHour}${ampm}`;
-                })()}: {formatCurrency(restaurant.lastWeekSales)}
+                LW: {formatCurrency(restaurant.lastWeekSales)}
               </span>
               <div className="relative group">
                 <span className="text-xs cursor-help">
@@ -594,7 +563,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
           <div className="flex-shrink-0 text-right">
             <div className="flex items-center justify-end gap-1.5">
               <div 
-                className="text-xl font-bold"
+                className="text-lg font-bold"
                 data-testid={`text-sales-${restaurant.restaurantId}`}
               >
                 {formatCurrency(restaurant.actualSales)}
