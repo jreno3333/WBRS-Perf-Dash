@@ -116,7 +116,7 @@ export default function Dashboard() {
   const { data: leaderboardData, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/leaderboard?date=${dateStr}`);
+      const res = await fetch(`/api/leaderboard?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return await res.json();
     },
@@ -126,7 +126,7 @@ export default function Dashboard() {
   const { data: hourlyByRestaurant } = useQuery<Record<string, HourlySalesData[]>>({
     queryKey: ["/api/hourly-by-restaurant", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/hourly-by-restaurant?date=${dateStr}`);
+      const res = await fetch(`/api/hourly-by-restaurant?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -137,7 +137,7 @@ export default function Dashboard() {
   const { data: crewSummaryResponse } = useQuery<{ date: string; summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> }>({
     queryKey: ["/api/crew/summary", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/crew/summary?date=${dateStr}`);
+      const res = await fetch(`/api/crew/summary?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -155,7 +155,7 @@ export default function Dashboard() {
   const { data: hourlyCrewResponse } = useQuery<{ date: string; data: Record<string, HourlyCrewData[]> }>({
     queryKey: ["/api/crew/experience", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/crew/experience?date=${dateStr}`);
+      const res = await fetch(`/api/crew/experience?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -180,7 +180,7 @@ export default function Dashboard() {
   }>({
     queryKey: ["/api/holidays", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/holidays?date=${dateStr}`);
+      const res = await fetch(`/api/holidays?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -192,7 +192,7 @@ export default function Dashboard() {
   }>({
     queryKey: ["/api/historical-sales/yoy-bulk", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/historical-sales/yoy-bulk?date=${dateStr}`);
+      const res = await fetch(`/api/historical-sales/yoy-bulk?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch YoY data");
       return res.json();
     },

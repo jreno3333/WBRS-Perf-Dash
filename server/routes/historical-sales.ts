@@ -192,9 +192,13 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
 
     const priorDateStr = priorYearDate.toISOString().split("T")[0];
 
+    console.log(`[YoY] Fetching bulk data for date=${date}, priorDate=${priorDateStr}`);
+
     const rows = await db.select()
       .from(historicalDailySales)
       .where(eq(historicalDailySales.date, priorDateStr));
+
+    console.log(`[YoY] Found ${rows.length} records for ${priorDateStr}`);
 
     const result: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }> = {};
     for (const row of rows) {
