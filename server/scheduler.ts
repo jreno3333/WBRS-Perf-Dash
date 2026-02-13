@@ -601,14 +601,19 @@ async function backfillRecentHourlySalesGaps() {
       const dayEnd = new Date(`${dateStr}T23:59:59.999Z`);
       
       const countResult = await db
-        .select({ count: sql<number>`count(*)` })
+        .select({ 
+          count: sql<number>`count(*)`,
+          salesSum: sql<number>`COALESCE(SUM(CAST(${hourlySales.actualSales} AS NUMERIC)), 0)`
+        })
         .from(hourlySales)
         .where(sql`${hourlySales.salesDate} >= ${dayStart} AND ${hourlySales.salesDate} <= ${dayEnd}`);
       const count = Number(countResult[0]?.count || 0);
+      const salesSum = Number(countResult[0]?.salesSum || 0);
       
-      // If fewer than 100 records, this day likely has no sales data
-      // (22 restaurants × ~17 hours = ~374 expected)
-      if (count < 100) {
+      // A day is a "gap" if either:
+      // 1. Fewer than 100 records (missing records entirely)
+      // 2. Records exist but total actual sales is $0 (POS data wasn't synced)
+      if (count < 100 || (count > 0 && salesSum === 0)) {
         gapDates.push(dateStr);
       }
     }
