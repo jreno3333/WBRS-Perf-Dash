@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
-import { hourlySales, hourlyLabor, dailyOsat, hmeTimerData, hourlyCrew, markets, restaurantMarkets } from "@shared/schema";
+import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 
@@ -77,11 +77,11 @@ router.get("/api/performance-history", async (req, res) => {
         lte(hourlyLabor.date, dateRange[dateRange.length - 1])
       ));
 
-    // Fetch OSAT data for the date range
-    const allOsatData = await db.select().from(dailyOsat)
+    // Fetch per-hour OSAT data for the date range (matches dashboard per-hour OSAT)
+    const allOsatData = await db.select().from(osatData)
       .where(and(
-        gte(dailyOsat.date, dateRange[0]),
-        lte(dailyOsat.date, dateRange[dateRange.length - 1])
+        gte(osatData.date, dateRange[0]),
+        lte(osatData.date, dateRange[dateRange.length - 1])
       ));
 
     // Fetch HME timer data for speed
@@ -275,13 +275,20 @@ router.get("/api/performance-history", async (req, res) => {
       laborByKey.set(key, l);
     });
 
+    // Build per-hour OSAT lookup by restaurantId-date-hour (matches dashboard exactly)
+    const osatByKey = new Map<string, { osatPercent: number; totalResponses: number }>();
+    allOsatData.forEach(o => {
+      const key = `${o.restaurantId}-${o.date}-${o.hour}`;
+      const pct = o.osatPercent ? parseFloat(o.osatPercent) : 0;
+      osatByKey.set(key, { osatPercent: pct, totalResponses: o.totalResponses });
+    });
+
     // Process each date - using PER-HOUR grade calculation matching dashboard exactly
     for (const dateStr of dateRange) {
       const salesForDate = allHourlySales.filter(s => {
         const salesDateStr = s.salesDate.toISOString().split('T')[0];
         return salesDateStr === dateStr;
       });
-      const osatForDate = allOsatData.filter(o => o.date === dateStr);
       const crewForDate = allCrewData.filter(c => c.date === dateStr);
 
       const salesByRestaurant = new Map<string, typeof salesForDate>();
@@ -293,7 +300,6 @@ router.get("/api/performance-history", async (req, res) => {
 
       for (const restaurant of restaurantList) {
         const restaurantSales = salesByRestaurant.get(restaurant.id) || [];
-        const restaurantOsat = osatForDate.find(o => o.restaurantId === restaurant.id);
         const restaurantCrew = crewForDate.filter(c => c.restaurantId === restaurant.id);
 
         if (restaurantSales.length === 0) continue;
@@ -320,9 +326,20 @@ router.get("/api/performance-history", async (req, res) => {
           avgSpeed = totalCars > 0 ? Math.round((totalUnder6 / totalCars) * 100) : undefined;
         }
 
-        // OSAT for display
-        const osatPercent = restaurantOsat?.osatPercent ? parseFloat(restaurantOsat.osatPercent) : undefined;
-        const osatResponses = restaurantOsat?.totalResponses ?? 0;
+        // OSAT for display - aggregate from per-hour OSAT data (same source as dashboard)
+        let osatPercent: number | undefined;
+        let osatResponses = 0;
+        let osatFiveStarTotal = 0;
+        for (let h = 0; h < 24; h++) {
+          const osatRecord = osatByKey.get(`${restaurant.id}-${dateStr}-${h}`);
+          if (osatRecord && osatRecord.totalResponses > 0) {
+            osatResponses += osatRecord.totalResponses;
+            osatFiveStarTotal += (osatRecord.osatPercent / 100) * osatRecord.totalResponses;
+          }
+        }
+        if (osatResponses > 0) {
+          osatPercent = (osatFiveStarTotal / osatResponses) * 100;
+        }
 
         // XP for display
         let avgXp: number | undefined;
@@ -364,6 +381,12 @@ router.get("/api/performance-history", async (req, res) => {
             speedAttainment = Math.round((hmeRecord.carsUnder6Min / hmeRecord.carCount) * 100);
           }
 
+          // Per-hour OSAT - only include if this specific hour has survey responses
+          // This matches the dashboard exactly (dashboard uses per-hour OSAT from osatData table)
+          const hourOsatRecord = osatByKey.get(`${restaurant.id}-${dateStr}-${hour}`);
+          const hourOsatPercent = (hourOsatRecord && hourOsatRecord.totalResponses > 0)
+            ? hourOsatRecord.osatPercent : undefined;
+
           const result = getHourlyExecutionGrade(
             salesVariancePct,
             speedAttainment,
@@ -371,7 +394,7 @@ router.get("/api/performance-history", async (req, res) => {
             hasComparableSales,
             isFirstWeek,
             hasValidStaffing,
-            osatPercent
+            hourOsatPercent
           );
           if (result.hasGrade && result.score > 0) {
             hourlyMidpoints.push(gradeToMidpoint(result.score));
