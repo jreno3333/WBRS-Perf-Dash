@@ -263,10 +263,13 @@ router.get("/api/people/leader-detail", async (req, res) => {
       // Compute daily aggregates first
       const totalSales = dayData.hours.reduce((s: number, h: HourDetail) => s + h.todaySales, 0);
       const totalLastWeekSales = dayData.hours.reduce((s: number, h: HourDetail) => s + h.lastWeekSales, 0);
-      const hasComparableSales = totalLastWeekSales > 0;
-      const dailySalesVariancePct = hasComparableSales
+      const hasComparableSales = totalLastWeekSales > 2000 && totalSales > 500;
+      let dailySalesVariancePct = hasComparableSales
         ? ((totalSales - totalLastWeekSales) / totalLastWeekSales) * 100
         : 0;
+      if (hasComparableSales) {
+        dailySalesVariancePct = Math.max(-200, Math.min(200, dailySalesVariancePct));
+      }
       const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
       const speedHours = dayData.hours.filter((h: HourDetail) => h.carCount !== undefined && h.carCount! > 0 && h.carsUnder6Min !== undefined && h.carsUnder6Min! > 0);
       let avgSpeed: number | undefined = undefined;

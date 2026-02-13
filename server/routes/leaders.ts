@@ -186,9 +186,12 @@ router.get("/api/leaders", async (req, res) => {
 
       const dailyGrades: { score: number; hours: number }[] = [];
       for (const [, day] of Array.from(dailyAggregates)) {
-        const hasComparableSales = day.totalSalesLastWeek > 0;
-        const salesVariancePct = hasComparableSales
+        const hasComparableSales = day.totalSalesLastWeek > 2000 && day.totalSalesToday > 500;
+        let salesVariancePct = hasComparableSales
           ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100 : 0;
+        if (hasComparableSales) {
+          salesVariancePct = Math.max(-200, Math.min(200, salesVariancePct));
+        }
         const avgStaffingDiff = day.staffingDiffs.reduce((a, b) => a + b, 0) / day.staffingDiffs.length;
         const avgSpeed = day.speedValues.length > 0 ? day.speedValues.reduce((a, b) => a + b, 0) / day.speedValues.length : undefined;
         const totalOsatResponses = day.osatWeighted.reduce((s, o) => s + o.responses, 0);

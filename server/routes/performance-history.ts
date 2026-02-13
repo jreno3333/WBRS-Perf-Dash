@@ -310,10 +310,15 @@ router.get("/api/performance-history", async (req, res) => {
           })
           .reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
 
-        // Handle missing comparison data - require meaningful last-week sales (>$500 minimum)
-        // to avoid extreme variance from grand opening days or partial-day data
-        const hasComparableSales = weekAgoSales > 500;
-        const salesVariance = hasComparableSales ? ((totalSales - weekAgoSales) / weekAgoSales) * 100 : 0;
+        // Handle missing comparison data - require meaningful last-week sales (>$2000 minimum)
+        // to avoid extreme variance from grand opening days, partial-day data, or store closures
+        // Also cap extreme variances to prevent single-day outliers from distorting averages
+        const hasComparableSales = weekAgoSales > 2000 && totalSales > 500;
+        let salesVariance = hasComparableSales ? ((totalSales - weekAgoSales) / weekAgoSales) * 100 : 0;
+        // Cap variance at ±200% to prevent extreme outliers from distorting averages
+        if (hasComparableSales) {
+          salesVariance = Math.max(-200, Math.min(200, salesVariance));
+        }
 
         // Calculate speed attainment (% of cars under 6 min) from HME timer data
         let avgSpeed: number | undefined;
