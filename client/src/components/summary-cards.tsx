@@ -474,13 +474,15 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-muted-foreground">Total Sales</p>
-              <p className="text-xl font-bold" data-testid="text-total-sales">
-                {formatCurrency(totalTodaySales)}
-              </p>
-              <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                {lwVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
-              </p>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold" data-testid="text-total-sales">
+                  {formatCurrency(totalTodaySales)}
+                </p>
+                <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                  {lwVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+                </span>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -507,27 +509,31 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
               </div>
               {projectedData.isDayComplete ? (
                 <>
-                  <p className="text-xl font-bold" data-testid="text-projected-daily">
-                    {formatCurrency(projectedData.actualSoFar)}
-                  </p>
-                  <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                    {totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay 
-                      ? <TrendingUp className="w-3.5 h-3.5" /> 
-                      : <TrendingDown className="w-3.5 h-3.5" />}
-                    vs LW (Day complete)
-                  </p>
+                  <div className="flex items-baseline gap-1.5">
+                    <p className="text-xl font-bold" data-testid="text-projected-daily">
+                      {formatCurrency(projectedData.actualSoFar)}
+                    </p>
+                    <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                      {totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay 
+                        ? <TrendingUp className="w-3 h-3" /> 
+                        : <TrendingDown className="w-3 h-3" />}
+                      vs LW
+                    </span>
+                  </div>
                 </>
               ) : (
                 <>
-                  <p className="text-xl font-bold" data-testid="text-projected-daily">
-                    {formatCurrency(projectedData.projected)}
-                  </p>
-                  <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                    {totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay 
-                      ? <TrendingUp className="w-3.5 h-3.5" /> 
-                      : <TrendingDown className="w-3.5 h-3.5" />}
-                    vs LW
-                  </p>
+                  <div className="flex items-baseline gap-1.5">
+                    <p className="text-xl font-bold" data-testid="text-projected-daily">
+                      {formatCurrency(projectedData.projected)}
+                    </p>
+                    <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                      {totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay 
+                        ? <TrendingUp className="w-3 h-3" /> 
+                        : <TrendingDown className="w-3 h-3" />}
+                      vs LW
+                    </span>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
                   </p>
@@ -540,9 +546,9 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   const projectedYoYVariance = ((projectedSSSTotal - yoyTotalPrior) / yoyTotalPrior) * 100;
                   const projYoYDiff = projectedSSSTotal - yoyTotalPrior;
                   return (
-                    <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
-                      {projectedYoYVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                      SSS Proj YoY ({sssRestaurants.length}/{activeRestaurants.length}): {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
+                    <p className={`text-xs font-medium mt-1 flex items-center gap-1 whitespace-nowrap ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
+                      {projectedYoYVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 flex-shrink-0" />}
+                      SSS YoY {sssRestaurants.length}/{activeRestaurants.length}: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
                     </p>
                   );
                 }

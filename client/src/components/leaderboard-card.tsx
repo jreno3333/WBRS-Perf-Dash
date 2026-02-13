@@ -582,47 +582,36 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
           </div>
 
           <div className="flex-shrink-0 text-right">
-            <div 
-              className="text-xl font-bold"
-              data-testid={`text-sales-${restaurant.restaurantId}`}
-            >
-              {formatCurrency(restaurant.actualSales)}
+            <div className="flex items-center justify-end gap-1.5">
+              <div 
+                className="text-xl font-bold"
+                data-testid={`text-sales-${restaurant.restaurantId}`}
+              >
+                {formatCurrency(restaurant.actualSales)}
+              </div>
+              <span className={`text-xs font-medium whitespace-nowrap ${paceVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid={`badge-pace-${restaurant.restaurantId}`}>
+                {paceVariance >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
+                LW {formatPercentage(paceVariance)}
+              </span>
             </div>
-            <div className="flex items-center justify-end gap-1 mt-1 flex-wrap">
-              {paceVariance >= 0 ? (
-                <Badge 
-                  className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
-                  data-testid={`badge-pace-${restaurant.restaurantId}`}
-                >
-                  <TrendingUp className="w-3.5 h-3.5 mr-1" />
-                  LW {formatPercentage(paceVariance)}
-                </Badge>
-              ) : (
-                <Badge 
-                  className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0"
-                  data-testid={`badge-pace-${restaurant.restaurantId}`}
-                >
-                  <TrendingDown className="w-3.5 h-3.5 mr-1" />
-                  LW {formatPercentage(paceVariance)}
-                </Badge>
-              )}
-              {yoyData && yoyData.priorNetSales > 0 && (() => {
-                const isDayComplete = restaurant.normalizedHour >= 23;
-                const projectedTotal = isDayComplete ? restaurant.actualSales : restaurant.forecastSales;
-                const projYoYVariance = ((projectedTotal - yoyData.priorNetSales) / yoyData.priorNetSales) * 100;
-                return (
-                  <Badge
-                    className={`border-0 ${projYoYVariance >= 0 
-                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" 
-                      : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}
+            {yoyData && yoyData.priorNetSales > 0 && (() => {
+              const isDayComplete = restaurant.normalizedHour >= 23;
+              const projectedTotal = isDayComplete ? restaurant.actualSales : restaurant.forecastSales;
+              const projYoYVariance = ((projectedTotal - yoyData.priorNetSales) / yoyData.priorNetSales) * 100;
+              return (
+                <div className="flex items-center justify-end mt-0.5">
+                  <span
+                    className={`text-xs font-medium whitespace-nowrap ${projYoYVariance >= 0 
+                      ? "text-blue-600 dark:text-blue-400" 
+                      : "text-orange-600 dark:text-orange-400"}`}
                     data-testid={`badge-yoy-${restaurant.restaurantId}`}
                   >
-                    {projYoYVariance >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+                    {projYoYVariance >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
                     YoY {projYoYVariance >= 0 ? "+" : ""}{Math.round(projYoYVariance)}%
-                  </Badge>
-                );
-              })()}
-            </div>
+                  </span>
+                </div>
+              );
+            })()}
           </div>
           
           <div 
