@@ -559,13 +559,10 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
               <div className="relative group">
                 <span className="text-xs cursor-help">
                   EOD Forecast: {(() => {
-                    // Check if day is complete by normalized hour (23 = end of day)
                     const isDayComplete = restaurant.normalizedHour >= 23;
                     if (isDayComplete) {
                       return formatCurrency(restaurant.actualSales);
                     }
-                    // Show actual + LW remaining
-                    const lwRemaining = restaurant.forecastSales - restaurant.actualSales;
                     return formatCurrency(restaurant.forecastSales);
                   })()}
                 </span>
@@ -578,6 +575,19 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   </div>
                 </div>
               </div>
+              {yoyData && yoyData.priorNetSales > 0 && (() => {
+                const isSSS = !restaurant.openDate || (() => {
+                  const open = new Date(restaurant.openDate);
+                  const now = new Date();
+                  return ((now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth())) > 18;
+                })();
+                if (!isSSS) return null;
+                return (
+                  <span className="text-xs">
+                    LY: {formatCurrency(yoyData.priorNetSales)}
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
