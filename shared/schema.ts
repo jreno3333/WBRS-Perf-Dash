@@ -708,3 +708,24 @@ export const arenaBadgeImages = pgTable("arena_badge_images", {
 });
 
 export type ArenaBadgeImage = typeof arenaBadgeImages.$inferSelect;
+
+// Historical daily sales summary - uploaded via CSV for YoY comparisons
+export const historicalDailySales = pgTable("historical_daily_sales", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  netSales: decimal("net_sales", { precision: 12, scale: 2 }).notNull(),
+  guestCount: integer("guest_count").notNull().default(0),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("historical_daily_sales_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
+
+export const insertHistoricalDailySalesSchema = createInsertSchema(historicalDailySales).omit({
+  id: true,
+  uploadedAt: true,
+});
+
+export type InsertHistoricalDailySales = z.infer<typeof insertHistoricalDailySalesSchema>;
+export type HistoricalDailySales = typeof historicalDailySales.$inferSelect;
