@@ -449,8 +449,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
       <Card data-testid="card-summary-ahead">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-              <Store className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+              <Store className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
@@ -500,8 +500,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
       <Card data-testid="card-summary-sales">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-lg bg-orange-100 dark:bg-orange-900/30">
-              <DollarSign className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
+              <DollarSign className="w-4 h-4 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
@@ -548,29 +548,6 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                 }
                 return null;
               })()}
-              {/* 4-Hour Sales Trend - simple up/down indicators */}
-              {hourlySales.length >= 2 && (
-                <div className="mt-2 pt-2 border-t border-border/50">
-                  <div className="flex items-center gap-1 text-xs flex-wrap">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <span className="text-muted-foreground cursor-help">4hr:</span>
-                      </PopoverTrigger>
-                      <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
-                        Each arrow shows if that hour beat last week (▲) or not (▼)
-                      </PopoverContent>
-                    </Popover>
-                    {hourlySales.map((h, i) => (
-                      <span key={h.hour} className="flex items-center">
-                        <span className={`font-bold text-base ${h.diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {h.diff >= 0 ? '▲' : '▼'}
-                        </span>
-                        {i < hourlySales.length - 1 && <span className="text-muted-foreground mx-0.5"></span>}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </CardContent>
@@ -580,8 +557,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
       <Card data-testid="card-summary-projected">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-              <Target className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+              <Target className="w-4 h-4 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
