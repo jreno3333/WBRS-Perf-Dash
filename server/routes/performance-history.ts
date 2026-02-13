@@ -12,17 +12,25 @@ router.get("/api/performance-history", async (req, res) => {
     const { days = "7", startDate, endDate } = req.query;
 
     // Calculate date range based on available data
-    // First, find the most recent date that has data
+    // Exclude the current day (Central Time) since partial-day data creates misleading variance
+    const now = new Date();
+    const todayCentral = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+
+    // First, find the most recent COMPLETED date that has data (exclude today)
     const latestDataResult = await db.select({ maxDate: sql<string>`MAX(DATE(sales_date))` })
-      .from(hourlySales);
+      .from(hourlySales)
+      .where(sql`DATE(sales_date) < ${todayCentral}`);
     const latestDataDate = latestDataResult[0]?.maxDate;
 
     let dateRange: string[] = [];
 
     if (startDate && endDate) {
-      // Custom date range
+      // Custom date range - still cap at yesterday
       const start = new Date(`${startDate}T12:00:00Z`);
-      const end = new Date(`${endDate}T12:00:00Z`);
+      let end = new Date(`${endDate}T12:00:00Z`);
+      const yesterdayCentral = new Date(`${todayCentral}T12:00:00Z`);
+      yesterdayCentral.setDate(yesterdayCentral.getDate() - 1);
+      if (end > yesterdayCentral) end = yesterdayCentral;
       const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
       for (let i = 0; i < daysDiff; i++) {
@@ -31,7 +39,7 @@ router.get("/api/performance-history", async (req, res) => {
         dateRange.push(date.toISOString().split('T')[0]);
       }
     } else {
-      // Last N days - use the most recent date with data as the end point
+      // Last N days - use the most recent completed date with data as the end point
       const numDays = parseInt(days as string) || 7;
       const endDate = latestDataDate
         ? new Date(`${latestDataDate}T12:00:00Z`)
@@ -42,7 +50,10 @@ router.get("/api/performance-history", async (req, res) => {
       for (let i = 0; i < numDays; i++) {
         const date = new Date(startDateCalc);
         date.setDate(date.getDate() + i);
-        dateRange.push(date.toISOString().split('T')[0]);
+        const dateStr = date.toISOString().split('T')[0];
+        if (dateStr < todayCentral) {
+          dateRange.push(dateStr);
+        }
       }
     }
 

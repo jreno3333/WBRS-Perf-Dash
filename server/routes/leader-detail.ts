@@ -13,7 +13,17 @@ router.get("/api/people/leader-detail", async (req, res) => {
       return res.status(400).json({ error: "employeeId is required" });
     }
 
-    const endDate = date ? new Date(String(date)) : new Date();
+    // Exclude current day (Central Time) - partial day data creates misleading variance
+    const now = new Date();
+    const todayCentral = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    const yesterdayCentral = new Date(`${todayCentral}T12:00:00Z`);
+    yesterdayCentral.setDate(yesterdayCentral.getDate() - 1);
+
+    let endDate = date ? new Date(String(date)) : yesterdayCentral;
+    const endDateCheck = endDate.toISOString().split('T')[0];
+    if (endDateCheck >= todayCentral) {
+      endDate = yesterdayCentral;
+    }
     const numDays = Math.min(parseInt(String(days)) || 14, 180);
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - numDays + 1);
