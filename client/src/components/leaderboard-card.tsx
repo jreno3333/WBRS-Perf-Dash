@@ -595,7 +595,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   data-testid={`badge-pace-${restaurant.restaurantId}`}
                 >
                   <TrendingUp className="w-3.5 h-3.5 mr-1" />
-                  {formatPercentage(paceVariance)}
+                  LW {formatPercentage(paceVariance)}
                 </Badge>
               ) : (
                 <Badge 
@@ -603,7 +603,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   data-testid={`badge-pace-${restaurant.restaurantId}`}
                 >
                   <TrendingDown className="w-3.5 h-3.5 mr-1" />
-                  {formatPercentage(paceVariance)}
+                  LW {formatPercentage(paceVariance)}
                 </Badge>
               )}
               {yoyData && yoyData.priorNetSales > 0 && (() => {
