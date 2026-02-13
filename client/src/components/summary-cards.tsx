@@ -480,7 +480,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                 </p>
                 <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                   {lwVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                  {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+                  LW {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
                 </span>
               </div>
             </div>
