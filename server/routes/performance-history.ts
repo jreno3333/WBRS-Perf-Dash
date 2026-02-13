@@ -224,6 +224,7 @@ router.get("/api/performance-history", async (req, res) => {
       gradeLabel: string;
       totalSales: number;
       salesVariance: number;
+      hasComparableSales: boolean;
       avgSpeed?: number;
       staffingDiff: number;
       osatPercent?: number;
@@ -309,8 +310,9 @@ router.get("/api/performance-history", async (req, res) => {
           })
           .reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
 
-        // Handle missing comparison data - if no last week sales, mark as no comparison available
-        const hasComparableSales = weekAgoSales > 0;
+        // Handle missing comparison data - require meaningful last-week sales (>$500 minimum)
+        // to avoid extreme variance from grand opening days or partial-day data
+        const hasComparableSales = weekAgoSales > 500;
         const salesVariance = hasComparableSales ? ((totalSales - weekAgoSales) / weekAgoSales) * 100 : 0;
 
         // Calculate speed attainment (% of cars under 6 min) from HME timer data
@@ -407,6 +409,7 @@ router.get("/api/performance-history", async (req, res) => {
           gradeLabel,
           totalSales,
           salesVariance,
+          hasComparableSales,
           avgSpeed,
           staffingDiff,
           osatPercent,
@@ -430,7 +433,11 @@ router.get("/api/performance-history", async (req, res) => {
       history.avgGrade = grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
       history.avgGradeLabel = getGradeLabel(history.avgGrade);
       history.totalSales = grades.reduce((sum, g) => sum + g.totalSales, 0);
-      history.avgSalesVariance = grades.reduce((sum, g) => sum + g.salesVariance, 0) / grades.length;
+      // Only average variance for days with comparable sales (excludes new store openings, store closures)
+      const comparableGrades = grades.filter(g => g.hasComparableSales);
+      history.avgSalesVariance = comparableGrades.length > 0
+        ? comparableGrades.reduce((sum, g) => sum + g.salesVariance, 0) / comparableGrades.length
+        : 0;
       history.avgStaffingDiff = grades.reduce((sum, g) => sum + g.staffingDiff, 0) / grades.length;
       history.totalOsatResponses = grades.reduce((sum, g) => sum + (g.osatResponses || 0), 0);
 
