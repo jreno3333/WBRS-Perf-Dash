@@ -141,20 +141,13 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
     ? (dailyOsatTotals.fiveStarCount / dailyOsatTotals.totalResponses) * 100 
     : 0;
   
-  // SSS: Use only same-store-sales eligible restaurants for totals
-  const totalTodaySales = sssRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
-  const totalLastWeekSales = sssRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-  const totalForecastSales = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+  // Total Sales: Use ALL active restaurants (not SSS-filtered)
+  const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+  const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
+  const totalForecastSales = activeRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
   
-  // Calculate last week's full day total for comparison
-  // We need to compare projected (actual + remaining from LW) against LW full day
-  // Since forecastSales = actual + LW remaining, and we have actualLastWeekSales for the same hour cutoff
-  // LW full day = actualLastWeekSales + remaining hours from LW = same as forecastSales but using LW data
-  // For simplicity, we estimate LW full day by using the forecast total (which represents the pattern)
-  // A more accurate approach: sum each restaurant's forecastSales minus their actual plus their lastWeek
-  // But since forecastSales = actual + lwRemaining, and we want lwFullDay = lwThruHour + lwRemaining
-  // We can calculate: lwFullDay = actualLastWeekSales + (forecastSales - actualSales)
-  const totalLastWeekFullDay = sssRestaurants.reduce((sum, r) => {
+  // Projected: Use ALL active restaurants for projected daily total and LW full day comparison
+  const totalLastWeekFullDay = activeRestaurants.reduce((sum, r) => {
     const lwRemaining = Math.max(0, (r.forecastSales || 0) - (r.actualSales || 0));
     return sum + (r.actualLastWeekSales || 0) + lwRemaining;
   }, 0);
@@ -480,17 +473,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
               <DollarSign className="w-4 h-4 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm text-muted-foreground">Total Sales ({sssRestaurants.length}/{activeRestaurants.length})</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </PopoverTrigger>
-                  <PopoverContent side="top" className="w-auto max-w-[240px] p-2 text-xs">
-                    Same Store Sales: only units open more than 18 months. {sssRestaurants.length} of {activeRestaurants.length} stores qualify.
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <p className="text-sm text-muted-foreground">Total Sales</p>
               <p className="text-xl font-bold" data-testid="text-total-sales">
                 {formatCurrency(totalTodaySales)}
               </p>
@@ -559,7 +542,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   return (
                     <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
                       {projectedYoYVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                      SSS Proj YoY: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
+                      SSS Proj YoY ({sssRestaurants.length}/{activeRestaurants.length}): {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
                     </p>
                   );
                 }
