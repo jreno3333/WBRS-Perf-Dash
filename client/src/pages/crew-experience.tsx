@@ -754,7 +754,11 @@ export default function CrewExperiencePage() {
               <div>
                 <h3 className="text-sm font-semibold mb-3">Daily Performance</h3>
                 <div className="space-y-2">
-                  {leaderDetail.dailyDetails.map((day) => {
+                  {leaderDetail.dailyDetails.filter((day) => {
+                    const now = new Date();
+                    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+                    return day.date !== todayStr;
+                  }).map((day) => {
                     const isExpanded = expandedDay === day.date;
                     const dayOfWeek = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
                     const displayDate = new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
