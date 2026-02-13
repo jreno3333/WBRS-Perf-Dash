@@ -8,6 +8,7 @@ interface SummaryCardsProps {
   restaurants: RestaurantSales[];
   lastUpdated: string;
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
+  yoyData?: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
 }
 
 // Grade scoring for X-Score calculation
@@ -103,7 +104,7 @@ function getExecutionGrade(
   return { grade, score: avgScore, hasGrade: true };
 }
 
-export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: SummaryCardsProps) {
+export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData }: SummaryCardsProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -545,6 +546,19 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant }: S
                   Comparison to same day last week at this time
                 </PopoverContent>
               </Popover>
+              {yoyData && (() => {
+                const yoyTotalPrior = activeRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
+                if (yoyTotalPrior > 0) {
+                  const yoyVariance = ((totalTodaySales - yoyTotalPrior) / yoyTotalPrior) * 100;
+                  const yoyDiff = totalTodaySales - yoyTotalPrior;
+                  return (
+                    <p className={`text-xs font-medium cursor-help ${yoyVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-summary">
+                      vs YoY: {yoyVariance >= 0 ? "+" : ""}{Math.round(yoyVariance)}% ({yoyDiff >= 0 ? "+" : ""}{formatCurrency(yoyDiff)})
+                    </p>
+                  );
+                }
+                return null;
+              })()}
               {/* 4-Hour Sales Trend - simple up/down indicators */}
               {hourlySales.length >= 2 && (
                 <div className="mt-2 pt-2 border-t border-border/50">

@@ -186,6 +186,18 @@ export default function Dashboard() {
     },
   });
 
+  const { data: yoyBulkData } = useQuery<{
+    priorDate: string;
+    data: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
+  }>({
+    queryKey: ["/api/historical-sales/yoy-bulk", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/historical-sales/yoy-bulk?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch YoY data");
+      return res.json();
+    },
+  });
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
       weekday: "long",
@@ -448,6 +460,7 @@ export default function Dashboard() {
               restaurants={leaderboardData.restaurants} 
               lastUpdated={leaderboardData.lastUpdated}
               hourlyByRestaurant={hourlyByRestaurant}
+              yoyData={yoyBulkData?.data}
             />
 
             {/* State Breakdown */}
@@ -530,6 +543,7 @@ export default function Dashboard() {
                       crewSummary={crewSummary?.[restaurant.restaurantId]}
                       hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
                       isToday={isToday}
+                      yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
                     />
                   ))}
                 </div>

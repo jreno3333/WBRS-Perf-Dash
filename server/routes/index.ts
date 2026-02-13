@@ -17,6 +17,7 @@ import marketsRouter from "./markets";
 import performanceHistoryRouter from "./performance-history";
 import leadersRouter from "./leaders";
 import arenaRouter from "./arena";
+import historicalSalesRouter from "./historical-sales";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (req.session?.userId) {
@@ -64,6 +65,7 @@ export async function registerRoutes(
   app.use(performanceHistoryRouter);
   app.use(leadersRouter);
   app.use(arenaRouter);
+  app.use(historicalSalesRouter);
 
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {

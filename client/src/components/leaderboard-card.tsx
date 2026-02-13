@@ -163,12 +163,19 @@ interface HourlyCrewData {
   tenureMix: { trainee: number; developing: number; experienced: number; veteran: number };
 }
 
+interface YoYData {
+  priorNetSales: number;
+  priorGuestCount: number;
+  priorDate: string;
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
   crewSummary?: CrewSummary;
   hourlyCrewData?: HourlyCrewData[];
   isToday?: boolean;
+  yoyData?: YoYData;
 }
 
 function formatTenure(months: number): string {
@@ -180,7 +187,7 @@ function formatTenure(months: number): string {
   return `${years}yr ${remainingMonths}mo`;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, isToday = true }: LeaderboardCardProps) {
+export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, isToday = true, yoyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -581,7 +588,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
             >
               {formatCurrency(restaurant.actualSales)}
             </div>
-            <div className="flex items-center justify-end gap-1 mt-1">
+            <div className="flex items-center justify-end gap-1 mt-1 flex-wrap">
               {paceVariance >= 0 ? (
                 <Badge 
                   className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
@@ -599,6 +606,20 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   {formatPercentage(paceVariance)}
                 </Badge>
               )}
+              {yoyData && yoyData.priorNetSales > 0 && (() => {
+                const yoyVariance = ((restaurant.actualSales - yoyData.priorNetSales) / yoyData.priorNetSales) * 100;
+                return (
+                  <Badge
+                    className={`border-0 ${yoyVariance >= 0 
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" 
+                      : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}
+                    data-testid={`badge-yoy-${restaurant.restaurantId}`}
+                  >
+                    {yoyVariance >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+                    YoY {yoyVariance >= 0 ? "+" : ""}{Math.round(yoyVariance)}%
+                  </Badge>
+                );
+              })()}
             </div>
           </div>
           

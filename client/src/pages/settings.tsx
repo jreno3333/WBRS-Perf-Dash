@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp } from "lucide-react";
 import { NavBar } from "@/components/nav-bar";
 import { format, differenceInDays, isFuture, parseISO } from "date-fns";
 import { Link } from "wouter";
@@ -403,6 +403,8 @@ export default function SettingsPage() {
           <DailyReportCard />
 
           <LeaderReportCard />
+
+          <HistoricalSalesUploadCard />
         </div>
       </main>
     </div>
@@ -2294,6 +2296,204 @@ function LeaderReportCard() {
                 )}
               </div>
             )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function HistoricalSalesUploadCard() {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{
+    inserted: number;
+    skipped: number;
+    totalRows: number;
+    unmatchedStores: string[];
+  } | null>(null);
+
+  const { data: summary, isLoading: summaryLoading } = useQuery<{
+    totalRecords: number;
+    minDate: string | null;
+    maxDate: string | null;
+    storeCount: number;
+  }>({
+    queryKey: ["/api/historical-sales/summary"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("DELETE", "/api/historical-sales");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/historical-sales/summary"] });
+      setUploadResult(null);
+      toast({ title: "Historical data cleared", description: "All historical sales data has been deleted." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete historical data.", variant: "destructive" });
+    },
+  });
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".csv")) {
+      toast({ title: "Invalid file", description: "Please upload a CSV file.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const text = await file.text();
+      const response = await apiRequest("POST", "/api/historical-sales/upload", { csvData: text });
+      const result = await response.json();
+      setUploadResult(result);
+      queryClient.invalidateQueries({ queryKey: ["/api/historical-sales/summary"] });
+      toast({
+        title: "Upload complete",
+        description: `${result.inserted} records imported, ${result.skipped} skipped.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Upload failed",
+        description: error.message || "Failed to upload CSV file.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "N/A";
+    try {
+      return format(parseISO(dateStr), "MMM d, yyyy");
+    } catch {
+      return dateStr;
+    }
+  };
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 space-y-0" data-testid="trigger-historical-sales">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Historical Sales Data (YoY)
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Upload daily sales CSV for year-over-year comparisons. Format: Location, Date, Net Sales, Guest Count
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {summary && summary.totalRecords > 0 && (
+                <Badge variant="secondary" data-testid="badge-historical-count">
+                  {summary.totalRecords.toLocaleString()} records
+                </Badge>
+              )}
+              <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent>
+            <div className="space-y-4">
+              {summary && summary.totalRecords > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-2xl font-bold" data-testid="text-historical-records">{summary.totalRecords.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">Records</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-2xl font-bold" data-testid="text-historical-stores">{summary.storeCount}</div>
+                    <div className="text-xs text-muted-foreground">Stores</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-sm font-semibold" data-testid="text-historical-from">{formatDate(summary.minDate)}</div>
+                    <div className="text-xs text-muted-foreground">From</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-sm font-semibold" data-testid="text-historical-to">{formatDate(summary.maxDate)}</div>
+                    <div className="text-xs text-muted-foreground">To</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="cursor-pointer" data-testid="label-csv-upload">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                    data-testid="input-csv-upload"
+                  />
+                  <Button asChild disabled={uploading} data-testid="button-upload-csv">
+                    <span>
+                      {uploading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileUp className="h-4 w-4 mr-2" />
+                      )}
+                      {uploading ? "Uploading..." : "Upload CSV"}
+                    </span>
+                  </Button>
+                </label>
+
+                {summary && summary.totalRecords > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm("Delete all historical sales data? This cannot be undone.")) {
+                        deleteMutation.mutate();
+                      }
+                    }}
+                    disabled={deleteMutation.isPending}
+                    data-testid="button-delete-historical"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear All Data
+                  </Button>
+                )}
+              </div>
+
+              {uploadResult && (
+                <div className="p-3 rounded-lg border bg-muted/30 space-y-2" data-testid="div-upload-result">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm font-medium">Upload Results</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {uploadResult.inserted} records imported from {uploadResult.totalRows} total rows
+                    {uploadResult.skipped > 0 && ` (${uploadResult.skipped} skipped)`}
+                  </div>
+                  {uploadResult.unmatchedStores.length > 0 && (
+                    <div className="text-sm">
+                      <span className="text-amber-500 font-medium">Unmatched stores:</span>{" "}
+                      <span className="text-muted-foreground">{uploadResult.unmatchedStores.join(", ")}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>Expected CSV format: <code className="bg-muted px-1 rounded">Location,Date,Net Sales,Guest Count</code></p>
+                <p>Location format: <code className="bg-muted px-1 rounded">1237 - Athens</code> (unit number must match)</p>
+                <p>Date format: <code className="bg-muted px-1 rounded">M/D/YY</code> (e.g., 2/12/26)</p>
+                <p>Duplicate dates are automatically updated with the latest upload.</p>
+              </div>
+            </div>
           </CardContent>
         </CollapsibleContent>
       </Card>

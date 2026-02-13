@@ -92,6 +92,13 @@ Preferred communication style: Simple, everyday language.
   - A+ = 95+, A = 90-94, A- = 85-89, B+ = 80-84, B = 75-79, B- = 70-74
   - C+ = 65-69, C = 60-64, C- = 55-59, D = 50-54, F = below 50
 - **Sales Variance Data**: Sales variance is calculated by comparing current day sales to our own historical data from 7 days ago (not relying on 7shifts pastActualSales). This ensures accurate week-over-week comparisons using our database records.
+- **Year-over-Year (YoY) Sales Comparison**: Upload historical daily sales CSV data for year-over-year comparisons. Features:
+  - **CSV Upload**: Settings page allows uploading CSV files with format: Location, Date, Net Sales, Guest Count
+  - **Historical Data Table**: `historical_daily_sales` stores uploaded data with restaurant_id + date uniqueness
+  - **Day-of-Week Matching**: YoY comparisons match the same day of the week (not calendar date) from the prior year
+  - **Dashboard Display**: Blue/orange YoY badges on each restaurant card and company-level YoY variance in summary cards
+  - **Bulk API**: `/api/historical-sales/yoy-bulk?date=YYYY-MM-DD` returns prior year data for all restaurants at once
+  - **Data Management**: Upload new CSV data (upserts on conflict), view summary stats, or clear all data from Settings
 - **Data Retention Policy**: All data (sales, labor, HME timer, OSAT, crew, POS orders, Google reviews) is retained for 2 years (730 days). Automatic cleanup runs daily at midnight to remove data older than the retention period.
 
 ## External Dependencies
