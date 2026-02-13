@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, TrendingUp, TrendingDown, Store, Target, Info } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Target, Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -369,7 +369,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
   })).reverse();
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {/* Execution Score - Prominent Display */}
       <Card data-testid="card-summary-execution" className={`border-2 ${gradeBgColor}`}>
         <CardContent className="p-4">
@@ -440,31 +440,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   </Popover>
                 )}
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Store Performance - Grades and Execution Trend */}
-      <Card data-testid="card-summary-ahead">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-              <Store className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm text-muted-foreground">Store Performance</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </PopoverTrigger>
-                  <PopoverContent side="top" className="w-auto max-w-[200px] p-2 text-xs">
-                    Number of stores at each grade level today
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {gradeCounts['A'] > 0 && (
                   <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                     A <span className="font-bold">{gradeCounts['A']}</span>
@@ -518,16 +494,10 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
               <p className="text-xl font-bold" data-testid="text-total-sales">
                 {formatCurrency(totalTodaySales)}
               </p>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <p className={`text-xs font-medium mt-1 cursor-help ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                    vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
-                  </p>
-                </PopoverTrigger>
-                <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
-                  Comparison to same day last week at this time
-                </PopoverContent>
-              </Popover>
+              <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                {lwVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                vs LW: {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+              </p>
             </div>
           </div>
         </CardContent>
@@ -554,52 +524,30 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
               </div>
               {projectedData.isDayComplete ? (
                 <>
-                  <p className="text-xl font-bold flex items-center gap-2" data-testid="text-projected-daily">
+                  <p className="text-xl font-bold" data-testid="text-projected-daily">
                     {formatCurrency(projectedData.actualSoFar)}
-                    {totalLastWeekFullDay > 0 && (
-                      projectedData.actualSoFar >= totalLastWeekFullDay ? (
-                        <span className="text-green-600 dark:text-green-400 flex items-center text-sm font-medium">
-                          <TrendingUp className="w-4 h-4 mr-0.5" />
-                          vs LW
-                        </span>
-                      ) : (
-                        <span className="text-red-600 dark:text-red-400 flex items-center text-sm font-medium">
-                          <TrendingDown className="w-4 h-4 mr-0.5" />
-                          vs LW
-                        </span>
-                      )
-                    )}
                   </p>
-                  <p className="text-xs text-muted-foreground">Day complete</p>
+                  <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                    {totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay 
+                      ? <TrendingUp className="w-3.5 h-3.5" /> 
+                      : <TrendingDown className="w-3.5 h-3.5" />}
+                    vs LW (Day complete)
+                  </p>
                 </>
               ) : (
                 <>
-                  <p className="text-xl font-bold flex items-center gap-2" data-testid="text-projected-daily">
+                  <p className="text-xl font-bold" data-testid="text-projected-daily">
                     {formatCurrency(projectedData.projected)}
-                    {totalLastWeekFullDay > 0 && (
-                      projectedData.projected >= totalLastWeekFullDay ? (
-                        <span className="text-green-600 dark:text-green-400 flex items-center text-sm font-medium">
-                          <TrendingUp className="w-4 h-4 mr-0.5" />
-                          vs LW
-                        </span>
-                      ) : (
-                        <span className="text-red-600 dark:text-red-400 flex items-center text-sm font-medium">
-                          <TrendingDown className="w-4 h-4 mr-0.5" />
-                          vs LW
-                        </span>
-                      )
-                    )}
                   </p>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <p className="text-xs text-muted-foreground cursor-help">
-                        {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
-                      </p>
-                    </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
-                      Uses last week's remaining hours to estimate today's total
-                    </PopoverContent>
-                  </Popover>
+                  <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                    {totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay 
+                      ? <TrendingUp className="w-3.5 h-3.5" /> 
+                      : <TrendingDown className="w-3.5 h-3.5" />}
+                    vs LW
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
+                  </p>
                 </>
               )}
               {yoyData && (() => {
@@ -611,7 +559,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   return (
                     <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
                       {projectedYoYVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                      Proj YoY: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
+                      SSS Proj YoY: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
                     </p>
                   );
                 }
