@@ -189,20 +189,28 @@ export class DatabaseStorage {
         }
       }
 
-      const lastWeekAllHoursForForecast = lastWeekHourly.filter(
-        s => s.restaurantId === restaurant.id
-      );
       let lastWeekRemainingHoursSales = 0;
       if (isToday) {
-        if (lastWeekAllHoursForForecast.length > 0) {
-          for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
-            const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
-            lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+        if (posLastWeekSalesForRestaurant && posLastWeekSalesForRestaurant.size > 0) {
+          posLastWeekSalesForRestaurant.forEach((sales, hour) => {
+            if (hour > restaurantCompletedHour) {
+              lastWeekRemainingHoursSales += sales;
+            }
+          });
+        } else {
+          const lastWeekAllHoursForForecast = lastWeekHourly.filter(
+            s => s.restaurantId === restaurant.id
+          );
+          if (lastWeekAllHoursForForecast.length > 0) {
+            for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
+              const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
+              lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+            }
+          } else if (lastWeekDailySalesMap.has(restaurant.id)) {
+            const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
+            const remainingProgress = (24 - restaurantCompletedHour - 1) / 24;
+            lastWeekRemainingHoursSales = dailyTotal * remainingProgress;
           }
-        } else if (lastWeekDailySalesMap.has(restaurant.id)) {
-          const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
-          const remainingProgress = (24 - restaurantCompletedHour - 1) / 24;
-          lastWeekRemainingHoursSales = dailyTotal * remainingProgress;
         }
       }
       const forecastSalesAmount = actualSalesAmount + lastWeekRemainingHoursSales;
@@ -230,25 +238,32 @@ export class DatabaseStorage {
 
       let projectedEndOfDaySales: number;
       if (isToday) {
-        const lastWeekAllHours = lastWeekHourly.filter(
-          s => s.restaurantId === restaurant.id
-        );
-
         let remainingForecastSales = 0;
 
-        if (lastWeekAllHours.length > 0) {
-          for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
-            const todayHour = allSelectedDateHours.find(s => s.hour === hour);
-            const lastWeekHour = lastWeekAllHours.find(s => s.hour === hour);
-            const forecastValue = parseFloat(todayHour?.projectedSales || '0') > 0
-              ? parseFloat(todayHour?.projectedSales || '0')
-              : parseFloat(lastWeekHour?.actualSales || '0');
-            remainingForecastSales += forecastValue;
+        if (posLastWeekSalesForRestaurant && posLastWeekSalesForRestaurant.size > 0) {
+          posLastWeekSalesForRestaurant.forEach((sales, hour) => {
+            if (hour > normalizedHourCutoff) {
+              remainingForecastSales += sales;
+            }
+          });
+        } else {
+          const lastWeekAllHours = lastWeekHourly.filter(
+            s => s.restaurantId === restaurant.id
+          );
+          if (lastWeekAllHours.length > 0) {
+            for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
+              const todayHour = allSelectedDateHours.find(s => s.hour === hour);
+              const lastWeekHour = lastWeekAllHours.find(s => s.hour === hour);
+              const forecastValue = parseFloat(todayHour?.projectedSales || '0') > 0
+                ? parseFloat(todayHour?.projectedSales || '0')
+                : parseFloat(lastWeekHour?.actualSales || '0');
+              remainingForecastSales += forecastValue;
+            }
+          } else if (lastWeekDailySalesMap.has(restaurant.id)) {
+            const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
+            const remainingProgress = (24 - normalizedHourCutoff - 1) / 24;
+            remainingForecastSales = dailyTotal * remainingProgress;
           }
-        } else if (lastWeekDailySalesMap.has(restaurant.id)) {
-          const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
-          const remainingProgress = (24 - normalizedHourCutoff - 1) / 24;
-          remainingForecastSales = dailyTotal * remainingProgress;
         }
 
         projectedEndOfDaySales = selectedDateSalesAmount + remainingForecastSales;
