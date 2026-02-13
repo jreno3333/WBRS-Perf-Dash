@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db";
-import { historicalDailySales, restaurants } from "@shared/schema";
+import { historicalDailySales, hourlySales, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 
 const router = Router();
@@ -157,17 +157,42 @@ router.get("/api/historical-sales/yoy", async (req, res) => {
         )
       );
 
-    if (rows.length === 0) {
-      return res.json({ found: false, priorDate: priorDateStr });
+    if (rows.length > 0) {
+      const row = rows[0];
+      return res.json({
+        found: true,
+        priorDate: priorDateStr,
+        priorNetSales: parseFloat(row.netSales),
+        priorGuestCount: row.guestCount,
+      });
     }
 
-    const row = rows[0];
-    res.json({
-      found: true,
-      priorDate: priorDateStr,
-      priorNetSales: parseFloat(row.netSales),
-      priorGuestCount: row.guestCount,
-    });
+    const priorDateStart = new Date(priorDateStr + "T00:00:00.000Z");
+    const priorDateEnd = new Date(priorDateStr + "T23:59:59.999Z");
+    const posRows = await db.select({
+      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+    })
+      .from(hourlySales)
+      .where(
+        and(
+          eq(hourlySales.restaurantId, restaurantId as string),
+          gte(hourlySales.salesDate, priorDateStart),
+          lte(hourlySales.salesDate, priorDateEnd)
+        )
+      );
+
+    const totalSales = parseFloat(posRows[0]?.totalSales || "0");
+    if (totalSales > 0) {
+      return res.json({
+        found: true,
+        priorDate: priorDateStr,
+        priorNetSales: totalSales,
+        priorGuestCount: 0,
+        source: "pos",
+      });
+    }
+
+    res.json({ found: false, priorDate: priorDateStr });
   } catch (error: any) {
     console.error("Error fetching YoY data:", error);
     res.status(500).json({ error: "Failed to fetch YoY comparison" });
@@ -194,13 +219,14 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
 
     console.log(`[YoY] Fetching bulk data for date=${date}, priorDate=${priorDateStr}`);
 
+    const result: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }> = {};
+
     const rows = await db.select()
       .from(historicalDailySales)
       .where(eq(historicalDailySales.date, priorDateStr));
 
-    console.log(`[YoY] Found ${rows.length} records for ${priorDateStr}`);
+    console.log(`[YoY] Found ${rows.length} uploaded CSV records for ${priorDateStr}`);
 
-    const result: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }> = {};
     for (const row of rows) {
       result[row.restaurantId] = {
         priorNetSales: parseFloat(row.netSales),
@@ -208,6 +234,43 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
         priorDate: priorDateStr,
       };
     }
+
+    const priorDateStart = new Date(priorDateStr + "T00:00:00.000Z");
+    const priorDateEnd = new Date(priorDateStr + "T23:59:59.999Z");
+
+    const posRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+    })
+      .from(hourlySales)
+      .where(
+        and(
+          gte(hourlySales.salesDate, priorDateStart),
+          lte(hourlySales.salesDate, priorDateEnd)
+        )
+      )
+      .groupBy(hourlySales.restaurantId);
+
+    let posCount = 0;
+    for (const row of posRows) {
+      if (!result[row.restaurantId]) {
+        const totalSales = parseFloat(row.totalSales || "0");
+        if (totalSales > 0) {
+          result[row.restaurantId] = {
+            priorNetSales: totalSales,
+            priorGuestCount: 0,
+            priorDate: priorDateStr,
+          };
+          posCount++;
+        }
+      }
+    }
+
+    if (posCount > 0) {
+      console.log(`[YoY] Added ${posCount} restaurants from POS hourly_sales data`);
+    }
+
+    console.log(`[YoY] Total: ${Object.keys(result).length} restaurants with YoY data`);
 
     res.json({ priorDate: priorDateStr, data: result });
   } catch (error: any) {

@@ -607,16 +607,18 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 </Badge>
               )}
               {yoyData && yoyData.priorNetSales > 0 && (() => {
-                const yoyVariance = ((restaurant.actualSales - yoyData.priorNetSales) / yoyData.priorNetSales) * 100;
+                const isDayComplete = restaurant.normalizedHour >= 23;
+                const projectedTotal = isDayComplete ? restaurant.actualSales : restaurant.forecastSales;
+                const projYoYVariance = ((projectedTotal - yoyData.priorNetSales) / yoyData.priorNetSales) * 100;
                 return (
                   <Badge
-                    className={`border-0 ${yoyVariance >= 0 
+                    className={`border-0 ${projYoYVariance >= 0 
                       ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" 
                       : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}
                     data-testid={`badge-yoy-${restaurant.restaurantId}`}
                   >
-                    {yoyVariance >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-                    YoY {yoyVariance >= 0 ? "+" : ""}{Math.round(yoyVariance)}%
+                    {projYoYVariance >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+                    YoY {projYoYVariance >= 0 ? "+" : ""}{Math.round(projYoYVariance)}%
                   </Badge>
                 );
               })()}

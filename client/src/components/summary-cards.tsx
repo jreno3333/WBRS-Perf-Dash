@@ -117,6 +117,15 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
   // Exclude training units from totals
   const activeRestaurants = restaurants.filter(r => r.status !== "training");
   
+  // SSS (Same Store Sales): Only units open >18 months
+  const sssRestaurants = activeRestaurants.filter(r => {
+    if (!r.openDate) return true;
+    const openDate = new Date(r.openDate);
+    const now = new Date();
+    const monthsOpen = (now.getFullYear() - openDate.getFullYear()) * 12 + (now.getMonth() - openDate.getMonth());
+    return monthsOpen > 18;
+  });
+  
   // Calculate OSAT totals from restaurant-level daily data (not hourly)
   // This ensures we count all surveys regardless of whether there's hourly sales data
   const dailyOsatTotals = activeRestaurants.reduce((acc, r) => {
@@ -132,10 +141,10 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
     ? (dailyOsatTotals.fiveStarCount / dailyOsatTotals.totalResponses) * 100 
     : 0;
   
-  // Use actualSales and actualLastWeekSales (all available hours) for display to match 7shifts
-  const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
-  const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-  const totalForecastSales = activeRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+  // SSS: Use only same-store-sales eligible restaurants for totals
+  const totalTodaySales = sssRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+  const totalLastWeekSales = sssRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
+  const totalForecastSales = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
   
   // Calculate last week's full day total for comparison
   // We need to compare projected (actual + remaining from LW) against LW full day
@@ -145,10 +154,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
   // A more accurate approach: sum each restaurant's forecastSales minus their actual plus their lastWeek
   // But since forecastSales = actual + lwRemaining, and we want lwFullDay = lwThruHour + lwRemaining
   // We can calculate: lwFullDay = actualLastWeekSales + (forecastSales - actualSales)
-  const totalLastWeekFullDay = activeRestaurants.reduce((sum, r) => {
-    // LW remaining = forecastSales - actualSales
+  const totalLastWeekFullDay = sssRestaurants.reduce((sum, r) => {
     const lwRemaining = Math.max(0, (r.forecastSales || 0) - (r.actualSales || 0));
-    // LW full day = LW through current hour + LW remaining
     return sum + (r.actualLastWeekSales || 0) + lwRemaining;
   }, 0);
   const aheadOfPaceCount = activeRestaurants.filter((r) => r.isAheadOfPace).length;
@@ -523,13 +530,13 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-sm text-muted-foreground">Total Sales Today</p>
+                <p className="text-sm text-muted-foreground">SSS Today ({sssRestaurants.length}/{activeRestaurants.length})</p>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Info className="w-3 h-3 text-muted-foreground cursor-help" />
                   </PopoverTrigger>
-                  <PopoverContent side="top" className="w-auto max-w-[200px] p-2 text-xs">
-                    Combined sales across all stores so far today
+                  <PopoverContent side="top" className="w-auto max-w-[240px] p-2 text-xs">
+                    Same Store Sales: only units open more than 18 months. {sssRestaurants.length} of {activeRestaurants.length} stores qualify.
                   </PopoverContent>
                 </Popover>
               </div>
@@ -547,14 +554,21 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                 </PopoverContent>
               </Popover>
               {yoyData && (() => {
-                const yoyTotalPrior = activeRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
+                const yoyTotalPrior = sssRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
                 if (yoyTotalPrior > 0) {
                   const yoyVariance = ((totalTodaySales - yoyTotalPrior) / yoyTotalPrior) * 100;
                   const yoyDiff = totalTodaySales - yoyTotalPrior;
+                  const projectedSSSTotal = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+                  const projectedYoYVariance = ((projectedSSSTotal - yoyTotalPrior) / yoyTotalPrior) * 100;
                   return (
-                    <p className={`text-xs font-medium cursor-help ${yoyVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-summary">
-                      vs YoY: {yoyVariance >= 0 ? "+" : ""}{Math.round(yoyVariance)}% ({yoyDiff >= 0 ? "+" : ""}{formatCurrency(yoyDiff)})
-                    </p>
+                    <>
+                      <p className={`text-xs font-medium cursor-help ${yoyVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-summary">
+                        SSS YoY: {yoyVariance >= 0 ? "+" : ""}{Math.round(yoyVariance)}% ({yoyDiff >= 0 ? "+" : ""}{formatCurrency(yoyDiff)})
+                      </p>
+                      <p className={`text-xs font-medium cursor-help ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
+                        Proj YoY: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}%
+                      </p>
+                    </>
                   );
                 }
                 return null;
