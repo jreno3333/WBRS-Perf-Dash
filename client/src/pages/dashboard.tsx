@@ -41,15 +41,13 @@ function getExecutionGrade(
 ): number {
   const components: { score: number; weight: number }[] = [];
 
-  // Sales component (weight: 35%)
   if (hasComparableSales) {
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
     components.push({ score: salesScore, weight: GRADE_WEIGHTS.sales });
-  } else if (isFirstWeek) {
+  } else {
     components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
   }
 
-  // Speed component (weight: 25%) - uses attainment (% under 6 min)
   if (speedAttainment !== undefined && speedAttainment >= 0) {
     let speedScore = 100;
     if (speedAttainment < 50) speedScore = 40;
@@ -57,7 +55,6 @@ function getExecutionGrade(
     components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
 
-  // OSAT component (weight: 25%)
   if (osatPercent !== undefined && osatPercent > 0) {
     let osatScore = 100;
     if (osatPercent < 80) osatScore = 40;
@@ -65,10 +62,9 @@ function getExecutionGrade(
     components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
   }
 
-  // Staffing component (weight: 15%)
   if (hasValidStaffing) {
     let staffingScore = 100;
-    const isSalesSurge = salesVariancePct >= 20;
+    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
     if (staffingDiff > 1) staffingScore = 60;
     else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
     components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });

@@ -3,6 +3,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { hourlySales, hourlyLabor, dailyOsat, hmeTimerData, hourlyCrew, markets, restaurantMarkets } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
+import { getStaffingBreakdown } from "../lib/labor-model";
 
 const router = Router();
 
@@ -129,93 +130,82 @@ router.get("/api/performance-history", async (req, res) => {
       }
     });
 
-    // Helper function to calculate execution grade - ALIGNED WITH CLIENT-SIDE LOGIC
-    // Matches getExecutionGrade in leaderboard-card.tsx exactly
+    // Per-hour execution grade calculation - EXACTLY matches leaderboard-card.tsx getExecutionGrade
     const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
 
-    const calculateGrade = (
+    const getHourlyExecutionGrade = (
       salesVariancePct: number,
-      speedSeconds: number | undefined,
+      speedAttainment: number | undefined,
       staffingDiff: number,
       hasComparableSales: boolean,
+      isFirstWeek: boolean,
       hasValidStaffing: boolean,
-      osatPercent: number | undefined,
-      isFirstWeek: boolean = false
-    ): { grade: number; gradeLabel: string; hasGrade: boolean } => {
-      const components: { name: string; score: number; weight: number }[] = [];
+      osatPercent: number | undefined
+    ): { score: number; hasGrade: boolean } => {
+      const components: { score: number; weight: number }[] = [];
 
-      // Sales component (weight: 35%)
-      // For units with comparable data: Within -5% to +infinity = 100, Below -5% = 50
-      // When last week had $0, treat as positive (store was likely closed last week)
       if (hasComparableSales) {
         const salesScore = salesVariancePct >= -5 ? 100 : 50;
-        components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
+        components.push({ score: salesScore, weight: GRADE_WEIGHTS.sales });
       } else {
-        components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
+        components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
       }
 
-      // Speed component (weight: 25%) - uses attainment (% of cars under 6 min)
-      // >=70% = 100 (green), >=50% = 70 (yellow), <50% = 40 (red)
-      if (speedSeconds !== undefined && speedSeconds >= 0) {
+      if (speedAttainment !== undefined && speedAttainment >= 0) {
         let speedScore = 100;
-        if (speedSeconds < 50) speedScore = 40;
-        else if (speedSeconds < 70) speedScore = 70;
-        components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
+        if (speedAttainment < 50) speedScore = 40;
+        else if (speedAttainment < 70) speedScore = 70;
+        components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
       }
 
-      // OSAT component (weight: 25%) - only if we have customer satisfaction data
-      // 85%+ = 100 (excellent), 80-85% = 70 (acceptable), <80% = 40 (needs improvement)
       if (osatPercent !== undefined && osatPercent > 0) {
         let osatScore = 100;
         if (osatPercent < 80) osatScore = 40;
         else if (osatPercent < 85) osatScore = 70;
-        components.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
+        components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
       }
 
-      // Staffing component (weight: 15%) - only if we have valid staffing data
-      // PROPER (within +/-1) = 100, UNDER/OVER = 60
-      // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
-      // or when last week had no sales (can't plan staffing for unexpected activity)
       if (hasValidStaffing) {
         let staffingScore = 100;
         const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-        const isUnderstaffed = staffingDiff < -1;
-        const isOverstaffed = staffingDiff > 1;
-
-        if (isOverstaffed) {
-          staffingScore = 60;
-        } else if (isUnderstaffed && !isSalesSurge) {
-          staffingScore = 60;
-        }
-        components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
+        if (staffingDiff > 1) staffingScore = 60;
+        else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
+        components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
       }
 
-      // If no components to grade, return no grade
-      if (components.length === 0) {
-        return { grade: 0, gradeLabel: '-', hasGrade: false };
-      }
-
-      // Calculate weighted average - normalize weights based on available components
+      if (components.length === 0) return { score: 0, hasGrade: false };
       const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
       const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
-
-      return { grade: avgScore, gradeLabel: getGradeLabel(avgScore), hasGrade: true };
+      return { score: avgScore, hasGrade: true };
     };
 
-    // Helper to get grade label - ALIGNED WITH CLIENT-SIDE LOGIC (detailed scale)
-    const getGradeLabel = (score: number): string => {
-      if (score >= 95) return "A+";
-      if (score >= 90) return "A";
-      if (score >= 85) return "A-";
-      if (score >= 80) return "B+";
-      if (score >= 75) return "B";
-      if (score >= 70) return "B-";
-      if (score >= 65) return "C+";
-      if (score >= 60) return "C";
-      if (score >= 55) return "C-";
-      if (score >= 50) return "D";
-      return "F";
+    // Convert numeric score to letter grade then to midpoint score for averaging
+    // Matches leaderboard-card.tsx gradeToScore/scoreToGrade exactly
+    const scoreToGradeLabel = (score: number): string => {
+      if (score >= 95) return 'A+';
+      if (score >= 90) return 'A';
+      if (score >= 85) return 'A-';
+      if (score >= 80) return 'B+';
+      if (score >= 75) return 'B';
+      if (score >= 70) return 'B-';
+      if (score >= 65) return 'C+';
+      if (score >= 60) return 'C';
+      if (score >= 55) return 'C-';
+      if (score >= 50) return 'D';
+      return 'F';
     };
+
+    const gradeMidpoints: Record<string, number> = {
+      'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
+      'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
+    };
+
+    const gradeToMidpoint = (score: number): number => {
+      const label = scoreToGradeLabel(score);
+      return gradeMidpoints[label] ?? 0;
+    };
+
+    const getGradeLabel = scoreToGradeLabel;
 
     // Process data by date and restaurant
     type DailyGrade = {
@@ -263,19 +253,37 @@ router.get("/api/performance-history", async (req, res) => {
       return TENNESSEE_STORES.some(store => name.includes(store.split(" - ")[1])) ? "Tennessee" : "Alabama";
     };
 
-    // Process each date
+    // Build lookup for hourly sales by restaurantId-dateStr-hour for quick last-week comparison
+    const salesByKey = new Map<string, typeof allHourlySales[0]>();
+    allHourlySales.forEach(s => {
+      const salesDateStr = s.salesDate.toISOString().split('T')[0];
+      const key = `${s.restaurantId}-${salesDateStr}-${s.hour}`;
+      salesByKey.set(key, s);
+    });
+
+    // Build HME lookup by restaurantId-date-hour
+    const hmeByKey = new Map<string, typeof allHmeData[0]>();
+    allHmeData.forEach(h => {
+      const key = `${h.restaurantId}-${h.date}-${h.hour}`;
+      hmeByKey.set(key, h);
+    });
+
+    // Build labor lookup by restaurantId-date-hour
+    const laborByKey = new Map<string, typeof allHourlyLabor[0]>();
+    allHourlyLabor.forEach(l => {
+      const key = `${l.restaurantId}-${l.date}-${l.hour}`;
+      laborByKey.set(key, l);
+    });
+
+    // Process each date - using PER-HOUR grade calculation matching dashboard exactly
     for (const dateStr of dateRange) {
-      // Filter hourly sales by salesDate (timestamp) - extract date portion
       const salesForDate = allHourlySales.filter(s => {
         const salesDateStr = s.salesDate.toISOString().split('T')[0];
         return salesDateStr === dateStr;
       });
-      const laborForDate = allHourlyLabor.filter(l => l.date.startsWith(dateStr));
       const osatForDate = allOsatData.filter(o => o.date === dateStr);
-      const hmeForDate = allHmeData.filter(h => h.date === dateStr);
       const crewForDate = allCrewData.filter(c => c.date === dateStr);
 
-      // Group by restaurant
       const salesByRestaurant = new Map<string, typeof salesForDate>();
       salesForDate.forEach(s => {
         const key = s.restaurantId;
@@ -283,45 +291,28 @@ router.get("/api/performance-history", async (req, res) => {
         salesByRestaurant.get(key)!.push(s);
       });
 
-      // Process each restaurant
       for (const restaurant of restaurantList) {
         const restaurantSales = salesByRestaurant.get(restaurant.id) || [];
-        const restaurantLabor = laborForDate.filter(l => l.restaurantId === restaurant.id);
         const restaurantOsat = osatForDate.find(o => o.restaurantId === restaurant.id);
-        const restaurantHme = hmeForDate.filter(h => h.restaurantId === restaurant.id);
         const restaurantCrew = crewForDate.filter(c => c.restaurantId === restaurant.id);
 
-        // Skip if no sales data for this date
         if (restaurantSales.length === 0) continue;
 
-        // Calculate daily totals using actualSales
         const totalSales = restaurantSales.reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
 
-        // Calculate variance by looking up actual sales from 7 days ago in our own data
-        // Use simple ISO date string comparison (salesDate stored at noon, toISOString is safe)
+        const gradeDate = new Date(dateStr);
+        const openDate = restaurant.openDate ? new Date(restaurant.openDate) : null;
+        const isFirstWeek = openDate ?
+          (gradeDate.getTime() - openDate.getTime()) <= 7 * 24 * 60 * 60 * 1000 : false;
+
+        // Calculate last week date string for per-hour comparison
         const [year, month, day] = dateStr.split('-').map(Number);
         const weekAgoDate = new Date(Date.UTC(year, month - 1, day - 7, 12, 0, 0));
         const weekAgoDateStr = weekAgoDate.toISOString().split('T')[0];
 
-        const weekAgoSales = allHourlySales
-          .filter(s => {
-            const salesDateStr = s.salesDate.toISOString().split('T')[0];
-            return salesDateStr === weekAgoDateStr && s.restaurantId === restaurant.id;
-          })
-          .reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
-
-        // Handle missing comparison data - require meaningful last-week sales (>$2000 minimum)
-        // to avoid extreme variance from grand opening days, partial-day data, or store closures
-        // Also cap extreme variances to prevent single-day outliers from distorting averages
-        const hasComparableSales = weekAgoSales > 2000 && totalSales > 500;
-        let salesVariance = hasComparableSales ? ((totalSales - weekAgoSales) / weekAgoSales) * 100 : 0;
-        // Cap variance at ±200% to prevent extreme outliers from distorting averages
-        if (hasComparableSales) {
-          salesVariance = Math.max(-200, Math.min(200, salesVariance));
-        }
-
-        // Calculate speed attainment (% of cars under 6 min) from HME timer data
+        // Calculate daily speed attainment from HME data (for display, not grading)
         let avgSpeed: number | undefined;
+        const restaurantHme = allHmeData.filter(h => h.date === dateStr && h.restaurantId === restaurant.id);
         const hmeWithCars = restaurantHme.filter(h => h.carCount > 0 && h.carsUnder6Min > 0);
         if (hmeWithCars.length > 0) {
           const totalCars = hmeWithCars.reduce((sum, h) => sum + h.carCount, 0);
@@ -329,36 +320,11 @@ router.get("/api/performance-history", async (req, res) => {
           avgSpeed = totalCars > 0 ? Math.round((totalUnder6 / totalCars) * 100) : undefined;
         }
 
-        // Calculate staffing diff using labor cost variance as a proxy
-        // NOTE: Server-side uses labor cost ratio instead of headcount-based labor model
-        // that the client uses in getStaffingBreakdown(). This provides reasonable approximation
-        // for historical grade calculations where we don't have the full hourly sales-to-headcount mapping.
-        let staffingDiff = 0;
-        let hasValidStaffing = false;
-        const validLabor = restaurantLabor.filter(l => {
-          const actual = parseFloat(l.actualLabor || "0");
-          const projected = parseFloat(l.projectedLabor || "0");
-          return actual > 0 && projected > 0;
-        });
-        if (validLabor.length > 0) {
-          hasValidStaffing = true;
-          // Calculate average labor variance as a proxy for staffing diff
-          // Positive = overstaffed, negative = understaffed
-          const laborVariances = validLabor.map(l => {
-            const actual = parseFloat(l.actualLabor || "0");
-            const projected = parseFloat(l.projectedLabor || "0");
-            return (actual - projected) / projected;
-          });
-          const avgLaborVariance = laborVariances.reduce((sum, v) => sum + v, 0) / laborVariances.length;
-          // Convert to roughly equivalent staffing diff scale (-3 to +3)
-          staffingDiff = avgLaborVariance * 10;
-        }
-
-        // Get OSAT data - osatPercent is a string that needs conversion
+        // OSAT for display
         const osatPercent = restaurantOsat?.osatPercent ? parseFloat(restaurantOsat.osatPercent) : undefined;
         const osatResponses = restaurantOsat?.totalResponses ?? 0;
 
-        // Calculate average experience score (XP) from crew data
+        // XP for display
         let avgXp: number | undefined;
         const crewWithXp = restaurantCrew.filter(c => c.experienceScore !== null && c.experienceScore !== undefined && c.experienceScore > 0);
         if (crewWithXp.length > 0) {
@@ -366,26 +332,91 @@ router.get("/api/performance-history", async (req, res) => {
           avgXp = totalXp / crewWithXp.length;
         }
 
-        // Determine if this is a first-week unit (opened within the past 7 days from the date being graded)
-        const gradeDate = new Date(dateStr);
-        const openDate = restaurant.openDate ? new Date(restaurant.openDate) : null;
-        const isFirstWeek = openDate ?
-          (gradeDate.getTime() - openDate.getTime()) <= 7 * 24 * 60 * 60 * 1000 : false;
+        // PER-HOUR GRADE CALCULATION — matches leaderboard-card.tsx exactly
+        // Each hour gets a grade → converted to letter → converted to midpoint score → averaged
+        const hourlyMidpoints: number[] = [];
+        for (const hourSales of restaurantSales) {
+          const todaySales = parseFloat(hourSales.actualSales || "0");
+          if (todaySales <= 0) continue;
 
-        // Calculate grade using aligned logic with hasComparableSales, hasValidStaffing, and isFirstWeek
-        const gradeResult = calculateGrade(
-          salesVariance,
-          avgSpeed,
-          staffingDiff,
-          hasComparableSales,
-          hasValidStaffing,
-          osatPercent,
-          isFirstWeek
-        );
-        const grade = gradeResult.grade;
-        const gradeLabel = gradeResult.gradeLabel;
+          const hour = hourSales.hour;
 
-        // Initialize or update restaurant history
+          const lastWeekKey = `${restaurant.id}-${weekAgoDateStr}-${hour}`;
+          const lastWeekRecord = salesByKey.get(lastWeekKey);
+          const lastWeekSales = lastWeekRecord ? parseFloat(lastWeekRecord.actualSales || "0") : 0;
+          const hasComparableSales = lastWeekSales > 0;
+          const salesVariancePct = hasComparableSales
+            ? ((todaySales - lastWeekSales) / lastWeekSales) * 100
+            : 0;
+
+          const staffing = getStaffingBreakdown(hour, todaySales);
+          const laborRecord = laborByKey.get(`${restaurant.id}-${dateStr}-${hour}`);
+          const rawEmployeeCount = laborRecord ? parseFloat(laborRecord.employeeCount || "0") : 0;
+          const positions = laborRecord?.positionBreakdown as Record<string, number> || {};
+          const operatorHrs = positions['_operatorScheduled'] || 0;
+          const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+          const staffingDiff = actualStaff - staffing.total;
+          const hasValidStaffing = rawEmployeeCount >= 1;
+
+          const hmeRecord = hmeByKey.get(`${restaurant.id}-${dateStr}-${hour}`);
+          let speedAttainment: number | undefined;
+          if (hmeRecord && hmeRecord.carCount > 0 && hmeRecord.carsUnder6Min > 0) {
+            speedAttainment = Math.round((hmeRecord.carsUnder6Min / hmeRecord.carCount) * 100);
+          }
+
+          const result = getHourlyExecutionGrade(
+            salesVariancePct,
+            speedAttainment,
+            staffingDiff,
+            hasComparableSales,
+            isFirstWeek,
+            hasValidStaffing,
+            osatPercent
+          );
+          if (result.hasGrade && result.score > 0) {
+            hourlyMidpoints.push(gradeToMidpoint(result.score));
+          }
+        }
+
+        const grade = hourlyMidpoints.length > 0
+          ? hourlyMidpoints.reduce((a, b) => a + b, 0) / hourlyMidpoints.length
+          : 0;
+        const gradeLabel = grade > 0 ? scoreToGradeLabel(grade) : '-';
+
+        // Calculate daily-level sales variance for display
+        const weekAgoTotalSales = allHourlySales
+          .filter(s => {
+            const sDate = s.salesDate.toISOString().split('T')[0];
+            return sDate === weekAgoDateStr && s.restaurantId === restaurant.id;
+          })
+          .reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
+        const hasComparableSalesDaily = weekAgoTotalSales > 2000 && totalSales > 500;
+        let salesVariance = hasComparableSalesDaily ? ((totalSales - weekAgoTotalSales) / weekAgoTotalSales) * 100 : 0;
+        if (hasComparableSalesDaily) {
+          salesVariance = Math.max(-200, Math.min(200, salesVariance));
+        }
+
+        // Staffing diff for display (average across hours)
+        let staffingDiffDisplay = 0;
+        const laborForDate = allHourlyLabor.filter(l => l.date === dateStr && l.restaurantId === restaurant.id);
+        const staffingDiffs: number[] = [];
+        for (const hourSales of restaurantSales) {
+          const todaySales = parseFloat(hourSales.actualSales || "0");
+          if (todaySales <= 0) continue;
+          const staffing = getStaffingBreakdown(hourSales.hour, todaySales);
+          const laborRecord = laborByKey.get(`${restaurant.id}-${dateStr}-${hourSales.hour}`);
+          const rawEmployeeCount = laborRecord ? parseFloat(laborRecord.employeeCount || "0") : 0;
+          const positions = laborRecord?.positionBreakdown as Record<string, number> || {};
+          const operatorHrs = positions['_operatorScheduled'] || 0;
+          const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+          if (rawEmployeeCount >= 1) {
+            staffingDiffs.push(actualStaff - staffing.total);
+          }
+        }
+        if (staffingDiffs.length > 0) {
+          staffingDiffDisplay = staffingDiffs.reduce((a, b) => a + b, 0) / staffingDiffs.length;
+        }
+
         if (!historyByRestaurant.has(restaurant.id)) {
           const market = restaurantToMarket.get(restaurant.id);
           historyByRestaurant.set(restaurant.id, {
@@ -414,9 +445,9 @@ router.get("/api/performance-history", async (req, res) => {
           gradeLabel,
           totalSales,
           salesVariance,
-          hasComparableSales,
+          hasComparableSales: hasComparableSalesDaily,
           avgSpeed,
-          staffingDiff,
+          staffingDiff: staffingDiffDisplay,
           osatPercent,
           osatResponses,
           avgXp,

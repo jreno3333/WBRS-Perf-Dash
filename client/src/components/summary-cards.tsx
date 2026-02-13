@@ -62,6 +62,8 @@ function getExecutionGrade(
   if (hasComparableSales) {
     const salesScore = salesVariancePct >= -5 ? 100 : 50;
     components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
+  } else {
+    components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
   }
   
   if (speedAttainment !== undefined && speedAttainment >= 0) {
