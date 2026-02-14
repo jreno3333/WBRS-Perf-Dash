@@ -25,25 +25,44 @@ function getCentralDate(): Date {
   return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-// X-Score calculation helpers — aligned with leaderboard-card weighted approach
+// X-Score calculation — must match leaderboard-card.tsx grade calculation exactly
 // WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
 const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
 
-// Returns numeric weighted score for sorting (higher = better)
-function getExecutionGrade(
+function scoreToGradeLabel(score: number): string {
+  if (score >= 95) return 'A+';
+  if (score >= 90) return 'A';
+  if (score >= 85) return 'A-';
+  if (score >= 80) return 'B+';
+  if (score >= 75) return 'B';
+  if (score >= 70) return 'B-';
+  if (score >= 65) return 'C+';
+  if (score >= 60) return 'C';
+  if (score >= 55) return 'C-';
+  if (score >= 50) return 'D';
+  return 'F';
+}
+
+function gradeToMidpoint(grade: string): number {
+  const scores: Record<string, number> = {
+    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
+    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
+  };
+  return scores[grade] ?? 0;
+}
+
+function getHourlyGradeScore(
   salesVariancePct: number,
   speedAttainment: number | undefined,
   staffingDiff: number,
-  hasComparableSales: boolean = true,
-  isFirstWeek: boolean = false,
-  hasValidStaffing: boolean = true,
-  osatPercent: number | undefined = undefined
+  hasComparableSales: boolean,
+  hasValidStaffing: boolean,
+  osatPercent: number | undefined
 ): number {
   const components: { score: number; weight: number }[] = [];
 
   if (hasComparableSales) {
-    const salesScore = salesVariancePct >= -5 ? 100 : 50;
-    components.push({ score: salesScore, weight: GRADE_WEIGHTS.sales });
+    components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
   } else {
     components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
   }
@@ -72,13 +91,13 @@ function getExecutionGrade(
 
   if (components.length === 0) return 0;
   const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-  return components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
+  const rawScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
+  return gradeToMidpoint(scoreToGradeLabel(rawScore));
 }
 
 function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }): number {
   if (!hourlyData || hourlyData.length === 0) return -1;
 
-  const isFirstWeek = (restaurant?.daysOpen !== undefined && restaurant.daysOpen < 7);
   const cutoff = localCutoff ?? 23;
   const completedHours = hourlyData.filter(hour => hour.hour <= cutoff);
 
@@ -96,7 +115,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
       const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
       const hasValidStaffing = rawEmployeeCount >= 1;
-      return getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+      return getHourlyGradeScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }
