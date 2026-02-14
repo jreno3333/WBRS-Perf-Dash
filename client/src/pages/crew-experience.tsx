@@ -787,11 +787,9 @@ export default function CrewExperiencePage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {day.avgSalesVariance !== 0 && (
-                              <span className={`text-xs ${day.avgSalesVariance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                {day.avgSalesVariance >= 0 ? '+' : ''}{day.avgSalesVariance.toFixed(1)}%
-                              </span>
-                            )}
+                            <span className={`text-xs ${day.avgSalesVariance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              {day.avgSalesVariance >= 0 ? '+' : ''}{day.avgSalesVariance.toFixed(1)}%
+                            </span>
                             {day.avgSpeed !== undefined && (
                               <span className={`text-xs ${day.avgSpeed >= 70 ? 'text-green-600 dark:text-green-400' : day.avgSpeed >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
                                 {Math.round(day.avgSpeed)}%
