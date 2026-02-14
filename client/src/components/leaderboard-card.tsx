@@ -577,8 +577,13 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
               const isDayComplete = restaurant.normalizedHour >= 23;
               const projectedTotal = isDayComplete ? restaurant.actualSales : restaurant.forecastSales;
               const projYoYVariance = ((projectedTotal - yoyData.priorNetSales) / yoyData.priorNetSales) * 100;
+              const monthsOpen = restaurant.openDate ? (() => {
+                const open = new Date(restaurant.openDate);
+                const now = new Date();
+                return (now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth());
+              })() : null;
               return (
-                <div className="flex items-center justify-end mt-0.5">
+                <div className="flex items-center justify-end gap-1.5 mt-0.5">
                   <span
                     className={`text-xs font-medium whitespace-nowrap ${projYoYVariance >= 0 
                       ? "text-blue-600 dark:text-blue-400" 
@@ -588,6 +593,14 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                     {projYoYVariance >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
                     YoY {projYoYVariance >= 0 ? "+" : ""}{Math.round(projYoYVariance)}%
                   </span>
+                  {monthsOpen !== null && (
+                    <span
+                      className="text-[10px] text-muted-foreground whitespace-nowrap"
+                      data-testid={`text-months-open-${restaurant.restaurantId}`}
+                    >
+                      {monthsOpen >= 12 ? `${Math.floor(monthsOpen / 12)}y ${monthsOpen % 12}m` : `${monthsOpen}mo`}
+                    </span>
+                  )}
                 </div>
               );
             })()}
