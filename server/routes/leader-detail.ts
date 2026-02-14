@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { getAllHourlyPosSalesRange } from "../xenial-webhook";
 
 const router = Router();
 
@@ -60,6 +61,11 @@ router.get("/api/people/leader-detail", async (req, res) => {
     detailExtStart.setDate(detailExtStart.getDate() - 7);
     const detailExtStartStr = detailExtStart.toISOString().split('T')[0];
 
+    // Use POS orders as primary sales source (includes 12am-5am hours)
+    // Falls back to 7shifts hourly_sales only if POS data is unavailable
+    const posSalesByKey = await getAllHourlyPosSalesRange(detailExtStartStr, endDateStr);
+
+    // Also fetch 7shifts hourly_sales as fallback
     const salesData = await db.select().from(hourlySales).where(
       and(
         gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, detailExtStartStr),
@@ -130,20 +136,27 @@ router.get("/api/people/leader-detail", async (req, res) => {
       const dayData = dailyMap.get(key)!;
 
       const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
-      const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
       const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
       const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
 
-      const todaySales = sales ? (Number(sales.actualSales) || 0) : 0;
-      if (labor && sales && todaySales > 0) {
+      // Use POS orders as primary sales source, fall back to 7shifts
+      const posKey = `${crew.restaurantId}-${crew.date}-${crew.hour}`;
+      const posSales = posSalesByKey.get(posKey);
+      const fallbackSales = salesByKey.get(posKey);
+      const todaySales = posSales !== undefined ? posSales : (fallbackSales ? (Number(fallbackSales.actualSales) || 0) : 0);
+      const hasSalesData = posSales !== undefined || (fallbackSales && Number(fallbackSales.actualSales) > 0);
 
-        // Look up last week's sales from our own data (7 days ago, same hour)
+      if (labor && hasSalesData && todaySales > 0) {
+
+        // Look up last week's sales (7 days ago, same hour) — POS first, then 7shifts fallback
         const crewDate = new Date(crew.date + 'T12:00:00');
         const lastWeekDate = new Date(crewDate);
         lastWeekDate.setDate(lastWeekDate.getDate() - 7);
         const lastWeekDateStr = lastWeekDate.toISOString().split('T')[0];
-        const lastWeekSalesRecord = salesByKey.get(`${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`);
-        const lastWeekSales = lastWeekSalesRecord ? Number(lastWeekSalesRecord.actualSales) || 0 : 0;
+        const posLastWeekKey = `${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`;
+        const posLastWeekSales = posSalesByKey.get(posLastWeekKey);
+        const fallbackLastWeekSales = salesByKey.get(posLastWeekKey);
+        const lastWeekSales = posLastWeekSales !== undefined ? posLastWeekSales : (fallbackLastWeekSales ? Number(fallbackLastWeekSales.actualSales) || 0 : 0);
 
         const hasComparableSales = lastWeekSales > 0;
         const salesVariancePct = hasComparableSales

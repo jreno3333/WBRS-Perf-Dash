@@ -334,6 +334,77 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
   return allHourlySales;
 }
 
+// Get hourly POS sales for all restaurants across a date range
+// Returns Map<"restaurantId-date-hour", sales>
+export async function getAllHourlyPosSalesRange(
+  startDateStr: string,
+  endDateStr: string
+): Promise<Map<string, number>> {
+  // Broaden business_date range by 1 day on each side to capture overnight orders
+  // (12am-5am orders may have business_date on adjacent day)
+  const paddedStart = new Date(startDateStr + 'T00:00:00.000Z');
+  paddedStart.setDate(paddedStart.getDate() - 1);
+  const paddedEnd = new Date(endDateStr + 'T23:59:59.999Z');
+  paddedEnd.setDate(paddedEnd.getDate() + 1);
+  const startOfRange = paddedStart;
+  const endOfRange = paddedEnd;
+
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], {
+        id: restaurant.id,
+        timezone: restaurant.timezone || 'America/Chicago'
+      });
+    }
+  }
+
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+  const timezones = Array.from(timezoneSet);
+
+  const salesByKey = new Map<string, number>();
+
+  for (const tz of timezones) {
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const dateExpr = sql.raw(`to_char((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}', 'YYYY-MM-DD')`);
+    const posResults = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        localDate: sql<string>`${dateExpr}`,
+        hour: sql<number>`${hourExpr}`,
+        totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startOfRange),
+          lt(posOrders.businessDate, endOfRange),
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${dateExpr}`, sql`${hourExpr}`);
+
+    for (const row of posResults) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (restaurantInfo) {
+        const key = `${restaurantInfo.id}-${row.localDate}-${row.hour}`;
+        salesByKey.set(key, Number(row.totalSales) || 0);
+      }
+    }
+  }
+
+  return salesByKey;
+}
+
 export async function seedLocationMappings(): Promise<number> {
   // Map Xenial store numbers to restaurant name patterns
   // Restaurant names in DB are like "1237 - Athens", so we match by store number prefix
