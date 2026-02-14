@@ -1,11 +1,134 @@
 import { db } from "./db";
-import { emailSubscribers, emailSendLog, dailySales, hourlySales, restaurants, hmeTimerData, dailyOsat } from "@shared/schema";
-import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
+import { emailSubscribers, emailSendLog } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
-import { getAllHourlyPosSales } from "./xenial-webhook";
+import type { HourlySalesData } from "@shared/schema";
 
-function getGradeLabel(score: number): string {
+const GRADE_WEIGHTS = {
+  sales: 35,
+  speed: 25,
+  osat: 25,
+  staffing: 15,
+};
+
+const BREAKFAST_RAMP_UP: Array<{ maxSales: number; staff: number }> = [
+  { maxSales: 118.87, staff: 3 }, { maxSales: 237.76, staff: 4 },
+  { maxSales: 356.67, staff: 5 }, { maxSales: 475.55, staff: 6 },
+  { maxSales: 594.45, staff: 7 }, { maxSales: 686.95, staff: 8 },
+  { maxSales: 779.42, staff: 9 }, { maxSales: 871.93, staff: 10 },
+  { maxSales: 964.42, staff: 11 }, { maxSales: 1056.89, staff: 12 },
+  { maxSales: 1149.40, staff: 13 }, { maxSales: 1241.89, staff: 14 },
+  { maxSales: 1334.39, staff: 15 }, { maxSales: 1426.87, staff: 16 },
+  { maxSales: 1519.37, staff: 17 }, { maxSales: 1611.87, staff: 18 },
+  { maxSales: 1704.37, staff: 19 }, { maxSales: 1796.84, staff: 20 },
+  { maxSales: 1889.35, staff: 21 }, { maxSales: 1981.84, staff: 22 },
+  { maxSales: 2074.32, staff: 23 }, { maxSales: 2166.82, staff: 24 },
+  { maxSales: 2259.32, staff: 25 }, { maxSales: 2351.81, staff: 26 },
+  { maxSales: 2444.29, staff: 27 }, { maxSales: 2536.79, staff: 28 },
+  { maxSales: 2629.28, staff: 29 }, { maxSales: Infinity, staff: 30 },
+];
+
+const NON_BREAKFAST_RAMP_UP: Array<{ maxSales: number; staff: number }> = [
+  { maxSales: 154.53, staff: 3 }, { maxSales: 309.09, staff: 4 },
+  { maxSales: 463.67, staff: 5 }, { maxSales: 618.23, staff: 6 },
+  { maxSales: 772.79, staff: 7 }, { maxSales: 893.04, staff: 8 },
+  { maxSales: 1013.28, staff: 9 }, { maxSales: 1133.53, staff: 10 },
+  { maxSales: 1253.76, staff: 11 }, { maxSales: 1374.01, staff: 12 },
+  { maxSales: 1494.26, staff: 13 }, { maxSales: 1614.50, staff: 14 },
+  { maxSales: 1734.74, staff: 15 }, { maxSales: 1854.98, staff: 16 },
+  { maxSales: 1975.23, staff: 17 }, { maxSales: 2095.47, staff: 18 },
+  { maxSales: 2215.72, staff: 19 }, { maxSales: 2335.95, staff: 20 },
+  { maxSales: 2456.20, staff: 21 }, { maxSales: 2576.44, staff: 22 },
+  { maxSales: 2696.69, staff: 23 }, { maxSales: 2816.93, staff: 24 },
+  { maxSales: 2937.17, staff: 25 }, { maxSales: 3057.42, staff: 26 },
+  { maxSales: 3177.66, staff: 27 }, { maxSales: 3297.90, staff: 28 },
+  { maxSales: 3418.14, staff: 29 }, { maxSales: Infinity, staff: 30 },
+];
+
+const NON_PRODUCTION_BY_HOUR: Record<number, number> = {
+  0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0,
+  6: 0.5, 7: 0.5, 8: 1, 9: 0.5,
+  10: 1, 11: 1, 12: 1.5, 13: 1.5,
+  14: 0, 15: 0.5, 16: 1, 17: 1.5, 18: 1.5,
+  19: 1, 20: 0.5, 21: 0, 22: 0, 23: 0.5,
+};
+
+function isBreakfastHour(hour: number): boolean {
+  return hour >= 6 && hour < 11;
+}
+
+function getProductionStaff(hour: number, hourlySales: number): number {
+  if (hourlySales <= 0) return 0;
+  const rampUp = isBreakfastHour(hour) ? BREAKFAST_RAMP_UP : NON_BREAKFAST_RAMP_UP;
+  for (const tier of rampUp) {
+    if (hourlySales <= tier.maxSales) return tier.staff;
+  }
+  return 30;
+}
+
+function getTotalRequiredStaff(hour: number, hourlySales: number): number {
+  return (NON_PRODUCTION_BY_HOUR[hour] || 0) + getProductionStaff(hour, hourlySales);
+}
+
+function getExecutionGrade(
+  salesVariancePct: number,
+  speedAttainment: number | undefined,
+  staffingDiff: number,
+  hasComparableSales: boolean,
+  isFirstWeek: boolean,
+  hasValidStaffing: boolean,
+  osatPercent: number | undefined
+): { grade: string; score: number; hasGrade: boolean } {
+  const components: { score: number; weight: number }[] = [];
+
+  if (hasComparableSales) {
+    components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
+  } else {
+    components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
+  }
+
+  if (speedAttainment !== undefined && speedAttainment >= 0) {
+    let speedScore = 100;
+    if (speedAttainment < 50) speedScore = 40;
+    else if (speedAttainment < 70) speedScore = 70;
+    components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
+  }
+
+  if (osatPercent !== undefined && osatPercent > 0) {
+    let osatScore = 100;
+    if (osatPercent < 80) osatScore = 40;
+    else if (osatPercent < 85) osatScore = 70;
+    components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
+  }
+
+  if (hasValidStaffing) {
+    let staffingScore = 100;
+    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
+    const isUnderstaffed = staffingDiff < -1;
+    const isOverstaffed = staffingDiff > 1;
+    if (isOverstaffed) staffingScore = 60;
+    else if (isUnderstaffed && !isSalesSurge) staffingScore = 60;
+    components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
+  }
+
+  if (components.length === 0) return { grade: '-', score: 0, hasGrade: false };
+
+  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
+  const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
+
+  return { grade: scoreToGradeLabel(avgScore), score: avgScore, hasGrade: true };
+}
+
+function gradeToScore(grade: string): number {
+  const scores: Record<string, number> = {
+    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
+    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
+  };
+  return scores[grade] ?? 0;
+}
+
+function scoreToGradeLabel(score: number): string {
   if (score >= 95) return "A+";
   if (score >= 90) return "A";
   if (score >= 85) return "A-";
@@ -31,12 +154,6 @@ function formatCurrency(amount: number): string {
   return `$${Math.round(amount).toLocaleString('en-US')}`;
 }
 
-function formatTime(seconds: number): string {
-  const min = Math.floor(seconds / 60);
-  const sec = Math.round(seconds % 60);
-  return `${min}:${sec.toString().padStart(2, "0")}`;
-}
-
 interface RestaurantSummary {
   id: string;
   name: string;
@@ -47,6 +164,7 @@ interface RestaurantSummary {
   gradeLabel: string;
   avgSpeed: number | null;
   osatPercent: number | null;
+  staffingPct: number | null;
 }
 
 export async function sendDailyReports(): Promise<{ sent: number; failed: number }> {
@@ -67,7 +185,6 @@ export async function sendDailyReports(): Promise<{ sent: number; failed: number
 
     const now = new Date();
     const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
-    const todayStr = centralFormatter.format(now);
 
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -129,171 +246,106 @@ export async function sendDailyReports(): Promise<{ sent: number; failed: number
 
 export async function buildDailyReportHtml(dateStr: string): Promise<string | null> {
   try {
-    const allRestaurants = await storage.getRestaurants();
-    const activeRestaurants = allRestaurants.filter(r => {
-      if (!r.isActive) return false;
-      if (r.name.includes("Training")) return false;
-      return true;
-    });
+    const parts = dateStr.split('-');
+    const targetDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
 
+    const leaderboard = await storage.getLeaderboard(targetDate);
+    const hourlyDataByRestaurant = await storage.getHourlyDataByRestaurant(targetDate);
+
+    if (leaderboard.restaurants.length === 0) return null;
+
+    const activeRestaurants = leaderboard.restaurants.filter(r => r.status !== 'training');
     if (activeRestaurants.length === 0) return null;
-
-    const targetDate = new Date(`${dateStr}T12:00:00`);
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const lastWeekDate = new Date(targetDate);
-    lastWeekDate.setDate(lastWeekDate.getDate() - 7);
-    const lastWeekStr = lastWeekDate.toISOString().split("T")[0];
-
-    const lastWeekStartOfDay = new Date(lastWeekDate);
-    lastWeekStartOfDay.setHours(0, 0, 0, 0);
-    const lastWeekEndOfDay = new Date(lastWeekDate);
-    lastWeekEndOfDay.setHours(23, 59, 59, 999);
-
-    const posHourlySales = await getAllHourlyPosSales(targetDate);
-    const posLastWeekHourlySales = await getAllHourlyPosSales(lastWeekDate);
-
-    const allHourlySales = await db.select().from(hourlySales).where(
-      and(
-        gte(hourlySales.salesDate, lastWeekStartOfDay),
-        lte(hourlySales.salesDate, endOfDay)
-      )
-    );
-
-    const selectedDateHourly = allHourlySales.filter(s => {
-      const d = new Date(s.salesDate).toISOString().split("T")[0];
-      return d === dateStr;
-    });
-    const lastWeekHourly = allHourlySales.filter(s => {
-      const d = new Date(s.salesDate).toISOString().split("T")[0];
-      return d === lastWeekStr;
-    });
-
-    const allDailySales = await db.select().from(dailySales).where(
-      and(
-        gte(dailySales.salesDate, lastWeekStartOfDay),
-        lte(dailySales.salesDate, endOfDay)
-      )
-    );
-    const dailySalesByRestaurant = new Map<string, number>();
-    const dailySalesLastWeekByRestaurant = new Map<string, number>();
-    allDailySales.forEach(d => {
-      const saleDate = new Date(d.salesDate).toISOString().split("T")[0];
-      if (saleDate === dateStr) {
-        dailySalesByRestaurant.set(d.restaurantId, parseFloat(d.totalSales || '0') / 100);
-      }
-      if (saleDate === lastWeekStr) {
-        dailySalesLastWeekByRestaurant.set(d.restaurantId, parseFloat(d.totalSales || '0') / 100);
-      }
-    });
-
-    const osatData = await db.select()
-      .from(dailyOsat)
-      .where(eq(dailyOsat.date, dateStr));
-
-    const hmeData = await db.select()
-      .from(hmeTimerData)
-      .where(eq(hmeTimerData.date, dateStr));
-
-    const osatByRestaurant = new Map(osatData.map(o => [o.restaurantId, o]));
-
-    const hmeByRestaurant = new Map<string, { totalTime: number; count: number; carsUnder6Min: number }>();
-    hmeData.forEach(h => {
-      const rid = h.restaurantId;
-      if (!hmeByRestaurant.has(rid)) {
-        hmeByRestaurant.set(rid, { totalTime: 0, count: 0, carsUnder6Min: 0 });
-      }
-      const entry = hmeByRestaurant.get(rid)!;
-      if (h.avgTotalTime) {
-        entry.totalTime += Number(h.avgTotalTime) * (h.carCount || 1);
-        entry.count += h.carCount || 1;
-      }
-      entry.carsUnder6Min += h.carsUnder6Min || 0;
-    });
 
     const summaries: RestaurantSummary[] = [];
     let totalSales = 0;
     let totalLastWeek = 0;
 
     for (const restaurant of activeRestaurants) {
-      const osat = osatByRestaurant.get(restaurant.id);
-      const hme = hmeByRestaurant.get(restaurant.id);
+      const sales = restaurant.actualSales;
+      const lastWeekSales = restaurant.actualLastWeekSales;
 
-      let todaySalesAmount = 0;
-      const posData = posHourlySales.get(restaurant.id);
-      if (posData && posData.size > 0) {
-        posData.forEach((sales) => { todaySalesAmount += sales; });
-      } else {
-        const hourlyForRestaurant = selectedDateHourly.filter(s => s.restaurantId === restaurant.id);
-        if (hourlyForRestaurant.length > 0) {
-          todaySalesAmount = hourlyForRestaurant.reduce((sum, s) => sum + parseFloat(s.actualSales || '0'), 0);
-        } else {
-          todaySalesAmount = dailySalesByRestaurant.get(restaurant.id) || 0;
-        }
-      }
+      if (sales === 0 && lastWeekSales === 0) continue;
 
-      let lastWeekSalesAmount = 0;
-      const posLastWeekData = posLastWeekHourlySales.get(restaurant.id);
-      if (posLastWeekData && posLastWeekData.size > 0) {
-        posLastWeekData.forEach((sales) => { lastWeekSalesAmount += sales; });
-      } else {
-        const hourlyLastWeekForRestaurant = lastWeekHourly.filter(s => s.restaurantId === restaurant.id);
-        if (hourlyLastWeekForRestaurant.length > 0) {
-          lastWeekSalesAmount = hourlyLastWeekForRestaurant.reduce((sum, s) => sum + parseFloat(s.actualSales || '0'), 0);
-        } else {
-          lastWeekSalesAmount = dailySalesLastWeekByRestaurant.get(restaurant.id) || 0;
-        }
-      }
-
-      if (todaySalesAmount === 0 && lastWeekSalesAmount === 0) continue;
-
-      const variance = lastWeekSalesAmount > 0
-        ? ((todaySalesAmount - lastWeekSalesAmount) / lastWeekSalesAmount) * 100
+      const variance = lastWeekSales > 0
+        ? ((sales - lastWeekSales) / lastWeekSales) * 100
         : 0;
 
-      let grade = 0;
-      let components = 0;
-      let totalWeight = 0;
+      const hourlyData: HourlySalesData[] = hourlyDataByRestaurant[restaurant.restaurantId] || [];
 
-      const salesScore = variance >= -5 ? 100 : 50;
-      grade += salesScore * 35;
-      totalWeight += 35;
-      components++;
+      const isFirstWeek = (restaurant.daysOpen !== undefined && restaurant.daysOpen < 7);
+      const hourlyGradeScores: number[] = [];
 
-      if (hme && hme.count > 0) {
-        const attainment = Math.round((hme.carsUnder6Min / hme.count) * 100);
-        const speedScore = attainment >= 70 ? 100 : attainment >= 50 ? 70 : 40;
-        grade += speedScore * 25;
-        totalWeight += 25;
-        components++;
+      for (const hour of hourlyData) {
+        if (hour.hour > 23) continue;
+        if (!hour.todaySales || hour.todaySales <= 0) continue;
+
+        const hasComparableSales = hour.lastWeekSales > 0;
+        const salesVariancePct = hasComparableSales
+          ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+          : 0;
+
+        const positions = (hour as any).positionBreakdown || {};
+        const operatorHrs = positions['_operatorScheduled'] || 0;
+        const rawEmployeeCount = Number(hour.employeeCount) || 0;
+        const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+        const requiredStaff = getTotalRequiredStaff(hour.hour, hour.todaySales);
+        const staffingDiff = actualStaff - requiredStaff;
+        const hasValidStaffing = rawEmployeeCount >= 1;
+
+        const gradeInfo = getExecutionGrade(
+          salesVariancePct,
+          (hour as any).speedAttainment,
+          staffingDiff,
+          hasComparableSales,
+          isFirstWeek,
+          hasValidStaffing,
+          (hour as any).osatPercent
+        );
+
+        if (gradeInfo.hasGrade) {
+          hourlyGradeScores.push(gradeToScore(gradeInfo.grade));
+        }
       }
 
-      if (osat && osat.totalResponses > 0) {
-        const osatPct = (osat.fiveStarCount / osat.totalResponses) * 100;
-        const osatScore = osatPct >= 85 ? 100 : osatPct >= 80 ? 70 : 40;
-        grade += osatScore * 25;
-        totalWeight += 25;
-        components++;
-      }
+      const validScores = hourlyGradeScores.filter(s => s > 0);
+      const overallScore = validScores.length > 0
+        ? validScores.reduce((a, b) => a + b, 0) / validScores.length
+        : 0;
+      const gradeLabel = validScores.length > 0 ? scoreToGradeLabel(overallScore) : '-';
 
-      const normalizedGrade = totalWeight > 0 ? grade / totalWeight : 50;
+      const speedData = hourlyData.reduce((acc, h) => {
+        const sa = (h as any).speedAttainment;
+        if (sa !== undefined && sa >= 0) {
+          acc.total += sa;
+          acc.count++;
+        }
+        return acc;
+      }, { total: 0, count: 0 });
 
-      totalSales += todaySalesAmount;
-      totalLastWeek += lastWeekSalesAmount;
+      const osatData = hourlyData.reduce((acc, h) => {
+        const op = (h as any).osatPercent;
+        if (op !== undefined && op > 0) {
+          acc.total += op;
+          acc.count++;
+        }
+        return acc;
+      }, { total: 0, count: 0 });
+
+      totalSales += sales;
+      totalLastWeek += lastWeekSales;
 
       summaries.push({
-        id: restaurant.id,
-        name: restaurant.name,
-        sales: todaySalesAmount,
-        lastWeekSales: lastWeekSalesAmount,
+        id: restaurant.restaurantId,
+        name: restaurant.restaurantName,
+        sales,
+        lastWeekSales,
         variance,
-        grade: normalizedGrade,
-        gradeLabel: getGradeLabel(normalizedGrade),
-        avgSpeed: hme && hme.count > 0 ? Math.round((hme.carsUnder6Min / hme.count) * 100) : null,
-        osatPercent: osat && osat.totalResponses > 0 ? (osat.fiveStarCount / osat.totalResponses) * 100 : null,
+        grade: overallScore,
+        gradeLabel,
+        avgSpeed: speedData.count > 0 ? Math.round(speedData.total / speedData.count) : null,
+        osatPercent: osatData.count > 0 ? osatData.total / osatData.count : null,
+        staffingPct: null,
       });
     }
 
@@ -301,7 +353,10 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
     summaries.sort((a, b) => b.grade - a.grade);
 
-    const avgGrade = summaries.reduce((s, r) => s + r.grade, 0) / summaries.length;
+    const gradedSummaries = summaries.filter(s => s.grade > 0);
+    const avgGrade = gradedSummaries.length > 0
+      ? gradedSummaries.reduce((s, r) => s + r.grade, 0) / gradedSummaries.length
+      : 0;
     const totalVariance = totalLastWeek > 0
       ? ((totalSales - totalLastWeek) / totalLastWeek) * 100
       : 0;
@@ -337,7 +392,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
     <div style="background: white; padding: 24px; border: 1px solid #e4e4e7; border-top: none;">
       <div style="display: flex; justify-content: space-around; text-align: center; margin-bottom: 20px;">
         <div>
-          <div style="font-size: 28px; font-weight: 700; color: ${getGradeColor(getGradeLabel(avgGrade))};">${getGradeLabel(avgGrade)}</div>
+          <div style="font-size: 28px; font-weight: 700; color: ${getGradeColor(scoreToGradeLabel(avgGrade))};">${avgGrade > 0 ? scoreToGradeLabel(avgGrade) : '-'}</div>
           <div style="font-size: 12px; color: #71717a; margin-top: 2px;">Avg Grade</div>
         </div>
         <div>
