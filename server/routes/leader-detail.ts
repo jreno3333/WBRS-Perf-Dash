@@ -237,6 +237,21 @@ router.get("/api/people/leader-detail", async (req, res) => {
       needsImprovement: string[];
     };
 
+    type HourGradeDetail = {
+      hour: number;
+      sales: number;
+      lastWeekSales: number;
+      variancePct: number;
+      hasComparableSales: boolean;
+      speedAttainment?: number;
+      staffingDiff: number;
+      actualStaff: number;
+      requiredStaff: number;
+      osatPercent?: number;
+      gradeScore: number;
+      gradeLabel: string;
+    };
+
     type DailyDetail = {
       date: string;
       restaurantId: string;
@@ -252,6 +267,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
       osatResponses?: number;
       avgHourlyVolume: number;
       feedback: DayFeedback;
+      hourlyGrades: HourGradeDetail[];
     };
 
     const dailyDetails: DailyDetail[] = [];
@@ -375,6 +391,23 @@ router.get("/api/people/leader-detail", async (req, res) => {
         wentWell.push("Keep working on building consistency across all metrics");
       }
 
+      const hourlyGrades: HourGradeDetail[] = dayData.hours
+        .sort((a, b) => a.hour - b.hour)
+        .map(h => ({
+          hour: h.hour,
+          sales: Math.round(h.todaySales * 100) / 100,
+          lastWeekSales: Math.round(h.lastWeekSales * 100) / 100,
+          variancePct: Math.round(h.salesVariancePct * 10) / 10,
+          hasComparableSales: h.hasComparableSales,
+          speedAttainment: h.speedAttainment,
+          staffingDiff: Math.round(h.staffingDiff * 10) / 10,
+          actualStaff: Math.round(h.actualStaff * 10) / 10,
+          requiredStaff: Math.round(h.projectedStaff * 10) / 10,
+          osatPercent: h.osatPercent,
+          gradeScore: Math.round(h.score),
+          gradeLabel: getGradeLabel(h.score),
+        }));
+
       dailyDetails.push({
         date: dateKey,
         restaurantId: dayData.restaurantId,
@@ -390,6 +423,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
         osatResponses,
         avgHourlyVolume: dayData.hours.length > 0 ? Math.round(totalSales / dayData.hours.length) : 0,
         feedback: { wentWell, needsImprovement },
+        hourlyGrades,
       });
     }
 
