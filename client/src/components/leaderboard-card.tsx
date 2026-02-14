@@ -205,9 +205,10 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
     return `${sign}${Math.round(value)}%`;
   };
 
-  // Use normalized sales for pace variance comparison (fair timezone comparison for rankings)
-  const paceVariance = restaurant.lastWeekSales > 0 
-    ? ((restaurant.todaySales / restaurant.lastWeekSales) - 1) * 100 
+  // Display variance uses actual local-timezone sales for accurate store-level comparison
+  const displayLastWeek = restaurant.actualLastWeekSales ?? restaurant.lastWeekSales;
+  const paceVariance = displayLastWeek > 0 
+    ? ((restaurant.actualSales / displayLastWeek) - 1) * 100 
     : 0;
   
   // Check if restaurant is in first week (no historical data expected)
@@ -523,7 +524,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
               <span className="text-xs">
-                LW: {formatCurrency(restaurant.lastWeekSales)}
+                LW: {formatCurrency(displayLastWeek)}
               </span>
               <div className="relative group">
                 <span className="text-xs cursor-help">
@@ -1052,7 +1053,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   paceVariance >= 0 ? "bg-green-500" : "bg-red-500"
                 }`}
                 style={{ 
-                  width: `${Math.min(100, (restaurant.todaySales / Math.max(restaurant.lastWeekSales, 1)) * 100)}%` 
+                  width: `${Math.min(100, (restaurant.actualSales / Math.max(displayLastWeek, 1)) * 100)}%` 
                 }}
                 data-testid={`progress-${restaurant.restaurantId}`}
               />
