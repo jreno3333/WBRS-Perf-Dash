@@ -263,7 +263,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
       // Compute daily aggregates first
       const totalSales = dayData.hours.reduce((s: number, h: HourDetail) => s + h.todaySales, 0);
       const totalLastWeekSales = dayData.hours.reduce((s: number, h: HourDetail) => s + h.lastWeekSales, 0);
-      const hasComparableSales = totalLastWeekSales > 2000 && totalSales > 500;
+      const hasComparableSales = totalLastWeekSales > 0;
       let dailySalesVariancePct = hasComparableSales
         ? ((totalSales - totalLastWeekSales) / totalLastWeekSales) * 100
         : 0;
