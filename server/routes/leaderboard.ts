@@ -370,8 +370,8 @@ router.get("/api/map-data", async (req, res) => {
         }
       }
 
-      const todaySales = salesData?.todaySales || 0;
-      const lastWeekSales = salesData?.lastWeekSales || 0;
+      const todaySales = salesData?.actualSales || 0;
+      const lastWeekSales = salesData?.actualLastWeekSales || 0;
       const isAheadOfPace = todaySales >= lastWeekSales;
 
       mapData.push({
