@@ -29,8 +29,16 @@ router.get("/api/leaders", async (req, res) => {
 
     const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
     const now = new Date();
-    const endDateStr = date ? String(date) : centralFormatter.format(now);
+    const todayCentral = centralFormatter.format(now);
     const numDays = Math.min(parseInt(String(days)) || 7, 30);
+
+    // Exclude current day — partial day data creates misleading grades (match leader-detail)
+    let endDateStr = date ? String(date) : todayCentral;
+    if (endDateStr >= todayCentral) {
+      const yesterday = new Date(`${todayCentral}T12:00:00Z`);
+      yesterday.setDate(yesterday.getDate() - 1);
+      endDateStr = yesterday.toISOString().split("T")[0];
+    }
 
     const endDate = new Date(`${endDateStr}T23:59:59`);
     const startDate = new Date(endDate);
@@ -127,14 +135,16 @@ router.get("/api/leaders", async (req, res) => {
         totalSalesToday: number;
         totalSalesLastWeek: number;
         staffingDiffs: number[];
-        speedValues: number[];
+        speedCarCount: number;
+        speedCarsUnder6: number;
         osatWeighted: { percent: number; responses: number }[];
         hoursCount: number;
       }>();
       const workedAtRestaurants = new Map<string, number>();
       let totalHoursWorked = 0;
       let totalSalesAllHours = 0;
-      let allSpeedValues: number[] = [];
+      let allSpeedCarCount = 0;
+      let allSpeedCarsUnder6 = 0;
       let allOsatWeighted: { percent: number; responses: number }[] = [];
 
       for (const crew of crewData) {
@@ -164,7 +174,7 @@ router.get("/api/leaders", async (req, res) => {
             dailyAggregates.set(dayKey, {
               restaurantId: crew.restaurantId,
               totalSalesToday: 0, totalSalesLastWeek: 0,
-              staffingDiffs: [], speedValues: [], osatWeighted: [], hoursCount: 0,
+              staffingDiffs: [], speedCarCount: 0, speedCarsUnder6: 0, osatWeighted: [], hoursCount: 0,
             });
           }
           const day = dailyAggregates.get(dayKey)!;
@@ -185,10 +195,11 @@ router.get("/api/leaders", async (req, res) => {
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
           day.staffingDiffs.push(actualStaff - projectedStaff);
 
-          if (hme && hme.carCount > 0 && hme.carsUnder6Min > 0) {
-            const attainment = Math.round((hme.carsUnder6Min / hme.carCount) * 100);
-            day.speedValues.push(attainment);
-            allSpeedValues.push(attainment);
+          if (hme && hme.carCount > 0 && (hme.carsUnder6Min || 0) > 0) {
+            day.speedCarCount += hme.carCount;
+            day.speedCarsUnder6 += hme.carsUnder6Min || 0;
+            allSpeedCarCount += hme.carCount;
+            allSpeedCarsUnder6 += hme.carsUnder6Min || 0;
           }
           if (osatHour && osatHour.totalResponses > 0) {
             day.osatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
@@ -206,7 +217,7 @@ router.get("/api/leaders", async (req, res) => {
           salesVariancePct = Math.max(-200, Math.min(200, salesVariancePct));
         }
         const avgStaffingDiff = day.staffingDiffs.reduce((a, b) => a + b, 0) / day.staffingDiffs.length;
-        const avgSpeed = day.speedValues.length > 0 ? day.speedValues.reduce((a, b) => a + b, 0) / day.speedValues.length : undefined;
+        const avgSpeed = day.speedCarCount > 0 ? Math.round((day.speedCarsUnder6 / day.speedCarCount) * 100) : undefined;
         const totalOsatResponses = day.osatWeighted.reduce((s, o) => s + o.responses, 0);
         const osatPercent = totalOsatResponses > 0
           ? day.osatWeighted.reduce((s, o) => s + o.percent * o.responses, 0) / totalOsatResponses : undefined;
@@ -233,7 +244,7 @@ router.get("/api/leaders", async (req, res) => {
 
         if (components.length > 0) {
           const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-          const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+          const score = Math.round(components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight);
           dailyGrades.push({ score, hours: day.hoursCount });
         }
       }
@@ -260,8 +271,8 @@ router.get("/api/leaders", async (req, res) => {
         if (displayPosition.toLowerCase().includes("supervisor")) displayPosition = "Shift Supervisor";
         else if (displayPosition.toLowerCase().includes("manager")) displayPosition = "Manager";
 
-        const overallAvgSpeed = allSpeedValues.length > 0
-          ? allSpeedValues.reduce((a, b) => a + b, 0) / allSpeedValues.length : null;
+        const overallAvgSpeed = allSpeedCarCount > 0
+          ? Math.round((allSpeedCarsUnder6 / allSpeedCarCount) * 100) : null;
         const totalSurveyResponses = allOsatWeighted.reduce((s, o) => s + o.responses, 0);
         const overallOsatPercent = totalSurveyResponses > 0
           ? allOsatWeighted.reduce((s, o) => s + o.percent * o.responses, 0) / totalSurveyResponses : null;
