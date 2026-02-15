@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { getAllHourlyPosSalesRange } from "../xenial-webhook";
 
 const router = Router();
 
@@ -66,6 +67,10 @@ router.get("/api/leaders", async (req, res) => {
     extendedStartDate.setDate(extendedStartDate.getDate() - 7);
     const extendedStartDateStr = extendedStartDate.toISOString().split("T")[0];
 
+    // Use POS orders as primary sales source (includes 12am-5am hours)
+    const posSalesByKey = await getAllHourlyPosSalesRange(extendedStartDateStr, endDateStr);
+
+    // Also fetch 7shifts hourly_sales as fallback
     const salesData = await db.select().from(hourlySales).where(
       and(
         gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, extendedStartDateStr),
@@ -140,12 +145,17 @@ router.get("/api/leaders", async (req, res) => {
         workedAtRestaurants.set(crew.restaurantId, (workedAtRestaurants.get(crew.restaurantId) || 0) + 1);
 
         const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
-        const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
 
-        const hourSales = sales ? (Number(sales.actualSales) || 0) : 0;
-        if (labor && sales && hourSales > 0) {
+        // Use POS orders as primary sales source, fall back to 7shifts
+        const posKey = `${crew.restaurantId}-${crew.date}-${crew.hour}`;
+        const posSales = posSalesByKey.get(posKey);
+        const fallbackSales = salesByKey.get(posKey);
+        const hourSales = posSales !== undefined ? posSales : (fallbackSales ? (Number(fallbackSales.actualSales) || 0) : 0);
+        const hasSalesData = posSales !== undefined || (fallbackSales && Number(fallbackSales.actualSales) > 0);
+
+        if (labor && hasSalesData && hourSales > 0) {
           totalHoursWorked++;
           totalSalesAllHours += hourSales;
 
@@ -161,12 +171,15 @@ router.get("/api/leaders", async (req, res) => {
           day.hoursCount++;
           day.totalSalesToday += hourSales;
 
+          // Look up last week's sales — POS first, then 7shifts fallback
           const crewDate = new Date(crew.date + "T12:00:00");
           const lastWeekDate = new Date(crewDate);
           lastWeekDate.setDate(lastWeekDate.getDate() - 7);
           const lastWeekDateStr = lastWeekDate.toISOString().split("T")[0];
-          const lastWeekSalesRecord = salesByKey.get(`${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`);
-          day.totalSalesLastWeek += lastWeekSalesRecord ? Number(lastWeekSalesRecord.actualSales) || 0 : 0;
+          const posLastWeekKey = `${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`;
+          const posLastWeekSales = posSalesByKey.get(posLastWeekKey);
+          const fallbackLastWeekSales = salesByKey.get(posLastWeekKey);
+          day.totalSalesLastWeek += posLastWeekSales !== undefined ? posLastWeekSales : (fallbackLastWeekSales ? Number(fallbackLastWeekSales.actualSales) || 0 : 0);
 
           const actualStaff = Number(labor.employeeCount) || 0;
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
@@ -186,7 +199,7 @@ router.get("/api/leaders", async (req, res) => {
 
       const dailyGrades: { score: number; hours: number }[] = [];
       for (const [, day] of Array.from(dailyAggregates)) {
-        const hasComparableSales = day.totalSalesLastWeek > 2000 && day.totalSalesToday > 500;
+        const hasComparableSales = day.totalSalesLastWeek > 0;
         let salesVariancePct = hasComparableSales
           ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100 : 0;
         if (hasComparableSales) {
@@ -200,10 +213,15 @@ router.get("/api/leaders", async (req, res) => {
         const salesSurge = salesVariancePct >= 20;
 
         const components: { weight: number; score: number }[] = [];
-        if (hasComparableSales) components.push({ weight: 35, score: salesVariancePct >= -5 ? 100 : 50 });
+        if (hasComparableSales) {
+          components.push({ weight: 35, score: salesVariancePct >= -5 ? 100 : 50 });
+        } else {
+          components.push({ weight: 35, score: 100 });
+        }
 
+        const effectiveSurge = salesSurge || !hasComparableSales;
         let staffingScore = 100;
-        if (Math.abs(avgStaffingDiff) > 1) staffingScore = avgStaffingDiff > 1 ? 60 : (salesSurge ? 100 : 60);
+        if (Math.abs(avgStaffingDiff) > 1) staffingScore = avgStaffingDiff > 1 ? 60 : (effectiveSurge ? 100 : 60);
         components.push({ weight: 15, score: staffingScore });
 
         if (avgSpeed !== undefined) {
