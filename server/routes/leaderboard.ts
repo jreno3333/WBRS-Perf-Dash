@@ -231,20 +231,32 @@ router.get("/api/hourly-by-restaurant", async (req, res) => {
 // Get hourly sales heatmap data for the past N days
 router.get("/api/hourly-heatmap", async (req, res) => {
   try {
-    const { days = "7" } = req.query;
-    const numDays = parseInt(days as string) || 7;
+    const { days = "7", startDate: startParam, endDate: endParam } = req.query;
 
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
     const today = new Date(`${todayStr}T12:00:00Z`);
 
     const dateRange: string[] = [];
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - (numDays - 1));
 
-    for (let i = 0; i < numDays; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      dateRange.push(date.toISOString().split('T')[0]);
+    if (startParam && endParam) {
+      const s = new Date(`${startParam}T12:00:00Z`);
+      const e = new Date(`${endParam}T12:00:00Z`);
+      const cursor = new Date(s);
+      while (cursor <= e) {
+        dateRange.push(cursor.toISOString().split('T')[0]);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    } else if (startParam) {
+      dateRange.push(startParam as string);
+    } else {
+      const numDays = parseInt(days as string) || 7;
+      const startDate = new Date(today);
+      startDate.setDate(startDate.getDate() - (numDays - 1));
+      for (let i = 0; i < numDays; i++) {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + i);
+        dateRange.push(date.toISOString().split('T')[0]);
+      }
     }
 
     const allRestaurants = await storage.getRestaurants();

@@ -116,8 +116,16 @@ export default function HeatmapPage() {
   // Auto-refresh every 5 minutes (300000ms) for all-day monitoring
   const REFRESH_INTERVAL = 5 * 60 * 1000;
   
+  const heatmapStartDate = isDateRangeMode ? startDate : startDate;
+  const heatmapEndDate = isDateRangeMode ? endDate : startDate;
+
   const { data, isLoading } = useQuery<HeatmapData>({
-    queryKey: ['/api/hourly-heatmap'],
+    queryKey: ['/api/hourly-heatmap', heatmapStartDate, heatmapEndDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/hourly-heatmap?startDate=${heatmapStartDate}&endDate=${heatmapEndDate}`);
+      if (!res.ok) throw new Error("Failed to fetch heatmap data");
+      return res.json();
+    },
     refetchInterval: REFRESH_INTERVAL,
   });
   
@@ -304,10 +312,8 @@ export default function HeatmapPage() {
   
   const activeDates = useMemo(() => {
     if (!data) return [];
-    const availableDates = new Set(data.dateRange);
-    const filteredAnalysisRange = analysisDateRange.filter(d => availableDates.has(d));
-    return filteredAnalysisRange.length > 0 ? filteredAnalysisRange : data.dateRange;
-  }, [data, analysisDateRange]);
+    return data.dateRange;
+  }, [data]);
   
   const stats = useMemo(() => {
     if (!data) return { totalZeroHours: 0, totalHours: 0 };
