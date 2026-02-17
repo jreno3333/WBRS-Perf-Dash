@@ -48,6 +48,7 @@ export default function LoginPage() {
               <span>
                 {errorParam === "expired" ? "That link has expired. Please request a new one." :
                  errorParam === "invalid" ? "That link is invalid. Please try again." :
+                 errorParam === "deactivated" ? "Your account has been deactivated. Contact an administrator for access." :
                  "Something went wrong. Please try again."}
               </span>
             </div>

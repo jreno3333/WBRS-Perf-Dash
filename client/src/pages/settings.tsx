@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp, Users, Shield, ShieldOff } from "lucide-react";
 import { NavBar } from "@/components/nav-bar";
-import { format, differenceInDays, isFuture, parseISO } from "date-fns";
+import { format, differenceInDays, isFuture, parseISO, formatDistanceToNow } from "date-fns";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -405,6 +407,8 @@ export default function SettingsPage() {
           <LeaderReportCard />
 
           <HistoricalSalesUploadCard />
+
+          <UserManagementCard />
         </div>
       </main>
     </div>
@@ -2498,5 +2502,203 @@ function HistoricalSalesUploadCard() {
         </CollapsibleContent>
       </Card>
     </Collapsible>
+  );
+}
+
+interface ManagedUser {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  role: string;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string | null;
+}
+
+function UserManagementCard() {
+  const { toast } = useToast();
+
+  const { data: authData } = useQuery<{ authenticated: boolean; role?: string; userId?: string; email?: string }>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const { data: managedUsers, isLoading } = useQuery<ManagedUser[]>({
+    queryKey: ["/api/users"],
+    enabled: authData?.role === "admin",
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/users/${id}/status`, { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "User updated", description: "Access status changed successfully." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to update user.", variant: "destructive" });
+    },
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: async ({ id, role }: { id: string; role: string }) => {
+      return apiRequest("PATCH", `/api/users/${id}/role`, { role });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Role updated", description: "User role changed successfully." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to update role.", variant: "destructive" });
+    },
+  });
+
+  if (authData?.role !== "admin") {
+    return null;
+  }
+
+  const activeUsers = (managedUsers || []).filter(u => u.isActive);
+  const inactiveUsers = (managedUsers || []).filter(u => !u.isActive);
+
+  return (
+    <Collapsible defaultOpen={false} data-testid="collapsible-user-management">
+      <Card>
+        <CollapsibleTrigger asChild data-testid="trigger-user-management">
+          <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                User Management
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Manage user access and roles. Deactivate accounts to immediately revoke access.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {managedUsers && (
+                <Badge variant="secondary">{activeUsers.length} active</Badge>
+              )}
+              <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent>
+            {isLoading ? (
+              <div className="text-center py-8 text-muted-foreground">Loading users...</div>
+            ) : (
+              <div className="space-y-4">
+                {activeUsers.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3">Active Users ({activeUsers.length})</h3>
+                    <div className="grid gap-2">
+                      {activeUsers.map(user => (
+                        <UserRow
+                          key={user.id}
+                          user={user}
+                          onToggleStatus={(isActive) => statusMutation.mutate({ id: user.id, isActive })}
+                          onChangeRole={(role) => roleMutation.mutate({ id: user.id, role })}
+                          isPending={statusMutation.isPending || roleMutation.isPending}
+                          isCurrentUser={user.id === authData?.userId}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {inactiveUsers.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3">Deactivated Users ({inactiveUsers.length})</h3>
+                    <div className="grid gap-2">
+                      {inactiveUsers.map(user => (
+                        <UserRow
+                          key={user.id}
+                          user={user}
+                          onToggleStatus={(isActive) => statusMutation.mutate({ id: user.id, isActive })}
+                          onChangeRole={(role) => roleMutation.mutate({ id: user.id, role })}
+                          isPending={statusMutation.isPending || roleMutation.isPending}
+                          isCurrentUser={user.id === authData?.userId}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(!managedUsers || managedUsers.length === 0) && (
+                  <div className="text-center py-4 text-muted-foreground text-sm">No registered users found.</div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function UserRow({ user, onToggleStatus, onChangeRole, isPending, isCurrentUser }: {
+  user: ManagedUser;
+  onToggleStatus: (isActive: boolean) => void;
+  onChangeRole: (role: string) => void;
+  isPending: boolean;
+  isCurrentUser: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-4 p-3 rounded-lg border ${user.isActive ? 'bg-card' : 'bg-muted/50 opacity-70'}`}
+      data-testid={`row-user-${user.id}`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm truncate">{user.email || user.displayName || "Unknown"}</span>
+          {user.role === "admin" && (
+            <Badge variant="default" className="shrink-0">
+              <Shield className="h-3 w-3 mr-1" />
+              Admin
+            </Badge>
+          )}
+          {!user.isActive && (
+            <Badge variant="secondary" className="shrink-0">
+              <ShieldOff className="h-3 w-3 mr-1" />
+              Deactivated
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+          {user.lastLoginAt && (
+            <span>Last login: {formatDistanceToNow(new Date(user.lastLoginAt), { addSuffix: true })}</span>
+          )}
+          {user.createdAt && (
+            <span>Joined: {format(new Date(user.createdAt), "MMM d, yyyy")}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 shrink-0">
+        <Select
+          value={user.role}
+          onValueChange={(value) => onChangeRole(value)}
+          disabled={isPending || isCurrentUser}
+        >
+          <SelectTrigger className="w-[100px]" data-testid={`select-role-${user.id}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="viewer">Viewer</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={user.isActive}
+            onCheckedChange={(checked) => onToggleStatus(checked)}
+            disabled={isPending || isCurrentUser}
+            data-testid={`switch-active-${user.id}`}
+          />
+          <span className="text-xs text-muted-foreground w-[28px]">{user.isActive ? "On" : "Off"}</span>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -19,11 +19,20 @@ import leadersRouter from "./leaders";
 import arenaRouter from "./arena";
 import historicalSalesRouter from "./historical-sales";
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (req.session?.userId) {
-    return next();
+import { db } from "../db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.userId) {
+    return res.status(401).json({ message: "Not authenticated" });
   }
-  return res.status(401).json({ message: "Not authenticated" });
+  const [user] = await db.select({ isActive: users.isActive }).from(users).where(eq(users.id, req.session.userId)).limit(1);
+  if (!user || !user.isActive) {
+    req.session.destroy(() => {});
+    return res.status(401).json({ message: "Account deactivated" });
+  }
+  return next();
 }
 
 export async function registerRoutes(

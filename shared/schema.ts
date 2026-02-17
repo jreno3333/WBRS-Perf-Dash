@@ -400,6 +400,8 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   displayName: text("display_name"),
   role: text("role").notNull().default("viewer"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

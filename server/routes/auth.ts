@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db } from "../db";
 import { users, magicLinkTokens } from "@shared/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, desc } from "drizzle-orm";
 import { sendMagicLinkEmail } from "../email";
 import crypto from "crypto";
 
@@ -106,6 +106,14 @@ router.get("/api/auth/verify", async (req, res) => {
       return res.redirect("/login?error=invalid");
     }
 
+    if (!user.isActive) {
+      return res.redirect("/login?error=deactivated");
+    }
+
+    await db.update(users)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(users.id, user.id));
+
     req.session.userId = user.id;
     req.session.email = user.email || tokenRecord.email;
 
@@ -122,12 +130,18 @@ router.get("/api/auth/verify", async (req, res) => {
   }
 });
 
-router.get("/api/auth/me", (req, res) => {
+router.get("/api/auth/me", async (req, res) => {
   if (req.session?.userId) {
+    const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
+    if (!user || !user.isActive) {
+      req.session.destroy(() => {});
+      return res.json({ authenticated: false });
+    }
     return res.json({
       authenticated: true,
       userId: req.session.userId,
       email: req.session.email,
+      role: user.role,
     });
   }
   return res.json({ authenticated: false });
@@ -141,6 +155,86 @@ router.post("/api/auth/logout", (req, res) => {
     res.clearCookie("connect.sid");
     return res.json({ success: true });
   });
+});
+
+function requireAdmin(req: any, res: any, next: any) {
+  if (!req.session?.userId) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+  db.select().from(users).where(eq(users.id, req.session.userId)).limit(1)
+    .then(([user]) => {
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      next();
+    })
+    .catch(() => res.status(500).json({ message: "Server error" }));
+}
+
+router.get("/api/users", requireAdmin, async (_req, res) => {
+  try {
+    const allUsers = await db.select({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      role: users.role,
+      isActive: users.isActive,
+      lastLoginAt: users.lastLoginAt,
+      createdAt: users.createdAt,
+    }).from(users).orderBy(desc(users.createdAt));
+    return res.json(allUsers);
+  } catch (error) {
+    console.error("[auth] List users error:", error);
+    return res.status(500).json({ message: "Failed to list users" });
+  }
+});
+
+router.patch("/api/users/:id/status", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ message: "isActive must be a boolean" });
+    }
+
+    if (id === req.session?.userId) {
+      return res.status(400).json({ message: "You cannot deactivate your own account" });
+    }
+
+    await db.update(users)
+      .set({ isActive })
+      .where(eq(users.id, id));
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("[auth] Update user status error:", error);
+    return res.status(500).json({ message: "Failed to update user status" });
+  }
+});
+
+router.patch("/api/users/:id/role", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!["admin", "viewer"].includes(role)) {
+      return res.status(400).json({ message: "Role must be 'admin' or 'viewer'" });
+    }
+
+    if (id === req.session?.userId) {
+      return res.status(400).json({ message: "You cannot change your own role" });
+    }
+
+    await db.update(users)
+      .set({ role })
+      .where(eq(users.id, id));
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("[auth] Update user role error:", error);
+    return res.status(500).json({ message: "Failed to update user role" });
+  }
 });
 
 export default router;
