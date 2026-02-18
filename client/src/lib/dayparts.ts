@@ -1,8 +1,13 @@
 /**
  * MWB Daypart Definitions
  *
- * Dayparts partition operating hours into meaningful business periods.
- * Aligned with the labor model's breakfast boundary (6-10) and CFA operating patterns.
+ * 6 dayparts covering the full 24-hour clock:
+ *   Earlybird    12 AM – 6 AM  (hours 0-5)
+ *   Breakfast     6 AM – 11 AM (hours 6-10)
+ *   Lunch        11 AM – 3 PM  (hours 11-14)
+ *   Snack         3 PM – 5 PM  (hours 15-16)
+ *   Evening       5 PM – 8 PM  (hours 17-19)
+ *   Evening Snack 8 PM – 12 AM (hours 20-23)
  */
 
 export interface Daypart {
@@ -17,6 +22,15 @@ export interface Daypart {
 
 export const DAYPARTS: Daypart[] = [
   {
+    id: 'earlybird',
+    label: 'Earlybird',
+    shortLabel: 'EB',
+    startHour: 0,
+    endHour: 5,
+    color: 'text-slate-600 dark:text-slate-400',
+    bgColor: 'bg-slate-100 dark:bg-slate-900/30',
+  },
+  {
     id: 'breakfast',
     label: 'Breakfast',
     shortLabel: 'BRK',
@@ -30,40 +44,40 @@ export const DAYPARTS: Daypart[] = [
     label: 'Lunch',
     shortLabel: 'LCH',
     startHour: 11,
-    endHour: 13,
+    endHour: 14,
     color: 'text-orange-600 dark:text-orange-400',
     bgColor: 'bg-orange-100 dark:bg-orange-900/30',
   },
   {
-    id: 'afternoon',
-    label: 'Afternoon',
-    shortLabel: 'AFT',
-    startHour: 14,
+    id: 'snack',
+    label: 'Snack',
+    shortLabel: 'SNK',
+    startHour: 15,
     endHour: 16,
     color: 'text-sky-600 dark:text-sky-400',
     bgColor: 'bg-sky-100 dark:bg-sky-900/30',
   },
   {
-    id: 'dinner',
-    label: 'Dinner',
-    shortLabel: 'DIN',
+    id: 'evening',
+    label: 'Evening',
+    shortLabel: 'EVE',
     startHour: 17,
-    endHour: 20,
+    endHour: 19,
     color: 'text-indigo-600 dark:text-indigo-400',
     bgColor: 'bg-indigo-100 dark:bg-indigo-900/30',
   },
   {
-    id: 'late',
-    label: 'Late',
-    shortLabel: 'LTE',
-    startHour: 21,
+    id: 'evening_snack',
+    label: 'Evening Snack',
+    shortLabel: 'ES',
+    startHour: 20,
     endHour: 23,
     color: 'text-violet-600 dark:text-violet-400',
     bgColor: 'bg-violet-100 dark:bg-violet-900/30',
   },
 ];
 
-/** Get the daypart for a given hour (0-23). Returns undefined for hours outside operating (0-5). */
+/** Get the daypart for a given hour (0-23). Always returns a match since all 24 hours are covered. */
 export function getDaypart(hour: number): Daypart | undefined {
   return DAYPARTS.find(dp => hour >= dp.startHour && hour <= dp.endHour);
 }
