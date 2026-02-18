@@ -436,8 +436,11 @@ router.get("/api/people/performance", async (req, res) => {
         if (displayPosition === 'asst_manager') displayPosition = 'Manager';
         if (displayPosition.toLowerCase().includes('supervisor')) displayPosition = 'Shift Supervisor';
         else if (displayPosition.toLowerCase().includes('manager')) displayPosition = 'Manager';
-
-        if (displayPosition.toLowerCase().includes('team member')) continue;
+        // Fallback: if position doesn't normalize, use employee type to classify
+        if (displayPosition !== 'Manager' && displayPosition !== 'Shift Supervisor') {
+          if (displayPosition.toLowerCase().includes('team member')) continue;
+          displayPosition = (leader.type === 'manager' || leader.type === 'asst_manager') ? 'Manager' : 'Shift Supervisor';
+        }
 
         leaderPerformance.push({
           employeeId: leader.id,

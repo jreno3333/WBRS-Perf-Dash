@@ -270,6 +270,10 @@ router.get("/api/leaders", async (req, res) => {
         if (displayPosition === "asst_manager") displayPosition = "Manager";
         if (displayPosition.toLowerCase().includes("supervisor")) displayPosition = "Shift Supervisor";
         else if (displayPosition.toLowerCase().includes("manager")) displayPosition = "Manager";
+        // Fallback: if position doesn't normalize, use employee type to classify
+        if (displayPosition !== "Manager" && displayPosition !== "Shift Supervisor") {
+          displayPosition = (leader.type === "manager" || leader.type === "asst_manager") ? "Manager" : "Shift Supervisor";
+        }
 
         const overallAvgSpeed = allSpeedCarCount > 0
           ? Math.round((allSpeedCarsUnder6 / allSpeedCarCount) * 100) : null;
@@ -300,8 +304,9 @@ router.get("/api/leaders", async (req, res) => {
     const posFilterStr = positionFilter ? String(positionFilter).toLowerCase() : null;
     const filteredLeaders = posFilterStr
       ? leaders.filter(l => {
-          if (posFilterStr === 'manager') return l.position === 'Manager';
-          if (posFilterStr === 'ss') return l.position === 'Shift Supervisor';
+          const pos = l.position.toLowerCase();
+          if (posFilterStr === 'manager') return pos.includes('manager');
+          if (posFilterStr === 'ss') return pos.includes('supervisor');
           return true;
         })
       : leaders;
