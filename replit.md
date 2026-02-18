@@ -37,6 +37,7 @@ Preferred communication style: Simple, everyday language.
 - **Weighted Execution Grading System**: Grades units based on a weighted formula including Sales (35%), Speed (25%), OSAT (25%), and Staffing (15%), normalized for available data.
 - **People Tenure & Performance**: Tracks employee tenure and ranks leaders by average execution grade and average hourly sales volume during their shifts, with eligibility criteria based on hours worked and survey responses.
 - **Performance History**: Displays historical performance trends over configurable date ranges (7/14/30/60/90/180 days) with company, state, and market summaries, daily grade timelines, and detailed metrics.
+- **Weekly Sales Trends**: Tracks Saturday-Friday business week totals at company, state, market, and unit levels with prior week comparison (via `/api/weekly-sales` endpoint).
 - **Sales Variance**: Calculates sales variance against historical data from 7 days prior.
 - **Same Store Sales (SSS)**: Company-level sales only count units open over 18 months, with a filter for SSS-eligible stores.
 - **Year-over-Year (YoY) Sales Comparison**: Allows upload of historical daily sales CSVs for YoY comparisons, matching the same day of the week from the prior year. Displays projected YoY for individual units and aggregated SSS YoY.

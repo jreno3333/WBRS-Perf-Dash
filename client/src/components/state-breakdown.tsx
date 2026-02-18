@@ -10,10 +10,21 @@ interface CrewSummary {
   avgTenureMonths: number;
 }
 
+interface WeeklySalesData {
+  currentWeekStart: string;
+  currentWeekEnd: string;
+  priorWeekStart: string;
+  priorWeekEnd: string;
+  daysInCurrentWeek: number;
+  daysInPriorWeek: number;
+  restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+}
+
 interface StateBreakdownProps {
   restaurants: RestaurantSales[];
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
   crewSummary?: Record<string, CrewSummary>;
+  weeklySalesData?: WeeklySalesData;
 }
 
 const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
@@ -196,7 +207,7 @@ function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttain
   };
 }
 
-export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }: StateBreakdownProps) {
+export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData }: StateBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -272,6 +283,20 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
     return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   };
 
+  // Calculate weekly sales by state
+  const calcWeekly = (stateRestaurants: RestaurantSales[]) => {
+    let current = 0, prior = 0;
+    if (weeklySalesData?.restaurants) {
+      for (const r of stateRestaurants) {
+        const wk = weeklySalesData.restaurants[r.restaurantId];
+        if (wk) { current += wk.currentWeek; prior += wk.priorWeek; }
+      }
+    }
+    return { current, prior, variance: prior > 0 ? ((current / prior) - 1) * 100 : 0 };
+  };
+  const alabamaWeekly = calcWeekly(alabamaRestaurants);
+  const tennesseeWeekly = calcWeekly(tennesseeRestaurants);
+
   const states = [
     {
       name: "Alabama",
@@ -286,6 +311,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
       crewScore: alabamaCrewScore,
       osat: alabamaOsat,
       speed: alabamaSpeed,
+      weekly: alabamaWeekly,
     },
     {
       name: "Tennessee",
@@ -300,6 +326,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
       crewScore: tennesseeCrewScore,
       osat: tennesseeOsat,
       speed: tennesseeSpeed,
+      weekly: tennesseeWeekly,
     },
   ];
 
@@ -334,6 +361,18 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary }:
                 <div className="text-xs text-muted-foreground truncate">
                   vs {formatCurrency(state.lastWeekSales)} last week
                 </div>
+                {weeklySalesData && state.weekly.current > 0 && (
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span className="text-xs text-muted-foreground">Wk:</span>
+                    <span className="text-xs font-semibold">{formatCurrency(state.weekly.current)}</span>
+                    {state.weekly.prior > 0 && (
+                      <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        {state.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        {state.weekly.variance >= 0 ? "+" : ""}{Math.round(state.weekly.variance)}%
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <div className="text-lg font-semibold">

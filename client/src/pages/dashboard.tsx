@@ -205,6 +205,21 @@ export default function Dashboard() {
     },
   });
 
+  // Fetch weekly sales data (Sat-Fri business week)
+  interface WeeklySalesData {
+    currentWeekStart: string;
+    currentWeekEnd: string;
+    priorWeekStart: string;
+    priorWeekEnd: string;
+    daysInCurrentWeek: number;
+    daysInPriorWeek: number;
+    restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+  }
+  const { data: weeklySalesData } = useQuery<WeeklySalesData>({
+    queryKey: ["/api/weekly-sales"],
+    refetchInterval,
+  });
+
   const { data: yoyBulkData } = useQuery<{
     priorDate: string;
     data: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
@@ -492,10 +507,11 @@ export default function Dashboard() {
               lastUpdated={leaderboardData.lastUpdated}
               hourlyByRestaurant={hourlyByRestaurant}
               yoyData={yoyBulkData?.data}
+              weeklySalesData={weeklySalesData}
             />
 
             {/* State Breakdown */}
-            <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} crewSummary={crewSummary} />
+            <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} crewSummary={crewSummary} weeklySalesData={weeklySalesData} />
 
             {/* Market Breakdown - Only shown if markets exist */}
             {markets && markets.length > 0 && (
@@ -503,7 +519,8 @@ export default function Dashboard() {
                 restaurants={leaderboardData.restaurants} 
                 markets={markets}
                 hourlyByRestaurant={hourlyByRestaurant} 
-                crewSummary={crewSummary} 
+                crewSummary={crewSummary}
+                weeklySalesData={weeklySalesData}
               />
             )}
 
@@ -576,6 +593,7 @@ export default function Dashboard() {
                       hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
                       isToday={isToday}
                       yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
+                      weeklyData={weeklySalesData?.restaurants?.[restaurant.restaurantId]}
                     />
                   ))}
                 </div>

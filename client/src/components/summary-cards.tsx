@@ -4,11 +4,22 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
+interface WeeklySalesData {
+  currentWeekStart: string;
+  currentWeekEnd: string;
+  priorWeekStart: string;
+  priorWeekEnd: string;
+  daysInCurrentWeek: number;
+  daysInPriorWeek: number;
+  restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+}
+
 interface SummaryCardsProps {
   restaurants: RestaurantSales[];
   lastUpdated: string;
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
   yoyData?: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
+  weeklySalesData?: WeeklySalesData;
 }
 
 // Grade scoring for X-Score calculation
@@ -104,7 +115,7 @@ function getExecutionGrade(
   return { grade, score: avgScore, hasGrade: true };
 }
 
-export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData }: SummaryCardsProps) {
+export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData }: SummaryCardsProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -158,6 +169,23 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
     ? ((totalTodaySales / totalLastWeekSales) - 1) * 100 
     : 0;
   const lwDollarDiff = totalTodaySales - totalLastWeekSales;
+
+  // Calculate company-wide weekly sales totals (Sat-Fri)
+  let weeklyCurrentTotal = 0;
+  let weeklyPriorTotal = 0;
+  if (weeklySalesData?.restaurants) {
+    for (const r of activeRestaurants) {
+      const wk = weeklySalesData.restaurants[r.restaurantId];
+      if (wk) {
+        weeklyCurrentTotal += wk.currentWeek;
+        weeklyPriorTotal += wk.priorWeek;
+      }
+    }
+  }
+  const weeklyVariance = weeklyPriorTotal > 0
+    ? ((weeklyCurrentTotal / weeklyPriorTotal) - 1) * 100
+    : 0;
+  const weeklyDollarDiff = weeklyCurrentTotal - weeklyPriorTotal;
 
   // Calculate overall execution score across all restaurants
   const allHourlyScores: number[] = [];
@@ -483,6 +511,25 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   LW {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
                 </span>
               </div>
+              {weeklySalesData && weeklyCurrentTotal > 0 && (
+                <div className="mt-1.5 pt-1.5 border-t border-border/50">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs text-muted-foreground">Week:</span>
+                    <span className="text-xs font-semibold" data-testid="text-weekly-sales-total">
+                      {formatCurrency(weeklyCurrentTotal)}
+                    </span>
+                    {weeklyPriorTotal > 0 && (
+                      <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${weeklyVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        {weeklyVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        PW {weeklyVariance >= 0 ? "+" : ""}{Math.round(weeklyVariance)}%
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      ({weeklySalesData.daysInCurrentWeek}d)
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

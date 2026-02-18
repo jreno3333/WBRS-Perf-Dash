@@ -10,11 +10,22 @@ interface CrewSummary {
   avgTenureMonths: number;
 }
 
+interface WeeklySalesData {
+  currentWeekStart: string;
+  currentWeekEnd: string;
+  priorWeekStart: string;
+  priorWeekEnd: string;
+  daysInCurrentWeek: number;
+  daysInPriorWeek: number;
+  restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+}
+
 interface MarketBreakdownProps {
   restaurants: RestaurantSales[];
   markets: MarketWithRestaurants[];
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
   crewSummary?: Record<string, CrewSummary>;
+  weeklySalesData?: WeeklySalesData;
 }
 
 const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
@@ -187,7 +198,7 @@ function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAtta
   };
 }
 
-export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary }: MarketBreakdownProps) {
+export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData }: MarketBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -213,6 +224,15 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
     const osat = calculateMarketOsat(marketRestaurants);
     const speed = calculateMarketSpeed(marketRestaurants);
     
+    let weeklyCurrent = 0, weeklyPrior = 0;
+    if (weeklySalesData?.restaurants) {
+      for (const r of marketRestaurants) {
+        const wk = weeklySalesData.restaurants[r.restaurantId];
+        if (wk) { weeklyCurrent += wk.currentWeek; weeklyPrior += wk.priorWeek; }
+      }
+    }
+    const weeklyVariance = weeklyPrior > 0 ? ((weeklyCurrent / weeklyPrior) - 1) * 100 : 0;
+
     return {
       id: market.id,
       name: market.name,
@@ -227,6 +247,7 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
       crewScore,
       osat,
       speed,
+      weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance },
     };
   }).filter(m => m.totalCount > 0);
 
@@ -282,6 +303,18 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
                 <div className="text-xs text-muted-foreground truncate">
                   vs {formatCurrency(market.lastWeekSales)} last week
                 </div>
+                {weeklySalesData && market.weekly.current > 0 && (
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span className="text-xs text-muted-foreground">Wk:</span>
+                    <span className="text-xs font-semibold">{formatCurrency(market.weekly.current)}</span>
+                    {market.weekly.prior > 0 && (
+                      <span className={`text-xs font-medium flex items-center gap-0.5 ${market.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        {market.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        {market.weekly.variance >= 0 ? "+" : ""}{Math.round(market.weekly.variance)}%
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <div className="text-lg font-semibold">

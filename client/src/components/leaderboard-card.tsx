@@ -169,6 +169,12 @@ interface YoYData {
   priorDate: string;
 }
 
+interface WeeklyRestaurantData {
+  currentWeek: number;
+  priorWeek: number;
+  daysInCurrentWeek: number;
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
@@ -176,6 +182,7 @@ interface LeaderboardCardProps {
   hourlyCrewData?: HourlyCrewData[];
   isToday?: boolean;
   yoyData?: YoYData;
+  weeklyData?: WeeklyRestaurantData;
 }
 
 function formatTenure(months: number): string {
@@ -187,7 +194,7 @@ function formatTenure(months: number): string {
   return `${years}yr ${remainingMonths}mo`;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, isToday = true, yoyData }: LeaderboardCardProps) {
+export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -605,6 +612,23 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 </div>
               );
             })()}
+            {weeklyData && weeklyData.currentWeek > 0 && (
+              <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                <span className="text-xs text-muted-foreground">Wk:</span>
+                <span className="text-xs font-semibold" data-testid={`text-weekly-${restaurant.restaurantId}`}>
+                  {formatCurrency(weeklyData.currentWeek)}
+                </span>
+                {weeklyData.priorWeek > 0 && (() => {
+                  const wkVar = ((weeklyData.currentWeek / weeklyData.priorWeek) - 1) * 100;
+                  return (
+                    <span className={`text-xs font-medium whitespace-nowrap ${wkVar >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                      {wkVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
+                      PW {wkVar >= 0 ? "+" : ""}{Math.round(wkVar)}%
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
           </div>
           
           <div 

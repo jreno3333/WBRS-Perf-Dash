@@ -433,4 +433,119 @@ router.get("/api/map-data", async (req, res) => {
   }
 });
 
+// Get weekly sales totals (Sat-Fri business week) per restaurant
+// Returns current week total + prior week total for trend comparison
+router.get("/api/weekly-sales", async (req, res) => {
+  try {
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const today = new Date(`${todayStr}T12:00:00Z`);
+    const dayOfWeek = today.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+
+    // Week starts Saturday (6). Find most recent Saturday.
+    const daysSinceSaturday = (dayOfWeek + 1) % 7; // Sat=0, Sun=1, Mon=2, ..., Fri=6
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() - daysSinceSaturday);
+    const currentWeekStartStr = currentWeekStart.toISOString().split('T')[0];
+
+    const priorWeekStart = new Date(currentWeekStart);
+    priorWeekStart.setUTCDate(priorWeekStart.getUTCDate() - 7);
+    const priorWeekStartStr = priorWeekStart.toISOString().split('T')[0];
+
+    const priorWeekEnd = new Date(currentWeekStart);
+    priorWeekEnd.setUTCDate(priorWeekEnd.getUTCDate() - 1);
+    const priorWeekEndStr = priorWeekEnd.toISOString().split('T')[0];
+
+    // Build date lists for current week (up to today) and prior week (full 7 days)
+    const currentWeekDates: string[] = [];
+    for (let i = 0; i <= daysSinceSaturday; i++) {
+      const d = new Date(currentWeekStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      const ds = d.toISOString().split('T')[0];
+      if (ds <= todayStr) currentWeekDates.push(ds);
+    }
+
+    const priorWeekDates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(priorWeekStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      priorWeekDates.push(d.toISOString().split('T')[0]);
+    }
+
+    // Query hourly_sales for both weeks
+    const allDates = [...currentWeekDates, ...priorWeekDates];
+    const earliestDate = priorWeekStartStr;
+    const latestDate = todayStr;
+
+    const salesRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      salesDate: hourlySales.salesDate,
+      actualSales: hourlySales.actualSales,
+    }).from(hourlySales).where(
+      and(
+        gte(hourlySales.salesDate, new Date(`${earliestDate}T00:00:00Z`)),
+        lte(hourlySales.salesDate, new Date(`${latestDate}T23:59:59Z`))
+      )
+    );
+
+    // Aggregate by restaurant and date
+    const dailySales: Record<string, Record<string, number>> = {};
+    for (const row of salesRows) {
+      const dateStr = new Date(row.salesDate).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      if (!dailySales[row.restaurantId]) dailySales[row.restaurantId] = {};
+      if (!dailySales[row.restaurantId][dateStr]) dailySales[row.restaurantId][dateStr] = 0;
+      dailySales[row.restaurantId][dateStr] += parseFloat(row.actualSales as string) || 0;
+    }
+
+    // Overlay POS data for each date (POS takes priority for today's data)
+    for (const dateStr of allDates) {
+      const targetDate = new Date(`${dateStr}T12:00:00Z`);
+      const posSales = await getAllHourlyPosSales(targetDate);
+      posSales.forEach((hourlyMap, restaurantId) => {
+        let dayTotal = 0;
+        hourlyMap.forEach(s => dayTotal += s);
+        if (dayTotal > 0) {
+          if (!dailySales[restaurantId]) dailySales[restaurantId] = {};
+          dailySales[restaurantId][dateStr] = dayTotal;
+        }
+      });
+    }
+
+    // Build weekly totals per restaurant
+    const allRestaurants = await storage.getRestaurants();
+    const weeklyData: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }> = {};
+
+    for (const r of allRestaurants) {
+      let currentWeekTotal = 0;
+      let priorWeekTotal = 0;
+
+      for (const d of currentWeekDates) {
+        currentWeekTotal += dailySales[r.id]?.[d] || 0;
+      }
+      for (const d of priorWeekDates) {
+        priorWeekTotal += dailySales[r.id]?.[d] || 0;
+      }
+
+      weeklyData[r.id] = {
+        currentWeek: Math.round(currentWeekTotal),
+        priorWeek: Math.round(priorWeekTotal),
+        daysInCurrentWeek: currentWeekDates.length,
+      };
+    }
+
+    res.json({
+      currentWeekStart: currentWeekStartStr,
+      currentWeekEnd: todayStr,
+      priorWeekStart: priorWeekStartStr,
+      priorWeekEnd: priorWeekEndStr,
+      daysInCurrentWeek: currentWeekDates.length,
+      daysInPriorWeek: priorWeekDates.length,
+      restaurants: weeklyData,
+    });
+  } catch (error) {
+    console.error("Error fetching weekly sales:", error);
+    res.status(500).json({ error: "Failed to fetch weekly sales" });
+  }
+});
+
 export default router;
