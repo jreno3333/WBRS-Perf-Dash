@@ -123,7 +123,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "yoy" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
@@ -328,11 +328,20 @@ export default function Dashboard() {
             case "sales":
               // Sort by actualSales (total sales so far today)
               return b.actualSales - a.actualSales;
-            case "variance":
-              // Sort by week-over-week variance using normalized sales
-              const aVariance = a.lastWeekSales > 0 ? ((a.todaySales / a.lastWeekSales) - 1) * 100 : 0;
-              const bVariance = b.lastWeekSales > 0 ? ((b.todaySales / b.lastWeekSales) - 1) * 100 : 0;
+            case "variance": {
+              const aLastWeek = (a as any).actualLastWeekSales ?? a.lastWeekSales;
+              const bLastWeek = (b as any).actualLastWeekSales ?? b.lastWeekSales;
+              const aVariance = aLastWeek > 0 ? ((a.actualSales / aLastWeek) - 1) * 100 : 0;
+              const bVariance = bLastWeek > 0 ? ((b.actualSales / bLastWeek) - 1) * 100 : 0;
               return bVariance - aVariance;
+            }
+            case "wtd_variance": {
+              const aWk = weeklySalesData?.restaurants?.[a.restaurantId];
+              const bWk = weeklySalesData?.restaurants?.[b.restaurantId];
+              const aWtdVar = aWk && aWk.priorWeek > 0 ? ((aWk.currentWeek / aWk.priorWeek) - 1) * 100 : -999;
+              const bWtdVar = bWk && bWk.priorWeek > 0 ? ((bWk.currentWeek / bWk.priorWeek) - 1) * 100 : -999;
+              return bWtdVar - aWtdVar;
+            }
             case "dt_time":
               // Sort by speed attainment descending (highest % first)
               const aAtt = a.driveThru ? ((a.driveThru as any).carsUnder6Min / (a.driveThru.carCount || 1)) * 100 : -1;
@@ -569,7 +578,8 @@ export default function Dashboard() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="sales">Total Sales</SelectItem>
-                          <SelectItem value="variance">% vs LW</SelectItem>
+                          <SelectItem value="variance">% vs LW Day</SelectItem>
+                          <SelectItem value="wtd_variance">% vs LW WTD</SelectItem>
                           <SelectItem value="yoy">% vs LY</SelectItem>
                           <SelectItem value="new_unit">New Units</SelectItem>
                           <SelectItem value="missing_manager">Missing Mgr</SelectItem>

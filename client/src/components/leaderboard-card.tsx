@@ -614,7 +614,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
             })()}
             {weeklyData && weeklyData.currentWeek > 0 && (
               <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                <span className="text-xs text-muted-foreground">Wk:</span>
+                <span className="text-xs text-muted-foreground">WTD:</span>
                 <span className="text-xs font-semibold" data-testid={`text-weekly-${restaurant.restaurantId}`}>
                   {formatCurrency(weeklyData.currentWeek)}
                 </span>
@@ -623,7 +623,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   return (
                     <span className={`text-xs font-medium whitespace-nowrap ${wkVar >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                       {wkVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
-                      PW {wkVar >= 0 ? "+" : ""}{Math.round(wkVar)}%
+                      vs LW {wkVar >= 0 ? "+" : ""}{Math.round(wkVar)}%
                     </span>
                   );
                 })()}

@@ -305,12 +305,12 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
                 </div>
                 {weeklySalesData && market.weekly.current > 0 && (
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xs text-muted-foreground">Wk:</span>
+                    <span className="text-xs text-muted-foreground">WTD:</span>
                     <span className="text-xs font-semibold">{formatCurrency(market.weekly.current)}</span>
                     {market.weekly.prior > 0 && (
                       <span className={`text-xs font-medium flex items-center gap-0.5 ${market.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                         {market.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {market.weekly.variance >= 0 ? "+" : ""}{Math.round(market.weekly.variance)}%
+                        vs LW {market.weekly.variance >= 0 ? "+" : ""}{Math.round(market.weekly.variance)}%
                       </span>
                     )}
                   </div>

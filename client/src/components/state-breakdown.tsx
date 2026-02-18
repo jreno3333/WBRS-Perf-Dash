@@ -363,12 +363,12 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
                 </div>
                 {weeklySalesData && state.weekly.current > 0 && (
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xs text-muted-foreground">Wk:</span>
+                    <span className="text-xs text-muted-foreground">WTD:</span>
                     <span className="text-xs font-semibold">{formatCurrency(state.weekly.current)}</span>
                     {state.weekly.prior > 0 && (
                       <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                         {state.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {state.weekly.variance >= 0 ? "+" : ""}{Math.round(state.weekly.variance)}%
+                        vs LW {state.weekly.variance >= 0 ? "+" : ""}{Math.round(state.weekly.variance)}%
                       </span>
                     )}
                   </div>

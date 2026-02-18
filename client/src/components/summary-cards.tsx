@@ -514,14 +514,14 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
               {weeklySalesData && weeklyCurrentTotal > 0 && (
                 <div className="mt-1.5 pt-1.5 border-t border-border/50">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs text-muted-foreground">Week:</span>
+                    <span className="text-xs text-muted-foreground">WTD:</span>
                     <span className="text-xs font-semibold" data-testid="text-weekly-sales-total">
                       {formatCurrency(weeklyCurrentTotal)}
                     </span>
                     {weeklyPriorTotal > 0 && (
                       <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${weeklyVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                         {weeklyVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        PW {weeklyVariance >= 0 ? "+" : ""}{Math.round(weeklyVariance)}%
+                        vs LW {weeklyVariance >= 0 ? "+" : ""}{Math.round(weeklyVariance)}%
                       </span>
                     )}
                     <span className="text-xs text-muted-foreground">
