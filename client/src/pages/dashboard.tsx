@@ -239,6 +239,46 @@ export default function Dashboard() {
     refetchInterval,
   });
 
+  // Fetch consistency scores for all restaurants (14-day window)
+  const { data: consistencyData } = useQuery<{
+    companyAvgConsistency: number;
+    restaurants: { restaurantId: string; consistencyScore: number }[];
+  }>({
+    queryKey: ["/api/analytics/consistency"],
+    queryFn: async () => {
+      const res = await fetch("/api/analytics/consistency?days=14");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+  const consistencyByRestaurant = consistencyData?.restaurants?.reduce((acc, r) => {
+    acc[r.restaurantId] = r.consistencyScore;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Fetch demand curves (15-min intervals) for all restaurants
+  interface DemandCurveHour {
+    hour: number;
+    quarters: { label: string; orders: number; sales: number }[];
+    totalOrders: number;
+    totalSales: number;
+    loadProfile: string;
+  }
+  const { data: demandCurvesData } = useQuery<{
+    restaurants: { restaurantId: string; hours: DemandCurveHour[] }[];
+  }>({
+    queryKey: ["/api/analytics/demand-curves", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/demand-curves?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+  const demandCurvesByRestaurant = demandCurvesData?.restaurants?.reduce((acc, r) => {
+    acc[r.restaurantId] = r.hours;
+    return acc;
+  }, {} as Record<string, DemandCurveHour[]>);
+
   const { data: yoyBulkData } = useQuery<{
     priorDate: string;
     data: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
@@ -624,6 +664,8 @@ export default function Dashboard() {
                       crewSummary={crewSummary?.[restaurant.restaurantId]}
                       hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
                       checkAverage={checkAverageByRestaurant?.[restaurant.restaurantId]}
+                      consistencyScore={consistencyByRestaurant?.[restaurant.restaurantId]}
+                      demandCurveHours={demandCurvesByRestaurant?.[restaurant.restaurantId]}
                       isToday={isToday}
                       yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
                       weeklyData={weeklySalesData?.restaurants?.[restaurant.restaurantId]}

@@ -186,12 +186,22 @@ interface CheckAverageData {
   hourly: Record<number, { orders: number; sales: number; avg: number }>;
 }
 
+interface DemandCurveHour {
+  hour: number;
+  quarters: { label: string; orders: number; sales: number }[];
+  totalOrders: number;
+  totalSales: number;
+  loadProfile: string;
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
   crewSummary?: CrewSummary;
   hourlyCrewData?: HourlyCrewData[];
   checkAverage?: CheckAverageData;
+  consistencyScore?: number;
+  demandCurveHours?: DemandCurveHour[];
   isToday?: boolean;
   yoyData?: YoYData;
   weeklyData?: WeeklyRestaurantData;
@@ -206,7 +216,7 @@ function formatTenure(months: number): string {
   return `${years}yr ${remainingMonths}mo`;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
+export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, consistencyScore, demandCurveHours, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -331,6 +341,12 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
     const gradeResult = scoreToGrade(avg);
     return { ...dp, grade: gradeResult.grade, score: avg };
   }).filter(dp => dp.grade !== null);
+
+  // Build demand curve lookup for 15-min interval display
+  const demandCurveMap = new Map<number, DemandCurveHour>();
+  if (demandCurveHours) {
+    demandCurveHours.forEach(h => demandCurveMap.set(h.hour, h));
+  }
 
   // No in-progress hour needed since we only show completed hours now
 
@@ -532,6 +548,22 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 >
                   <Receipt className="w-3 h-3" />
                   <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
+                </BadgeWithTooltip>
+              )}
+              {/* Consistency Score Badge */}
+              {consistencyScore !== undefined && consistencyScore > 0 && (
+                <BadgeWithTooltip
+                  variant="outline"
+                  className={`flex-shrink-0 text-xs font-bold ${
+                    consistencyScore >= 75 ? "text-green-600 dark:text-green-400 border-green-300" :
+                    consistencyScore >= 50 ? "text-amber-600 dark:text-amber-400 border-amber-300" :
+                    "text-red-600 dark:text-red-400 border-red-300"
+                  }`}
+                  data-testid={`badge-consistency-${restaurant.restaurantId}`}
+                  tooltipTitle="Consistency Score"
+                  tooltipDetail="14-day hourly execution grade stability + D/F frequency"
+                >
+                  CST: {consistencyScore}
                 </BadgeWithTooltip>
               )}
               {/* Revenue Port Badges */}
@@ -827,15 +859,40 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                       setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex);
                     }}
                   >
-                    <div
-                      className={`w-full rounded-t-sm transition-all ${
-                        salesVariancePct >= -5 
-                          ? "bg-green-500 dark:bg-green-400" 
-                          : "bg-red-500 dark:bg-red-400"
-                      }`}
-                      style={{ height: `${barHeightPx}px` }}
-                      title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
-                    />
+                    {(() => {
+                      const barColor = salesVariancePct >= -5
+                        ? "bg-green-500 dark:bg-green-400"
+                        : "bg-red-500 dark:bg-red-400";
+                      const dcHour = demandCurveMap.get(hour.hour);
+                      if (dcHour && dcHour.quarters.length === 4 && dcHour.totalOrders > 0) {
+                        const maxQ = Math.max(...dcHour.quarters.map(q => q.orders), 1);
+                        return (
+                          <div
+                            className="w-full flex items-end gap-px"
+                            style={{ height: `${barHeightPx}px` }}
+                            title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
+                          >
+                            {dcHour.quarters.map((q, qi) => (
+                              <div
+                                key={qi}
+                                className={`flex-1 rounded-t-[1px] ${barColor}`}
+                                style={{
+                                  height: `${Math.max(2, (q.orders / maxQ) * barHeightPx)}px`,
+                                  opacity: q.orders > 0 ? 1 : 0.3
+                                }}
+                              />
+                            ))}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          className={`w-full rounded-t-sm transition-all ${barColor}`}
+                          style={{ height: `${barHeightPx}px` }}
+                          title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
+                        />
+                      );
+                    })()}
                     <div className={`absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{hour.label}</span>
@@ -880,6 +937,15 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           const hourCA = checkAverage?.hourly?.[hour.hour];
                           if (!hourCA || hourCA.orders === 0) return null;
                           return <span className="text-teal-600 dark:text-teal-400">${hourCA.avg.toFixed(2)} ({hourCA.orders})</span>;
+                        })()}
+                        {isCompleted && (() => {
+                          const dcHour = demandCurveMap.get(hour.hour);
+                          if (!dcHour || dcHour.quarters.every(q => q.orders === 0)) return null;
+                          return (
+                            <span className="text-muted-foreground text-[10px]">
+                              [{dcHour.quarters.map(q => q.orders).join('|')}]
+                            </span>
+                          );
                         })()}
                       </div>
                     </div>
@@ -944,7 +1010,26 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
               })()}</span>
             </div>
-            
+            {/* Daypart brackets with grades */}
+            <div className="flex mt-0.5">
+              {DAYPARTS.map(dp => {
+                const spanHours = dp.endHour - dp.startHour + 1;
+                const widthPercent = (spanHours / 24) * 100;
+                const dpGrade = daypartGrades.find(dg => dg.id === dp.id);
+                return (
+                  <div key={dp.id} style={{ width: `${widthPercent}%` }} className="text-center px-px">
+                    <div className={`h-1 rounded-sm ${dp.bgColor}`} style={{ opacity: dpGrade?.grade ? 1 : 0.3 }} />
+                    <div className="text-[8px] leading-tight mt-px flex items-center justify-center gap-0.5">
+                      <span className={`font-medium ${dp.color}`}>{dp.shortLabel}</span>
+                      {dpGrade?.grade && (
+                        <span className={`font-bold ${dpGetGradeColor(dpGrade.grade)}`}>{dpGrade.grade}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
             {/* Staffing Chart - Labor Hours Deployed vs Recommended */}
             <div className="mt-3 pt-3 border-t border-border/50">
               <div className="flex justify-between text-xs text-muted-foreground mb-2">
