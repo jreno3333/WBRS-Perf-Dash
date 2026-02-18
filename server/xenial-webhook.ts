@@ -405,6 +405,79 @@ export async function getAllHourlyPosSalesRange(
   return salesByKey;
 }
 
+/**
+ * Get check average data by restaurant and hour for a given date.
+ * Returns order count, total sales, and check average per restaurant per hour.
+ */
+export async function getCheckAverageByRestaurant(targetDate: Date): Promise<Map<string, { totalOrders: number; totalSales: number; checkAverage: number; hourly: Map<number, { orders: number; sales: number; avg: number }> }>> {
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], { id: restaurant.id, timezone: restaurant.timezone || 'America/Chicago' });
+    }
+  }
+
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+
+  const result = new Map<string, { totalOrders: number; totalSales: number; checkAverage: number; hourly: Map<number, { orders: number; sales: number; avg: number }> }>();
+
+  for (const tz of timezoneSet) {
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const posResults = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        hour: sql<number>`${hourExpr}`,
+        orderCount: sql<number>`count(*)::int`,
+        totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startOfDay),
+          lt(posOrders.businessDate, endOfDay),
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${hourExpr}`);
+
+    for (const row of posResults) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (!restaurantInfo) continue;
+      const rid = restaurantInfo.id;
+
+      if (!result.has(rid)) {
+        result.set(rid, { totalOrders: 0, totalSales: 0, checkAverage: 0, hourly: new Map() });
+      }
+      const entry = result.get(rid)!;
+      const orders = row.orderCount;
+      const sales = Number(row.totalSales) || 0;
+      entry.totalOrders += orders;
+      entry.totalSales += sales;
+      entry.hourly.set(row.hour, { orders, sales, avg: orders > 0 ? sales / orders : 0 });
+    }
+  }
+
+  // Calculate overall check average
+  result.forEach((entry) => {
+    entry.checkAverage = entry.totalOrders > 0 ? entry.totalSales / entry.totalOrders : 0;
+  });
+
+  return result;
+}
+
 export async function seedLocationMappings(): Promise<number> {
   // Map Xenial store numbers to restaurant name patterns
   // Restaurant names in DB are like "1237 - Athens", so we match by store number prefix

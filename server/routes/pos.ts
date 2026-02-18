@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, posDb } from "../db";
 import { posOrders } from "@shared/schema";
 import { desc, sql, gte, lt, and } from "drizzle-orm";
-import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary } from "../xenial-webhook";
+import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant } from "../xenial-webhook";
 
 const router = Router();
 
@@ -144,6 +144,35 @@ router.post("/api/pos/seed-mappings", async (req, res) => {
   } catch (error) {
     console.error("Error seeding mappings:", error);
     res.status(500).json({ error: "Failed to seed mappings" });
+  }
+});
+
+// Check average by restaurant for a given date
+router.get("/api/pos/check-average", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date as string) : new Date();
+    const data = await getCheckAverageByRestaurant(targetDate);
+
+    const result: Record<string, { totalOrders: number; totalSales: number; checkAverage: number; hourly: Record<number, { orders: number; sales: number; avg: number }> }> = {};
+    data.forEach((value, key) => {
+      const hourly: Record<number, { orders: number; sales: number; avg: number }> = {};
+      value.hourly.forEach((hv, hk) => { hourly[hk] = hv; });
+      result[key] = {
+        totalOrders: value.totalOrders,
+        totalSales: value.totalSales,
+        checkAverage: Math.round(value.checkAverage * 100) / 100,
+        hourly,
+      };
+    });
+
+    res.json({
+      date: targetDate.toISOString().split('T')[0],
+      restaurants: result,
+    });
+  } catch (error) {
+    console.error("Error fetching check averages:", error);
+    res.status(500).json({ error: "Failed to fetch check averages" });
   }
 });
 

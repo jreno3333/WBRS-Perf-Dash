@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
@@ -179,11 +179,19 @@ interface WeeklyRestaurantData {
   daysInCurrentWeek: number;
 }
 
+interface CheckAverageData {
+  totalOrders: number;
+  totalSales: number;
+  checkAverage: number;
+  hourly: Record<number, { orders: number; sales: number; avg: number }>;
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
   crewSummary?: CrewSummary;
   hourlyCrewData?: HourlyCrewData[];
+  checkAverage?: CheckAverageData;
   isToday?: boolean;
   yoyData?: YoYData;
   weeklyData?: WeeklyRestaurantData;
@@ -198,7 +206,7 @@ function formatTenure(months: number): string {
   return `${years}yr ${remainingMonths}mo`;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
+export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -507,6 +515,23 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 >
                   <GraduationCap className="w-3 h-3" />
                   <span className="font-medium">{crewSummary.avgScore}</span>
+                </BadgeWithTooltip>
+              )}
+              {/* Check Average Badge */}
+              {checkAverage && checkAverage.totalOrders > 0 && (
+                <BadgeWithTooltip
+                  className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 border-0"
+                  data-testid={`badge-check-avg-${restaurant.restaurantId}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Check Average</div>
+                      <div className="text-muted-foreground">{checkAverage.totalOrders} orders today</div>
+                      <div className="text-muted-foreground">Total: ${checkAverage.totalSales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+                    </div>
+                  }
+                >
+                  <Receipt className="w-3 h-3" />
+                  <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
                 </BadgeWithTooltip>
               )}
               {/* Revenue Port Badges */}
@@ -851,6 +876,11 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                             OSAT {Math.round(hour.osatPercent)}% ({hour.osatResponses})
                           </span>
                         )}
+                        {isCompleted && (() => {
+                          const hourCA = checkAverage?.hourly?.[hour.hour];
+                          if (!hourCA || hourCA.orders === 0) return null;
+                          return <span className="text-teal-600 dark:text-teal-400">${hourCA.avg.toFixed(2)} ({hourCA.orders})</span>;
+                        })()}
                       </div>
                     </div>
                   </div>
