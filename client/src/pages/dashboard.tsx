@@ -13,6 +13,7 @@ import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
 import { MarketBreakdown } from "@/components/market-breakdown";
+import { AnalyticsPanel } from "@/components/analytics-panel";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -550,6 +551,9 @@ export default function Dashboard() {
                 weeklySalesData={weeklySalesData}
               />
             )}
+
+            {/* Analytics Panel */}
+            <AnalyticsPanel dateStr={dateStr} isToday={isToday} />
 
             {/* Restaurant Rankings */}
             <div className="space-y-4">
