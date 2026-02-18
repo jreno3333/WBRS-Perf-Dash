@@ -25,7 +25,7 @@ const MIN_HOURS_TOP10 = 20;
 
 router.get("/api/leaders", async (req, res) => {
   try {
-    const { date, days = "7" } = req.query;
+    const { date, days = "7", position: positionFilter } = req.query;
 
     const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
     const now = new Date();
@@ -296,7 +296,17 @@ router.get("/api/leaders", async (req, res) => {
       }
     }
 
-    const top10Eligible = leaders
+    // Apply position filter if provided
+    const posFilterStr = positionFilter ? String(positionFilter).toLowerCase() : null;
+    const filteredLeaders = posFilterStr
+      ? leaders.filter(l => {
+          if (posFilterStr === 'manager') return l.position === 'Manager';
+          if (posFilterStr === 'ss') return l.position === 'Shift Supervisor';
+          return true;
+        })
+      : leaders;
+
+    const top10Eligible = filteredLeaders
       .filter(l => l.hoursWorked >= MIN_HOURS_TOP10 && l.surveyCount > 0)
       .sort((a, b) => b.avgGradeScore - a.avgGradeScore);
 
@@ -304,10 +314,10 @@ router.get("/api/leaders", async (req, res) => {
 
     const top10 = top10Eligible.slice(0, 10);
 
-    leaders.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
+    filteredLeaders.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
 
     const byStore: Record<string, LeaderSummary[]> = {};
-    for (const l of leaders) {
+    for (const l of filteredLeaders) {
       if (!byStore[l.restaurantId]) byStore[l.restaurantId] = [];
       byStore[l.restaurantId].push(l);
     }

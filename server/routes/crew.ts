@@ -151,7 +151,7 @@ router.get("/api/crew/summary", async (req, res) => {
 // Get manager/supervisor performance rankings
 router.get("/api/people/performance", async (req, res) => {
   try {
-    const { date, days = "7", restaurantId: filterRestaurantId, search: searchQuery } = req.query;
+    const { date, days = "7", restaurantId: filterRestaurantId, search: searchQuery, position: positionFilter } = req.query;
     const endDate = date ? new Date(String(date)) : new Date();
     const numDays = Math.min(parseInt(String(days)) || 7, 180);
 
@@ -457,6 +457,14 @@ router.get("/api/people/performance", async (req, res) => {
     leaderPerformance.sort((a, b) => b.avgGradeScore - a.avgGradeScore);
 
     let filtered = leaderPerformance;
+    if (positionFilter) {
+      const pf = String(positionFilter).toLowerCase();
+      filtered = filtered.filter(lp => {
+        if (pf === 'manager') return lp.position.toLowerCase().includes('manager');
+        if (pf === 'ss') return lp.position.toLowerCase().includes('supervisor');
+        return true;
+      });
+    }
     if (filterRestaurantId) {
       filtered = filtered.filter(lp => lp.restaurantId === String(filterRestaurantId));
     }
