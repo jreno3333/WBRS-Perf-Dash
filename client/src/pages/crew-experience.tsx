@@ -174,6 +174,7 @@ export default function CrewExperiencePage() {
   const [performanceDays, setPerformanceDays] = useState<number>(30);
   const [searchQuery, setSearchQuery] = useState("");
   const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
+  const [positionFilter, setPositionFilter] = useState<string>("all");
   const [selectedLeader, setSelectedLeader] = useState<LeaderPerformance | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [tenureSort, setTenureSort] = useState<"experience" | "employees">("experience");
@@ -192,9 +193,10 @@ export default function CrewExperiencePage() {
   const queryParams = new URLSearchParams({ date: dateStr, days: String(performanceDays) });
   if (searchQuery.trim()) queryParams.set("search", searchQuery.trim());
   if (restaurantFilter !== "all") queryParams.set("restaurantId", restaurantFilter);
-  
+  if (positionFilter !== "all") queryParams.set("position", positionFilter);
+
   const { data: performanceData, isLoading: performanceLoading } = useQuery<PerformanceResponse>({
-    queryKey: ["/api/people/performance", dateStr, performanceDays, searchQuery, restaurantFilter],
+    queryKey: ["/api/people/performance", dateStr, performanceDays, searchQuery, restaurantFilter, positionFilter],
     queryFn: async () => {
       const res = await fetch(`/api/people/performance?${queryParams.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch performance data");
@@ -368,6 +370,16 @@ export default function CrewExperiencePage() {
                     data-testid="input-leader-search"
                   />
                 </div>
+                <Select value={positionFilter} onValueChange={setPositionFilter}>
+                  <SelectTrigger className="w-[150px]" data-testid="select-position-filter">
+                    <SelectValue placeholder="All Positions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Positions</SelectItem>
+                    <SelectItem value="manager">Managers</SelectItem>
+                    <SelectItem value="ss">Shift Supervisors</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={restaurantFilter} onValueChange={setRestaurantFilter}>
                   <SelectTrigger className="w-[200px]" data-testid="select-restaurant-filter">
                     <SelectValue placeholder="All Restaurants" />
@@ -381,11 +393,11 @@ export default function CrewExperiencePage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {(searchQuery || restaurantFilter !== "all") && (
-                  <Button 
-                    variant="ghost" 
+                {(searchQuery || restaurantFilter !== "all" || positionFilter !== "all") && (
+                  <Button
+                    variant="ghost"
                     size="sm"
-                    onClick={() => { setSearchQuery(""); setRestaurantFilter("all"); }}
+                    onClick={() => { setSearchQuery(""); setRestaurantFilter("all"); setPositionFilter("all"); }}
                     data-testid="button-clear-filters"
                   >
                     <X className="w-4 h-4 mr-1" />

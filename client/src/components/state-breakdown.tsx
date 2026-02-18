@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -406,50 +407,42 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
             </div>
             <div className="flex items-center gap-2 mt-2 flex-wrap justify-end">
               {state.speed.speedAttainment !== undefined && (
-                <div className="relative group">
-                  <Badge 
-                    className={`${getSpeedColor(state.speed.speedAttainment)} border-0 gap-1 cursor-help`}
-                    data-testid={`badge-speed-state-${state.abbr.toLowerCase()}`}
-                  >
-                    <Timer className="w-3 h-3" />
-                    <span className="font-medium">{state.speed.speedAttainment}%</span>
-                  </Badge>
-                  <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                    <div className="font-medium">Speed Attainment</div>
-                    <div className="text-muted-foreground">{state.speed.carsUnder6Min}/{state.speed.totalCars} cars under 6 min</div>
-                    <div className="text-muted-foreground">{state.speed.storesWithData} stores reporting</div>
-                  </div>
-                </div>
+                <BadgeWithTooltip
+                  className={`${getSpeedColor(state.speed.speedAttainment)} border-0 gap-1`}
+                  data-testid={`badge-speed-state-${state.abbr.toLowerCase()}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Speed Attainment</div>
+                      <div className="text-muted-foreground">{state.speed.carsUnder6Min}/{state.speed.totalCars} cars under 6 min</div>
+                      <div className="text-muted-foreground">{state.speed.storesWithData} stores reporting</div>
+                    </div>
+                  }
+                >
+                  <Timer className="w-3 h-3" />
+                  <span className="font-medium">{state.speed.speedAttainment}%</span>
+                </BadgeWithTooltip>
               )}
               {state.osat.osatPercent !== undefined && (
-                <div className="relative group">
-                  <Badge 
-                    className={`${getOsatColor(state.osat.osatPercent)} border-0 gap-1 cursor-help`}
-                    data-testid={`badge-osat-state-${state.abbr.toLowerCase()}`}
-                  >
-                    <ThumbsUp className="w-3 h-3" />
-                    <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
-                  </Badge>
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                    <div className="font-medium">Customer Satisfaction</div>
-                    <div className="text-muted-foreground">{state.osat.totalResponses} responses</div>
-                  </div>
-                </div>
+                <BadgeWithTooltip
+                  className={`${getOsatColor(state.osat.osatPercent)} border-0 gap-1`}
+                  data-testid={`badge-osat-state-${state.abbr.toLowerCase()}`}
+                  tooltipTitle="Customer Satisfaction"
+                  tooltipDetail={`${state.osat.totalResponses} responses`}
+                >
+                  <ThumbsUp className="w-3 h-3" />
+                  <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
+                </BadgeWithTooltip>
               )}
               {state.crewScore.count > 0 && (
-                <div className="relative group">
-                  <Badge 
-                    className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1 cursor-help`}
-                    data-testid={`badge-crew-state-${state.abbr.toLowerCase()}`}
-                  >
-                    <GraduationCap className="w-3 h-3" />
-                    <span className="font-medium">{state.crewScore.avgScore}</span>
-                  </Badge>
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                    <div className="font-medium">Crew Experience</div>
-                    <div className="text-muted-foreground">Avg tenure: {formatTenure(state.crewScore.avgTenureMonths)}</div>
-                  </div>
-                </div>
+                <BadgeWithTooltip
+                  className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1`}
+                  data-testid={`badge-crew-state-${state.abbr.toLowerCase()}`}
+                  tooltipTitle="Crew Experience"
+                  tooltipDetail={`Avg tenure: ${formatTenure(state.crewScore.avgTenureMonths)}`}
+                >
+                  <GraduationCap className="w-3 h-3" />
+                  <span className="font-medium">{state.crewScore.avgScore}</span>
+                </BadgeWithTooltip>
               )}
               {state.xScore.hoursGraded > 0 && (
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center border shrink-0 ${getGradeBadgeColor(state.xScore.grade)}`}>

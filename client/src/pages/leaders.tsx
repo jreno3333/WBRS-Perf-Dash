@@ -96,13 +96,16 @@ export default function LeadersPage() {
   yesterday.setDate(yesterday.getDate() - 1);
   const [selectedDate, setSelectedDate] = useState<Date>(yesterday);
   const [days, setDays] = useState<string>("7");
+  const [positionFilter, setPositionFilter] = useState<string>("all");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const { data, isLoading, error } = useQuery<LeadersResponse>({
-    queryKey: ["/api/leaders", dateStr, days],
+    queryKey: ["/api/leaders", dateStr, days, positionFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/leaders?date=${dateStr}&days=${days}`);
+      const params = new URLSearchParams({ date: dateStr, days });
+      if (positionFilter !== "all") params.set("position", positionFilter);
+      const res = await fetch(`/api/leaders?${params}`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -184,6 +187,19 @@ export default function LeadersPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Position:</span>
+                <Select value={positionFilter} onValueChange={setPositionFilter}>
+                  <SelectTrigger className="w-[130px] h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Positions</SelectItem>
+                    <SelectItem value="manager">Managers</SelectItem>
+                    <SelectItem value="ss">Shift Supervisors</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Period:</span>
                 <Select value={days} onValueChange={setDays}>

@@ -13,6 +13,7 @@ import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
 import { MarketBreakdown } from "@/components/market-breakdown";
+import { AnalyticsPanel } from "@/components/analytics-panel";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -181,6 +182,24 @@ export default function Dashboard() {
     refetchInterval,
   });
   const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
+
+  // Fetch check average data from POS
+  interface CheckAverageData {
+    totalOrders: number;
+    totalSales: number;
+    checkAverage: number;
+    hourly: Record<number, { orders: number; sales: number; avg: number }>;
+  }
+  const { data: checkAverageResponse } = useQuery<{ date: string; restaurants: Record<string, CheckAverageData> }>({
+    queryKey: ["/api/pos/check-average", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/pos/check-average?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval,
+  });
+  const checkAverageByRestaurant = checkAverageResponse?.restaurants;
 
   // Fetch markets data
   const { data: markets } = useQuery<MarketWithRestaurants[]>({
@@ -533,6 +552,9 @@ export default function Dashboard() {
               />
             )}
 
+            {/* Analytics Panel */}
+            <AnalyticsPanel dateStr={dateStr} isToday={isToday} />
+
             {/* Restaurant Rankings */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -595,12 +617,13 @@ export default function Dashboard() {
 
                 <div className="space-y-3">
                   {sortedRestaurants.map((restaurant, index) => (
-                    <LeaderboardCard 
-                      key={restaurant.restaurantId} 
+                    <LeaderboardCard
+                      key={restaurant.restaurantId}
                       restaurant={{...restaurant, rank: index + 1}}
                       hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
                       crewSummary={crewSummary?.[restaurant.restaurantId]}
                       hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
+                      checkAverage={checkAverageByRestaurant?.[restaurant.restaurantId]}
                       isToday={isToday}
                       yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
                       weeklyData={weeklySalesData?.restaurants?.[restaurant.restaurantId]}
