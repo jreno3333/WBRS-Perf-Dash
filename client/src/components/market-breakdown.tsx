@@ -17,7 +17,7 @@ interface WeeklySalesData {
   priorWeekEnd: string;
   daysInCurrentWeek: number;
   daysInPriorWeek: number;
-  restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+  restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
 }
 
 interface MarketBreakdownProps {
@@ -224,14 +224,20 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
     const osat = calculateMarketOsat(marketRestaurants);
     const speed = calculateMarketSpeed(marketRestaurants);
     
-    let weeklyCurrent = 0, weeklyPrior = 0;
+    let weeklyCurrent = 0, weeklyPrior = 0, weeklyEowForecast = 0, weeklyPriorFull = 0;
     if (weeklySalesData?.restaurants) {
       for (const r of marketRestaurants) {
         const wk = weeklySalesData.restaurants[r.restaurantId];
-        if (wk) { weeklyCurrent += wk.currentWeek; weeklyPrior += wk.priorWeek; }
+        if (wk) {
+          weeklyCurrent += wk.currentWeek;
+          weeklyPrior += wk.priorWeek;
+          weeklyEowForecast += wk.eowForecast;
+          weeklyPriorFull += wk.priorWeekFull;
+        }
       }
     }
     const weeklyVariance = weeklyPrior > 0 ? ((weeklyCurrent / weeklyPrior) - 1) * 100 : 0;
+    const weeklyEowVariance = weeklyPriorFull > 0 ? ((weeklyEowForecast / weeklyPriorFull) - 1) * 100 : 0;
 
     return {
       id: market.id,
@@ -247,7 +253,7 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
       crewScore,
       osat,
       speed,
-      weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance },
+      weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance, eowForecast: weeklyEowForecast, priorFull: weeklyPriorFull, eowVariance: weeklyEowVariance },
     };
   }).filter(m => m.totalCount > 0);
 
@@ -304,16 +310,30 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
                   vs {formatCurrency(market.lastWeekSales)} last week
                 </div>
                 {weeklySalesData && market.weekly.current > 0 && (
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xs text-muted-foreground">WTD:</span>
-                    <span className="text-xs font-semibold">{formatCurrency(market.weekly.current)}</span>
-                    {market.weekly.prior > 0 && (
-                      <span className={`text-xs font-medium flex items-center gap-0.5 ${market.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                        {market.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        vs LW {market.weekly.variance >= 0 ? "+" : ""}{Math.round(market.weekly.variance)}%
-                      </span>
+                  <>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground">WTD:</span>
+                      <span className="text-xs font-semibold">{formatCurrency(market.weekly.current)}</span>
+                      {market.weekly.prior > 0 && (
+                        <span className={`text-xs font-medium flex items-center gap-0.5 ${market.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                          {market.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          vs LW {market.weekly.variance >= 0 ? "+" : ""}{Math.round(market.weekly.variance)}%
+                        </span>
+                      )}
+                    </div>
+                    {market.weekly.eowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-xs text-muted-foreground">EOW:</span>
+                        <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">{formatCurrency(market.weekly.eowForecast)}</span>
+                        {market.weekly.priorFull > 0 && (
+                          <span className={`text-xs font-medium flex items-center gap-0.5 ${market.weekly.eowVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                            {market.weekly.eowVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            vs LW {market.weekly.eowVariance >= 0 ? "+" : ""}{Math.round(market.weekly.eowVariance)}%
+                          </span>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
               <div className="text-right shrink-0">

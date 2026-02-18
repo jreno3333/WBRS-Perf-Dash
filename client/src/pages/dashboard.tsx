@@ -213,7 +213,7 @@ export default function Dashboard() {
     priorWeekEnd: string;
     daysInCurrentWeek: number;
     daysInPriorWeek: number;
-    restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+    restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
   }
   const { data: weeklySalesData } = useQuery<WeeklySalesData>({
     queryKey: ["/api/weekly-sales"],

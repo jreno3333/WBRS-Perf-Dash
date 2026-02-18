@@ -11,7 +11,7 @@ interface WeeklySalesData {
   priorWeekEnd: string;
   daysInCurrentWeek: number;
   daysInPriorWeek: number;
-  restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+  restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
 }
 
 interface SummaryCardsProps {
@@ -173,12 +173,16 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
   // Calculate company-wide weekly sales totals (Sat-Fri)
   let weeklyCurrentTotal = 0;
   let weeklyPriorTotal = 0;
+  let weeklyEowForecast = 0;
+  let weeklyPriorWeekFull = 0;
   if (weeklySalesData?.restaurants) {
     for (const r of activeRestaurants) {
       const wk = weeklySalesData.restaurants[r.restaurantId];
       if (wk) {
         weeklyCurrentTotal += wk.currentWeek;
         weeklyPriorTotal += wk.priorWeek;
+        weeklyEowForecast += wk.eowForecast;
+        weeklyPriorWeekFull += wk.priorWeekFull;
       }
     }
   }
@@ -186,6 +190,9 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
     ? ((weeklyCurrentTotal / weeklyPriorTotal) - 1) * 100
     : 0;
   const weeklyDollarDiff = weeklyCurrentTotal - weeklyPriorTotal;
+  const eowVariance = weeklyPriorWeekFull > 0
+    ? ((weeklyEowForecast / weeklyPriorWeekFull) - 1) * 100
+    : 0;
 
   // Calculate overall execution score across all restaurants
   const allHourlyScores: number[] = [];
@@ -528,6 +535,20 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                       ({weeklySalesData.daysInCurrentWeek}d)
                     </span>
                   </div>
+                  {weeklyEowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground">EOW:</span>
+                      <span className="text-xs font-semibold text-purple-600 dark:text-purple-400" data-testid="text-eow-forecast-total">
+                        {formatCurrency(weeklyEowForecast)}
+                      </span>
+                      {weeklyPriorWeekFull > 0 && (
+                        <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${eowVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                          {eowVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          vs LW {eowVariance >= 0 ? "+" : ""}{Math.round(eowVariance)}%
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

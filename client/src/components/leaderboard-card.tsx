@@ -172,6 +172,8 @@ interface YoYData {
 interface WeeklyRestaurantData {
   currentWeek: number;
   priorWeek: number;
+  eowForecast: number;
+  priorWeekFull: number;
   daysInCurrentWeek: number;
 }
 
@@ -613,21 +615,40 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
               );
             })()}
             {weeklyData && weeklyData.currentWeek > 0 && (
-              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                <span className="text-xs text-muted-foreground">WTD:</span>
-                <span className="text-xs font-semibold" data-testid={`text-weekly-${restaurant.restaurantId}`}>
-                  {formatCurrency(weeklyData.currentWeek)}
-                </span>
-                {weeklyData.priorWeek > 0 && (() => {
-                  const wkVar = ((weeklyData.currentWeek / weeklyData.priorWeek) - 1) * 100;
-                  return (
-                    <span className={`text-xs font-medium whitespace-nowrap ${wkVar >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                      {wkVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
-                      vs LW {wkVar >= 0 ? "+" : ""}{Math.round(wkVar)}%
+              <>
+                <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                  <span className="text-xs text-muted-foreground">WTD:</span>
+                  <span className="text-xs font-semibold" data-testid={`text-weekly-${restaurant.restaurantId}`}>
+                    {formatCurrency(weeklyData.currentWeek)}
+                  </span>
+                  {weeklyData.priorWeek > 0 && (() => {
+                    const wkVar = ((weeklyData.currentWeek / weeklyData.priorWeek) - 1) * 100;
+                    return (
+                      <span className={`text-xs font-medium whitespace-nowrap ${wkVar >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        {wkVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
+                        vs LW {wkVar >= 0 ? "+" : ""}{Math.round(wkVar)}%
+                      </span>
+                    );
+                  })()}
+                </div>
+                {weeklyData.eowForecast > 0 && weeklyData.daysInCurrentWeek < 7 && (
+                  <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                    <span className="text-xs text-muted-foreground">EOW:</span>
+                    <span className="text-xs font-semibold text-purple-600 dark:text-purple-400" data-testid={`text-eow-${restaurant.restaurantId}`}>
+                      {formatCurrency(weeklyData.eowForecast)}
                     </span>
-                  );
-                })()}
-              </div>
+                    {weeklyData.priorWeekFull > 0 && (() => {
+                      const eowVar = ((weeklyData.eowForecast / weeklyData.priorWeekFull) - 1) * 100;
+                      return (
+                        <span className={`text-xs font-medium whitespace-nowrap ${eowVar >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                          {eowVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
+                          vs LW {eowVar >= 0 ? "+" : ""}{Math.round(eowVar)}%
+                        </span>
+                      );
+                    })()}
+                  </div>
+                )}
+              </>
             )}
           </div>
           

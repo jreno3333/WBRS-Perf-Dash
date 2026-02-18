@@ -469,8 +469,7 @@ router.get("/api/weekly-sales", async (req, res) => {
       if (ds <= todayStr) currentWeekDates.push(ds);
     }
 
-    // Prior week dates: only include the same number of days that have elapsed in current week
-    // This ensures apples-to-apples comparison
+    // Prior week dates (apples-to-apples): only match elapsed days in current week
     const priorWeekDates: string[] = [];
     for (let i = 0; i < currentWeekDates.length; i++) {
       const d = new Date(priorWeekStart);
@@ -478,12 +477,23 @@ router.get("/api/weekly-sales", async (req, res) => {
       priorWeekDates.push(d.toISOString().split('T')[0]);
     }
 
+    // Full prior week dates (all 7 days Sat-Fri) - needed for EOW forecasting
+    const priorWeekFullDates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(priorWeekStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      priorWeekFullDates.push(d.toISOString().split('T')[0]);
+    }
+
+    // Remaining prior week dates (days not yet elapsed in current week) - for forecast
+    const priorWeekRemainingDates = priorWeekFullDates.filter(d => !priorWeekDates.includes(d));
+
     // The last date in each week that needs hour-level cutoff
     const currentWeekCutoffDate = currentWeekDates[currentWeekDates.length - 1]; // today
     const priorWeekCutoffDate = priorWeekDates[priorWeekDates.length - 1]; // same day-of-week last week
 
-    // Query hourly_sales for both weeks - now including hour for precision
-    const allDates = [...currentWeekDates, ...priorWeekDates];
+    // Query hourly_sales for both weeks - including full prior week for EOW forecast
+    const allDates = [...new Set([...currentWeekDates, ...priorWeekFullDates])];
     const earliestDate = priorWeekStartStr;
     const latestDate = todayStr;
 
@@ -538,9 +548,26 @@ router.get("/api/weekly-sales", async (req, res) => {
       return total;
     }
 
-    // Build weekly totals per restaurant with hour-level precision
+    // Helper: sum ALL hours for a date (full day total from prior week)
+    function sumFullDaySales(restaurantId: string, dateStr: string): number {
+      return sumDateSales(restaurantId, dateStr);
+    }
+
+    // Helper: sum only remaining hours after a cutoff (for forecast)
+    function sumRemainingHoursSales(restaurantId: string, dateStr: string, afterHour: number): number {
+      const dayData = hourlySalesMap[restaurantId]?.[dateStr];
+      if (!dayData) return 0;
+      let total = 0;
+      for (const [hourStr, sales] of Object.entries(dayData)) {
+        const h = parseInt(hourStr);
+        if (h > afterHour) total += sales;
+      }
+      return total;
+    }
+
+    // Build weekly totals per restaurant with hour-level precision + EOW forecast
     const allRestaurants = await storage.getRestaurants();
-    const weeklyData: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }> = {};
+    const weeklyData: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }> = {};
 
     for (const r of allRestaurants) {
       let currentWeekTotal = 0;
@@ -555,8 +582,7 @@ router.get("/api/weekly-sales", async (req, res) => {
         }
       }
 
-      // Sum prior week: mirror the same elapsed time
-      // Full days for all days except the last matching day, which is capped at the same hour
+      // Sum prior week (apples-to-apples): mirror the same elapsed time
       for (const d of priorWeekDates) {
         if (d === priorWeekCutoffDate) {
           priorWeekTotal += sumDateSales(r.id, d, currentHourCT);
@@ -565,9 +591,30 @@ router.get("/api/weekly-sales", async (req, res) => {
         }
       }
 
+      // Calculate full prior week total (all 7 days)
+      let fullPriorWeek = 0;
+      for (const d of priorWeekFullDates) {
+        fullPriorWeek += sumFullDaySales(r.id, d);
+      }
+
+      // EOW Forecast = current actual + remaining hours today from LW + remaining full days from LW
+      let forecastRemaining = 0;
+
+      // 1. Add last week's remaining hours for today (hours after currentHourCT on the matching LW day)
+      forecastRemaining += sumRemainingHoursSales(r.id, priorWeekCutoffDate, currentHourCT);
+
+      // 2. Add last week's full-day sales for each remaining day of the week
+      for (const d of priorWeekRemainingDates) {
+        forecastRemaining += sumFullDaySales(r.id, d);
+      }
+
+      const eowForecast = currentWeekTotal + forecastRemaining;
+
       weeklyData[r.id] = {
         currentWeek: Math.round(currentWeekTotal),
         priorWeek: Math.round(priorWeekTotal),
+        eowForecast: Math.round(eowForecast),
+        priorWeekFull: Math.round(fullPriorWeek),
         daysInCurrentWeek: currentWeekDates.length,
       };
     }

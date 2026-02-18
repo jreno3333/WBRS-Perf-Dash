@@ -17,7 +17,7 @@ interface WeeklySalesData {
   priorWeekEnd: string;
   daysInCurrentWeek: number;
   daysInPriorWeek: number;
-  restaurants: Record<string, { currentWeek: number; priorWeek: number; daysInCurrentWeek: number }>;
+  restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
 }
 
 interface StateBreakdownProps {
@@ -285,14 +285,23 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
 
   // Calculate weekly sales by state
   const calcWeekly = (stateRestaurants: RestaurantSales[]) => {
-    let current = 0, prior = 0;
+    let current = 0, prior = 0, eowForecast = 0, priorFull = 0;
     if (weeklySalesData?.restaurants) {
       for (const r of stateRestaurants) {
         const wk = weeklySalesData.restaurants[r.restaurantId];
-        if (wk) { current += wk.currentWeek; prior += wk.priorWeek; }
+        if (wk) {
+          current += wk.currentWeek;
+          prior += wk.priorWeek;
+          eowForecast += wk.eowForecast;
+          priorFull += wk.priorWeekFull;
+        }
       }
     }
-    return { current, prior, variance: prior > 0 ? ((current / prior) - 1) * 100 : 0 };
+    return {
+      current, prior, eowForecast, priorFull,
+      variance: prior > 0 ? ((current / prior) - 1) * 100 : 0,
+      eowVariance: priorFull > 0 ? ((eowForecast / priorFull) - 1) * 100 : 0,
+    };
   };
   const alabamaWeekly = calcWeekly(alabamaRestaurants);
   const tennesseeWeekly = calcWeekly(tennesseeRestaurants);
@@ -362,16 +371,30 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
                   vs {formatCurrency(state.lastWeekSales)} last week
                 </div>
                 {weeklySalesData && state.weekly.current > 0 && (
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xs text-muted-foreground">WTD:</span>
-                    <span className="text-xs font-semibold">{formatCurrency(state.weekly.current)}</span>
-                    {state.weekly.prior > 0 && (
-                      <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                        {state.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        vs LW {state.weekly.variance >= 0 ? "+" : ""}{Math.round(state.weekly.variance)}%
-                      </span>
+                  <>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground">WTD:</span>
+                      <span className="text-xs font-semibold">{formatCurrency(state.weekly.current)}</span>
+                      {state.weekly.prior > 0 && (
+                        <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                          {state.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          vs LW {state.weekly.variance >= 0 ? "+" : ""}{Math.round(state.weekly.variance)}%
+                        </span>
+                      )}
+                    </div>
+                    {state.weekly.eowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-xs text-muted-foreground">EOW:</span>
+                        <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">{formatCurrency(state.weekly.eowForecast)}</span>
+                        {state.weekly.priorFull > 0 && (
+                          <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.eowVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                            {state.weekly.eowVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            vs LW {state.weekly.eowVariance >= 0 ? "+" : ""}{Math.round(state.weekly.eowVariance)}%
+                          </span>
+                        )}
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
               <div className="text-right shrink-0">
