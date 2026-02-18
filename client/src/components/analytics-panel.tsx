@@ -44,8 +44,12 @@ interface ConsistencyData {
     restaurantId: string;
     restaurantName: string;
     consistencyScore: number;
-    avgVariance: number;
-    stdDeviation: number;
+    avgGrade: number;
+    avgGradeLabel: string;
+    gradeStdDev: number;
+    dfCount: number;
+    dfPercent: number;
+    totalGradedHours: number;
     daysAnalyzed: number;
   }[];
 }
@@ -191,7 +195,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                     variant="outline"
                     className={`text-xs ${getConsistencyColor(consistency.companyAvgConsistency)}`}
                     tooltipTitle="Consistency Score"
-                    tooltipDetail="14-day avg sales variance std deviation"
+                    tooltipDetail="14-day hourly grade stability + D/F frequency"
                   >
                     CST: {consistency.companyAvgConsistency}
                   </BadgeWithTooltip>
@@ -272,9 +276,14 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                           <span className={`font-bold ${getConsistencyColor(r.consistencyScore)}`}>
                             {r.consistencyScore}
                           </span>
-                          <span className="text-muted-foreground text-[10px] w-12 text-right">
-                            {r.avgVariance >= 0 ? "+" : ""}{r.avgVariance}%
+                          <span className="text-muted-foreground text-[10px]">
+                            {r.avgGradeLabel}
                           </span>
+                          {r.dfPercent > 0 && (
+                            <span className="text-red-500 text-[10px] w-14 text-right">
+                              {r.dfPercent}% D/F
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}

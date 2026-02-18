@@ -191,7 +191,9 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
 });
 
 // ─── Consistency Metric ────────────────────────────────────────────────────
-// Standard deviation of daily execution scores over a trailing window
+// Uses hourly execution grade std deviation + D/F frequency to measure
+// operational consistency. A restaurant that grades A-then-F-then-B is
+// inconsistent; one that grades B-B-B every hour is consistent.
 router.get("/api/analytics/consistency", async (req, res) => {
   try {
     const { days = "14" } = req.query;
@@ -203,116 +205,208 @@ router.get("/api/analytics/consistency", async (req, res) => {
     startDate.setDate(startDate.getDate() - numDays);
     const startDateStr = startDate.toISOString().split("T")[0];
 
-    // Get daily sales with last week comparison for each restaurant
-    const salesData = await db.select({
-      restaurantId: hourlySales.restaurantId,
-      salesDate: hourlySales.salesDate,
-      hour: hourlySales.hour,
-      todaySales: sql<number>`${hourlySales.actualSales}::numeric`,
-    })
-    .from(hourlySales)
-    .where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${startDateStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${todayStr}`
+    // Extend 7 days back for last-week sales comparison
+    const extendedStart = new Date(startDate);
+    extendedStart.setDate(extendedStart.getDate() - 7);
+    const extStartStr = extendedStart.toISOString().split("T")[0];
+
+    // Fetch all hourly data for the window
+    const allSalesData = await db.select().from(hourlySales).where(
+      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${extStartStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${todayStr}`
     );
 
-    // Get last-week-extended sales for variance calc
-    const extendedStartDate = new Date(startDate);
-    extendedStartDate.setDate(extendedStartDate.getDate() - 7);
-    const extStartStr = extendedStartDate.toISOString().split("T")[0];
-
-    const lwSalesData = await db.select({
-      restaurantId: hourlySales.restaurantId,
-      salesDate: hourlySales.salesDate,
-      hour: hourlySales.hour,
-      todaySales: sql<number>`${hourlySales.actualSales}::numeric`,
-    })
-    .from(hourlySales)
-    .where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${extStartStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') < ${startDateStr}`
+    const allLaborData = await db.select().from(hourlyLabor).where(
+      and(sql`${hourlyLabor.date} >= ${startDateStr}`, sql`${hourlyLabor.date} <= ${todayStr}`)
     );
 
-    // Build LW lookup
-    const lwByKey = new Map<string, number>();
-    for (const row of lwSalesData) {
-      const d = row.salesDate.toISOString().split("T")[0];
-      const key = `${row.restaurantId}-${d}-${row.hour}`;
-      lwByKey.set(key, Number(row.todaySales) || 0);
+    const allHmeData = await db.select().from(hmeTimerData).where(
+      and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, todayStr))
+    );
+
+    const allOsatData = await db.select().from(osatDataTable).where(
+      and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, todayStr))
+    );
+
+    // Build lookups keyed by restaurantId-date-hour
+    const salesByKey = new Map<string, number>();
+    for (const s of allSalesData) {
+      const d = s.salesDate.toISOString().split("T")[0];
+      salesByKey.set(`${s.restaurantId}-${d}-${s.hour}`, Number(s.actualSales) || 0);
     }
 
-    // Compute daily sales variance per restaurant
-    // Map: restaurantId -> dailyVariances[]
-    const dailyVariances = new Map<string, number[]>();
-    const dailySales = new Map<string, Map<string, { today: number; lw: number }>>();
-
-    for (const row of salesData) {
-      const d = row.salesDate.toISOString().split("T")[0];
-      const rid = row.restaurantId;
-      const sales = Number(row.todaySales) || 0;
-
-      if (!dailySales.has(rid)) dailySales.set(rid, new Map());
-      const rMap = dailySales.get(rid)!;
-      if (!rMap.has(d)) rMap.set(d, { today: 0, lw: 0 });
-      rMap.get(d)!.today += sales;
-
-      // Find last week same day + hour
-      const currentDate = new Date(d + "T12:00:00");
-      const lwDate = new Date(currentDate);
-      lwDate.setDate(lwDate.getDate() - 7);
-      const lwDateStr = lwDate.toISOString().split("T")[0];
-      const lwSales = lwByKey.get(`${rid}-${lwDateStr}-${row.hour}`) || 0;
-      rMap.get(d)!.lw += lwSales;
+    const laborByKey = new Map<string, { actual: number; projected: number; employees: number }>();
+    for (const l of allLaborData) {
+      laborByKey.set(`${l.restaurantId}-${l.date}-${l.hour}`, {
+        actual: Number(l.actualLabor) || 0,
+        projected: Number(l.projectedLabor) || 0,
+        employees: Number(l.employeeCount) || 0,
+      });
     }
 
-    // Calculate variance per day per restaurant
-    for (const [rid, dates] of dailySales) {
-      const variances: number[] = [];
-      for (const [, totals] of dates) {
-        if (totals.lw > 0) {
-          const variance = ((totals.today - totals.lw) / totals.lw) * 100;
-          variances.push(variance);
-        }
-      }
-      if (variances.length > 0) {
-        dailyVariances.set(rid, variances);
+    const hmeByKey = new Map<string, number>();
+    for (const h of allHmeData) {
+      if (h.avgTotalTime > 0 && h.carCount > 0) {
+        hmeByKey.set(`${h.restaurantId}-${h.date}-${h.hour}`, h.avgTotalTime);
       }
     }
 
-    // Calculate consistency score per restaurant
-    // Low std deviation = high consistency = good
+    const osatByKey = new Map<string, { percent: number; responses: number }>();
+    for (const o of allOsatData) {
+      if (o.totalResponses > 0) {
+        osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, {
+          percent: Number(o.osatPercent), responses: o.totalResponses,
+        });
+      }
+    }
+
+    // Grade calculation aligned with performance-history.ts
+    const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
+
+    function computeHourlyGrade(
+      salesVariancePct: number, speedSec: number | undefined,
+      staffingDiff: number, hasComparableSales: boolean,
+      hasValidStaffing: boolean, osatPercent: number | undefined
+    ): number | null {
+      const components: { score: number; weight: number }[] = [];
+
+      if (hasComparableSales) {
+        components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
+      }
+      if (speedSec !== undefined && speedSec > 0) {
+        const speedScore = speedSec > 420 ? 40 : speedSec > 300 ? 70 : 100;
+        components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
+      }
+      if (osatPercent !== undefined && osatPercent > 0) {
+        const osatScore = osatPercent < 80 ? 40 : osatPercent < 85 ? 70 : 100;
+        components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
+      }
+      if (hasValidStaffing) {
+        const isSurge = salesVariancePct >= 20;
+        let staffScore = 100;
+        if (staffingDiff > 1) staffScore = 60;
+        else if (staffingDiff < -1 && !isSurge) staffScore = 60;
+        components.push({ score: staffScore, weight: GRADE_WEIGHTS.staffing });
+      }
+      if (components.length === 0) return null;
+      const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+      return components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+    }
+
+    function scoreToLabel(score: number): string {
+      if (score >= 95) return "A+";
+      if (score >= 90) return "A";
+      if (score >= 85) return "A-";
+      if (score >= 80) return "B+";
+      if (score >= 75) return "B";
+      if (score >= 70) return "B-";
+      if (score >= 65) return "C+";
+      if (score >= 60) return "C";
+      if (score >= 55) return "C-";
+      if (score >= 50) return "D";
+      return "F";
+    }
+
+    // Build date range for the analysis window
+    const dateRange: string[] = [];
+    for (let i = 0; i < numDays; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      dateRange.push(d.toISOString().split("T")[0]);
+    }
+
     const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+    const restaurantIds = allRestaurants.map(r => r.id);
 
     interface ConsistencyResult {
       restaurantId: string;
       restaurantName: string;
-      avgVariance: number;
-      stdDeviation: number;
-      consistencyScore: number; // 0-100, higher = more consistent
+      avgGrade: number;           // average hourly grade score (0-100)
+      avgGradeLabel: string;
+      gradeStdDev: number;        // std deviation of hourly grades
+      consistencyScore: number;   // 0-100, higher = more consistent
+      dfCount: number;            // number of D or F hourly grades
+      dfPercent: number;          // % of graded hours that were D or F
+      totalGradedHours: number;
       daysAnalyzed: number;
     }
 
     const results: ConsistencyResult[] = [];
 
-    for (const [rid, variances] of dailyVariances) {
+    for (const rid of restaurantIds) {
       const name = restaurantNameMap.get(rid);
-      if (!name || variances.length < 3) continue;
+      if (!name) continue;
 
-      const avg = variances.reduce((a, b) => a + b, 0) / variances.length;
-      const sqDiffs = variances.map(v => Math.pow(v - avg, 2));
-      const variance = sqDiffs.reduce((a, b) => a + b, 0) / variances.length;
+      const hourlyScores: number[] = [];
+      let dfCount = 0;
+      const daysWithData = new Set<string>();
+
+      for (const dateStr2 of dateRange) {
+        for (let hour = 6; hour <= 22; hour++) {
+          const key = `${rid}-${dateStr2}-${hour}`;
+          const sales = salesByKey.get(key);
+          if (sales === undefined || sales <= 0) continue;
+
+          // Last week comparison
+          const lwDate = new Date(dateStr2 + "T12:00:00");
+          lwDate.setDate(lwDate.getDate() - 7);
+          const lwKey = `${rid}-${lwDate.toISOString().split("T")[0]}-${hour}`;
+          const lwSales = salesByKey.get(lwKey) || 0;
+          const hasComparable = lwSales > 0;
+          const salesVariance = hasComparable ? ((sales - lwSales) / lwSales) * 100 : 0;
+
+          const labor = laborByKey.get(key);
+          let staffingDiff = 0;
+          let hasValidStaffing = false;
+          if (labor && labor.projected > 0 && labor.employees >= 1) {
+            hasValidStaffing = true;
+            staffingDiff = ((labor.actual - labor.projected) / labor.projected) * 10;
+          }
+
+          const speed = hmeByKey.get(key);
+          const osat = osatByKey.get(key);
+          const osatPct = osat ? osat.percent : undefined;
+
+          const grade = computeHourlyGrade(
+            salesVariance, speed, staffingDiff,
+            hasComparable, hasValidStaffing, osatPct
+          );
+
+          if (grade !== null) {
+            hourlyScores.push(grade);
+            daysWithData.add(dateStr2);
+            const label = scoreToLabel(grade);
+            if (label === "D" || label === "F") dfCount++;
+          }
+        }
+      }
+
+      if (hourlyScores.length < 10 || daysWithData.size < 3) continue;
+
+      const avg = hourlyScores.reduce((a, b) => a + b, 0) / hourlyScores.length;
+      const sqDiffs = hourlyScores.map(s => Math.pow(s - avg, 2));
+      const variance = sqDiffs.reduce((a, b) => a + b, 0) / hourlyScores.length;
       const stdDev = Math.sqrt(variance);
+      const dfPercent = (dfCount / hourlyScores.length) * 100;
 
-      // Convert std deviation to a 0-100 score
-      // stdDev of 0 = 100 (perfect consistency), stdDev of 30+ = 0
-      const consistencyScore = Math.max(0, Math.min(100, Math.round(100 - (stdDev * 100 / 30))));
+      // Consistency score: blend of low std deviation (60%) + low D/F rate (40%)
+      // stdDev component: 0 = 100 (perfect), 25+ = 0
+      const stdDevScore = Math.max(0, Math.min(100, 100 - (stdDev * 4)));
+      // D/F component: 0% = 100 (perfect), 30%+ = 0
+      const dfScore = Math.max(0, Math.min(100, 100 - (dfPercent * 100 / 30)));
+      const consistencyScore = Math.round(stdDevScore * 0.6 + dfScore * 0.4);
 
       results.push({
         restaurantId: rid,
         restaurantName: name,
-        avgVariance: Math.round(avg * 10) / 10,
-        stdDeviation: Math.round(stdDev * 10) / 10,
+        avgGrade: Math.round(avg * 10) / 10,
+        avgGradeLabel: scoreToLabel(avg),
+        gradeStdDev: Math.round(stdDev * 10) / 10,
         consistencyScore,
-        daysAnalyzed: variances.length,
+        dfCount,
+        dfPercent: Math.round(dfPercent * 10) / 10,
+        totalGradedHours: hourlyScores.length,
+        daysAnalyzed: daysWithData.size,
       });
     }
 
