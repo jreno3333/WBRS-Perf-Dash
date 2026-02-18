@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, GraduationCap, ThumbsUp, Timer } from "lucide-react";
 import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -345,50 +346,42 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
             </div>
             <div className="flex items-center gap-2 mt-2 flex-wrap justify-end">
               {market.speed.speedAttainment !== undefined && (
-                <div className="relative group">
-                  <Badge 
-                    className={`${getSpeedColor(market.speed.speedAttainment)} border-0 gap-1 cursor-help`}
-                    data-testid={`badge-speed-market-${market.id}`}
-                  >
-                    <Timer className="w-3 h-3" />
-                    <span className="font-medium">{market.speed.speedAttainment}%</span>
-                  </Badge>
-                  <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                    <div className="font-medium">Speed Attainment</div>
-                    <div className="text-muted-foreground">{market.speed.carsUnder6Min}/{market.speed.totalCars} cars under 6 min</div>
-                    <div className="text-muted-foreground">{market.speed.storesWithData} stores reporting</div>
-                  </div>
-                </div>
+                <BadgeWithTooltip
+                  className={`${getSpeedColor(market.speed.speedAttainment)} border-0 gap-1`}
+                  data-testid={`badge-speed-market-${market.id}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Speed Attainment</div>
+                      <div className="text-muted-foreground">{market.speed.carsUnder6Min}/{market.speed.totalCars} cars under 6 min</div>
+                      <div className="text-muted-foreground">{market.speed.storesWithData} stores reporting</div>
+                    </div>
+                  }
+                >
+                  <Timer className="w-3 h-3" />
+                  <span className="font-medium">{market.speed.speedAttainment}%</span>
+                </BadgeWithTooltip>
               )}
               {market.osat.osatPercent !== undefined && (
-                <div className="relative group">
-                  <Badge 
-                    className={`${getOsatColor(market.osat.osatPercent)} border-0 gap-1 cursor-help`}
-                    data-testid={`badge-osat-market-${market.id}`}
-                  >
-                    <ThumbsUp className="w-3 h-3" />
-                    <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
-                  </Badge>
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                    <div className="font-medium">Customer Satisfaction</div>
-                    <div className="text-muted-foreground">{market.osat.totalResponses} responses</div>
-                  </div>
-                </div>
+                <BadgeWithTooltip
+                  className={`${getOsatColor(market.osat.osatPercent)} border-0 gap-1`}
+                  data-testid={`badge-osat-market-${market.id}`}
+                  tooltipTitle="Customer Satisfaction"
+                  tooltipDetail={`${market.osat.totalResponses} responses`}
+                >
+                  <ThumbsUp className="w-3 h-3" />
+                  <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
+                </BadgeWithTooltip>
               )}
               {market.crewScore.count > 0 && (
-                <div className="relative group">
-                  <Badge 
-                    className={`${getCrewScoreColor(market.crewScore.avgScore)} border-0 gap-1 cursor-help`}
-                    data-testid={`badge-crew-market-${market.id}`}
-                  >
-                    <GraduationCap className="w-3 h-3" />
-                    <span className="font-medium">{market.crewScore.avgScore}</span>
-                  </Badge>
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-20">
-                    <div className="font-medium">Crew Experience</div>
-                    <div className="text-muted-foreground">Avg tenure: {formatTenure(market.crewScore.avgTenureMonths)}</div>
-                  </div>
-                </div>
+                <BadgeWithTooltip
+                  className={`${getCrewScoreColor(market.crewScore.avgScore)} border-0 gap-1`}
+                  data-testid={`badge-crew-market-${market.id}`}
+                  tooltipTitle="Crew Experience"
+                  tooltipDetail={`Avg tenure: ${formatTenure(market.crewScore.avgTenureMonths)}`}
+                >
+                  <GraduationCap className="w-3 h-3" />
+                  <span className="font-medium">{market.crewScore.avgScore}</span>
+                </BadgeWithTooltip>
               )}
               {market.xScore.hoursGraded > 0 && (
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center border shrink-0 ${getGradeBadgeColor(market.xScore.grade)}`}>
