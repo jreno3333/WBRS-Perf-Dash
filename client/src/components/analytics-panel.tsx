@@ -184,7 +184,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Activity className="w-4 h-4 text-muted-foreground" />
-                <CardTitle className="text-sm font-semibold">Analytics</CardTitle>
+                <CardTitle className="text-sm font-semibold">Sandbox</CardTitle>
 
                 {/* Quick summary badges — collapsed header shows consistency, schedule, suppressed */}
                 {consistency && (
