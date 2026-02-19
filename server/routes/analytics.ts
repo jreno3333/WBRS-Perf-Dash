@@ -94,18 +94,17 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
     const todayStr = date ? String(date) : centralFormatter.format(new Date());
     const today = new Date(todayStr + "T12:00:00");
 
-    // Get day of week (0=Sun, 1=Mon, ... 6=Sat). CFA closed Sunday.
-    const dayOfWeek = today.getDay();
-    // Monday=1, Saturday=6. Compute Monday of this week.
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Sunday -> last Monday
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + mondayOffset);
+    // Sat-Fri business week (7 days)
+    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const daysSinceSaturday = (dayOfWeek + 1) % 7; // Sat=0, Sun=1, Mon=2, ..., Fri=6
+    const saturday = new Date(today);
+    saturday.setDate(today.getDate() - daysSinceSaturday);
 
-    // Build an array for Mon-Sat (6 business days)
+    // Build an array for all 7 days: Sat, Sun, Mon, Tue, Wed, Thu, Fri
     const weekDays: { date: string; dayName: string; isComplete: boolean; isPast: boolean }[] = [];
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(saturday);
+      d.setDate(saturday.getDate() + i);
       const dStr = d.toISOString().split("T")[0];
       weekDays.push({
         date: dStr,
@@ -116,14 +115,18 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
     }
 
     // Fetch sales for this week and last week for projection
-    const mondayStr = monday.toISOString().split("T")[0];
-    const lastMonday = new Date(monday);
-    lastMonday.setDate(lastMonday.getDate() - 7);
-    const lastMondayStr = lastMonday.toISOString().split("T")[0];
-    const lastSatStr = (() => { const d = new Date(lastMonday); d.setDate(d.getDate() + 5); return d.toISOString().split("T")[0]; })();
-    const satStr = (() => { const d = new Date(monday); d.setDate(d.getDate() + 5); return d.toISOString().split("T")[0]; })();
+    const saturdayStr = saturday.toISOString().split("T")[0];
+    const friday = new Date(saturday);
+    friday.setDate(saturday.getDate() + 6);
+    const fridayStr = friday.toISOString().split("T")[0];
+    const lastSaturday = new Date(saturday);
+    lastSaturday.setDate(lastSaturday.getDate() - 7);
+    const lastSaturdayStr = lastSaturday.toISOString().split("T")[0];
+    const lastFriday = new Date(friday);
+    lastFriday.setDate(lastFriday.getDate() - 7);
+    const lastFridayStr = lastFriday.toISOString().split("T")[0];
 
-    // Get daily sales for both weeks
+    // Get daily sales for both weeks (last Saturday through this Friday)
     const salesData = await db.select({
       restaurantId: hourlySales.restaurantId,
       salesDate: hourlySales.salesDate,
@@ -131,7 +134,7 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
     })
     .from(hourlySales)
     .where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${lastMondayStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${satStr}`
+      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${lastSaturdayStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${fridayStr}`
     )
     .groupBy(hourlySales.restaurantId, hourlySales.salesDate);
 
@@ -175,8 +178,8 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
     }, 0);
 
     res.json({
-      weekStart: mondayStr,
-      weekEnd: satStr,
+      weekStart: saturdayStr,
+      weekEnd: fridayStr,
       currentDate: todayStr,
       actualTotal,
       forecastTotal,

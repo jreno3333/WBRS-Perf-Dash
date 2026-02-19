@@ -284,7 +284,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   <BarChart3 className="w-3 h-3" /> WEEKLY FORECAST
                 </h4>
                 <p className="text-[10px] text-muted-foreground mb-2">Sat-Fri business week. Green = actual, amber = partial day, gray = projected from last week.</p>
-                <div className="grid grid-cols-6 gap-1">
+                <div className="grid grid-cols-7 gap-1">
                   {weeklyForecast.daily.map(day => (
                     <div
                       key={day.date}
