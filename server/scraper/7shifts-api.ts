@@ -84,6 +84,7 @@ interface RolesResponse {
 interface LaborByHour {
   totalHours: number;
   byPosition: Record<string, number>; // e.g., { "Grill": 2.5, "Counter": 1.5 }
+  quarters: { q0: number; q1: number; q2: number; q3: number }; // Labor hours per 15-min window
 }
 
 interface ScheduledShift {
@@ -584,7 +585,7 @@ export class SevenShiftsAPI {
     
     // Initialize all hours
     for (let h = 0; h < 24; h++) {
-      laborByHour.set(h, { totalHours: 0, byPosition: {} });
+      laborByHour.set(h, { totalHours: 0, byPosition: {}, quarters: { q0: 0, q1: 0, q2: 0, q3: 0 } });
     }
     
     const startOfDayUTC = fromZonedTime(`${date}T00:00:00`, timezone);
@@ -639,10 +640,23 @@ export class SevenShiftsAPI {
           const overlapEnd = clockOut < hourEndUTC ? clockOut : hourEndUTC;
           const overlapMs = overlapEnd.getTime() - overlapStart.getTime();
           const hoursWorked = overlapMs / (1000 * 60 * 60);
-          
+
           const hourData = laborByHour.get(h)!;
           hourData.totalHours += hoursWorked;
           hourData.byPosition[positionName] = (hourData.byPosition[positionName] || 0) + hoursWorked;
+
+          // Distribute into 15-min quarters within this hour
+          for (let q = 0; q < 4; q++) {
+            const qStartMs = hourStartUTC.getTime() + q * 15 * 60 * 1000;
+            const qEndMs = qStartMs + 15 * 60 * 1000;
+            if (overlapStart.getTime() < qEndMs && overlapEnd.getTime() > qStartMs) {
+              const qOverlapStart = Math.max(overlapStart.getTime(), qStartMs);
+              const qOverlapEnd = Math.min(overlapEnd.getTime(), qEndMs);
+              const qHours = (qOverlapEnd - qOverlapStart) / (1000 * 60 * 60);
+              const qKey = `q${q}` as 'q0' | 'q1' | 'q2' | 'q3';
+              hourData.quarters[qKey] += qHours;
+            }
+          }
         }
       }
     }
@@ -1062,6 +1076,14 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
                 eq(hourlyLabor.hour, hour)
               )
             );
+            // Round quarter values from time punch data
+            const qb = hourLabor.quarters ? {
+              q0: Math.round(hourLabor.quarters.q0 * 100) / 100,
+              q1: Math.round(hourLabor.quarters.q1 * 100) / 100,
+              q2: Math.round(hourLabor.quarters.q2 * 100) / 100,
+              q3: Math.round(hourLabor.quarters.q3 * 100) / 100,
+            } : undefined;
+
             await tx.insert(hourlyLabor).values({
               restaurantId: restaurant.id,
               date: dateStr2,
@@ -1070,6 +1092,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               actualLabor: (interval.actual_labor / 100).toFixed(2),
               employeeCount: (Math.round(hourLabor.totalHours * 100) / 100).toFixed(2),
               positionBreakdown: roundedPositions,
+              quarterBreakdown: qb,
             });
             
             recordsScraped++;
@@ -1298,6 +1321,14 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
                 eq(hourlyLabor.hour, hour)
               )
             );
+            // Round quarter values from time punch data
+            const quarterBreakdown = hourLabor.quarters ? {
+              q0: Math.round(hourLabor.quarters.q0 * 100) / 100,
+              q1: Math.round(hourLabor.quarters.q1 * 100) / 100,
+              q2: Math.round(hourLabor.quarters.q2 * 100) / 100,
+              q3: Math.round(hourLabor.quarters.q3 * 100) / 100,
+            } : undefined;
+
             await tx.insert(hourlyLabor).values({
               restaurantId: restaurant.id,
               date: laborDateStr,
@@ -1306,6 +1337,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
               actualLabor: projected.actualLabor.toFixed(2),
               employeeCount: (Math.round(hourLabor.totalHours * 100) / 100).toFixed(2),
               positionBreakdown: roundedPositions,
+              quarterBreakdown,
             });
             
             recordsScraped++;
@@ -1876,13 +1908,21 @@ export async function fixLaborForRestaurant(restaurantName: string, dateStr: str
     // Insert hourly_labor records
     let updatedHours = 0;
     for (const [hour, laborData] of laborByHour.entries()) {
-      // laborData has { totalHours, byPosition } - use byPosition for position breakdown
+      // laborData has { totalHours, byPosition, quarters } - use byPosition for position breakdown
       const positionBreakdown = { ...laborData.byPosition };
-      
+
       // Calculate employee count from total hours worked (approximate)
       // For a full hour, totalHours equals the number of people working
       const employeeCount = laborData.totalHours;
-      
+
+      // Round quarter values
+      const quarterBreakdown = {
+        q0: Math.round(laborData.quarters.q0 * 100) / 100,
+        q1: Math.round(laborData.quarters.q1 * 100) / 100,
+        q2: Math.round(laborData.quarters.q2 * 100) / 100,
+        q3: Math.round(laborData.quarters.q3 * 100) / 100,
+      };
+
       // Upsert the hourly_labor record
       await db
         .insert(hourlyLabor)
@@ -1893,6 +1933,7 @@ export async function fixLaborForRestaurant(restaurantName: string, dateStr: str
           actualLabor: laborData.totalHours,
           employeeCount: String(employeeCount),
           positionBreakdown,
+          quarterBreakdown,
         })
         .onConflictDoUpdate({
           target: [hourlyLabor.restaurantId, hourlyLabor.date, hourlyLabor.hour],
@@ -1900,6 +1941,7 @@ export async function fixLaborForRestaurant(restaurantName: string, dateStr: str
             actualLabor: laborData.totalHours,
             employeeCount: String(employeeCount),
             positionBreakdown,
+            quarterBreakdown,
           },
         });
       

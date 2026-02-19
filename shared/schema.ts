@@ -101,6 +101,7 @@ export const hourlyLabor = pgTable("hourly_labor", {
   actualLabor: decimal("actual_labor", { precision: 10, scale: 2 }), // Actual labor cost from punched hours
   employeeCount: decimal("employee_count", { precision: 10, scale: 2 }), // Total labor hours deployed during this hour
   positionBreakdown: jsonb("position_breakdown").$type<Record<string, number>>(), // Hours by position: { "Manager": 1.5, "Team Member": 3.0 }
+  quarterBreakdown: jsonb("quarter_breakdown").$type<{ q0: number; q1: number; q2: number; q3: number }>(), // Labor hours per 15-min quarter: q0=:00-:14, q1=:15-:29, q2=:30-:44, q3=:45-:59
   syncedAt: timestamp("synced_at").defaultNow(),
 }, (table) => ({
   uniqueRestaurantDateHour: uniqueIndex("hourly_labor_restaurant_date_hour_idx")
@@ -221,6 +222,7 @@ export interface HourlySalesData {
   actualLabor: number; // Actual labor cost from punched hours
   employeeCount: number; // Number of employees on clock during this hour
   positionBreakdown?: Record<string, number>; // Hours by position: { "Manager": 1.5, "Team Member": 3.0 }
+  quarterBreakdown?: { q0: number; q1: number; q2: number; q3: number }; // Labor hours per 15-min quarter
   leaders?: { firstName: string; position: string }[]; // Manager, Shift Supervisor, Operator names for this hour
   label: string;
   // HME drive-thru data

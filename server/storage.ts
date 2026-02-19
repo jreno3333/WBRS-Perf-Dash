@@ -641,12 +641,16 @@ export class DatabaseStorage {
       restaurantSelectedHourly.forEach(s => {
         forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
       });
+      const quarterByHour: Map<number, { q0: number; q1: number; q2: number; q3: number }> = new Map();
       restaurantLaborData.forEach(l => {
         laborByHour.set(l.hour, parseFloat(l.projectedLabor || '0'));
         actualLaborByHour.set(l.hour, parseFloat(l.actualLabor || '0'));
         employeeCountByHour.set(l.hour, Number(l.employeeCount) || 0);
         if (l.positionBreakdown) {
           positionByHour.set(l.hour, l.positionBreakdown as Record<string, number>);
+        }
+        if (l.quarterBreakdown) {
+          quarterByHour.set(l.hour, l.quarterBreakdown as { q0: number; q1: number; q2: number; q3: number });
         }
       });
 
@@ -716,6 +720,7 @@ export class DatabaseStorage {
         const actualLabor = Math.round((actualLaborByHour.get(hour) || 0) * 100) / 100;
         const employeeCount = employeeCountByHour.get(hour) || 0;
         const positionBreakdown = positionByHour.get(hour);
+        const quarterBreakdown = quarterByHour.get(hour);
 
         const osatHourData = osatByHour.get(hour);
         const hasOsatData = osatHourData && osatHourData.totalResponses > 0;
@@ -731,6 +736,7 @@ export class DatabaseStorage {
             actualLabor,
             employeeCount,
             positionBreakdown,
+            quarterBreakdown,
             leaders,
             label: hour === 0 ? "12am" : hour < 12 ? `${hour}am` : hour === 12 ? "12pm" : `${hour - 12}pm`,
             avgServiceTime: hmeHourData?.avgServiceTime,
