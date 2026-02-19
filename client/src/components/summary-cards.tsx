@@ -456,6 +456,19 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                 F:{gradeCounts['F']}
               </span>
             )}
+            {dfHourCount > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-500 border border-red-500/30 cursor-help">
+                    D/F Hrs <span className="font-bold">{dfHourCount}</span>
+                  </span>
+                </PopoverTrigger>
+                <PopoverContent side="bottom" className="w-auto max-w-[220px] p-2 text-xs">
+                  <p className="font-semibold text-red-500">{dfHourCount} hourly D/F grades today</p>
+                  <p className="text-muted-foreground mt-1">Hours scoring below 55 across all restaurants — indicating poor execution (low sales vs LW, slow drive-thru, or staffing gaps).</p>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         </div>
       </div>

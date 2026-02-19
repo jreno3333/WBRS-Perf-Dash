@@ -285,7 +285,7 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Markets</span>
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide"><span className="sm:hidden">Mrkts</span><span className="hidden sm:inline">Markets</span></span>
           {!isExpanded && marketStats.map(market => (
             <span key={market.id} className="text-xs text-muted-foreground">
               {market.name}: <span className={`font-medium ${market.isAhead ? "text-green-500" : "text-red-500"}`}>{market.isAhead ? "+" : ""}{market.variance.toFixed(0)}%</span>
