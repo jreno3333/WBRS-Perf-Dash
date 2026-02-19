@@ -526,8 +526,8 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                         : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                   } border-0`}
                   data-testid={`badge-crew-${restaurant.restaurantId}`}
-                  tooltipTitle="Crew Experience"
-                  tooltipDetail={`Avg tenure: ${formatTenure(crewSummary.avgTenureMonths)}`}
+                  tooltipTitle="Crew Experience Score"
+                  tooltipDetail={`Weighted score (0-100) based on crew tenure mix. Avg tenure: ${formatTenure(crewSummary.avgTenureMonths)}, ${crewSummary.avgCrewCount.toFixed(0)} avg crew/hr. 75+ green, 50-74 caution, <50 concern.`}
                 >
                   <GraduationCap className="w-3 h-3" />
                   <span className="font-medium">{crewSummary.avgScore}</span>
@@ -560,8 +560,8 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                     "text-red-600 dark:text-red-400 border-red-300"
                   }`}
                   data-testid={`badge-consistency-${restaurant.restaurantId}`}
-                  tooltipTitle="Consistency Score"
-                  tooltipDetail="14-day hourly execution grade stability + D/F frequency"
+                  tooltipTitle="Consistency Score (0-100)"
+                  tooltipDetail="Measures how stable hourly execution grades are over the last 14 days. Lower grade variance and fewer D/F hours = higher score. 75+ consistent, 50-74 variable, <50 erratic."
                 >
                   CST: {consistencyScore}
                 </BadgeWithTooltip>
@@ -893,7 +893,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                         />
                       );
                     })()}
-                    <div className={`absolute -top-10 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                    <div className={`absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{hour.label}</span>
                         {isCompleted && hour.todaySales > 0 && <span className={gradeInfo.color}>{gradeInfo.grade}</span>}
@@ -938,16 +938,26 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           if (!hourCA || hourCA.orders === 0) return null;
                           return <span className="text-teal-600 dark:text-teal-400">${hourCA.avg.toFixed(2)} ({hourCA.orders})</span>;
                         })()}
-                        {isCompleted && (() => {
-                          const dcHour = demandCurveMap.get(hour.hour);
-                          if (!dcHour || dcHour.quarters.every(q => q.orders === 0)) return null;
-                          return (
-                            <span className="text-muted-foreground text-[10px]">
-                              [{dcHour.quarters.map(q => q.orders).join('|')}]
-                            </span>
-                          );
-                        })()}
                       </div>
+                      {/* 15-minute interval breakdown */}
+                      {isCompleted && (() => {
+                        const dcHour = demandCurveMap.get(hour.hour);
+                        if (!dcHour || dcHour.quarters.every(q => q.orders === 0)) return null;
+                        const h12 = hour.hour === 0 ? 12 : hour.hour > 12 ? hour.hour - 12 : hour.hour;
+                        const ampm = hour.hour < 12 ? 'am' : 'pm';
+                        return (
+                          <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground border-t border-border/50 pt-0.5">
+                            {dcHour.quarters.map((q, qi) => {
+                              const min = qi * 15;
+                              return (
+                                <span key={qi} className={q.orders > 0 ? "text-foreground" : ""}>
+                                  {h12}:{min.toString().padStart(2, '0')}{ampm} <span className="font-medium">{q.orders}</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

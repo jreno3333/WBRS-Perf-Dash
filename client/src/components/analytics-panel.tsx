@@ -110,6 +110,9 @@ function getComplianceColor(pct: number): string {
 
 export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showAllConsistency, setShowAllConsistency] = useState(false);
+  const [showAllCompliance, setShowAllCompliance] = useState(false);
+  const [showAllSuppressed, setShowAllSuppressed] = useState(false);
 
   const { data: anniversaries } = useQuery<{ count: number; anniversaries: AnniversaryData[] }>({
     queryKey: ["/api/analytics/anniversaries"],
@@ -184,8 +187,8 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   <BadgeWithTooltip
                     variant="outline"
                     className={`text-xs ${weeklyForecast.variancePercent >= 0 ? "text-green-600 border-green-300" : "text-red-600 border-red-300"}`}
-                    tooltipTitle="Weekly Forecast"
-                    tooltipDetail={`${formatCurrency(weeklyForecast.forecastTotal)} projected vs ${formatCurrency(weeklyForecast.lastWeekTotal)} LW`}
+                    tooltipTitle="Weekly Sales Forecast (Sat-Fri)"
+                    tooltipDetail={`Projected week total: ${formatCurrency(weeklyForecast.forecastTotal)} vs last week: ${formatCurrency(weeklyForecast.lastWeekTotal)}. Based on actual days completed + LW remaining days.`}
                   >
                     WK {weeklyForecast.variancePercent >= 0 ? "+" : ""}{weeklyForecast.variancePercent.toFixed(1)}%
                   </BadgeWithTooltip>
@@ -194,8 +197,8 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   <BadgeWithTooltip
                     variant="outline"
                     className={`text-xs ${getConsistencyColor(consistency.companyAvgConsistency)}`}
-                    tooltipTitle="Consistency Score"
-                    tooltipDetail="14-day hourly grade stability + D/F frequency"
+                    tooltipTitle="Company Consistency Score (0-100)"
+                    tooltipDetail="Average consistency across all units. Measures 14-day hourly grade stability — lower variance and fewer D/F hours = higher score."
                   >
                     CST: {consistency.companyAvgConsistency}
                   </BadgeWithTooltip>
@@ -203,8 +206,8 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                 {hasSuppressed && (
                   <BadgeWithTooltip
                     className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0"
-                    tooltipTitle="Suppressed Sales"
-                    tooltipDetail={`Est. ${formatCurrency(suppressed!.companyTotalSuppressed)} lost to understaffing/slow DT`}
+                    tooltipTitle="Estimated Suppressed Sales"
+                    tooltipDetail={`Est. ${formatCurrency(suppressed!.companyTotalSuppressed)} in lost revenue today due to understaffing or slow drive-thru service times.`}
                   >
                     <AlertTriangle className="w-3 h-3" />
                     {formatCurrency(suppressed!.companyTotalSuppressed)}
@@ -228,9 +231,10 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
             {/* Weekly Forecast */}
             {weeklyForecast && (
               <div>
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
                   <BarChart3 className="w-3 h-3" /> WEEKLY FORECAST
                 </h4>
+                <p className="text-[10px] text-muted-foreground mb-2">Sat-Fri business week. Green = actual, amber = partial day, gray = projected from last week.</p>
                 <div className="grid grid-cols-6 gap-1">
                   {weeklyForecast.daily.map(day => (
                     <div
@@ -265,32 +269,44 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
               {/* Consistency Metric */}
               {consistency && consistency.restaurants.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
                     <Activity className="w-3 h-3" /> CONSISTENCY (14-DAY)
                   </h4>
+                  <p className="text-[10px] text-muted-foreground mb-2">
+                    Score 0-100: how stable are hourly execution grades? 60% weight on low grade variance + 40% on low D/F rate. Green 75+, amber 50-74, red &lt;50.
+                  </p>
                   <div className="space-y-1">
-                    {consistency.restaurants.slice(0, 5).map(r => (
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
+                      <span>Restaurant</span>
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 text-center">Score</span>
+                        <span className="w-6 text-center">Avg</span>
+                        <span className="w-14 text-right">D/F hrs</span>
+                      </div>
+                    </div>
+                    {(showAllConsistency ? consistency.restaurants : consistency.restaurants.slice(0, 5)).map(r => (
                       <div key={r.restaurantId} className="flex items-center justify-between text-xs">
                         <span className="truncate mr-2">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
                         <div className="flex items-center gap-2">
-                          <span className={`font-bold ${getConsistencyColor(r.consistencyScore)}`}>
+                          <span className={`font-bold w-8 text-center ${getConsistencyColor(r.consistencyScore)}`}>
                             {r.consistencyScore}
                           </span>
-                          <span className="text-muted-foreground text-[10px]">
+                          <span className="text-muted-foreground text-[10px] w-6 text-center">
                             {r.avgGradeLabel}
                           </span>
-                          {r.dfPercent > 0 && (
-                            <span className="text-red-500 text-[10px] w-14 text-right">
-                              {r.dfPercent}% D/F
-                            </span>
-                          )}
+                          <span className={`text-[10px] w-14 text-right ${r.dfPercent > 5 ? 'text-red-500' : r.dfPercent > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {r.dfPercent > 0 ? `${r.dfPercent}%` : '—'}
+                          </span>
                         </div>
                       </div>
                     ))}
                     {consistency.restaurants.length > 5 && (
-                      <div className="text-[10px] text-muted-foreground text-center">
-                        +{consistency.restaurants.length - 5} more
-                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowAllConsistency(!showAllConsistency); }}
+                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-1"
+                      >
+                        {showAllConsistency ? 'Show less' : `Show all ${consistency.restaurants.length} restaurants`}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -299,25 +315,45 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
               {/* Schedule Compliance */}
               {compliance && compliance.restaurants.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
                     <Clock className="w-3 h-3" /> SCHEDULE COMPLIANCE (7-DAY)
                   </h4>
+                  <p className="text-[10px] text-muted-foreground mb-2">
+                    Actual labor $ vs scheduled labor $. 90-110% is on target (green). "Understaffed hrs" = hours where actual was 25%+ below scheduled.
+                  </p>
                   <div className="space-y-1">
-                    {compliance.restaurants.slice(0, 5).map(r => (
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
+                      <span>Restaurant</span>
+                      <div className="flex items-center gap-2">
+                        <span className="w-10 text-center">$ Fill</span>
+                        <span className="w-20 text-right">Understaffed</span>
+                      </div>
+                    </div>
+                    {(showAllCompliance ? compliance.restaurants : compliance.restaurants.slice(0, 5)).map(r => (
                       <div key={r.restaurantId} className="flex items-center justify-between text-xs">
                         <span className="truncate mr-2">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
                         <div className="flex items-center gap-2">
-                          <span className={`font-bold ${getComplianceColor(r.compliancePercent)}`}>
+                          <span className={`font-bold w-10 text-center ${getComplianceColor(r.compliancePercent)}`}>
                             {r.compliancePercent}%
                           </span>
-                          {r.callInRate > 0 && (
-                            <span className="text-red-500 text-[10px]">
-                              {r.callInRate}% gap
+                          {r.callInRate > 0 ? (
+                            <span className="text-red-500 text-[10px] w-20 text-right" title={`${r.callInRate}% of hours had actual labor 25%+ below scheduled`}>
+                              {r.callInRate}% of hrs short
                             </span>
+                          ) : (
+                            <span className="text-muted-foreground text-[10px] w-20 text-right">—</span>
                           )}
                         </div>
                       </div>
                     ))}
+                    {compliance.restaurants.length > 5 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowAllCompliance(!showAllCompliance); }}
+                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-1"
+                      >
+                        {showAllCompliance ? 'Show less' : `Show all ${compliance.restaurants.length} restaurants`}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -326,23 +362,41 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
             {/* Suppressed Sales */}
             {hasSuppressed && (
               <div>
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> SUPPRESSED SALES
+                <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> SUPPRESSED SALES — {formatCurrency(suppressed!.companyTotalSuppressed)} est. lost today
                 </h4>
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  Estimated revenue lost when a unit is understaffed (actual labor 25%+ below scheduled) or drive-thru avg exceeds 7 min. Calculated as a % of last week's hourly sales.
+                </p>
                 <div className="space-y-1">
-                  {suppressed!.restaurants.slice(0, 5).map(r => (
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
+                    <span>Restaurant</span>
+                    <div className="flex items-center gap-2">
+                      <span className="w-12 text-center">Est. Lost</span>
+                      <span className="w-28 text-right">Cause</span>
+                    </div>
+                  </div>
+                  {(showAllSuppressed ? suppressed!.restaurants : suppressed!.restaurants.slice(0, 5)).map(r => (
                     <div key={r.restaurantId} className="flex items-center justify-between text-xs">
                       <span className="truncate mr-2">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-red-600">{formatCurrency(r.estimatedLostSales)}</span>
-                        <span className="text-muted-foreground text-[10px]">
-                          {r.understaffedHours > 0 && `${r.understaffedHours}h under`}
+                        <span className="font-bold text-red-600 w-12 text-center">{formatCurrency(r.estimatedLostSales)}</span>
+                        <span className="text-muted-foreground text-[10px] w-28 text-right">
+                          {r.understaffedHours > 0 && `${r.understaffedHours}h understaffed`}
                           {r.understaffedHours > 0 && r.slowDtHours > 0 && " + "}
                           {r.slowDtHours > 0 && `${r.slowDtHours}h slow DT`}
                         </span>
                       </div>
                     </div>
                   ))}
+                  {suppressed!.restaurants.length > 5 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowAllSuppressed(!showAllSuppressed); }}
+                      className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-1"
+                    >
+                      {showAllSuppressed ? 'Show less' : `Show all ${suppressed!.restaurants.length} restaurants`}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -350,9 +404,12 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
             {/* Demand Curves Summary */}
             {demandCurves && demandCurves.restaurants.length > 0 && (
               <div>
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
                   <BarChart3 className="w-3 h-3" /> DEMAND CURVES
                 </h4>
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  POS order volume split into 15-min intervals per hour. Blue = front-loaded (more orders in first half), orange = back-loaded, green = balanced.
+                </p>
                 <div className="space-y-2">
                   {demandCurves.restaurants.slice(0, 3).map(r => {
                     const peakHours = r.hours
