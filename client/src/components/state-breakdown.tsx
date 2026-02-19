@@ -356,7 +356,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
             {/* Quick summary badges when collapsed */}
             {!isExpanded && states.map(state => (
               <Badge key={state.abbr} variant="outline" className="text-xs gap-1.5">
-                {state.abbr}: {state.isAhead ? "+" : ""}{state.variance.toFixed(0)}%
+                {state.abbr}: <span className={state.isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{state.isAhead ? "+" : ""}{state.variance.toFixed(0)}%</span>
                 {state.xScore.hoursGraded > 0 && (
                   <span className={`font-bold ${getGradeBadgeColor(state.xScore.grade).split(' ').filter(c => c.startsWith('text-')).join(' ')}`}>
                     {state.xScore.grade}
