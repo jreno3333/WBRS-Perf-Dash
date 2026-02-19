@@ -1,7 +1,8 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, GraduationCap, ThumbsUp, Timer } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp } from "lucide-react";
 import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 
@@ -272,26 +273,49 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
     return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   };
 
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (marketStats.length === 0) {
     return null;
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {marketStats.map((market) => (
-        <Card key={market.id} data-testid={`card-market-${market.id}`}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-              <div className="flex items-center gap-2 min-w-0">
-                <div 
-                  className="w-3 h-3 rounded-full shrink-0" 
-                  style={{ backgroundColor: market.color }}
-                />
-                <span className="font-semibold truncate">{market.name}</span>
-                <Badge variant="secondary" className="text-xs shrink-0">
-                  {market.totalCount} stores
-                </Badge>
-              </div>
+    <Card>
+      <CardHeader
+        className="cursor-pointer hover:bg-muted/30 transition-colors py-3 px-4"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <MapPin className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-semibold">Markets</CardTitle>
+            {/* Quick summary badges when collapsed */}
+            {!isExpanded && marketStats.map(market => (
+              <Badge key={market.id} variant="outline" className="text-xs">
+                {market.name}: {market.isAhead ? "+" : ""}{market.variance.toFixed(0)}%
+              </Badge>
+            ))}
+          </div>
+          {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </div>
+      </CardHeader>
+      {isExpanded && (
+        <CardContent className="pt-0 px-4 pb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {marketStats.map((market) => (
+              <Card key={market.id} data-testid={`card-market-${market.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: market.color }}
+                      />
+                      <span className="font-semibold truncate">{market.name}</span>
+                      <Badge variant="secondary" className="text-xs shrink-0">
+                        {market.totalCount} stores
+                      </Badge>
+                    </div>
               {market.isAhead ? (
                 <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0 shrink-0">
                   <TrendingUp className="w-3.5 h-3.5 mr-1" />
@@ -392,6 +416,9 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
           </CardContent>
         </Card>
       ))}
-    </div>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }
