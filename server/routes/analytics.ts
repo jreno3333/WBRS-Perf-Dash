@@ -430,8 +430,8 @@ router.get("/api/analytics/consistency", async (req, res) => {
   }
 });
 
-// ─── Scheduled vs Actual / Call-in Rate ────────────────────────────────────
-// Compares projected (scheduled) labor cost vs actual labor cost by restaurant
+// ─── Schedule Compliance / Staffing Fill ───────────────────────────────────
+// Compares scheduled vs actual labor hours deployed by restaurant
 router.get("/api/analytics/schedule-compliance", async (req, res) => {
   try {
     const { date, days = "7" } = req.query;
@@ -496,9 +496,8 @@ router.get("/api/analytics/schedule-compliance", async (req, res) => {
     interface ComplianceResult {
       restaurantId: string;
       restaurantName: string;
-      scheduledLaborCost: number;
-      actualLaborCost: number;
-      compliancePercent: number;  // actual / scheduled * 100
+      compliancePercent: number;  // actual hrs / scheduled hrs * 100
+      actualHoursDeployed: number; // total labor hours worked
       underHours: number;
       overHours: number;
       totalHours: number;
@@ -514,11 +513,11 @@ router.get("/api/analytics/schedule-compliance", async (req, res) => {
       results.push({
         restaurantId: rid,
         restaurantName: name,
-        scheduledLaborCost: Math.round(data.totalScheduledCost),
-        actualLaborCost: Math.round(data.totalActualCost),
+        // Cost ratio is equivalent to hours ratio when wage rates are consistent
         compliancePercent: data.totalScheduledCost > 0
           ? Math.round((data.totalActualCost / data.totalScheduledCost) * 100)
           : 0,
+        actualHoursDeployed: Math.round(data.totalActualHours),
         underHours: data.hoursUnder,
         overHours: data.hoursOver,
         totalHours: data.totalHours,
