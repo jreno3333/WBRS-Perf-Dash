@@ -60,7 +60,7 @@ export function BadgeWithTooltip({
             {children}
           </Badge>
         </TooltipTrigger>
-        <TooltipContent side={side} className="max-w-[280px] text-xs">
+        <TooltipContent side={side} className={`text-xs ${tooltipContent ? 'max-w-[320px]' : 'max-w-[280px]'}`}>
           {tooltipContent ? (
             tooltipContent
           ) : (
