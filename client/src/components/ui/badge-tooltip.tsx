@@ -55,10 +55,17 @@ export function BadgeWithTooltip({
   return (
     <TooltipProvider delayDuration={100}>
       <Tooltip>
+        {/* Wrap in a span that stops propagation so tooltips work inside CollapsibleTrigger */}
         <TooltipTrigger asChild>
-          <Badge className={`cursor-default ${className || ''}`} variant={variant} data-testid={testId} title={nativeTitle}>
-            {children}
-          </Badge>
+          <span
+            className="inline-flex"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <Badge className={`cursor-default ${className || ''}`} variant={variant} data-testid={testId} title={nativeTitle}>
+              {children}
+            </Badge>
+          </span>
         </TooltipTrigger>
         <TooltipContent side={side} className={`text-xs ${tooltipContent ? 'max-w-[320px]' : 'max-w-[280px]'}`}>
           {tooltipContent ? (

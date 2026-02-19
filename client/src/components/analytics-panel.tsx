@@ -190,8 +190,33 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   <BadgeWithTooltip
                     variant="outline"
                     className={`text-xs ${getConsistencyColor(consistency.companyAvgConsistency)}`}
-                    tooltipTitle="Company Consistency Score (0-100)"
-                    tooltipDetail="Average consistency across all units. Measures 14-day hourly grade stability — lower variance and fewer D/F hours = higher score."
+                    tooltipContent={
+                      <div className="space-y-1.5">
+                        <div className={`font-semibold ${getConsistencyColor(consistency.companyAvgConsistency)}`}>
+                          Company Consistency: {consistency.companyAvgConsistency}/100
+                        </div>
+                        <div className="text-muted-foreground leading-snug">
+                          Measures 14-day hourly grade stability across all units. Lower variance and fewer D/F hours = higher score. Below 50 needs attention.
+                        </div>
+                        {consistency.restaurants.length > 0 && (
+                          <div className="border-t border-border/50 pt-1 space-y-0.5">
+                            <div className="font-medium text-[10px] text-muted-foreground">Lowest scoring units:</div>
+                            {[...consistency.restaurants]
+                              .sort((a, b) => a.consistencyScore - b.consistencyScore)
+                              .slice(0, 3)
+                              .map(r => (
+                                <div key={r.restaurantId} className="flex justify-between gap-3">
+                                  <span className="truncate">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
+                                  <span className={`font-semibold flex-shrink-0 ${getConsistencyColor(r.consistencyScore)}`}>
+                                    {r.consistencyScore} · {r.dfPercent}% D/F
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    }
+                    side="bottom"
                   >
                     CST: {consistency.companyAvgConsistency}
                   </BadgeWithTooltip>
