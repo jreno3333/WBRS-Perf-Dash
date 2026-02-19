@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 
 interface BadgeWithTooltipProps {
@@ -22,7 +22,7 @@ interface BadgeWithTooltipProps {
 }
 
 /**
- * Badge with a Radix Tooltip — replaces the manual CSS group-hover tooltip pattern.
+ * Badge with a click/tap Popover — works on both desktop and mobile.
  * Supports either simple title/detail props or fully custom tooltipContent.
  */
 export function BadgeWithTooltip({
@@ -37,13 +37,6 @@ export function BadgeWithTooltip({
 }: BadgeWithTooltipProps) {
   const hasTooltip = tooltipContent || tooltipTitle || tooltipDetail;
 
-  // Build native title fallback so description shows even without Radix tooltip
-  const nativeTitle = tooltipTitle
-    ? `${tooltipTitle}${typeof tooltipDetail === 'string' ? ` — ${tooltipDetail}` : ''}`
-    : typeof tooltipDetail === 'string'
-      ? tooltipDetail
-      : undefined;
-
   if (!hasTooltip) {
     return (
       <Badge className={className} variant={variant} data-testid={testId}>
@@ -53,31 +46,28 @@ export function BadgeWithTooltip({
   }
 
   return (
-    <TooltipProvider delayDuration={100}>
-      <Tooltip>
-        {/* Wrap in a span that stops propagation so tooltips work inside CollapsibleTrigger */}
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <Badge className={`cursor-default ${className || ''}`} variant={variant} data-testid={testId} title={nativeTitle}>
-              {children}
-            </Badge>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side={side} className={`text-xs ${tooltipContent ? 'max-w-[320px]' : 'max-w-[280px]'}`}>
-          {tooltipContent ? (
-            tooltipContent
-          ) : (
-            <>
-              {tooltipTitle && <div className="font-medium">{tooltipTitle}</div>}
-              {tooltipDetail && <div className="text-muted-foreground">{tooltipDetail}</div>}
-            </>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Popover>
+      <PopoverTrigger asChild>
+        <span
+          className="inline-flex"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Badge className={`cursor-pointer ${className || ''}`} variant={variant} data-testid={testId}>
+            {children}
+          </Badge>
+        </span>
+      </PopoverTrigger>
+      <PopoverContent side={side} className={`w-auto ${tooltipContent ? 'max-w-[320px]' : 'max-w-[280px]'} p-2 text-xs`}>
+        {tooltipContent ? (
+          tooltipContent
+        ) : (
+          <>
+            {tooltipTitle && <div className="font-medium">{tooltipTitle}</div>}
+            {tooltipDetail && <div className="text-muted-foreground">{tooltipDetail}</div>}
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

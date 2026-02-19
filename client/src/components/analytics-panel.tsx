@@ -97,6 +97,13 @@ interface DemandCurveData {
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 
+const formatCompactCurrency = (amount: number) => {
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${(amount / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}K`;
+  return `$${Math.round(amount)}`;
+};
+
 function getConsistencyColor(score: number): string {
   if (score >= 75) return "text-green-600 dark:text-green-400";
   if (score >= 50) return "text-amber-600 dark:text-amber-400";
@@ -296,7 +303,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                       }`}
                     >
                       <div className="font-medium text-[10px] text-muted-foreground">{day.dayName.slice(0, 3)}</div>
-                      <div className="font-semibold">{formatCurrency(day.forecast)}</div>
+                      <div className="font-semibold">{formatCompactCurrency(day.forecast)}</div>
                       {day.lastWeek > 0 && (
                         <div className={`text-[10px] ${day.forecast >= day.lastWeek ? "text-green-600" : "text-red-600"}`}>
                           {day.forecast >= day.lastWeek ? "+" : ""}{((day.forecast - day.lastWeek) / day.lastWeek * 100).toFixed(0)}%
@@ -306,7 +313,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   ))}
                 </div>
                 <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-                  <span>Week Total: {formatCurrency(weeklyForecast.forecastTotal)}</span>
+                  <span>Week Total: {formatCompactCurrency(weeklyForecast.forecastTotal)}</span>
                   <span className={weeklyForecast.variancePercent >= 0 ? "text-green-600" : "text-red-600"}>
                     vs LW: {weeklyForecast.variancePercent >= 0 ? "+" : ""}{weeklyForecast.variancePercent.toFixed(1)}%
                   </span>
