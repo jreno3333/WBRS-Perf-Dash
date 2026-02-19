@@ -206,8 +206,28 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                 {hasSuppressed && (
                   <BadgeWithTooltip
                     className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0"
-                    tooltipTitle="Estimated Suppressed Sales"
-                    tooltipDetail={`Est. ${formatCurrency(suppressed!.companyTotalSuppressed)} in lost revenue today due to understaffing or slow drive-thru service times.`}
+                    tooltipContent={
+                      <div className="space-y-1.5">
+                        <div className="font-semibold text-red-600 dark:text-red-400">
+                          {formatCurrency(suppressed!.companyTotalSuppressed)} Est. Lost Sales Today
+                        </div>
+                        <div className="text-muted-foreground leading-snug">
+                          Revenue left on the table when units are understaffed (actual labor 25%+ below scheduled) or drive-thru averages exceed 7 min during hours with $200+ in sales. Calculated as a % of last week's hourly sales.
+                        </div>
+                        {suppressed!.restaurants.length > 0 && (
+                          <div className="border-t border-border/50 pt-1 space-y-0.5">
+                            <div className="font-medium text-[10px] text-muted-foreground">Top contributors:</div>
+                            {suppressed!.restaurants.slice(0, 3).map(r => (
+                              <div key={r.restaurantId} className="flex justify-between gap-3">
+                                <span className="truncate">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
+                                <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">{formatCurrency(r.estimatedLostSales)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    }
+                    side="bottom"
                   >
                     <AlertTriangle className="w-3 h-3" />
                     {formatCurrency(suppressed!.companyTotalSuppressed)}
