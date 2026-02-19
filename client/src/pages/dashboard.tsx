@@ -442,16 +442,15 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-4">
-              <h1 className="text-base font-semibold tracking-tight">
+        <div className="container mx-auto px-3 sm:px-6">
+          <div className="flex items-center justify-between h-12 sm:h-14 gap-2">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0 shrink">
+              <h1 className="text-sm sm:text-base font-semibold tracking-tight whitespace-nowrap shrink-0">
                 MWB Performance
-                <span className="text-[10px] font-normal text-muted-foreground ml-1.5 align-top">beta v{APP_VERSION}</span>
+                <span className="hidden sm:inline text-[10px] font-normal text-muted-foreground ml-1.5 align-top">beta v{APP_VERSION}</span>
                 {isToday && (
-                  <span className="inline-flex items-center gap-1.5 ml-2 text-xs font-medium text-green-500">
+                  <span className="inline-flex items-center gap-1 ml-1.5 sm:ml-2 text-[10px] sm:text-xs font-medium text-green-500 align-middle">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                    Live
                   </span>
                 )}
               </h1>
@@ -548,7 +547,7 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 sm:px-6 py-5 space-y-5">
+      <main className="container mx-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
         {error ? (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
             <div className="flex items-center gap-3 text-destructive">
@@ -620,20 +619,20 @@ export default function Dashboard() {
             {/* Restaurant Rankings */}
             <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                    Restaurant Rankings
+                  <h2 className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    Rankings
                     {selectedMarket !== "all" && markets && (
                       <span className="text-xs font-normal normal-case text-primary">
                         {markets.find(m => m.id === selectedMarket)?.name || "Market"}
                       </span>
                     )}
                   </h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     {markets && markets.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">Market:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground hidden sm:inline">Market:</span>
                         <Select value={selectedMarket} onValueChange={setSelectedMarket}>
-                          <SelectTrigger className="w-[130px] h-7 text-xs" data-testid="select-market">
+                          <SelectTrigger className="w-[110px] sm:w-[130px] h-7 text-xs" data-testid="select-market">
                             <SelectValue placeholder="All Markets" />
                           </SelectTrigger>
                           <SelectContent>
@@ -653,10 +652,10 @@ export default function Dashboard() {
                         </Select>
                       </div>
                     )}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Sort:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground hidden sm:inline">Sort:</span>
                       <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
-                        <SelectTrigger className="w-[130px] h-7 text-xs" data-testid="select-sort">
+                        <SelectTrigger className="w-[110px] sm:w-[130px] h-7 text-xs" data-testid="select-sort">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

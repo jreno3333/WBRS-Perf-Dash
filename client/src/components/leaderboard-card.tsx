@@ -355,8 +355,8 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       className="rounded-xl border border-border/50 bg-card transition-colors hover:border-border"
       data-testid={`card-restaurant-${restaurant.restaurantId}`}
     >
-      <div className="p-3">
-        <div className="flex items-center gap-3">
+      <div className="p-2.5 sm:p-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex-shrink-0">
             {restaurant.status === "training" ? (
               <div
@@ -658,14 +658,14 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
           </div>
 
           <div className="flex-shrink-0 text-right">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-1.5 sm:gap-2">
               <div
-                className="text-base font-semibold tabular-nums"
+                className="text-sm sm:text-base font-semibold tabular-nums"
                 data-testid={`text-sales-${restaurant.restaurantId}`}
               >
                 {formatCurrency(restaurant.actualSales)}
               </div>
-              <span className={`text-xs font-medium whitespace-nowrap ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`badge-pace-${restaurant.restaurantId}`}>
+              <span className={`text-[10px] sm:text-xs font-medium whitespace-nowrap ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`badge-pace-${restaurant.restaurantId}`}>
                 {formatPercentage(paceVariance)}
               </span>
             </div>
