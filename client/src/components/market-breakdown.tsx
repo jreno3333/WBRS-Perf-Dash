@@ -291,8 +291,13 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
             <CardTitle className="text-sm font-semibold">Markets</CardTitle>
             {/* Quick summary badges when collapsed */}
             {!isExpanded && marketStats.map(market => (
-              <Badge key={market.id} variant="outline" className="text-xs">
+              <Badge key={market.id} variant="outline" className="text-xs gap-1.5">
                 {market.name}: {market.isAhead ? "+" : ""}{market.variance.toFixed(0)}%
+                {market.xScore.hoursGraded > 0 && (
+                  <span className={`font-bold ${getGradeBadgeColor(market.xScore.grade).split(' ').filter(c => c.startsWith('text-')).join(' ')}`}>
+                    {market.xScore.grade}
+                  </span>
+                )}
               </Badge>
             ))}
           </div>
