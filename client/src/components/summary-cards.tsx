@@ -316,8 +316,11 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
     gradeCounts[family as keyof typeof gradeCounts]++;
   });
   
-  const overallXScore = allHourlyScores.length > 0 
-    ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length 
+  // Count D/F hourly scores (score < 55 = D or F grade)
+  const dfHourCount = allHourlyScores.filter(s => s < 55).length;
+
+  const overallXScore = allHourlyScores.length > 0
+    ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length
     : 0;
   const overallGrade = scoreToGrade(overallXScore);
   const gradeColor = getGradeColor(overallGrade);
@@ -422,40 +425,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
               <p className="text-xs text-muted-foreground mt-0.5">
                 {allHourlyScores.length} hours graded
               </p>
-              <div className="flex items-center gap-3 mt-1.5 text-xs">
-                {totalStaffingHours > 0 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <span className={`font-medium cursor-help ${staffingProperPct >= 70 ? 'text-green-600 dark:text-green-400' : staffingProperPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                        Staff: {staffingProperPct}%
-                        {staffingProperPct < 70 && (staffingOverCount > staffingUnderCount ? ' ↑' : staffingUnderCount > staffingOverCount ? ' ↓' : '')}
-                      </span>
-                    </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
-                      <div>% of hours with proper staffing (within ±1 of target)</div>
-                      {staffingProperPct < 100 && (
-                        <div className="mt-1 text-muted-foreground">
-                          {staffingOverCount > 0 && <span>Over: {staffingOverCount}h</span>}
-                          {staffingOverCount > 0 && staffingUnderCount > 0 && <span> · </span>}
-                          {staffingUnderCount > 0 && <span>Under: {staffingUnderCount}h</span>}
-                        </div>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                )}
-                {totalSpeedHours > 0 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <span className={`font-medium cursor-help ${speedGreenPct >= 70 ? 'text-green-600 dark:text-green-400' : speedGreenPct >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                        Speed: {speedGreenPct}%
-                      </span>
-                    </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[180px] p-2 text-xs">
-                      % of hours with drive-thru time under 5 min
-                    </PopoverContent>
-                  </Popover>
-                )}
-                {dailyOsatTotals.totalResponses > 0 && (
+              {dailyOsatTotals.totalResponses > 0 && (
+                <div className="flex items-center gap-3 mt-1.5 text-xs">
                   <Popover>
                     <PopoverTrigger asChild>
                       <span className={`font-medium cursor-help ${dailyOsatPercent >= 85 ? 'text-green-600 dark:text-green-400' : dailyOsatPercent >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -466,8 +437,8 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                       Customer satisfaction rate ({dailyOsatTotals.totalResponses} survey responses from {dailyOsatTotals.restaurantsWithOsat} restaurants)
                     </PopoverContent>
                   </Popover>
-                )}
-              </div>
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {gradeCounts['A'] > 0 && (
                   <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -493,6 +464,18 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                   <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     F <span className="font-bold">{gradeCounts['F']}</span>
                   </span>
+                )}
+                {dfHourCount > 0 && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-300 dark:border-red-700 cursor-help">
+                        D/F Hours <span className="font-bold">{dfHourCount}</span>
+                      </span>
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
+                      Total hourly slots across all restaurants scoring D or F
+                    </PopoverContent>
+                  </Popover>
                 )}
               </div>
             </div>
