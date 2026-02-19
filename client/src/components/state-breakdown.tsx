@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+// Card imports removed - using plain divs for cleaner styling
+// Badge import removed - using inline styles
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
@@ -176,15 +176,15 @@ function calculateStateOsat(restaurants: RestaurantSales[]): { osatPercent: numb
 }
 
 function getOsatColor(percent: number): string {
-  if (percent >= 85) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-  if (percent >= 80) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
-  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+  if (percent >= 85) return 'bg-green-500/10 text-green-500';
+  if (percent >= 80) return 'bg-yellow-500/10 text-yellow-500';
+  return 'bg-red-500/10 text-red-500';
 }
 
 function getSpeedColor(attainment: number): string {
-  if (attainment >= 70) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-  if (attainment >= 50) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
-  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+  if (attainment >= 70) return 'bg-green-500/10 text-green-500';
+  if (attainment >= 50) return 'bg-yellow-500/10 text-yellow-500';
+  return 'bg-red-500/10 text-red-500';
 }
 
 function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttainment: number | undefined; totalCars: number; carsUnder6Min: number; storesWithData: number } {
@@ -272,17 +272,17 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
   const tennesseeSpeed = calculateStateSpeed(tennesseeRestaurants);
 
   const getGradeBadgeColor = (grade: string) => {
-    if (grade.startsWith('A')) return 'text-green-600 dark:text-green-400 bg-green-500/20 border-green-500/50';
-    if (grade.startsWith('B')) return 'text-blue-600 dark:text-blue-400 bg-blue-500/20 border-blue-500/50';
-    if (grade.startsWith('C')) return 'text-yellow-600 dark:text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
-    if (grade === 'D') return 'text-orange-600 dark:text-orange-400 bg-orange-500/20 border-orange-500/50';
-    return 'text-red-600 dark:text-red-400 bg-red-500/20 border-red-500/50';
+    if (grade.startsWith('A')) return 'text-green-500 bg-green-500/10 border-green-500/30';
+    if (grade.startsWith('B')) return 'text-blue-500 bg-blue-500/10 border-blue-500/30';
+    if (grade.startsWith('C')) return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30';
+    if (grade === 'D') return 'text-orange-500 bg-orange-500/10 border-orange-500/30';
+    return 'text-red-500 bg-red-500/10 border-red-500/30';
   };
 
   const getCrewScoreColor = (score: number) => {
-    if (score >= 75) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-    if (score >= 50) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+    if (score >= 75) return 'bg-green-500/10 text-green-500';
+    if (score >= 50) return 'bg-amber-500/10 text-amber-500';
+    return 'bg-red-500/10 text-red-500';
   };
 
   // Calculate weekly sales by state
@@ -344,59 +344,45 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <Card>
-      <CardHeader
-        className="cursor-pointer hover:bg-muted/30 transition-colors py-3 px-4"
+    <div className="rounded-xl border border-border/50 bg-card">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/20 transition-colors rounded-t-xl"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <MapPin className="w-4 h-4 text-muted-foreground" />
-            <CardTitle className="text-sm font-semibold">States</CardTitle>
-            {/* Quick summary badges when collapsed */}
-            {!isExpanded && states.map(state => (
-              <Badge key={state.abbr} variant="outline" className="text-xs gap-1.5">
-                {state.abbr}: <span className={state.isAhead ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{state.isAhead ? "+" : ""}{state.variance.toFixed(0)}%</span>
-                {state.xScore.hoursGraded > 0 && (
-                  <span className={`font-bold ${getGradeBadgeColor(state.xScore.grade).split(' ').filter(c => c.startsWith('text-')).join(' ')}`}>
-                    {state.xScore.grade}
-                  </span>
-                )}
-              </Badge>
-            ))}
-          </div>
-          {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">States</span>
+          {!isExpanded && states.map(state => (
+            <span key={state.abbr} className="text-xs text-muted-foreground">
+              {state.abbr}: <span className={`font-medium ${state.isAhead ? "text-green-500" : "text-red-500"}`}>{state.isAhead ? "+" : ""}{state.variance.toFixed(0)}%</span>
+              {state.xScore.hoursGraded > 0 && (
+                <span className={`ml-1 font-bold ${getGradeBadgeColor(state.xScore.grade).split(' ').filter(c => c.startsWith('text-')).join(' ')}`}>
+                  {state.xScore.grade}
+                </span>
+              )}
+            </span>
+          ))}
         </div>
-      </CardHeader>
+        {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
       {isExpanded && (
-        <CardContent className="pt-0 px-4 pb-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {states.map((state) => (
-              <Card key={state.abbr} data-testid={`card-state-${state.abbr.toLowerCase()}`}>
-                <CardContent className="p-4">
+              <div key={state.abbr} className="rounded-lg border border-border/40 p-4" data-testid={`card-state-${state.abbr.toLowerCase()}`}>
                   <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                     <div className="flex items-center gap-2 min-w-0">
-                      <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="font-semibold truncate">{state.name}</span>
-                      <Badge variant="secondary" className="text-xs shrink-0">
+                      <span className="font-medium text-sm truncate">{state.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
                         {state.totalCount} stores
-                      </Badge>
+                      </span>
                     </div>
-                    {state.isAhead ? (
-                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0 shrink-0">
-                        <TrendingUp className="w-3.5 h-3.5 mr-1" />
-                        +{state.variance.toFixed(1)}%
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0 shrink-0">
-                        <TrendingDown className="w-3.5 h-3.5 mr-1" />
-                        {state.variance.toFixed(1)}%
-                      </Badge>
-                    )}
+                    <span className={`text-xs font-medium shrink-0 ${state.isAhead ? "text-green-500" : "text-red-500"}`}>
+                      {state.isAhead ? "+" : ""}{state.variance.toFixed(1)}%
+                    </span>
                   </div>
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-2xl font-bold">{formatCurrency(state.todaySales)}</div>
+                <div className="text-xl font-semibold tabular-nums">{formatCurrency(state.todaySales)}</div>
                 <div className="text-xs text-muted-foreground truncate">
                   vs {formatCurrency(state.lastWeekSales)} last week
                 </div>
@@ -406,7 +392,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
                       <span className="text-xs text-muted-foreground">WTD:</span>
                       <span className="text-xs font-semibold">{formatCurrency(state.weekly.current)}</span>
                       {state.weekly.prior > 0 && (
-                        <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.variance >= 0 ? "text-green-500" : "text-red-500"}`}>
                           {state.weekly.variance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                           vs LW {state.weekly.variance >= 0 ? "+" : ""}{Math.round(state.weekly.variance)}%
                         </span>
@@ -415,9 +401,9 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
                     {state.weekly.eowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className="text-xs text-muted-foreground">EOW:</span>
-                        <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">{formatCurrency(state.weekly.eowForecast)}</span>
+                        <span className="text-xs font-semibold text-primary">{formatCurrency(state.weekly.eowForecast)}</span>
                         {state.weekly.priorFull > 0 && (
-                          <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.eowVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                          <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.eowVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
                             {state.weekly.eowVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                             vs LW {state.weekly.eowVariance >= 0 ? "+" : ""}{Math.round(state.weekly.eowVariance)}%
                           </span>
@@ -479,12 +465,11 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
       ))}
           </div>
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }

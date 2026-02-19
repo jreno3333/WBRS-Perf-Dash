@@ -1,5 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, TrendingUp, TrendingDown, Target, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -38,19 +37,19 @@ const scoreToGrade = (score: number): string => {
 };
 
 const getGradeColor = (grade: string): string => {
-  if (grade.startsWith('A')) return 'text-green-600 dark:text-green-400';
-  if (grade.startsWith('B')) return 'text-blue-600 dark:text-blue-400';
-  if (grade.startsWith('C')) return 'text-yellow-600 dark:text-yellow-400';
-  if (grade === 'D') return 'text-orange-600 dark:text-orange-400';
-  return 'text-red-600 dark:text-red-400';
+  if (grade.startsWith('A')) return 'text-green-500';
+  if (grade.startsWith('B')) return 'text-blue-500';
+  if (grade.startsWith('C')) return 'text-yellow-500';
+  if (grade === 'D') return 'text-orange-500';
+  return 'text-red-500';
 };
 
 const getGradeBgColor = (grade: string): string => {
-  if (grade.startsWith('A')) return 'bg-green-500/20 border-green-500/50';
-  if (grade.startsWith('B')) return 'bg-blue-500/20 border-blue-500/50';
-  if (grade.startsWith('C')) return 'bg-yellow-500/20 border-yellow-500/50';
-  if (grade === 'D') return 'bg-orange-500/20 border-orange-500/50';
-  return 'bg-red-500/20 border-red-500/50';
+  if (grade.startsWith('A')) return 'bg-green-500/10 border-green-500/30';
+  if (grade.startsWith('B')) return 'bg-blue-500/10 border-blue-500/30';
+  if (grade.startsWith('C')) return 'bg-yellow-500/10 border-yellow-500/30';
+  if (grade === 'D') return 'bg-orange-500/10 border-orange-500/30';
+  return 'bg-red-500/10 border-red-500/30';
 };
 
 // WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
@@ -400,215 +399,164 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
   })).reverse();
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      {/* Execution Score - Prominent Display */}
-      <Card data-testid="card-summary-execution" className={`border-2 ${gradeBgColor}`}>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-4">
-            <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${gradeBgColor} border-2`}>
-              <span className={`text-4xl font-bold ${gradeColor}`} data-testid="text-execution-grade">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Execution Score */}
+      <div data-testid="card-summary-execution" className="rounded-xl border border-border/60 bg-card p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Execution</p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Info className="w-3 h-3 text-muted-foreground/50 cursor-help" />
+                </PopoverTrigger>
+                <PopoverContent side="top" className="w-auto max-w-[200px] p-2 text-xs">
+                  Overall grade based on sales vs LW, drive-thru speed, and staffing levels
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className={`text-2xl font-bold ${gradeColor}`} data-testid="text-execution-grade">
                 {overallGrade}
               </span>
+              <span className="text-xs text-muted-foreground">
+                {allHourlyScores.length} hrs
+              </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-lg font-semibold">Daily Execution</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
-                  </PopoverTrigger>
-                  <PopoverContent side="top" className="w-auto max-w-[200px] p-2 text-xs">
-                    Overall grade based on sales vs LW, drive-thru speed, and staffing levels
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {allHourlyScores.length} hours graded
+            {dailyOsatTotals.totalResponses > 0 && (
+              <p className={`text-xs mt-1 ${dailyOsatPercent >= 85 ? 'text-green-500' : dailyOsatPercent >= 80 ? 'text-yellow-500' : 'text-red-500'}`}>
+                OSAT {Math.round(dailyOsatPercent)}%
+                <span className="text-muted-foreground ml-1">({dailyOsatTotals.totalResponses})</span>
               </p>
-              {dailyOsatTotals.totalResponses > 0 && (
-                <div className="flex items-center gap-3 mt-1.5 text-xs">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <span className={`font-medium cursor-help ${dailyOsatPercent >= 85 ? 'text-green-600 dark:text-green-400' : dailyOsatPercent >= 80 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                        OSAT: {Math.round(dailyOsatPercent)}% ({dailyOsatTotals.totalResponses})
-                      </span>
-                    </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
-                      Customer satisfaction rate ({dailyOsatTotals.totalResponses} survey responses from {dailyOsatTotals.restaurantsWithOsat} restaurants)
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {gradeCounts['A'] > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    A <span className="font-bold">{gradeCounts['A']}</span>
-                  </span>
-                )}
-                {gradeCounts['B'] > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                    B <span className="font-bold">{gradeCounts['B']}</span>
-                  </span>
-                )}
-                {gradeCounts['C'] > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-                    C <span className="font-bold">{gradeCounts['C']}</span>
-                  </span>
-                )}
-                {gradeCounts['D'] > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                    D <span className="font-bold">{gradeCounts['D']}</span>
-                  </span>
-                )}
-                {gradeCounts['F'] > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                    F <span className="font-bold">{gradeCounts['F']}</span>
-                  </span>
-                )}
-                {dfHourCount > 0 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-300 dark:border-red-700 cursor-help">
-                        D/F Hours <span className="font-bold">{dfHourCount}</span>
-                      </span>
-                    </PopoverTrigger>
-                    <PopoverContent side="bottom" className="w-auto max-w-[200px] p-2 text-xs">
-                      Total hourly slots across all restaurants scoring D or F
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </div>
-            </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex flex-wrap gap-1 justify-end max-w-[120px]">
+            {gradeCounts['A'] > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-green-500/10 text-green-500">
+                A:{gradeCounts['A']}
+              </span>
+            )}
+            {gradeCounts['B'] > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-500">
+                B:{gradeCounts['B']}
+              </span>
+            )}
+            {gradeCounts['C'] > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-yellow-500/10 text-yellow-500">
+                C:{gradeCounts['C']}
+              </span>
+            )}
+            {gradeCounts['D'] > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-orange-500/10 text-orange-500">
+                D:{gradeCounts['D']}
+              </span>
+            )}
+            {gradeCounts['F'] > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-red-500/10 text-red-500">
+                F:{gradeCounts['F']}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Total Sales Today */}
-      <Card data-testid="card-summary-sales">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
-              <DollarSign className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">Total Sales</p>
-              <div className="flex items-baseline gap-1.5">
-                <p className="text-xl font-bold" data-testid="text-total-sales">
-                  {formatCurrency(totalTodaySales)}
-                </p>
-                <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${lwVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                  {lwVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                  LW {lwVariance >= 0 ? "+" : ""}{Math.round(lwVariance)}% ({lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)})
+      <div data-testid="card-summary-sales" className="rounded-xl border border-border/60 bg-card p-4">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+        <div className="flex items-baseline gap-2 mt-1">
+          <p className="text-2xl font-bold tabular-nums" data-testid="text-total-sales">
+            {formatCurrency(totalTodaySales)}
+          </p>
+          <span className={`text-xs font-medium ${lwVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
+            {lwVariance >= 0 ? "+" : ""}{lwVariance.toFixed(1)}%
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          vs LW {lwDollarDiff >= 0 ? "+" : ""}{formatCurrency(lwDollarDiff)}
+        </p>
+        {weeklySalesData && weeklyCurrentTotal > 0 && (
+          <div className="mt-2 pt-2 border-t border-border/40 space-y-0.5">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-muted-foreground">WTD</span>
+              <span className="font-semibold tabular-nums" data-testid="text-weekly-sales-total">
+                {formatCurrency(weeklyCurrentTotal)}
+              </span>
+              {weeklyPriorTotal > 0 && (
+                <span className={`font-medium ${weeklyVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  {weeklyVariance >= 0 ? "+" : ""}{Math.round(weeklyVariance)}%
                 </span>
-              </div>
-              {weeklySalesData && weeklyCurrentTotal > 0 && (
-                <div className="mt-1.5 pt-1.5 border-t border-border/50">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs text-muted-foreground">WTD:</span>
-                    <span className="text-xs font-semibold" data-testid="text-weekly-sales-total">
-                      {formatCurrency(weeklyCurrentTotal)}
-                    </span>
-                    {weeklyPriorTotal > 0 && (
-                      <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${weeklyVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                        {weeklyVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        vs LW {weeklyVariance >= 0 ? "+" : ""}{Math.round(weeklyVariance)}%
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      ({weeklySalesData.daysInCurrentWeek}d)
-                    </span>
-                  </div>
-                  {weeklyEowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span className="text-xs text-muted-foreground">EOW:</span>
-                      <span className="text-xs font-semibold text-purple-600 dark:text-purple-400" data-testid="text-eow-forecast-total">
-                        {formatCurrency(weeklyEowForecast)}
-                      </span>
-                      {weeklyPriorWeekFull > 0 && (
-                        <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${eowVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                          {eowVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          vs LW {eowVariance >= 0 ? "+" : ""}{Math.round(eowVariance)}%
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
               )}
             </div>
+            {weeklyEowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">EOW</span>
+                <span className="font-semibold tabular-nums text-primary" data-testid="text-eow-forecast-total">
+                  {formatCurrency(weeklyEowForecast)}
+                </span>
+                {weeklyPriorWeekFull > 0 && (
+                  <span className={`font-medium ${eowVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
+                    {eowVariance >= 0 ? "+" : ""}{Math.round(eowVariance)}%
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
       {/* Projected Daily Sales */}
-      <Card data-testid="card-summary-projected">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-              <Target className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm text-muted-foreground">Projected Daily Total</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </PopoverTrigger>
-                  <PopoverContent side="top" className="w-auto max-w-[220px] p-2 text-xs">
-                    Today's sales plus remaining hours from last week
-                  </PopoverContent>
-                </Popover>
-              </div>
-              {projectedData.isDayComplete ? (
-                <>
-                  <div className="flex items-baseline gap-1.5">
-                    <p className="text-xl font-bold" data-testid="text-projected-daily">
-                      {formatCurrency(projectedData.actualSoFar)}
-                    </p>
-                    <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                      {totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay 
-                        ? <TrendingUp className="w-3 h-3" /> 
-                        : <TrendingDown className="w-3 h-3" />}
-                      vs LW
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-baseline gap-1.5">
-                    <p className="text-xl font-bold" data-testid="text-projected-daily">
-                      {formatCurrency(projectedData.projected)}
-                    </p>
-                    <span className={`text-xs font-medium flex items-center gap-0.5 whitespace-nowrap ${totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                      {totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay 
-                        ? <TrendingUp className="w-3 h-3" /> 
-                        : <TrendingDown className="w-3 h-3" />}
-                      vs LW
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} LW remaining
-                  </p>
-                </>
-              )}
-              {yoyData && (() => {
-                const yoyTotalPrior = sssRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
-                if (yoyTotalPrior > 0) {
-                  const projectedSSSTotal = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
-                  const projectedYoYVariance = ((projectedSSSTotal - yoyTotalPrior) / yoyTotalPrior) * 100;
-                  const projYoYDiff = projectedSSSTotal - yoyTotalPrior;
-                  return (
-                    <p className={`text-xs font-medium mt-1 flex items-center gap-1 whitespace-nowrap ${projectedYoYVariance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`} data-testid="text-yoy-projected-summary">
-                      {projectedYoYVariance >= 0 ? <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 flex-shrink-0" />}
-                      SSS YoY {sssRestaurants.length}/{activeRestaurants.length}: {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}% ({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})
-                    </p>
-                  );
-                }
-                return null;
-              })()}
-            </div>
+      <div data-testid="card-summary-projected" className="rounded-xl border border-border/60 bg-card p-4">
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Projected</p>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Info className="w-3 h-3 text-muted-foreground/50 cursor-help" />
+            </PopoverTrigger>
+            <PopoverContent side="top" className="w-auto max-w-[220px] p-2 text-xs">
+              Today's sales plus remaining hours from last week
+            </PopoverContent>
+          </Popover>
+        </div>
+        {projectedData.isDayComplete ? (
+          <div className="flex items-baseline gap-2 mt-1">
+            <p className="text-2xl font-bold tabular-nums" data-testid="text-projected-daily">
+              {formatCurrency(projectedData.actualSoFar)}
+            </p>
+            <span className={`text-xs font-medium ${totalLastWeekFullDay > 0 && projectedData.actualSoFar >= totalLastWeekFullDay ? "text-green-500" : "text-red-500"}`}>
+              vs LW
+            </span>
           </div>
-        </CardContent>
-      </Card>
+        ) : (
+          <>
+            <div className="flex items-baseline gap-2 mt-1">
+              <p className="text-2xl font-bold tabular-nums" data-testid="text-projected-daily">
+                {formatCurrency(projectedData.projected)}
+              </p>
+              <span className={`text-xs font-medium ${totalLastWeekFullDay > 0 && projectedData.projected >= totalLastWeekFullDay ? "text-green-500" : "text-red-500"}`}>
+                vs LW
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+              {formatCurrency(projectedData.actualSoFar)} actual + {formatCurrency(projectedData.remainingForecast)} remaining
+            </p>
+          </>
+        )}
+        {yoyData && (() => {
+          const yoyTotalPrior = sssRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
+          if (yoyTotalPrior > 0) {
+            const projectedSSSTotal = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+            const projectedYoYVariance = ((projectedSSSTotal - yoyTotalPrior) / yoyTotalPrior) * 100;
+            const projYoYDiff = projectedSSSTotal - yoyTotalPrior;
+            return (
+              <p className={`text-xs font-medium mt-1.5 tabular-nums ${projectedYoYVariance >= 0 ? "text-blue-500" : "text-orange-500"}`} data-testid="text-yoy-projected-summary">
+                SSS YoY {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}%
+                <span className="text-muted-foreground ml-1">({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})</span>
+              </p>
+            );
+          }
+          return null;
+        })()}
+      </div>
     </div>
   );
 }
