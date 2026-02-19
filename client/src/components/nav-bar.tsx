@@ -14,7 +14,7 @@ export function NavBar() {
   const [location] = useLocation();
 
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="flex items-center gap-0.5 sm:gap-1">
       {navItems.map((item) => {
         const isActive = location === item.href;
         return (
@@ -22,7 +22,7 @@ export function NavBar() {
             <button
               data-testid={item.testId}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                flex items-center gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
                 ${isActive
                   ? "bg-secondary text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
@@ -35,7 +35,7 @@ export function NavBar() {
           </Link>
         );
       })}
-      <div className="ml-1 pl-1 border-l border-border">
+      <div className="ml-0.5 sm:ml-1 pl-0.5 sm:pl-1 border-l border-border">
         <ThemeToggle />
       </div>
     </nav>

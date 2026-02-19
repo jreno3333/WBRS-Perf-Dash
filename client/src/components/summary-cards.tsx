@@ -399,9 +399,9 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
   })).reverse();
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
       {/* Execution Score */}
-      <div data-testid="card-summary-execution" className="rounded-xl border border-border/60 bg-card p-4">
+      <div data-testid="card-summary-execution" className="rounded-xl border border-border/60 bg-card p-3 sm:p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
@@ -461,7 +461,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
       </div>
 
       {/* Total Sales Today */}
-      <div data-testid="card-summary-sales" className="rounded-xl border border-border/60 bg-card p-4">
+      <div data-testid="card-summary-sales" className="rounded-xl border border-border/60 bg-card p-3 sm:p-4">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
         <div className="flex items-baseline gap-2 mt-1">
           <p className="text-2xl font-bold tabular-nums" data-testid="text-total-sales">
@@ -505,7 +505,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
       </div>
 
       {/* Projected Daily Sales */}
-      <div data-testid="card-summary-projected" className="rounded-xl border border-border/60 bg-card p-4">
+      <div data-testid="card-summary-projected" className="rounded-xl border border-border/60 bg-card p-3 sm:p-4">
         <div className="flex items-center gap-1.5">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Projected</p>
           <Popover>
