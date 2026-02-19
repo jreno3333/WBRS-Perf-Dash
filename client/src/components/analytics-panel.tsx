@@ -68,13 +68,18 @@ interface ComplianceData {
 }
 
 interface SuppressedData {
+  date: string;
   companyTotalSuppressed: number;
+  companyTotalSales: number;
+  companyLostPercent: number;
   restaurants: {
     restaurantId: string;
     restaurantName: string;
     estimatedLostSales: number;
     understaffedHours: number;
     slowDtHours: number;
+    totalRestaurantSales: number;
+    lostPercent: number;
   }[];
 }
 
@@ -165,7 +170,6 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: isToday,
   });
 
   const { data: demandCurves } = useQuery<DemandCurveData>({
@@ -246,7 +250,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                     tooltipContent={
                       <div className="space-y-1.5">
                         <div className="font-semibold text-red-600 dark:text-red-400">
-                          {formatCurrency(suppressed!.companyTotalSuppressed)} Est. Lost Sales Today
+                          {formatCurrency(suppressed!.companyTotalSuppressed)} Est. Lost Sales ({suppressed!.companyLostPercent}% of sales)
                         </div>
                         <div className="text-muted-foreground leading-snug">
                           Revenue left on the table when units are understaffed (actual labor 25%+ below scheduled) or drive-thru averages exceed 7 min during hours with $200+ in sales. Calculated as a % of last week's hourly sales.
@@ -257,7 +261,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                             {suppressed!.restaurants.slice(0, 3).map(r => (
                               <div key={r.restaurantId} className="flex justify-between gap-3">
                                 <span className="truncate">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
-                                <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">{formatCurrency(r.estimatedLostSales)}</span>
+                                <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">{formatCurrency(r.estimatedLostSales)} ({r.lostPercent}%)</span>
                               </div>
                             ))}
                           </div>
@@ -267,7 +271,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                     side="bottom"
                   >
                     <AlertTriangle className="w-3 h-3" />
-                    {formatCurrency(suppressed!.companyTotalSuppressed)}
+                    {formatCurrency(suppressed!.companyTotalSuppressed)} · {suppressed!.companyLostPercent}%
                   </BadgeWithTooltip>
                 )}
                 {upcomingAnniversaries.length > 0 && (
@@ -424,7 +428,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
             {hasSuppressed && (
               <div>
                 <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> SUPPRESSED SALES — {formatCurrency(suppressed!.companyTotalSuppressed)} est. lost today
+                  <AlertTriangle className="w-3 h-3" /> SUPPRESSED SALES — {formatCurrency(suppressed!.companyTotalSuppressed)} est. lost ({suppressed!.companyLostPercent}% of {formatCurrency(suppressed!.companyTotalSales)} sales)
                 </h4>
                 <p className="text-[10px] text-muted-foreground mb-2">
                   Estimated revenue lost when a unit is understaffed (actual labor 25%+ below scheduled) or drive-thru avg exceeds 7 min. Calculated as a % of last week's hourly sales.
@@ -433,7 +437,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
                     <span>Restaurant</span>
                     <div className="flex items-center gap-2">
-                      <span className="w-12 text-center">Est. Lost</span>
+                      <span className="w-16 text-center">Est. Lost</span>
                       <span className="w-28 text-right">Cause</span>
                     </div>
                   </div>
@@ -441,7 +445,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                     <div key={r.restaurantId} className="flex items-center justify-between text-xs">
                       <span className="truncate mr-2">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-red-600 w-12 text-center">{formatCurrency(r.estimatedLostSales)}</span>
+                        <span className="font-bold text-red-600 w-16 text-center">{formatCurrency(r.estimatedLostSales)} <span className="font-normal text-[10px]">({r.lostPercent}%)</span></span>
                         <span className="text-muted-foreground text-[10px] w-28 text-right">
                           {r.understaffedHours > 0 && `${r.understaffedHours}h understaffed`}
                           {r.understaffedHours > 0 && r.slowDtHours > 0 && " + "}
