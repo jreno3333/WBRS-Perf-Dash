@@ -4,7 +4,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
   { href: "/", icon: Trophy, label: "Rankings", testId: "nav-leaderboard" },
-  { href: "/dashboard-view", icon: Grid3X3, label: "Heatmap", testId: "nav-dashboard-view" },
+  { href: "/dashboard-view", icon: Grid3X3, label: "Daily AI", testId: "nav-dashboard-view" },
   { href: "/history", icon: TrendingUp, label: "Trends", testId: "nav-history" },
   { href: "/crew", icon: Users, label: "People", testId: "nav-crew" },
   { href: "/map", icon: MapPin, label: "Map", testId: "nav-map" },
