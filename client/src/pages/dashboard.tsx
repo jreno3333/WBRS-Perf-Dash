@@ -1,3 +1,4 @@
+import { APP_VERSION } from "@/lib/version";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -446,6 +447,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-4">
               <h1 className="text-base font-semibold tracking-tight">
                 MWB Performance
+                <span className="text-[10px] font-normal text-muted-foreground ml-1.5 align-top">beta v{APP_VERSION}</span>
                 {isToday && (
                   <span className="inline-flex items-center gap-1.5 ml-2 text-xs font-medium text-green-500">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
