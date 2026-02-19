@@ -37,6 +37,13 @@ export function BadgeWithTooltip({
 }: BadgeWithTooltipProps) {
   const hasTooltip = tooltipContent || tooltipTitle || tooltipDetail;
 
+  // Build native title fallback so description shows even without Radix tooltip
+  const nativeTitle = tooltipTitle
+    ? `${tooltipTitle}${typeof tooltipDetail === 'string' ? ` — ${tooltipDetail}` : ''}`
+    : typeof tooltipDetail === 'string'
+      ? tooltipDetail
+      : undefined;
+
   if (!hasTooltip) {
     return (
       <Badge className={className} variant={variant} data-testid={testId}>
@@ -46,14 +53,14 @@ export function BadgeWithTooltip({
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delayDuration={100}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge className={`cursor-help ${className || ''}`} variant={variant} data-testid={testId}>
+          <Badge className={`cursor-default ${className || ''}`} variant={variant} data-testid={testId} title={nativeTitle}>
             {children}
           </Badge>
         </TooltipTrigger>
-        <TooltipContent side={side} className="max-w-[220px] text-xs">
+        <TooltipContent side={side} className="max-w-[280px] text-xs">
           {tooltipContent ? (
             tooltipContent
           ) : (

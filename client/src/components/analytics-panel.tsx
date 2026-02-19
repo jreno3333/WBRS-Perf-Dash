@@ -184,8 +184,8 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   <BadgeWithTooltip
                     variant="outline"
                     className={`text-xs ${weeklyForecast.variancePercent >= 0 ? "text-green-600 border-green-300" : "text-red-600 border-red-300"}`}
-                    tooltipTitle="Weekly Forecast"
-                    tooltipDetail={`${formatCurrency(weeklyForecast.forecastTotal)} projected vs ${formatCurrency(weeklyForecast.lastWeekTotal)} LW`}
+                    tooltipTitle="Weekly Sales Forecast (Sat-Fri)"
+                    tooltipDetail={`Projected week total: ${formatCurrency(weeklyForecast.forecastTotal)} vs last week: ${formatCurrency(weeklyForecast.lastWeekTotal)}. Based on actual days completed + LW remaining days.`}
                   >
                     WK {weeklyForecast.variancePercent >= 0 ? "+" : ""}{weeklyForecast.variancePercent.toFixed(1)}%
                   </BadgeWithTooltip>
@@ -194,8 +194,8 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                   <BadgeWithTooltip
                     variant="outline"
                     className={`text-xs ${getConsistencyColor(consistency.companyAvgConsistency)}`}
-                    tooltipTitle="Consistency Score"
-                    tooltipDetail="14-day hourly grade stability + D/F frequency"
+                    tooltipTitle="Company Consistency Score (0-100)"
+                    tooltipDetail="Average consistency across all units. Measures 14-day hourly grade stability — lower variance and fewer D/F hours = higher score."
                   >
                     CST: {consistency.companyAvgConsistency}
                   </BadgeWithTooltip>
@@ -203,8 +203,8 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                 {hasSuppressed && (
                   <BadgeWithTooltip
                     className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0"
-                    tooltipTitle="Suppressed Sales"
-                    tooltipDetail={`Est. ${formatCurrency(suppressed!.companyTotalSuppressed)} lost to understaffing/slow DT`}
+                    tooltipTitle="Estimated Suppressed Sales"
+                    tooltipDetail={`Est. ${formatCurrency(suppressed!.companyTotalSuppressed)} in lost revenue today due to understaffing or slow drive-thru service times.`}
                   >
                     <AlertTriangle className="w-3 h-3" />
                     {formatCurrency(suppressed!.companyTotalSuppressed)}
