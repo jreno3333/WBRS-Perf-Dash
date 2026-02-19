@@ -60,6 +60,7 @@ interface ComplianceData {
     restaurantId: string;
     restaurantName: string;
     compliancePercent: number;
+    actualHoursDeployed: number;
     callInRate: number;
     underHours: number;
     totalHours: number;
@@ -368,29 +369,33 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                     <Clock className="w-3 h-3" /> SCHEDULE COMPLIANCE (7-DAY)
                   </h4>
                   <p className="text-[10px] text-muted-foreground mb-2">
-                    Actual labor $ vs scheduled labor $. 90-110% is on target (green). "Understaffed hrs" = hours where actual was 25%+ below scheduled.
+                    Labor hours deployed vs scheduled. 90-110% is on target (green). "No-shows" = time slots where attendance was 25%+ below schedule.
                   </p>
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
                       <span>Restaurant</span>
                       <div className="flex items-center gap-2">
-                        <span className="w-10 text-center">$ Fill</span>
-                        <span className="w-20 text-right">Understaffed</span>
+                        <span className="w-12 text-center">Staff Fill</span>
+                        <span className="w-12 text-center">Hrs</span>
+                        <span className="w-16 text-right">No-shows</span>
                       </div>
                     </div>
                     {(showAllCompliance ? compliance.restaurants : compliance.restaurants.slice(0, 5)).map(r => (
                       <div key={r.restaurantId} className="flex items-center justify-between text-xs">
                         <span className="truncate mr-2">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
                         <div className="flex items-center gap-2">
-                          <span className={`font-bold w-10 text-center ${getComplianceColor(r.compliancePercent)}`}>
+                          <span className={`font-bold w-12 text-center ${getComplianceColor(r.compliancePercent)}`}>
                             {r.compliancePercent}%
                           </span>
+                          <span className="text-muted-foreground text-[10px] w-12 text-center">
+                            {r.actualHoursDeployed?.toLocaleString() ?? '—'}
+                          </span>
                           {r.callInRate > 0 ? (
-                            <span className="text-red-500 text-[10px] w-20 text-right" title={`${r.callInRate}% of hours had actual labor 25%+ below scheduled`}>
-                              {r.callInRate}% of hrs short
+                            <span className="text-red-500 text-[10px] w-16 text-right" title={`${r.callInRate}% of time slots had attendance 25%+ below schedule`}>
+                              {r.callInRate}% of hrs
                             </span>
                           ) : (
-                            <span className="text-muted-foreground text-[10px] w-20 text-right">—</span>
+                            <span className="text-muted-foreground text-[10px] w-16 text-right">—</span>
                           )}
                         </div>
                       </div>
