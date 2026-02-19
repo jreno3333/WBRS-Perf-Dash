@@ -171,6 +171,9 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
 
   const upcomingAnniversaries = anniversaries?.anniversaries?.filter(a => a.daysUntil <= 7) || [];
   const hasSuppressed = suppressed && suppressed.companyTotalSuppressed > 0;
+  const avgCompliance = compliance?.restaurants.length
+    ? Math.round(compliance.restaurants.reduce((sum, r) => sum + r.compliancePercent, 0) / compliance.restaurants.length)
+    : null;
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
@@ -182,25 +185,51 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                 <Activity className="w-4 h-4 text-muted-foreground" />
                 <CardTitle className="text-sm font-semibold">Analytics</CardTitle>
 
-                {/* Quick summary badges */}
-                {weeklyForecast && (
-                  <BadgeWithTooltip
-                    variant="outline"
-                    className={`text-xs ${weeklyForecast.variancePercent >= 0 ? "text-green-600 border-green-300" : "text-red-600 border-red-300"}`}
-                    tooltipTitle="Weekly Sales Forecast (Sat-Fri)"
-                    tooltipDetail={`Projected week total: ${formatCurrency(weeklyForecast.forecastTotal)} vs last week: ${formatCurrency(weeklyForecast.lastWeekTotal)}. Based on actual days completed + LW remaining days.`}
-                  >
-                    WK {weeklyForecast.variancePercent >= 0 ? "+" : ""}{weeklyForecast.variancePercent.toFixed(1)}%
-                  </BadgeWithTooltip>
-                )}
+                {/* Quick summary badges — collapsed header shows consistency, schedule, suppressed */}
                 {consistency && (
                   <BadgeWithTooltip
                     variant="outline"
                     className={`text-xs ${getConsistencyColor(consistency.companyAvgConsistency)}`}
-                    tooltipTitle="Company Consistency Score (0-100)"
-                    tooltipDetail="Average consistency across all units. Measures 14-day hourly grade stability — lower variance and fewer D/F hours = higher score."
+                    tooltipContent={
+                      <div className="space-y-1.5">
+                        <div className={`font-semibold ${getConsistencyColor(consistency.companyAvgConsistency)}`}>
+                          Company Consistency: {consistency.companyAvgConsistency}/100
+                        </div>
+                        <div className="text-muted-foreground leading-snug">
+                          Measures 14-day hourly grade stability across all units. Lower variance and fewer D/F hours = higher score. Below 50 needs attention.
+                        </div>
+                        {consistency.restaurants.length > 0 && (
+                          <div className="border-t border-border/50 pt-1 space-y-0.5">
+                            <div className="font-medium text-[10px] text-muted-foreground">Lowest scoring units:</div>
+                            {[...consistency.restaurants]
+                              .sort((a, b) => a.consistencyScore - b.consistencyScore)
+                              .slice(0, 3)
+                              .map(r => (
+                                <div key={r.restaurantId} className="flex justify-between gap-3">
+                                  <span className="truncate">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
+                                  <span className={`font-semibold flex-shrink-0 ${getConsistencyColor(r.consistencyScore)}`}>
+                                    {r.consistencyScore} · {r.dfPercent}% D/F
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    }
+                    side="bottom"
                   >
                     CST: {consistency.companyAvgConsistency}
+                  </BadgeWithTooltip>
+                )}
+                {avgCompliance !== null && (
+                  <BadgeWithTooltip
+                    variant="outline"
+                    className={`text-xs ${getComplianceColor(avgCompliance)}`}
+                    tooltipTitle={`Schedule Compliance: ${avgCompliance}%`}
+                    tooltipDetail="7-day avg of actual vs. scheduled hours across all units. 90-110% is on target; below 90% = understaffed, above 110% = overstaffed."
+                  >
+                    <Clock className="w-3 h-3" />
+                    SCH: {avgCompliance}%
                   </BadgeWithTooltip>
                 )}
                 {hasSuppressed && (
