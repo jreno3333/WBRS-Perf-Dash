@@ -2,9 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE - Professional Sales Dashboard Theme */
+/* LIGHT MODE - Clean Minimal Finance-Inspired Theme */
 :root {
-  --button-outline: rgba(0,0,0, .10);
+  --button-outline: rgba(0,0,0, .08);
   --badge-outline: rgba(0,0,0, .05);
 
   /* Automatic computation of border around primary / danger buttons */
@@ -12,66 +12,66 @@
 
   /* Backgrounds applied on top of other backgrounds when hovered/active */
   --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --elevate-2: rgba(0,0,0, .06);
 
-  --background: 210 20% 98%;
-  --foreground: 222 47% 11%;
-  --border: 214 20% 89%;
+  --background: 0 0% 98%;
+  --foreground: 0 0% 9%;
+  --border: 0 0% 91%;
 
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 20% 92%;
+  --card-foreground: 0 0% 9%;
+  --card-border: 0 0% 93%;
 
-  --sidebar: 222 47% 11%;
-  --sidebar-foreground: 210 20% 98%;
-  --sidebar-border: 222 40% 18%;
-  --sidebar-primary: 24 91% 53%;
+  --sidebar: 0 0% 7%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-border: 0 0% 14%;
+  --sidebar-primary: 172 66% 50%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 40% 18%;
-  --sidebar-accent-foreground: 210 20% 98%;
-  --sidebar-ring: 24 91% 53%;
+  --sidebar-accent: 0 0% 14%;
+  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-ring: 172 66% 50%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 20% 89%;
+  --popover-foreground: 0 0% 9%;
+  --popover-border: 0 0% 91%;
 
-  --primary: 24 91% 53%;
+  --primary: 172 66% 50%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 20% 96%;
-  --secondary-foreground: 222 47% 11%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 9%;
 
-  --muted: 210 20% 96%;
-  --muted-foreground: 215 16% 47%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
 
-  --accent: 210 20% 94%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 0 0% 94%;
+  --accent-foreground: 0 0% 9%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 214 20% 89%;
-  --ring: 24 91% 53%;
-  
-  /* Chart colors for pace visualization */
+  --input: 0 0% 90%;
+  --ring: 172 66% 50%;
+
+  /* Chart colors */
   --chart-1: 142 71% 45%;
   --chart-2: 221 83% 53%;
   --chart-3: 262 83% 58%;
-  --chart-4: 25 95% 53%;
+  --chart-4: 172 66% 50%;
   --chart-5: 340 75% 55%;
 
   --font-sans: 'Inter', sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
-  --radius: .5rem;
-  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.03);
-  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.05);
-  --shadow-sm: 0px 2px 4px 0px rgba(0,0,0,0.05), 0px 1px 2px -1px rgba(0,0,0,0.04);
-  --shadow: 0px 4px 6px -1px rgba(0,0,0,0.07), 0px 2px 4px -2px rgba(0,0,0,0.05);
-  --shadow-md: 0px 6px 10px -1px rgba(0,0,0,0.08), 0px 4px 6px -2px rgba(0,0,0,0.05);
-  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,0.08), 0px 4px 6px -4px rgba(0,0,0,0.04);
-  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,0.08), 0px 8px 10px -6px rgba(0,0,0,0.04);
-  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,0.15);
+  --radius: .625rem;
+  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.02);
+  --shadow-xs: 0px 1px 2px 0px rgba(0,0,0,0.03);
+  --shadow-sm: 0px 1px 3px 0px rgba(0,0,0,0.04), 0px 1px 2px -1px rgba(0,0,0,0.02);
+  --shadow: 0px 2px 4px -1px rgba(0,0,0,0.05), 0px 1px 2px -2px rgba(0,0,0,0.03);
+  --shadow-md: 0px 4px 6px -1px rgba(0,0,0,0.05), 0px 2px 4px -2px rgba(0,0,0,0.03);
+  --shadow-lg: 0px 8px 12px -3px rgba(0,0,0,0.06), 0px 4px 6px -4px rgba(0,0,0,0.03);
+  --shadow-xl: 0px 16px 20px -5px rgba(0,0,0,0.06), 0px 6px 8px -6px rgba(0,0,0,0.03);
+  --shadow-2xl: 0px 20px 40px -12px rgba(0,0,0,0.12);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -93,68 +93,68 @@
 }
 
 .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(255,255,255, .08);
+  --badge-outline: rgba(255,255,255, .06);
 
   --opaque-button-border-intensity: 9;
 
   /* Backgrounds applied on top of other backgrounds when hovered/active */
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-1: rgba(255,255,255, .03);
+  --elevate-2: rgba(255,255,255, .06);
 
-  --background: 222 47% 6%;
-  --foreground: 210 20% 98%;
-  --border: 222 40% 18%;
+  --background: 0 0% 4%;
+  --foreground: 0 0% 93%;
+  --border: 0 0% 14%;
 
-  --card: 222 47% 9%;
-  --card-foreground: 210 20% 98%;
-  --card-border: 222 40% 15%;
+  --card: 0 0% 7%;
+  --card-foreground: 0 0% 93%;
+  --card-border: 0 0% 12%;
 
-  --sidebar: 222 47% 4%;
-  --sidebar-foreground: 210 20% 98%;
-  --sidebar-border: 222 40% 12%;
-  --sidebar-primary: 24 91% 53%;
+  --sidebar: 0 0% 3%;
+  --sidebar-foreground: 0 0% 93%;
+  --sidebar-border: 0 0% 10%;
+  --sidebar-primary: 172 66% 50%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 40% 12%;
-  --sidebar-accent-foreground: 210 20% 98%;
-  --sidebar-ring: 24 91% 53%;
+  --sidebar-accent: 0 0% 10%;
+  --sidebar-accent-foreground: 0 0% 93%;
+  --sidebar-ring: 172 66% 50%;
 
-  --popover: 222 47% 9%;
-  --popover-foreground: 210 20% 98%;
-  --popover-border: 222 40% 18%;
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 93%;
+  --popover-border: 0 0% 14%;
 
-  --primary: 24 91% 53%;
+  --primary: 172 66% 50%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 222 40% 15%;
-  --secondary-foreground: 210 20% 98%;
+  --secondary: 0 0% 11%;
+  --secondary-foreground: 0 0% 93%;
 
-  --muted: 222 40% 15%;
-  --muted-foreground: 215 20% 65%;
+  --muted: 0 0% 11%;
+  --muted-foreground: 0 0% 55%;
 
-  --accent: 222 40% 18%;
-  --accent-foreground: 210 20% 98%;
+  --accent: 0 0% 14%;
+  --accent-foreground: 0 0% 93%;
 
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 222 40% 20%;
-  --ring: 24 91% 53%;
-  
+  --input: 0 0% 16%;
+  --ring: 172 66% 50%;
+
   --chart-1: 142 71% 45%;
   --chart-2: 221 83% 53%;
   --chart-3: 262 83% 58%;
-  --chart-4: 25 95% 53%;
+  --chart-4: 172 66% 50%;
   --chart-5: 340 75% 55%;
 
-  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.2);
-  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.25);
-  --shadow-sm: 0px 2px 4px 0px rgba(0,0,0,0.25), 0px 1px 2px -1px rgba(0,0,0,0.2);
-  --shadow: 0px 4px 6px -1px rgba(0,0,0,0.3), 0px 2px 4px -2px rgba(0,0,0,0.2);
-  --shadow-md: 0px 6px 10px -1px rgba(0,0,0,0.35), 0px 4px 6px -2px rgba(0,0,0,0.25);
-  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,0.35), 0px 4px 6px -4px rgba(0,0,0,0.25);
-  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,0.35), 0px 8px 10px -6px rgba(0,0,0,0.25);
-  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,0.5);
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,0.4);
 }
 
 @layer base {
@@ -164,6 +164,13 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Perplexity-style: reduce visual weight of cards in dark mode */
+  .dark .shadcn-card {
+    box-shadow: none;
   }
 }
 

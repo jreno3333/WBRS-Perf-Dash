@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+// Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt } from "lucide-react";
@@ -8,10 +8,10 @@ import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
 
 const REVENUE_PORT_CONFIG = {
-  dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Indoor dining available", disabledDesc: "No indoor dining" },
-  drive_thru: { label: "Drive Thru", icon: Car, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Drive-thru window service", disabledDesc: "No drive-thru" },
-  app: { label: "APP", icon: Smartphone, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Mobile app ordering", disabledDesc: "No app ordering" },
-  "3pd": { label: "3PD", icon: ShoppingBag, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Third-party delivery (DoorDash, UberEats, etc.)", disabledDesc: "No third-party delivery" },
+  dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Indoor dining available", disabledDesc: "No indoor dining" },
+  drive_thru: { label: "Drive Thru", icon: Car, color: "bg-amber-500/10 text-amber-600 dark:text-amber-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Drive-thru window service", disabledDesc: "No drive-thru" },
+  app: { label: "APP", icon: Smartphone, color: "bg-blue-500/10 text-blue-500", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Mobile app ordering", disabledDesc: "No app ordering" },
+  "3pd": { label: "3PD", icon: ShoppingBag, color: "bg-purple-500/10 text-purple-500", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Third-party delivery (DoorDash, UberEats, etc.)", disabledDesc: "No third-party delivery" },
 } as const;
 
 const ALL_REVENUE_PORTS = ["dine_in", "drive_thru", "app", "3pd"] as const;
@@ -119,11 +119,11 @@ function getExecutionGrade(
 }
 
 function getGradeColor(grade: string): string {
-  if (grade.startsWith('A')) return 'text-green-600 dark:text-green-400';
-  if (grade.startsWith('B')) return 'text-blue-600 dark:text-blue-400';
-  if (grade.startsWith('C')) return 'text-yellow-600 dark:text-yellow-400';
-  if (grade === 'D') return 'text-orange-600 dark:text-orange-400';
-  return 'text-red-600 dark:text-red-400';
+  if (grade.startsWith('A')) return 'text-green-500';
+  if (grade.startsWith('B')) return 'text-blue-500';
+  if (grade.startsWith('C')) return 'text-yellow-500';
+  if (grade === 'D') return 'text-orange-500';
+  return 'text-red-500';
 }
 
 // Convert letter grade to numeric score for averaging (midpoint of each range)
@@ -351,30 +351,30 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
   // No in-progress hour needed since we only show completed hours now
 
   return (
-    <Card 
-      className="hover-elevate transition-all duration-200"
+    <div
+      className="rounded-xl border border-border/50 bg-card transition-colors hover:border-border"
       data-testid={`card-restaurant-${restaurant.restaurantId}`}
     >
-      <CardContent className="p-3">
+      <div className="p-3">
         <div className="flex items-center gap-3">
           <div className="flex-shrink-0">
             {restaurant.status === "training" ? (
-              <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-muted-foreground bg-muted/50"
                 data-testid={`text-rank-${restaurant.restaurantId}`}
               >
                 --
               </div>
             ) : (
-              <div 
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                  restaurant.rank === 1 
-                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" 
-                    : restaurant.rank === 2 
-                      ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                      : restaurant.rank === 3 
-                        ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                        : "bg-muted text-muted-foreground"
+              <div
+                className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold ${
+                  restaurant.rank === 1
+                    ? "bg-yellow-500/15 text-yellow-500"
+                    : restaurant.rank === 2
+                      ? "bg-muted text-foreground/70"
+                      : restaurant.rank === 3
+                        ? "bg-orange-500/15 text-orange-500"
+                        : "bg-muted/50 text-muted-foreground"
                 }`}
                 data-testid={`text-rank-${restaurant.restaurantId}`}
               >
@@ -385,8 +385,8 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-              <h3 
-                className="font-semibold text-sm truncate"
+              <h3
+                className="font-medium text-sm truncate"
                 data-testid={`text-restaurant-name-${restaurant.restaurantId}`}
               >
                 {restaurant.restaurantName}
@@ -433,12 +433,12 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 <BadgeWithTooltip
                   className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
                     restaurant.googleReviews.rating >= 4.5
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      ? "bg-green-500/10 text-green-500"
                       : restaurant.googleReviews.rating >= 4.0
-                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                        ? "bg-blue-500/10 text-blue-500"
                         : restaurant.googleReviews.rating >= 3.5
-                          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          : "bg-red-500/10 text-red-500"
                   } border-0`}
                   data-testid={`badge-reviews-${restaurant.restaurantId}`}
                   tooltipTitle="Google Reviews"
@@ -458,10 +458,10 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 <BadgeWithTooltip
                   className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
                     restaurant.osat.osatPercent >= 85
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      ? "bg-green-500/10 text-green-500"
                       : restaurant.osat.osatPercent >= 80
-                        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                        : "bg-red-500/10 text-red-500"
                   } border-0`}
                   data-testid={`badge-osat-${restaurant.restaurantId}`}
                   tooltipTitle="Customer Satisfaction (OSAT)"
@@ -477,10 +477,10 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 const carsUnder6 = (restaurant.driveThru as any).carsUnder6Min || 0;
                 const attainment = carCount > 0 ? Math.round((carsUnder6 / carCount) * 100) : 0;
                 const attColor = attainment >= 70
-                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                  ? "bg-green-500/10 text-green-500"
                   : attainment >= 50
-                    ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    : "bg-red-500/10 text-red-500";
 
                 const isRed = attainment < 50;
                 const avgTime = restaurant.driveThru.avgTotalTime;
@@ -515,10 +515,10 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 <BadgeWithTooltip
                   className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
                     crewSummary.avgScore >= 75
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      ? "bg-green-500/10 text-green-500"
                       : crewSummary.avgScore >= 50
-                        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                        : "bg-red-500/10 text-red-500"
                   } border-0`}
                   data-testid={`badge-crew-${restaurant.restaurantId}`}
                   tooltipTitle="Crew Experience Score"
@@ -531,7 +531,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
               {/* Check Average Badge */}
               {checkAverage && checkAverage.totalOrders > 0 && (
                 <BadgeWithTooltip
-                  className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 border-0"
+                  className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0"
                   data-testid={`badge-check-avg-${restaurant.restaurantId}`}
                   tooltipContent={
                     <div>
@@ -550,9 +550,9 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 <BadgeWithTooltip
                   variant="outline"
                   className={`flex-shrink-0 text-xs font-bold ${
-                    consistencyScore >= 75 ? "text-green-600 dark:text-green-400 border-green-300" :
+                    consistencyScore >= 75 ? "text-green-500 border-green-300" :
                     consistencyScore >= 50 ? "text-amber-600 dark:text-amber-400 border-amber-300" :
-                    "text-red-600 dark:text-red-400 border-red-300"
+                    "text-red-500 border-red-300"
                   }`}
                   data-testid={`badge-consistency-${restaurant.restaurantId}`}
                   tooltipTitle="Consistency Score (0-100)"
@@ -658,16 +658,15 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
           </div>
 
           <div className="flex-shrink-0 text-right">
-            <div className="flex items-center justify-end gap-1.5">
-              <div 
-                className="text-lg font-bold"
+            <div className="flex items-center justify-end gap-2">
+              <div
+                className="text-base font-semibold tabular-nums"
                 data-testid={`text-sales-${restaurant.restaurantId}`}
               >
                 {formatCurrency(restaurant.actualSales)}
               </div>
-              <span className={`text-xs font-medium whitespace-nowrap ${paceVariance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid={`badge-pace-${restaurant.restaurantId}`}>
-                {paceVariance >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
-                LW {formatPercentage(paceVariance)}
+              <span className={`text-xs font-medium whitespace-nowrap ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`badge-pace-${restaurant.restaurantId}`}>
+                {formatPercentage(paceVariance)}
               </span>
             </div>
             {yoyData && yoyData.priorNetSales > 0 && (() => {
@@ -683,8 +682,8 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 <div className="flex items-center justify-end gap-1.5 mt-0.5">
                   <span
                     className={`text-xs font-medium whitespace-nowrap ${projYoYVariance >= 0 
-                      ? "text-blue-600 dark:text-blue-400" 
-                      : "text-orange-600 dark:text-orange-400"}`}
+                      ? "text-blue-500" 
+                      : "text-orange-500"}`}
                     data-testid={`badge-yoy-${restaurant.restaurantId}`}
                   >
                     {projYoYVariance >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
@@ -711,7 +710,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   {weeklyData.priorWeek > 0 && (() => {
                     const wkVar = ((weeklyData.currentWeek / weeklyData.priorWeek) - 1) * 100;
                     return (
-                      <span className={`text-xs font-medium whitespace-nowrap ${wkVar >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                      <span className={`text-xs font-medium whitespace-nowrap ${wkVar >= 0 ? "text-green-500" : "text-red-500"}`}>
                         {wkVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
                         vs LW {wkVar >= 0 ? "+" : ""}{Math.round(wkVar)}%
                       </span>
@@ -721,13 +720,13 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                 {weeklyData.eowForecast > 0 && weeklyData.daysInCurrentWeek < 7 && (
                   <div className="flex items-center justify-end gap-1.5 mt-0.5">
                     <span className="text-xs text-muted-foreground">EOW:</span>
-                    <span className="text-xs font-semibold text-purple-600 dark:text-purple-400" data-testid={`text-eow-${restaurant.restaurantId}`}>
+                    <span className="text-xs font-semibold text-purple-500" data-testid={`text-eow-${restaurant.restaurantId}`}>
                       {formatCurrency(weeklyData.eowForecast)}
                     </span>
                     {weeklyData.priorWeekFull > 0 && (() => {
                       const eowVar = ((weeklyData.eowForecast / weeklyData.priorWeekFull) - 1) * 100;
                       return (
-                        <span className={`text-xs font-medium whitespace-nowrap ${eowVar >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        <span className={`text-xs font-medium whitespace-nowrap ${eowVar >= 0 ? "text-green-500" : "text-red-500"}`}>
                           {eowVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
                           vs LW {eowVar >= 0 ? "+" : ""}{Math.round(eowVar)}%
                         </span>
@@ -739,22 +738,21 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
             )}
           </div>
           
-          <div 
-            className="flex-shrink-0 text-muted-foreground cursor-pointer p-2 -m-2 rounded-full hover:bg-muted/50 transition-colors"
+          <div
+            className="flex-shrink-0 text-muted-foreground cursor-pointer p-1.5 -m-1.5 rounded-lg hover:bg-muted/50 transition-colors"
             onClick={() => setIsExpanded(!isExpanded)}
             data-testid={`toggle-expand-${restaurant.restaurantId}`}
           >
             {isExpanded ? (
-              <ChevronUp className="w-5 h-5" data-testid={`chevron-collapse-${restaurant.restaurantId}`} />
+              <ChevronUp className="w-4 h-4" data-testid={`chevron-collapse-${restaurant.restaurantId}`} />
             ) : (
-              <ChevronDown className="w-5 h-5" data-testid={`chevron-expand-${restaurant.restaurantId}`} />
+              <ChevronDown className="w-4 h-4" data-testid={`chevron-expand-${restaurant.restaurantId}`} />
             )}
           </div>
         </div>
 
-
         {isExpanded && activeHours.length > 0 && (
-          <div className="mt-4">
+          <div className="mt-3 pt-3 border-t border-border/30">
             <div className="flex justify-between text-xs text-muted-foreground mb-2">
               <span>Hourly Sales</span>
               <div className="flex items-center gap-3">
@@ -891,15 +889,15 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                         <span className="font-medium">{hour.label}</span>
                         {isCompleted && hour.todaySales > 0 && <span className={gradeInfo.color}>{gradeInfo.grade}</span>}
                         {!isCompleted && <span className="text-muted-foreground">pending</span>}
-                        <span className={salesVariancePct >= -5 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                        <span className={salesVariancePct >= -5 ? "text-green-500" : "text-red-500"}>
                           ${hour.todaySales.toLocaleString()}
                         </span>
                         <span className="text-muted-foreground">LW ${hour.lastWeekSales.toLocaleString()}</span>
                         {isCompleted && (hour as any).speedAttainment !== undefined && (
                           <span className={
-                            (hour as any).speedAttainment < 50 ? "text-red-600 dark:text-red-400" :
-                            (hour as any).speedAttainment < 70 ? "text-yellow-600 dark:text-yellow-400" :
-                            "text-green-600 dark:text-green-400"
+                            (hour as any).speedAttainment < 50 ? "text-red-500" :
+                            (hour as any).speedAttainment < 70 ? "text-yellow-500" :
+                            "text-green-500"
                           }>
                             {(hour as any).speedAttainment}%
                           </span>
@@ -908,7 +906,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
                           if (!crewHour || crewHour.experienceScore === 0) return null;
                           const score = crewHour.experienceScore;
-                          const color = score >= 75 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+                          const color = score >= 75 ? "text-green-500" : score >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-500";
                           const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
                           const parts = [];
                           if (veteran > 0) parts.push(`${veteran}V`);
@@ -919,9 +917,9 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                         })()}
                         {isCompleted && hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0 && (
                           <span className={
-                            hour.osatPercent >= 85 ? "text-green-600 dark:text-green-400" :
+                            hour.osatPercent >= 85 ? "text-green-500" :
                             hour.osatPercent >= 80 ? "text-amber-600 dark:text-amber-400" :
-                            "text-red-600 dark:text-red-400"
+                            "text-red-500"
                           }>
                             OSAT {Math.round(hour.osatPercent)}% ({hour.osatResponses})
                           </span>
@@ -1270,9 +1268,9 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                       Day Total: {totals.totalDeployed.toFixed(1)} labor hrs / {totals.totalTarget} target
                     </span>
                     <span className={`font-medium ${
-                      isOverstaffed ? "text-red-600 dark:text-red-400" : 
-                      isUnderstaffed ? "text-yellow-600 dark:text-yellow-400" : 
-                      "text-green-600 dark:text-green-400"
+                      isOverstaffed ? "text-red-500" : 
+                      isUnderstaffed ? "text-yellow-500" : 
+                      "text-green-500"
                     }`} data-testid={`staffing-total-${restaurant.restaurantId}`}>
                       {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` : 
                        isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` : 
@@ -1304,7 +1302,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
