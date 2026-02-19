@@ -870,7 +870,6 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           <div
                             className="w-full flex items-end gap-px"
                             style={{ height: `${barHeightPx}px` }}
-                            title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                           >
                             {dcHour.quarters.map((q, qi) => (
                               <div
@@ -889,7 +888,6 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                         <div
                           className={`w-full rounded-t-sm transition-all ${barColor}`}
                           style={{ height: `${barHeightPx}px` }}
-                          title={`${hour.label}: $${hour.todaySales.toLocaleString()} vs $${hour.lastWeekSales.toLocaleString()}`}
                         />
                       );
                     })()}
@@ -1129,10 +1127,37 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                         <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
                       ) : (
                         <>
-                          <div
-                            className={`w-full rounded-t-sm transition-all ${barColor}`}
-                            style={{ height: `${barHeightPx}px` }}
-                          />
+                          {/* Staffing bar — split into 15-min sub-bars when quarter data is available */}
+                          {(() => {
+                            const qb = hour.quarterBreakdown;
+                            if (qb && (qb.q0 > 0 || qb.q1 > 0 || qb.q2 > 0 || qb.q3 > 0)) {
+                              const maxQ = Math.max(qb.q0, qb.q1, qb.q2, qb.q3, 0.01);
+                              // Each quarter's max possible is 0.25h per person; scale relative to total bar height
+                              return (
+                                <div
+                                  className="w-full flex items-end gap-px"
+                                  style={{ height: `${barHeightPx}px` }}
+                                >
+                                  {[qb.q0, qb.q1, qb.q2, qb.q3].map((qVal, qi) => (
+                                    <div
+                                      key={qi}
+                                      className={`flex-1 rounded-t-[1px] ${barColor}`}
+                                      style={{
+                                        height: `${Math.max(1, (qVal / maxQ) * barHeightPx)}px`,
+                                        opacity: qVal > 0 ? 1 : 0.3
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div
+                                className={`w-full rounded-t-sm transition-all ${barColor}`}
+                                style={{ height: `${barHeightPx}px` }}
+                              />
+                            );
+                          })()}
                           {/* Target line showing recommended staffing level */}
                           <div
                             className="absolute w-full border-t-2 border-slate-800 dark:border-slate-200 pointer-events-none"
@@ -1146,7 +1171,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                           )}
                         </>
                       )}
-                      <div className={`absolute -top-14 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                      <div className={`absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{hour.label}</span>
@@ -1190,6 +1215,25 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                             return (
                               <div className="text-muted-foreground text-[10px]">
                                 {posKeys.slice(0, 5).join(', ')}{posKeys.length > 5 ? '...' : ''}
+                              </div>
+                            );
+                          })()}
+                          {/* 15-min quarter labor breakdown */}
+                          {(() => {
+                            const qb = hour.quarterBreakdown;
+                            if (!qb || (qb.q0 === 0 && qb.q1 === 0 && qb.q2 === 0 && qb.q3 === 0)) return null;
+                            const h12 = hour.hour === 0 ? 12 : hour.hour > 12 ? hour.hour - 12 : hour.hour;
+                            const ampm = hour.hour < 12 ? 'am' : 'pm';
+                            return (
+                              <div className="flex gap-2 text-[10px] text-muted-foreground border-t border-border/50 pt-0.5">
+                                {[qb.q0, qb.q1, qb.q2, qb.q3].map((qVal, qi) => {
+                                  const min = qi * 15;
+                                  return (
+                                    <span key={qi} className={qVal > 0 ? "text-foreground" : ""}>
+                                      {h12}:{min.toString().padStart(2, '0')}{ampm} <span className="font-medium">{qVal.toFixed(1)}h</span>
+                                    </span>
+                                  );
+                                })}
                               </div>
                             );
                           })()}
