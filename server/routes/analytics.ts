@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
-import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders } from "@shared/schema";
+import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales } from "@shared/schema";
 import { eq, and, gte, lte, lt, sql } from "drizzle-orm";
 
 const router = Router();
@@ -617,6 +617,8 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
       estimatedLostSales: number;
       understaffedHours: number;
       slowDtHours: number;
+      totalRestaurantSales: number;
+      lostPercent: number;
       details: { hour: number; reason: string; estimatedLoss: number }[];
     }
 
@@ -636,11 +638,13 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
       let totalLost = 0;
       let understaffedCount = 0;
       let slowDtCount = 0;
+      let restaurantTotalSales = 0;
       const details: { hour: number; reason: string; estimatedLoss: number }[] = [];
 
       for (const hourData of hours) {
         const h = hourData.hour;
         const sales = Number(hourData.actualSales) || 0;
+        restaurantTotalSales += sales;
         const lwSales = lwByKey.get(`${rid}-${h}`) || 0;
         const labor = laborByKey.get(`${rid}-${h}`);
         const hme = hmeByKey.get(`${rid}-${h}`);
@@ -680,6 +684,8 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
           estimatedLostSales: Math.round(totalLost),
           understaffedHours: understaffedCount,
           slowDtHours: slowDtCount,
+          totalRestaurantSales: Math.round(restaurantTotalSales),
+          lostPercent: restaurantTotalSales > 0 ? Math.round((totalLost / restaurantTotalSales) * 1000) / 10 : 0,
           details,
         });
       }
@@ -688,10 +694,46 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     results.sort((a, b) => b.estimatedLostSales - a.estimatedLostSales);
 
     const companyTotal = results.reduce((s, r) => s + r.estimatedLostSales, 0);
+    const companyTotalSales = salesData.reduce((s, r) => s + (Number(r.actualSales) || 0), 0);
+    const companyLostPercent = companyTotalSales > 0 ? Math.round((companyTotal / companyTotalSales) * 1000) / 10 : 0;
+
+    // Persist snapshot for historical review and future rollups
+    if (results.length > 0) {
+      try {
+        for (const r of results) {
+          await db.insert(dailySuppressedSales)
+            .values({
+              date: todayStr,
+              restaurantId: r.restaurantId,
+              restaurantName: r.restaurantName,
+              estimatedLostSales: String(r.estimatedLostSales),
+              understaffedHours: r.understaffedHours,
+              slowDtHours: r.slowDtHours,
+              totalRestaurantSales: String(r.totalRestaurantSales),
+            })
+            .onConflictDoUpdate({
+              target: [dailySuppressedSales.date, dailySuppressedSales.restaurantId],
+              set: {
+                estimatedLostSales: sql`excluded.estimated_lost_sales`,
+                understaffedHours: sql`excluded.understaffed_hours`,
+                slowDtHours: sql`excluded.slow_dt_hours`,
+                totalRestaurantSales: sql`excluded.total_restaurant_sales`,
+                restaurantName: sql`excluded.restaurant_name`,
+                savedAt: sql`now()`,
+              },
+            });
+        }
+      } catch (persistError) {
+        console.error("Failed to persist suppressed sales snapshot:", persistError);
+        // Non-fatal — still return the computed data
+      }
+    }
 
     res.json({
       date: todayStr,
       companyTotalSuppressed: companyTotal,
+      companyTotalSales: Math.round(companyTotalSales),
+      companyLostPercent,
       restaurants: results,
     });
   } catch (error) {

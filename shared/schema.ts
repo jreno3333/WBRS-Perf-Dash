@@ -622,6 +622,30 @@ export const insertOsatCategoryIssuesSchema = createInsertSchema(osatCategoryIss
 export type InsertOsatCategoryIssues = z.infer<typeof insertOsatCategoryIssuesSchema>;
 export type OsatCategoryIssues = typeof osatCategoryIssues.$inferSelect;
 
+// Daily suppressed sales snapshots - persists daily lost sales for historical review and future rollups
+export const dailySuppressedSales = pgTable("daily_suppressed_sales", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  restaurantId: varchar("restaurant_id").notNull(),
+  restaurantName: text("restaurant_name").notNull(),
+  estimatedLostSales: decimal("estimated_lost_sales", { precision: 10, scale: 2 }).notNull(),
+  understaffedHours: integer("understaffed_hours").notNull().default(0),
+  slowDtHours: integer("slow_dt_hours").notNull().default(0),
+  totalRestaurantSales: decimal("total_restaurant_sales", { precision: 12, scale: 2 }).notNull(), // Actual sales for computing %
+  savedAt: timestamp("saved_at").defaultNow(),
+}, (table) => ({
+  uniqueDateRestaurant: uniqueIndex("daily_suppressed_sales_date_restaurant_idx")
+    .on(table.date, table.restaurantId),
+}));
+
+export const insertDailySuppressedSalesSchema = createInsertSchema(dailySuppressedSales).omit({
+  id: true,
+  savedAt: true,
+});
+
+export type InsertDailySuppressedSales = z.infer<typeof insertDailySuppressedSalesSchema>;
+export type DailySuppressedSales = typeof dailySuppressedSales.$inferSelect;
+
 // ─── Arena (Gamification / Recognition Engine) ─────────────────────────────
 
 // Arena configuration - single JSON document with all badge rules, streak config, notification settings
