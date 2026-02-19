@@ -1,3 +1,4 @@
+import { APP_VERSION } from "@/lib/version";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -451,7 +452,7 @@ export default function Dashboard() {
                 <Trophy className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">MWB Performance <span className="text-xs font-normal text-muted-foreground align-top">beta</span></h1>
+                <h1 className="text-xl font-bold">MWB Performance <span className="text-xs font-normal text-muted-foreground align-top">beta v{APP_VERSION}</span></h1>
                 <div className="flex items-center gap-2">
                   <Button 
                     variant="ghost" 
