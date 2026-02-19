@@ -611,6 +611,17 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
+    // Fetch dailySales for all restaurants — used as denominator for accurate % lost
+    const todayStart = new Date(todayStr + "T00:00:00");
+    const todayEnd = new Date(todayStr + "T23:59:59");
+    const allDailySales = await db.select().from(dailySales).where(
+      and(gte(dailySales.salesDate, todayStart), lte(dailySales.salesDate, todayEnd))
+    );
+    const dailySalesByRestaurant = new Map<string, number>();
+    for (const d of allDailySales) {
+      dailySalesByRestaurant.set(d.restaurantId, (parseFloat(d.totalSales || "0") / 100));
+    }
+
     interface SuppressedSalesResult {
       restaurantId: string;
       restaurantName: string;
@@ -638,13 +649,11 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
       let totalLost = 0;
       let understaffedCount = 0;
       let slowDtCount = 0;
-      let restaurantTotalSales = 0;
       const details: { hour: number; reason: string; estimatedLoss: number }[] = [];
 
       for (const hourData of hours) {
         const h = hourData.hour;
         const sales = Number(hourData.actualSales) || 0;
-        restaurantTotalSales += sales;
         const lwSales = lwByKey.get(`${rid}-${h}`) || 0;
         const labor = laborByKey.get(`${rid}-${h}`);
         const hme = hmeByKey.get(`${rid}-${h}`);
@@ -678,14 +687,15 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
       }
 
       if (totalLost > 0) {
+        const unitDailySales = dailySalesByRestaurant.get(rid) || 0;
         results.push({
           restaurantId: rid,
           restaurantName: name,
           estimatedLostSales: Math.round(totalLost),
           understaffedHours: understaffedCount,
           slowDtHours: slowDtCount,
-          totalRestaurantSales: Math.round(restaurantTotalSales),
-          lostPercent: restaurantTotalSales > 0 ? Math.round((totalLost / restaurantTotalSales) * 1000) / 10 : 0,
+          totalRestaurantSales: Math.round(unitDailySales),
+          lostPercent: unitDailySales > 0 ? Math.round((totalLost / unitDailySales) * 1000) / 10 : 0,
           details,
         });
       }
@@ -694,13 +704,6 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     results.sort((a, b) => b.estimatedLostSales - a.estimatedLostSales);
 
     const companyTotal = results.reduce((s, r) => s + r.estimatedLostSales, 0);
-
-    // Use dailySales (all restaurants) for the company-wide % — not just hourly data from suppressed units
-    const todayStart = new Date(todayStr + "T00:00:00");
-    const todayEnd = new Date(todayStr + "T23:59:59");
-    const allDailySales = await db.select().from(dailySales).where(
-      and(gte(dailySales.salesDate, todayStart), lte(dailySales.salesDate, todayEnd))
-    );
     const companyTotalSales = allDailySales.reduce((s, d) => s + (parseFloat(d.totalSales || "0") / 100), 0);
     const companyLostPercent = companyTotalSales > 0 ? Math.round((companyTotal / companyTotalSales) * 1000) / 10 : 0;
 
