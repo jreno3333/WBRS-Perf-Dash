@@ -171,6 +171,9 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
 
   const upcomingAnniversaries = anniversaries?.anniversaries?.filter(a => a.daysUntil <= 7) || [];
   const hasSuppressed = suppressed && suppressed.companyTotalSuppressed > 0;
+  const avgCompliance = compliance?.restaurants.length
+    ? Math.round(compliance.restaurants.reduce((sum, r) => sum + r.compliancePercent, 0) / compliance.restaurants.length)
+    : null;
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
@@ -182,17 +185,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                 <Activity className="w-4 h-4 text-muted-foreground" />
                 <CardTitle className="text-sm font-semibold">Analytics</CardTitle>
 
-                {/* Quick summary badges */}
-                {weeklyForecast && (
-                  <BadgeWithTooltip
-                    variant="outline"
-                    className={`text-xs ${weeklyForecast.variancePercent >= 0 ? "text-green-600 border-green-300" : "text-red-600 border-red-300"}`}
-                    tooltipTitle="Weekly Sales Forecast (Sat-Fri)"
-                    tooltipDetail={`Projected week total: ${formatCurrency(weeklyForecast.forecastTotal)} vs last week: ${formatCurrency(weeklyForecast.lastWeekTotal)}. Based on actual days completed + LW remaining days.`}
-                  >
-                    WK {weeklyForecast.variancePercent >= 0 ? "+" : ""}{weeklyForecast.variancePercent.toFixed(1)}%
-                  </BadgeWithTooltip>
-                )}
+                {/* Quick summary badges — collapsed header shows consistency, schedule, suppressed */}
                 {consistency && (
                   <BadgeWithTooltip
                     variant="outline"
@@ -201,6 +194,17 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                     tooltipDetail="Average consistency across all units. Measures 14-day hourly grade stability — lower variance and fewer D/F hours = higher score."
                   >
                     CST: {consistency.companyAvgConsistency}
+                  </BadgeWithTooltip>
+                )}
+                {avgCompliance !== null && (
+                  <BadgeWithTooltip
+                    variant="outline"
+                    className={`text-xs ${getComplianceColor(avgCompliance)}`}
+                    tooltipTitle={`Schedule Compliance: ${avgCompliance}%`}
+                    tooltipDetail="7-day avg of actual vs. scheduled hours across all units. 90-110% is on target; below 90% = understaffed, above 110% = overstaffed."
+                  >
+                    <Clock className="w-3 h-3" />
+                    SCH: {avgCompliance}%
                   </BadgeWithTooltip>
                 )}
                 {hasSuppressed && (
