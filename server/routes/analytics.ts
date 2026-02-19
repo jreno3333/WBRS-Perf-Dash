@@ -454,14 +454,18 @@ router.get("/api/analytics/schedule-compliance", async (req, res) => {
     const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
-    // Aggregate by restaurant
+    // Aggregate by restaurant — two passes so we can exclude operator-scheduled
+    // cost from projected labor. Operators are scheduled but never clock in,
+    // which would otherwise always look like a no-show.
+
+    // Pass 1: compute totals & avg hourly rate per restaurant
     const byRestaurant = new Map<string, {
       totalScheduledCost: number;
       totalActualCost: number;
-      totalScheduledHours: number;
       totalActualHours: number;
-      hoursUnder: number;  // hours where actual < projected significantly
-      hoursOver: number;   // hours where actual > projected significantly
+      operatorSlots: number;  // count of hour-slots with an operator scheduled
+      hoursUnder: number;
+      hoursOver: number;
       totalHours: number;
     }>();
 
@@ -470,7 +474,7 @@ router.get("/api/analytics/schedule-compliance", async (req, res) => {
       if (!byRestaurant.has(rid)) {
         byRestaurant.set(rid, {
           totalScheduledCost: 0, totalActualCost: 0,
-          totalScheduledHours: 0, totalActualHours: 0,
+          totalActualHours: 0, operatorSlots: 0,
           hoursUnder: 0, hoursOver: 0, totalHours: 0,
         });
       }
@@ -478,18 +482,38 @@ router.get("/api/analytics/schedule-compliance", async (req, res) => {
       const scheduled = Number(row.projectedLabor) || 0;
       const actual = Number(row.actualLabor) || 0;
       const employees = Number(row.employeeCount) || 0;
+      const positions = row.positionBreakdown as Record<string, number> | null;
+      const hasOperator = positions?.['_operatorScheduled'] ? true : false;
 
       entry.totalScheduledCost += scheduled;
       entry.totalActualCost += actual;
       entry.totalActualHours += employees;
+      if (hasOperator) entry.operatorSlots++;
+    }
 
-      // Use projected labor as a proxy for scheduled hours
-      // Rough conversion: cost / avg_hourly_rate. We'll use the cost ratio instead.
+    // Pass 2: compute per-hour ratios with operator cost removed from scheduled
+    for (const row of laborData) {
+      const rid = row.restaurantId;
+      const entry = byRestaurant.get(rid)!;
+      const scheduled = Number(row.projectedLabor) || 0;
+      const actual = Number(row.actualLabor) || 0;
+      const positions = row.positionBreakdown as Record<string, number> | null;
+      const hasOperator = positions?.['_operatorScheduled'] ? true : false;
+
       if (scheduled > 0) {
+        // Estimate operator cost for this hour using avg hourly rate
+        let adjustedScheduled = scheduled;
+        if (hasOperator && entry.totalActualHours > 0) {
+          const avgRate = entry.totalActualCost / entry.totalActualHours;
+          adjustedScheduled = Math.max(0, scheduled - avgRate);
+        }
+
         entry.totalHours++;
-        const ratio = actual / scheduled;
-        if (ratio < 0.75) entry.hoursUnder++;     // 25%+ under-delivery
-        else if (ratio > 1.25) entry.hoursOver++;  // 25%+ over-delivery
+        if (adjustedScheduled > 0) {
+          const ratio = actual / adjustedScheduled;
+          if (ratio < 0.75) entry.hoursUnder++;
+          else if (ratio > 1.25) entry.hoursOver++;
+        }
       }
     }
 
@@ -510,12 +534,18 @@ router.get("/api/analytics/schedule-compliance", async (req, res) => {
       const name = restaurantNameMap.get(rid);
       if (!name || data.totalHours === 0) continue;
 
+      // Remove estimated operator cost from total scheduled
+      let adjustedScheduledCost = data.totalScheduledCost;
+      if (data.operatorSlots > 0 && data.totalActualHours > 0) {
+        const avgRate = data.totalActualCost / data.totalActualHours;
+        adjustedScheduledCost = Math.max(0, data.totalScheduledCost - (data.operatorSlots * avgRate));
+      }
+
       results.push({
         restaurantId: rid,
         restaurantName: name,
-        // Cost ratio is equivalent to hours ratio when wage rates are consistent
-        compliancePercent: data.totalScheduledCost > 0
-          ? Math.round((data.totalActualCost / data.totalScheduledCost) * 100)
+        compliancePercent: adjustedScheduledCost > 0
+          ? Math.round((data.totalActualCost / adjustedScheduledCost) * 100)
           : 0,
         actualHoursDeployed: Math.round(data.totalActualHours),
         underHours: data.hoursUnder,
