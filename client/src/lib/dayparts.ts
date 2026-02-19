@@ -109,9 +109,9 @@ export function scoreToGrade(score: number): string {
 }
 
 export function getGradeColor(grade: string): string {
-  if (grade === 'A+' || grade === 'A') return 'text-green-600 dark:text-green-400';
-  if (grade === 'B') return 'text-blue-600 dark:text-blue-400';
-  if (grade === 'C') return 'text-yellow-600 dark:text-yellow-400';
+  if (grade.startsWith('A')) return 'text-green-600 dark:text-green-400';
+  if (grade.startsWith('B')) return 'text-blue-600 dark:text-blue-400';
+  if (grade.startsWith('C')) return 'text-yellow-600 dark:text-yellow-400';
   if (grade === 'D') return 'text-orange-600 dark:text-orange-400';
   return 'text-red-600 dark:text-red-400';
 }
