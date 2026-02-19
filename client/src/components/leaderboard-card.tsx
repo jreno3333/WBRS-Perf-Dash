@@ -426,11 +426,6 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                   }
                 >
                   EXC: {overallGrade.grade}
-                  {daypartGrades.length >= 2 && (
-                    <span className="ml-1 font-normal text-muted-foreground">
-                      ({daypartGrades.map(dp => dp.shortLabel[0] + ':' + dp.grade).join(' ')})
-                    </span>
-                  )}
                 </BadgeWithTooltip>
               )}
               {/* Google Reviews Badge */}
