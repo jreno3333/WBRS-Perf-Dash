@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
-import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales } from "@shared/schema";
+import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, dailySales } from "@shared/schema";
 import { eq, and, gte, lte, lt, sql } from "drizzle-orm";
 
 const router = Router();
@@ -694,7 +694,14 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     results.sort((a, b) => b.estimatedLostSales - a.estimatedLostSales);
 
     const companyTotal = results.reduce((s, r) => s + r.estimatedLostSales, 0);
-    const companyTotalSales = salesData.reduce((s, r) => s + (Number(r.actualSales) || 0), 0);
+
+    // Use dailySales (all restaurants) for the company-wide % — not just hourly data from suppressed units
+    const todayStart = new Date(todayStr + "T00:00:00");
+    const todayEnd = new Date(todayStr + "T23:59:59");
+    const allDailySales = await db.select().from(dailySales).where(
+      and(gte(dailySales.salesDate, todayStart), lte(dailySales.salesDate, todayEnd))
+    );
+    const companyTotalSales = allDailySales.reduce((s, d) => s + (parseFloat(d.totalSales || "0") / 100), 0);
     const companyLostPercent = companyTotalSales > 0 ? Math.round((companyTotal / companyTotalSales) * 1000) / 10 : 0;
 
     // Persist snapshot for historical review and future rollups
