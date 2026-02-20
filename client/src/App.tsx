@@ -3,18 +3,22 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Dashboard from "@/pages/dashboard";
-import SettingsPage from "@/pages/settings";
-import MapPage from "@/pages/map";
-import HMETest from "@/pages/hme-test";
-import HeatmapPage from "@/pages/heatmap";
-import CrewExperiencePage from "@/pages/crew-experience";
-import PerformanceHistoryPage from "@/pages/performance-history";
-import LeadersPage from "@/pages/leaders";
-import LoginPage from "@/pages/login";
-import ArenaPage from "@/pages/arena";
-import NotFound from "@/pages/not-found";
+import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
+
+// Lazy-load all page components for route-level code splitting.
+// Only the matched route's JS is downloaded, reducing initial bundle size.
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const SettingsPage = lazy(() => import("@/pages/settings"));
+const MapPage = lazy(() => import("@/pages/map"));
+const HMETest = lazy(() => import("@/pages/hme-test"));
+const HeatmapPage = lazy(() => import("@/pages/heatmap"));
+const CrewExperiencePage = lazy(() => import("@/pages/crew-experience"));
+const PerformanceHistoryPage = lazy(() => import("@/pages/performance-history"));
+const LeadersPage = lazy(() => import("@/pages/leaders"));
+const LoginPage = lazy(() => import("@/pages/login"));
+const ArenaPage = lazy(() => import("@/pages/arena"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { data, isLoading } = useQuery<{ authenticated: boolean; email?: string }>({
@@ -56,18 +60,28 @@ function ProtectedRoutes() {
   );
 }
 
+function PageLoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={100}>
         <Toaster />
-        <Switch>
-          <Route path="/login" component={LoginPage} />
-          <Route path="/arena" component={ArenaPage} />
-          <Route>
-            <ProtectedRoutes />
-          </Route>
-        </Switch>
+        <Suspense fallback={<PageLoadingFallback />}>
+          <Switch>
+            <Route path="/login" component={LoginPage} />
+            <Route path="/arena" component={ArenaPage} />
+            <Route>
+              <ProtectedRoutes />
+            </Route>
+          </Switch>
+        </Suspense>
       </TooltipProvider>
     </QueryClientProvider>
   );

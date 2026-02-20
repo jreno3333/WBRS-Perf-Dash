@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
@@ -114,7 +115,7 @@ function getExecutionGrade(
   return { grade, score: avgScore, hasGrade: true };
 }
 
-export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData }: SummaryCardsProps) {
+export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData }: SummaryCardsProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -572,4 +573,4 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
       </div>
     </div>
   );
-}
+});
