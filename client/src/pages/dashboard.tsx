@@ -233,7 +233,12 @@ export default function Dashboard() {
     restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
   }
   const { data: weeklySalesData } = useQuery<WeeklySalesData>({
-    queryKey: ["/api/weekly-sales"],
+    queryKey: ["/api/weekly-sales", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/weekly-sales?date=${dateStr}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
     refetchInterval,
   });
 

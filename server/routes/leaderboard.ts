@@ -439,12 +439,21 @@ router.get("/api/map-data", async (req, res) => {
 router.get("/api/weekly-sales", async (req, res) => {
   try {
     const now = new Date();
-    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const realTodayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+
+    // Accept optional date param — when viewing a past date, compute the week around that date
+    const { date } = req.query;
+    const todayStr = date ? String(date) : realTodayStr;
     const today = new Date(`${todayStr}T12:00:00Z`);
     const dayOfWeek = today.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
 
-    // Current hour in Central Time (0-23)
-    const currentHourCT = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
+    // Determine if we're looking at the live current week or a completed past week
+    const isPastWeek = todayStr < realTodayStr;
+
+    // Current hour in Central Time (0-23) — only meaningful for the live week
+    const currentHourCT = isPastWeek
+      ? 23  // Past days are complete — use all hours
+      : parseInt(now.toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }));
 
     // Week starts Saturday (6). Find most recent Saturday.
     const daysSinceSaturday = (dayOfWeek + 1) % 7; // Sat=0, Sun=1, Mon=2, ..., Fri=6
@@ -460,7 +469,16 @@ router.get("/api/weekly-sales", async (req, res) => {
     priorWeekEnd.setUTCDate(priorWeekEnd.getUTCDate() - 1);
     const priorWeekEndStr = priorWeekEnd.toISOString().split('T')[0];
 
-    // Build date lists for current week (up to today)
+    // Build full current week dates (all 7 days Sat-Fri)
+    const currentWeekFullDates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(currentWeekStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      currentWeekFullDates.push(d.toISOString().split('T')[0]);
+    }
+    const currentWeekEndStr = currentWeekFullDates[6]; // Friday
+
+    // Build date lists for current week (up to selected day)
     const currentWeekDates: string[] = [];
     for (let i = 0; i <= daysSinceSaturday; i++) {
       const d = new Date(currentWeekStart);
@@ -468,6 +486,9 @@ router.get("/api/weekly-sales", async (req, res) => {
       const ds = d.toISOString().split('T')[0];
       if (ds <= todayStr) currentWeekDates.push(ds);
     }
+
+    // Remaining days in current week after selected day (for past week actual EOW)
+    const currentWeekRemainingDates = currentWeekFullDates.filter(d => !currentWeekDates.includes(d));
 
     // Prior week dates (apples-to-apples): only match elapsed days in current week
     const priorWeekDates: string[] = [];
@@ -485,17 +506,17 @@ router.get("/api/weekly-sales", async (req, res) => {
       priorWeekFullDates.push(d.toISOString().split('T')[0]);
     }
 
-    // Remaining prior week dates (days not yet elapsed in current week) - for forecast
+    // Remaining prior week dates (days not yet elapsed in current week) - for live week forecast
     const priorWeekRemainingDates = priorWeekFullDates.filter(d => !priorWeekDates.includes(d));
 
     // The last date in each week that needs hour-level cutoff
-    const currentWeekCutoffDate = currentWeekDates[currentWeekDates.length - 1]; // today
+    const currentWeekCutoffDate = currentWeekDates[currentWeekDates.length - 1]; // selected day
     const priorWeekCutoffDate = priorWeekDates[priorWeekDates.length - 1]; // same day-of-week last week
 
-    // Query hourly_sales for both weeks - including full prior week for EOW forecast
-    const allDates = [...new Set([...currentWeekDates, ...priorWeekFullDates])];
+    // Query hourly_sales for both weeks — include full current week for past-week actual EOW
+    const allDates = [...new Set([...currentWeekFullDates, ...priorWeekFullDates])];
     const earliestDate = priorWeekStartStr;
-    const latestDate = todayStr;
+    const latestDate = isPastWeek ? currentWeekEndStr : todayStr;
 
     const salesRows = await db.select({
       restaurantId: hourlySales.restaurantId,
@@ -597,15 +618,23 @@ router.get("/api/weekly-sales", async (req, res) => {
         fullPriorWeek += sumFullDaySales(r.id, d);
       }
 
-      // EOW Forecast = current actual + remaining hours today from LW + remaining full days from LW
+      // EOW = actual remaining days for past weeks, or forecast from prior week for live week
       let forecastRemaining = 0;
 
-      // 1. Add last week's remaining hours for today (hours after currentHourCT on the matching LW day)
-      forecastRemaining += sumRemainingHoursSales(r.id, priorWeekCutoffDate, currentHourCT);
+      if (isPastWeek) {
+        // Past week: use ACTUAL sales from remaining days of the selected week
+        for (const d of currentWeekRemainingDates) {
+          forecastRemaining += sumFullDaySales(r.id, d);
+        }
+      } else {
+        // Live week: forecast from prior week's remaining time
+        // 1. Add last week's remaining hours for today (hours after currentHourCT on the matching LW day)
+        forecastRemaining += sumRemainingHoursSales(r.id, priorWeekCutoffDate, currentHourCT);
 
-      // 2. Add last week's full-day sales for each remaining day of the week
-      for (const d of priorWeekRemainingDates) {
-        forecastRemaining += sumFullDaySales(r.id, d);
+        // 2. Add last week's full-day sales for each remaining day of the week
+        for (const d of priorWeekRemainingDates) {
+          forecastRemaining += sumFullDaySales(r.id, d);
+        }
       }
 
       const eowForecast = currentWeekTotal + forecastRemaining;
