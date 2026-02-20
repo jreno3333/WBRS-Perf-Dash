@@ -337,7 +337,7 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
                         </span>
                       )}
                     </div>
-                    {market.weekly.eowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
+                    {market.weekly.eowForecast > market.weekly.current && (
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className="text-xs text-muted-foreground">EOW:</span>
                         <span className="text-xs font-semibold text-primary">{formatCurrency(market.weekly.eowForecast)}</span>

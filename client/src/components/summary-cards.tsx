@@ -500,7 +500,7 @@ export function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoy
                 </span>
               )}
             </div>
-            {weeklyEowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
+            {weeklyEowForecast > weeklyCurrentTotal && (
               <div className="flex items-center gap-1.5 text-xs">
                 <span className="text-muted-foreground">EOW</span>
                 <span className="font-semibold tabular-nums text-primary" data-testid="text-eow-forecast-total">
