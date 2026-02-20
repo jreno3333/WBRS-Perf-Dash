@@ -398,7 +398,7 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
                         </span>
                       )}
                     </div>
-                    {state.weekly.eowForecast > 0 && weeklySalesData.daysInCurrentWeek < 7 && (
+                    {state.weekly.eowForecast > state.weekly.current && (
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className="text-xs text-muted-foreground">EOW:</span>
                         <span className="text-xs font-semibold text-primary">{formatCurrency(state.weekly.eowForecast)}</span>

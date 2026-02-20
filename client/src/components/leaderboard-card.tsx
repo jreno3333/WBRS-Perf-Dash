@@ -717,7 +717,7 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
                     );
                   })()}
                 </div>
-                {weeklyData.eowForecast > 0 && weeklyData.daysInCurrentWeek < 7 && (
+                {weeklyData.eowForecast > weeklyData.currentWeek && (
                   <div className="flex items-center justify-end gap-1.5 mt-0.5">
                     <span className="text-xs text-muted-foreground">EOW:</span>
                     <span className="text-xs font-semibold text-purple-500" data-testid={`text-eow-${restaurant.restaurantId}`}>
