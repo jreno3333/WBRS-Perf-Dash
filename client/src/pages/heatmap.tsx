@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
-import { AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Grid3X3, CalendarDays } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
 import { NavBar } from "@/components/nav-bar";
@@ -93,6 +93,29 @@ export default function HeatmapPage() {
   const handleEndDateChange = (newEndDate: string) => {
     if (!newEndDate) return;
     setEndDate(newEndDate);
+  };
+
+  const goToPreviousDay = () => {
+    const prev = new Date(startDate + "T12:00:00");
+    prev.setDate(prev.getDate() - 1);
+    const prevStr = format(prev, "yyyy-MM-dd");
+    setStartDate(prevStr);
+    if (!isDateRangeMode) setEndDate(prevStr);
+  };
+
+  const goToNextDay = () => {
+    const next = new Date(startDate + "T12:00:00");
+    next.setDate(next.getDate() + 1);
+    const nextStr = format(next, "yyyy-MM-dd");
+    if (nextStr <= todayStr) {
+      setStartDate(nextStr);
+      if (!isDateRangeMode) setEndDate(nextStr);
+    }
+  };
+
+  const goToToday = () => {
+    setStartDate(todayStr);
+    setEndDate(todayStr);
   };
   
   // Compute the active analysis date or date range
@@ -435,26 +458,50 @@ export default function HeatmapPage() {
             <h1 className="text-xl font-bold">Daily Performance</h1>
           </div>
           
-          {/* Date Selection Controls */}
+          {/* Date Navigation + Controls */}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="start-date" className="text-sm text-muted-foreground whitespace-nowrap">
-                <CalendarDays className="w-4 h-4 inline mr-1" />
-                {isDateRangeMode ? "From:" : "Date:"}
-              </Label>
-              <Input
-                id="start-date"
-                type="date"
-                value={startDate}
-                max={todayStr}
-                onChange={(e) => handleStartDateChange(e.target.value)}
-                className="w-36 h-8 text-sm"
-                data-testid="input-start-date"
-              />
-            </div>
-            
+            {!isDateRangeMode && (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={goToPreviousDay} data-testid="button-prev-day">
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <div className="flex items-center gap-1">
+                  <CalendarDays className="w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={startDate}
+                    max={todayStr}
+                    onChange={(e) => handleStartDateChange(e.target.value)}
+                    className="w-36 h-8 text-sm"
+                    data-testid="input-start-date"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={goToNextDay}
+                  disabled={startDate >= todayStr}
+                  data-testid="button-next-day"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+
             {isDateRangeMode && (
               <div className="flex items-center gap-2">
+                <Label htmlFor="start-date-range" className="text-sm text-muted-foreground whitespace-nowrap">
+                  <CalendarDays className="w-4 h-4 inline mr-1" />From:
+                </Label>
+                <Input
+                  id="start-date-range"
+                  type="date"
+                  value={startDate}
+                  max={todayStr}
+                  onChange={(e) => handleStartDateChange(e.target.value)}
+                  className="w-36 h-8 text-sm"
+                />
                 <Label htmlFor="end-date" className="text-sm text-muted-foreground">To:</Label>
                 <Input
                   id="end-date"
@@ -468,7 +515,7 @@ export default function HeatmapPage() {
                 />
               </div>
             )}
-            
+
             <Button
               variant={isDateRangeMode ? "secondary" : "outline"}
               size="sm"
@@ -482,17 +529,9 @@ export default function HeatmapPage() {
             >
               {isDateRangeMode ? "Single Day" : "Date Range"}
             </Button>
-            
+
             {startDate !== todayStr && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setStartDate(todayStr);
-                  setEndDate(todayStr);
-                }}
-                data-testid="button-reset-date"
-              >
+              <Button variant="ghost" size="sm" onClick={goToToday} data-testid="button-reset-date">
                 Today
               </Button>
             )}

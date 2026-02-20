@@ -21,7 +21,8 @@ import {
   MapPin,
   Globe,
   MessageSquare,
-  AlertCircle
+  AlertCircle,
+  ArrowUpDown
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -993,7 +994,8 @@ export function DailySummary({
     return formatDateDisplay(selectedDate);
   }, [selectedDate, dateRange]);
   const [activeTab, setActiveTab] = useState("units");
-  
+  const [unitSort, setUnitSort] = useState<"grade" | "sales" | "name">("grade");
+
   // Analyze all units (exclude training units)
   const unitInsights = useMemo(() => {
     const activeRestaurants = restaurants.filter(r => r.status !== "training");
@@ -1015,6 +1017,21 @@ export function DailySummary({
     });
   }, [restaurants, hourlyByRestaurant, markets, categoryIssuesByRestaurant]);
   
+  // Sort unit insights based on selected sort
+  const sortedUnitInsights = useMemo(() => {
+    const sorted = [...unitInsights];
+    switch (unitSort) {
+      case "grade":
+        return sorted.sort((a, b) => b.avgGrade - a.avgGrade);
+      case "sales":
+        return sorted.sort((a, b) => b.totalSales - a.totalSales);
+      case "name":
+        return sorted.sort((a, b) => a.restaurantName.localeCompare(b.restaurantName));
+      default:
+        return sorted;
+    }
+  }, [unitInsights, unitSort]);
+
   // Aggregate by state
   const stateSummaries = useMemo(() => {
     const byState = new Map<string, UnitInsight[]>();
@@ -1101,7 +1118,22 @@ export function DailySummary({
               </TabsList>
               
               <TabsContent value="units" className="space-y-3">
-                {unitInsights.map(insight => (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Sort:</span>
+                  {(["grade", "sales", "name"] as const).map(opt => (
+                    <Button
+                      key={opt}
+                      variant={unitSort === opt ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setUnitSort(opt)}
+                    >
+                      {opt === "grade" ? "Execution" : opt === "sales" ? "Sales" : "Name"}
+                    </Button>
+                  ))}
+                </div>
+                {sortedUnitInsights.map(insight => (
                   <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} />
                 ))}
               </TabsContent>
