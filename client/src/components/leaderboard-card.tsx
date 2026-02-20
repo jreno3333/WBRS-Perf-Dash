@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
@@ -216,7 +216,9 @@ function formatTenure(months: number): string {
   return `${years}yr ${remainingMonths}mo`;
 }
 
-export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, consistencyScore, demandCurveHours, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
+// Memoize to prevent re-rendering all restaurant cards when the parent
+// dashboard re-renders due to unrelated state changes (sort, market filter, etc.).
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, consistencyScore, demandCurveHours, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -1305,4 +1307,4 @@ export function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCre
       </div>
     </div>
   );
-}
+});

@@ -1,5 +1,5 @@
 import { APP_VERSION } from "@/lib/version";
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -254,10 +254,13 @@ export default function Dashboard() {
       return res.json();
     },
   });
-  const consistencyByRestaurant = consistencyData?.restaurants?.reduce((acc, r) => {
-    acc[r.restaurantId] = r.consistencyScore;
-    return acc;
-  }, {} as Record<string, number>);
+  const consistencyByRestaurant = useMemo(
+    () => consistencyData?.restaurants?.reduce((acc, r) => {
+      acc[r.restaurantId] = r.consistencyScore;
+      return acc;
+    }, {} as Record<string, number>),
+    [consistencyData?.restaurants]
+  );
 
   // Fetch demand curves (15-min intervals) for all restaurants
   interface DemandCurveHour {
@@ -277,10 +280,13 @@ export default function Dashboard() {
       return res.json();
     },
   });
-  const demandCurvesByRestaurant = demandCurvesData?.restaurants?.reduce((acc, r) => {
-    acc[r.restaurantId] = r.hours;
-    return acc;
-  }, {} as Record<string, DemandCurveHour[]>);
+  const demandCurvesByRestaurant = useMemo(
+    () => demandCurvesData?.restaurants?.reduce((acc, r) => {
+      acc[r.restaurantId] = r.hours;
+      return acc;
+    }, {} as Record<string, DemandCurveHour[]>),
+    [demandCurvesData?.restaurants]
+  );
 
   const { data: yoyBulkData } = useQuery<{
     priorDate: string;
@@ -323,125 +329,128 @@ export default function Dashboard() {
     setSelectedDate(getCentralDate());
   };
 
-  // Helper to check if restaurant has missing manager (will be computed from hourly data)
-  // Operators don't punch in but are considered leaders if scheduled
-  const hasMissingManager = (restaurantId: string) => {
-    const data = hourlyByRestaurant?.[restaurantId] || [];
-    // Check if any hour with labor has no manager/shift supervisor/operator
-    return data.some((hour: HourlySalesData) => {
-      const laborHours = Number(hour.employeeCount) || 0;
-      if (laborHours === 0) return false;
-      const positions = hour.positionBreakdown || {};
-      const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
-      const hasManager = positionKeys.some(p => p.includes("manager"));
-      const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
-      const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
-      return !hasManager && !hasShiftSupervisor && !hasOperatorScheduled;
-    });
-  };
+  // Pre-compute missing manager status for all restaurants once when hourly data changes,
+  // rather than re-computing per restaurant during every sort/filter pass.
+  const missingManagerSet = useMemo(() => {
+    const set = new Set<string>();
+    if (!hourlyByRestaurant) return set;
+    for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
+      const isMissing = hours.some((hour: HourlySalesData) => {
+        const laborHours = Number(hour.employeeCount) || 0;
+        if (laborHours === 0) return false;
+        const positions = hour.positionBreakdown || {};
+        const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
+        const hasManager = positionKeys.some(p => p.includes("manager"));
+        const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
+        const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
+        return !hasManager && !hasShiftSupervisor && !hasOperatorScheduled;
+      });
+      if (isMissing) set.add(restaurantId);
+    }
+    return set;
+  }, [hourlyByRestaurant]);
+
+  const hasMissingManager = useCallback(
+    (restaurantId: string) => missingManagerSet.has(restaurantId),
+    [missingManagerSet]
+  );
 
   // Get selected market restaurant IDs for filtering
   const selectedMarketRestaurantIds = selectedMarket !== "all" && markets
     ? markets.find(m => m.id === selectedMarket)?.restaurantIds || []
     : null;
 
-  // Filter and sort restaurants based on selected criteria
-  const sortedRestaurants = leaderboardData?.restaurants
-    ? [...leaderboardData.restaurants]
-        // First, apply market filter
-        .filter((r) => {
-          if (selectedMarketRestaurantIds) {
-            return selectedMarketRestaurantIds.includes(r.restaurantId);
+  // Memoize filtered + sorted restaurants to avoid re-computing the full
+  // filter/sort pipeline on every render (e.g. when unrelated state changes).
+  const sortedRestaurants = useMemo(() => {
+    if (!leaderboardData?.restaurants) return [];
+
+    return [...leaderboardData.restaurants]
+      // First, apply market filter
+      .filter((r) => {
+        if (selectedMarketRestaurantIds) {
+          return selectedMarketRestaurantIds.includes(r.restaurantId);
+        }
+        return true;
+      })
+      // Then, apply sort-based filters
+      .filter((r) => {
+        switch (sortBy) {
+          case "new_unit":
+            return r.status === "new";
+          case "missing_manager":
+            return hasMissingManager(r.restaurantId);
+          case "dt_time":
+            return r.driveThru != null;
+          case "google_reviews":
+            return r.googleReviews != null;
+          case "osat":
+            return r.osat != null && r.osat.totalResponses > 0;
+          case "yoy":
+            return yoyBulkData?.data?.[r.restaurantId] != null;
+          default:
+            return true;
+        }
+      })
+      // Then sort
+      .sort((a, b) => {
+        // Training units always go to the bottom
+        if (a.status === "training" && b.status !== "training") return 1;
+        if (a.status !== "training" && b.status === "training") return -1;
+
+        switch (sortBy) {
+          case "sales":
+            return b.actualSales - a.actualSales;
+          case "variance": {
+            const aLastWeek = (a as any).actualLastWeekSales ?? a.lastWeekSales;
+            const bLastWeek = (b as any).actualLastWeekSales ?? b.lastWeekSales;
+            const aVariance = aLastWeek > 0 ? ((a.actualSales / aLastWeek) - 1) * 100 : 0;
+            const bVariance = bLastWeek > 0 ? ((b.actualSales / bLastWeek) - 1) * 100 : 0;
+            return bVariance - aVariance;
           }
-          return true;
-        })
-        // Then, apply sort-based filters
-        .filter((r) => {
-          switch (sortBy) {
-            case "new_unit":
-              // Only new units
-              return r.status === "new";
-            case "missing_manager":
-              // Only units missing manager
-              return hasMissingManager(r.restaurantId);
-            case "dt_time":
-              // Only units with drive-thru data
-              return r.driveThru != null;
-            case "google_reviews":
-              // Only units with Google Reviews data
-              return r.googleReviews != null;
-            case "osat":
-              // Only units with OSAT data
-              return r.osat != null && r.osat.totalResponses > 0;
-            case "yoy":
-              // Only units with YoY data
-              return yoyBulkData?.data?.[r.restaurantId] != null;
-            default:
-              return true; // No filter for sales/variance/xscore
+          case "wtd_variance": {
+            const aWk = weeklySalesData?.restaurants?.[a.restaurantId];
+            const bWk = weeklySalesData?.restaurants?.[b.restaurantId];
+            const aWtdVar = aWk && aWk.priorWeek > 0 ? ((aWk.currentWeek / aWk.priorWeek) - 1) * 100 : -999;
+            const bWtdVar = bWk && bWk.priorWeek > 0 ? ((bWk.currentWeek / bWk.priorWeek) - 1) * 100 : -999;
+            return bWtdVar - aWtdVar;
           }
-        })
-        // Then sort
-        .sort((a, b) => {
-          // Training units always go to the bottom
-          if (a.status === "training" && b.status !== "training") return 1;
-          if (a.status !== "training" && b.status === "training") return -1;
-          
-          switch (sortBy) {
-            case "sales":
-              // Sort by actualSales (total sales so far today)
-              return b.actualSales - a.actualSales;
-            case "variance": {
-              const aLastWeek = (a as any).actualLastWeekSales ?? a.lastWeekSales;
-              const bLastWeek = (b as any).actualLastWeekSales ?? b.lastWeekSales;
-              const aVariance = aLastWeek > 0 ? ((a.actualSales / aLastWeek) - 1) * 100 : 0;
-              const bVariance = bLastWeek > 0 ? ((b.actualSales / bLastWeek) - 1) * 100 : 0;
-              return bVariance - aVariance;
-            }
-            case "wtd_variance": {
-              const aWk = weeklySalesData?.restaurants?.[a.restaurantId];
-              const bWk = weeklySalesData?.restaurants?.[b.restaurantId];
-              const aWtdVar = aWk && aWk.priorWeek > 0 ? ((aWk.currentWeek / aWk.priorWeek) - 1) * 100 : -999;
-              const bWtdVar = bWk && bWk.priorWeek > 0 ? ((bWk.currentWeek / bWk.priorWeek) - 1) * 100 : -999;
-              return bWtdVar - aWtdVar;
-            }
-            case "dt_time":
-              // Sort by speed attainment descending (highest % first)
-              const aAtt = a.driveThru ? ((a.driveThru as any).carsUnder6Min / (a.driveThru.carCount || 1)) * 100 : -1;
-              const bAtt = b.driveThru ? ((b.driveThru as any).carsUnder6Min / (b.driveThru.carCount || 1)) * 100 : -1;
-              return bAtt - aAtt;
-            case "xscore":
-              // Sort by X-Score descending (highest first)
-              // Use each restaurant's localCurrentHour for consistent scoring with display
-              const aLocalCutoff = (a as any).localCurrentHour ?? a.normalizedHour;
-              const bLocalCutoff = (b as any).localCurrentHour ?? b.normalizedHour;
-              const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId], aLocalCutoff, a);
-              const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId], bLocalCutoff, b);
-              return bScore - aScore;
-            case "google_reviews":
-              // Sort by Google rating descending (highest first)
-              const aRating = a.googleReviews?.rating ?? 0;
-              const bRating = b.googleReviews?.rating ?? 0;
-              return bRating - aRating;
-            case "osat":
-              // Sort by OSAT percentage descending (highest first)
-              const aOsat = a.osat?.osatPercent ?? 0;
-              const bOsat = b.osat?.osatPercent ?? 0;
-              return bOsat - aOsat;
-            case "yoy": {
-              const aYoy = yoyBulkData?.data?.[a.restaurantId];
-              const bYoy = yoyBulkData?.data?.[b.restaurantId];
-              const aProjected = a.normalizedHour < 23 ? a.forecastSales : a.actualSales;
-              const bProjected = b.normalizedHour < 23 ? b.forecastSales : b.actualSales;
-              const aYoyVar = aYoy ? ((aProjected / aYoy.priorNetSales) - 1) * 100 : -999;
-              const bYoyVar = bYoy ? ((bProjected / bYoy.priorNetSales) - 1) * 100 : -999;
-              return bYoyVar - aYoyVar;
-            }
-            default:
-              // Default sort by actualSales (total sales so far today)
-              return b.actualSales - a.actualSales;
+          case "dt_time": {
+            const aAtt = a.driveThru ? ((a.driveThru as any).carsUnder6Min / (a.driveThru.carCount || 1)) * 100 : -1;
+            const bAtt = b.driveThru ? ((b.driveThru as any).carsUnder6Min / (b.driveThru.carCount || 1)) * 100 : -1;
+            return bAtt - aAtt;
           }
-        })
-    : [];
+          case "xscore": {
+            const aLocalCutoff = (a as any).localCurrentHour ?? a.normalizedHour;
+            const bLocalCutoff = (b as any).localCurrentHour ?? b.normalizedHour;
+            const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId], aLocalCutoff, a);
+            const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId], bLocalCutoff, b);
+            return bScore - aScore;
+          }
+          case "google_reviews": {
+            const aRating = a.googleReviews?.rating ?? 0;
+            const bRating = b.googleReviews?.rating ?? 0;
+            return bRating - aRating;
+          }
+          case "osat": {
+            const aOsat = a.osat?.osatPercent ?? 0;
+            const bOsat = b.osat?.osatPercent ?? 0;
+            return bOsat - aOsat;
+          }
+          case "yoy": {
+            const aYoy = yoyBulkData?.data?.[a.restaurantId];
+            const bYoy = yoyBulkData?.data?.[b.restaurantId];
+            const aProjected = a.normalizedHour < 23 ? a.forecastSales : a.actualSales;
+            const bProjected = b.normalizedHour < 23 ? b.forecastSales : b.actualSales;
+            const aYoyVar = aYoy ? ((aProjected / aYoy.priorNetSales) - 1) * 100 : -999;
+            const bYoyVar = bYoy ? ((bProjected / bYoy.priorNetSales) - 1) * 100 : -999;
+            return bYoyVar - aYoyVar;
+          }
+          default:
+            return b.actualSales - a.actualSales;
+        }
+      });
+  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant]);
 
   return (
     <div className="min-h-screen bg-background">

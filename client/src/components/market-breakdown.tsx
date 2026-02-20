@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 // Card/Badge imports removed - using plain divs
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp } from "lucide-react";
@@ -199,7 +199,7 @@ function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAtta
   };
 }
 
-export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData }: MarketBreakdownProps) {
+export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData }: MarketBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -411,4 +411,4 @@ export function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crew
       )}
     </div>
   );
-}
+});

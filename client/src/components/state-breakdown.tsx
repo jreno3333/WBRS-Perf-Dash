@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 // Card imports removed - using plain divs for cleaner styling
 // Badge import removed - using inline styles
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
@@ -209,7 +209,7 @@ function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttain
   };
 }
 
-export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData }: StateBreakdownProps) {
+export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData }: StateBreakdownProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -472,4 +472,4 @@ export function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, w
       )}
     </div>
   );
-}
+});
