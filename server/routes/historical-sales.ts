@@ -2,7 +2,6 @@ import { Router } from "express";
 import { db } from "../db";
 import { historicalDailySales, hourlySales, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getNormalizedHourCutoff, getTodayInTimezone } from "../utils/dates";
 
 const router = Router();
 
@@ -220,13 +219,7 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
 
     console.log(`[YoY] Fetching bulk data for date=${date}, priorDate=${priorDateStr}`);
 
-    const result: Record<string, { priorNetSales: number; priorNetSalesPartial: number; priorGuestCount: number; priorDate: string }> = {};
-
-    // Determine normalized hour cutoff so we can compute partial-day LY sales
-    const todayStr = getTodayInTimezone('America/Chicago');
-    const isToday = (date as string) === todayStr;
-    const restaurantList = await db.select({ timezone: restaurants.timezone }).from(restaurants);
-    const hourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
+    const result: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }> = {};
 
     const rows = await db.select()
       .from(historicalDailySales)
@@ -237,7 +230,6 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
     for (const row of rows) {
       result[row.restaurantId] = {
         priorNetSales: parseFloat(row.netSales),
-        priorNetSalesPartial: 0,
         priorGuestCount: row.guestCount,
         priorDate: priorDateStr,
       };
@@ -266,7 +258,6 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
         if (totalSales > 0) {
           result[row.restaurantId] = {
             priorNetSales: totalSales,
-            priorNetSalesPartial: 0,
             priorGuestCount: 0,
             priorDate: priorDateStr,
           };
@@ -279,83 +270,7 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
       console.log(`[YoY] Added ${posCount} restaurants from POS hourly_sales data`);
     }
 
-    // Compute partial-day prior year sales (hours 0..hourCutoff) for same-time-of-day YoY
-    const partialPosRows = await db.select({
-      restaurantId: hourlySales.restaurantId,
-      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
-    })
-      .from(hourlySales)
-      .where(
-        and(
-          gte(hourlySales.salesDate, priorDateStart),
-          lte(hourlySales.salesDate, priorDateEnd),
-          lte(hourlySales.hour, hourCutoff)
-        )
-      )
-      .groupBy(hourlySales.restaurantId);
-
-    for (const row of partialPosRows) {
-      const partialSales = parseFloat(row.totalSales || "0");
-      if (result[row.restaurantId]) {
-        result[row.restaurantId].priorNetSalesPartial = partialSales;
-      }
-    }
-
-    // For restaurants with CSV data but no hourly POS data for LY partial calc,
-    // use last week's same-DOW hourly distribution to estimate what fraction
-    // of the full day's sales would have occurred by hourCutoff.
-    const csvOnlyRestaurants = Object.entries(result)
-      .filter(([_, data]) => data.priorNetSalesPartial === 0 && data.priorNetSales > 0 && hourCutoff < 23)
-      .map(([id]) => id);
-
-    if (csvOnlyRestaurants.length > 0) {
-      // Get last week's same-DOW hourly sales to build a progress curve
-      const lastWeekDate = new Date(currentDate);
-      lastWeekDate.setDate(lastWeekDate.getDate() - 7);
-      const lwDateStr = lastWeekDate.toISOString().split("T")[0];
-      const lwStart = new Date(lwDateStr + "T00:00:00.000Z");
-      const lwEnd = new Date(lwDateStr + "T23:59:59.999Z");
-
-      const lwHourlyRows = await db.select({
-        restaurantId: hourlySales.restaurantId,
-        hour: hourlySales.hour,
-        sales: hourlySales.actualSales,
-      })
-        .from(hourlySales)
-        .where(
-          and(
-            gte(hourlySales.salesDate, lwStart),
-            lte(hourlySales.salesDate, lwEnd)
-          )
-        );
-
-      // Build per-restaurant progress ratios from last week's data
-      const lwByRestaurant = new Map<string, { partial: number; total: number }>();
-      for (const row of lwHourlyRows) {
-        const sales = parseFloat(row.sales || "0");
-        if (sales <= 0) continue;
-        const entry = lwByRestaurant.get(row.restaurantId) || { partial: 0, total: 0 };
-        entry.total += sales;
-        if (row.hour <= hourCutoff) {
-          entry.partial += sales;
-        }
-        lwByRestaurant.set(row.restaurantId, entry);
-      }
-
-      for (const restId of csvOnlyRestaurants) {
-        const lwData = lwByRestaurant.get(restId);
-        if (lwData && lwData.total > 0) {
-          // Use last week's actual distribution curve
-          const progressRatio = lwData.partial / lwData.total;
-          result[restId].priorNetSalesPartial = result[restId].priorNetSales * progressRatio;
-        } else {
-          // Ultimate fallback: linear estimate
-          result[restId].priorNetSalesPartial = result[restId].priorNetSales * ((hourCutoff + 1) / 24);
-        }
-      }
-    }
-
-    console.log(`[YoY] Total: ${Object.keys(result).length} restaurants with YoY data (hourCutoff=${hourCutoff})`);
+    console.log(`[YoY] Total: ${Object.keys(result).length} restaurants with YoY data`);
 
     res.json({ priorDate: priorDateStr, data: result });
   } catch (error: any) {
