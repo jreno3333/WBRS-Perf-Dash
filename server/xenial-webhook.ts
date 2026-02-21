@@ -2,6 +2,19 @@ import { db, posDb } from "./db";
 import { posOrders, locationMapping, restaurants } from "@shared/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
 
+// Ensures the destination column exists before queries/inserts reference it.
+// Only runs the ALTER TABLE once per server lifetime.
+let destinationColumnEnsured = false;
+async function ensureDestinationColumn() {
+  if (destinationColumnEnsured) return;
+  try {
+    await posDb.execute(sql`ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS destination TEXT`);
+    destinationColumnEnsured = true;
+  } catch (e) {
+    console.error("[Xenial] Failed to ensure destination column:", e);
+  }
+}
+
 interface XenialOrderData {
   _id: string;
   origin?: string;
@@ -87,6 +100,8 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
     const orderSource = data.order_source || data.destination?.short_name || data.destination?.name || "POS";
     // Store raw destination separately for destination-specific tracking (e.g. dt3 = outside lane)
     const destination = data.destination?.short_name || data.destination?.name || null;
+
+    await ensureDestinationColumn();
 
     await posDb.insert(posOrders).values({
       xenialOrderId: orderId,
@@ -492,6 +507,9 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
+  // Ensure destination column exists before querying it
+  await ensureDestinationColumn();
+
   const allRestaurants = await db.select().from(restaurants);
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
   for (const restaurant of allRestaurants) {
@@ -515,8 +533,8 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
     if (storesInTz.length === 0) continue;
 
     const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
-    // Use COALESCE(destination, order_source) to handle older rows that don't have destination populated
-    const destExpr = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
+    // Use raw SQL column names — COALESCE handles NULL destination for older rows
+    const destExpr = sql.raw(`COALESCE(LOWER(destination), LOWER(order_source))`);
 
     const posResults = await posDb
       .select({
