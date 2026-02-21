@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { historicalDailySales, hourlySales, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { getNormalizedHourCutoff, getTodayInTimezone } from "../utils/dates";
 
 const router = Router();
 
@@ -219,7 +220,13 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
 
     console.log(`[YoY] Fetching bulk data for date=${date}, priorDate=${priorDateStr}`);
 
-    const result: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }> = {};
+    const result: Record<string, { priorNetSales: number; priorNetSalesPartial: number; priorGuestCount: number; priorDate: string }> = {};
+
+    // Determine normalized hour cutoff so we can compute partial-day LY sales
+    const todayStr = getTodayInTimezone('America/Chicago');
+    const isToday = (date as string) === todayStr;
+    const restaurantList = await db.select({ timezone: restaurants.timezone }).from(restaurants);
+    const hourCutoff = isToday ? getNormalizedHourCutoff(restaurantList) : 23;
 
     const rows = await db.select()
       .from(historicalDailySales)
@@ -230,6 +237,7 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
     for (const row of rows) {
       result[row.restaurantId] = {
         priorNetSales: parseFloat(row.netSales),
+        priorNetSalesPartial: 0,
         priorGuestCount: row.guestCount,
         priorDate: priorDateStr,
       };
@@ -258,6 +266,7 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
         if (totalSales > 0) {
           result[row.restaurantId] = {
             priorNetSales: totalSales,
+            priorNetSalesPartial: 0,
             priorGuestCount: 0,
             priorDate: priorDateStr,
           };
@@ -270,7 +279,37 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
       console.log(`[YoY] Added ${posCount} restaurants from POS hourly_sales data`);
     }
 
-    console.log(`[YoY] Total: ${Object.keys(result).length} restaurants with YoY data`);
+    // Compute partial-day prior year sales (hours 0..hourCutoff) for same-time-of-day YoY
+    const partialPosRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+    })
+      .from(hourlySales)
+      .where(
+        and(
+          gte(hourlySales.salesDate, priorDateStart),
+          lte(hourlySales.salesDate, priorDateEnd),
+          lte(hourlySales.hour, hourCutoff)
+        )
+      )
+      .groupBy(hourlySales.restaurantId);
+
+    for (const row of partialPosRows) {
+      const partialSales = parseFloat(row.totalSales || "0");
+      if (result[row.restaurantId]) {
+        result[row.restaurantId].priorNetSalesPartial = partialSales;
+      }
+    }
+
+    // For restaurants with CSV data but no hourly POS data for partial calc,
+    // estimate partial day from the full day total using hour proportion
+    for (const [restId, data] of Object.entries(result)) {
+      if (data.priorNetSalesPartial === 0 && data.priorNetSales > 0 && hourCutoff < 23) {
+        data.priorNetSalesPartial = data.priorNetSales * ((hourCutoff + 1) / 24);
+      }
+    }
+
+    console.log(`[YoY] Total: ${Object.keys(result).length} restaurants with YoY data (hourCutoff=${hourCutoff})`);
 
     res.json({ priorDate: priorDateStr, data: result });
   } catch (error: any) {
