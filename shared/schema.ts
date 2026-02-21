@@ -248,6 +248,7 @@ export const posOrders = pgTable("pos_orders", {
   businessDate: timestamp("business_date").notNull(),
   orderClosedAt: timestamp("order_closed_at").notNull(),
   orderSource: text("order_source"), // "POS", "APP", etc.
+  destination: text("destination"), // Raw destination short_name: "dt1", "dt2", "dt3", "in", "app"
   rawJson: text("raw_json"), // Full JSON for debugging
   receivedAt: timestamp("received_at").defaultNow(),
 });

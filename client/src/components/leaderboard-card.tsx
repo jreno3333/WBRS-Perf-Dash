@@ -202,6 +202,7 @@ interface LeaderboardCardProps {
   checkAverage?: CheckAverageData;
   consistencyScore?: number;
   demandCurveHours?: DemandCurveHour[];
+  destinationsByHour?: Record<number, Record<string, number>>;
   isToday?: boolean;
   yoyData?: YoYData;
   weeklyData?: WeeklyRestaurantData;
@@ -218,7 +219,7 @@ function formatTenure(months: number): string {
 
 // Memoize to prevent re-rendering all restaurant cards when the parent
 // dashboard re-renders due to unrelated state changes (sort, market filter, etc.).
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, consistencyScore, demandCurveHours, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -904,18 +905,18 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                             {(hour as any).speedAttainment}%
                           </span>
                         )}
+                        {/* DT3 outside lane indicator — 5+ orders means the outside lane is active */}
                         {isCompleted && (() => {
-                          const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
-                          if (!crewHour || crewHour.experienceScore === 0) return null;
-                          const score = crewHour.experienceScore;
-                          const color = score >= 75 ? "text-green-500" : score >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-500";
-                          const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
-                          const parts = [];
-                          if (veteran > 0) parts.push(`${veteran}V`);
-                          if (experienced > 0) parts.push(`${experienced}E`);
-                          if (developing > 0) parts.push(`${developing}D`);
-                          if (trainee > 0) parts.push(`${trainee}T`);
-                          return <span className={color}>{parts.join('/') || '0'}</span>;
+                          const destHour = destinationsByHour?.[hour.hour];
+                          if (!destHour) return null;
+                          const dt3Count = destHour['dt3'] || 0;
+                          if (dt3Count === 0) return null;
+                          const isActive = dt3Count >= 5;
+                          return (
+                            <span className={isActive ? "text-violet-500 font-medium" : "text-muted-foreground"}>
+                              {isActive ? '🟢' : '⚪'} DT3:{dt3Count}
+                            </span>
+                          );
                         })()}
                         {isCompleted && hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0 && (
                           <span className={
@@ -1178,13 +1179,23 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                             <span className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
                               {laborHours.toFixed(1)}h/{recommendedHours}h
                             </span>
-                            {/* Crew experience score */}
+                            {/* Crew experience score + tenure mix breakdown */}
                             {(() => {
                               const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
                               if (!crewHour || crewHour.experienceScore === 0) return null;
                               const score = crewHour.experienceScore;
                               const color = score >= 75 ? "text-green-600" : score >= 50 ? "text-amber-600" : "text-red-600";
-                              return <span className={color}>XP:{score}</span>;
+                              const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
+                              const parts: string[] = [];
+                              if (veteran > 0) parts.push(`${veteran}V`);
+                              if (experienced > 0) parts.push(`${experienced}E`);
+                              if (developing > 0) parts.push(`${developing}D`);
+                              if (trainee > 0) parts.push(`${trainee}T`);
+                              return (
+                                <span className={color}>
+                                  XP:{score} {parts.length > 0 && <span className="opacity-75">{parts.join('/')}</span>}
+                                </span>
+                              );
                             })()}
                           </div>
                           {/* Leaders list - show managers, shift supervisors, operators by name */}

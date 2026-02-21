@@ -85,6 +85,8 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
 
     // Determine order source from destination or use POS as default
     const orderSource = data.order_source || data.destination?.short_name || data.destination?.name || "POS";
+    // Store raw destination separately for destination-specific tracking (e.g. dt3 = outside lane)
+    const destination = data.destination?.short_name || data.destination?.name || null;
 
     await posDb.insert(posOrders).values({
       xenialOrderId: orderId,
@@ -93,6 +95,7 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
       businessDate: businessDate,
       orderClosedAt: orderClosedAt,
       orderSource: orderSource,
+      destination: destination,
       rawJson: JSON.stringify(payload),
     }).onConflictDoUpdate({
       target: posOrders.xenialOrderId,
@@ -100,6 +103,7 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
         orderTotal: orderTotal.toFixed(2),
         orderClosedAt: orderClosedAt,
         orderSource: orderSource,
+        destination: destination,
         rawJson: JSON.stringify(payload),
       },
     });
@@ -474,6 +478,80 @@ export async function getCheckAverageByRestaurant(targetDate: Date): Promise<Map
   result.forEach((entry) => {
     entry.checkAverage = entry.totalOrders > 0 ? entry.totalSales / entry.totalOrders : 0;
   });
+
+  return result;
+}
+
+/**
+ * Get destination breakdown by restaurant and hour for a given date.
+ * Returns per-destination order counts per hour (e.g. dt1, dt2, dt3, in, app).
+ * Used to detect when a restaurant is running the outside DT lane (dt3 >= 5 orders/hour).
+ */
+export async function getDestinationBreakdownByRestaurant(targetDate: Date): Promise<Map<string, Map<number, Record<string, number>>>> {
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], { id: restaurant.id, timezone: restaurant.timezone || 'America/Chicago' });
+    }
+  }
+
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+
+  // restaurantId → hour → { destination: count }
+  const result = new Map<string, Map<number, Record<string, number>>>();
+
+  for (const tz of timezoneSet) {
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    // Use COALESCE(destination, order_source) to handle older rows that don't have destination populated
+    const destExpr = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
+
+    const posResults = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        hour: sql<number>`${hourExpr}`,
+        destination: sql<string>`${destExpr}`,
+        orderCount: sql<number>`count(*)::int`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startOfDay),
+          lt(posOrders.businessDate, endOfDay),
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${hourExpr}`, sql`${destExpr}`);
+
+    for (const row of posResults) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (!restaurantInfo) continue;
+      const rid = restaurantInfo.id;
+      const dest = row.destination || 'unknown';
+
+      if (!result.has(rid)) {
+        result.set(rid, new Map());
+      }
+      const hourlyMap = result.get(rid)!;
+      if (!hourlyMap.has(row.hour)) {
+        hourlyMap.set(row.hour, {});
+      }
+      const destCounts = hourlyMap.get(row.hour)!;
+      destCounts[dest] = (destCounts[dest] || 0) + row.orderCount;
+    }
+  }
 
   return result;
 }

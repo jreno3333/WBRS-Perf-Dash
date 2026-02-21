@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, posDb } from "../db";
 import { posOrders } from "@shared/schema";
 import { desc, sql, gte, lt, and } from "drizzle-orm";
-import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant } from "../xenial-webhook";
+import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant } from "../xenial-webhook";
 
 const router = Router();
 
@@ -282,6 +282,32 @@ router.get("/api/pos/status", async (req, res) => {
   } catch (error) {
     console.error("Error fetching POS status:", error);
     res.status(500).json({ error: "Failed to fetch POS status" });
+  }
+});
+
+// Destination breakdown by restaurant/hour (for dt3 outside lane tracking)
+router.get("/api/pos/destinations", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date as string) : new Date();
+    const data = await getDestinationBreakdownByRestaurant(targetDate);
+
+    const result: Record<string, Record<number, Record<string, number>>> = {};
+    data.forEach((hourlyMap, restaurantId) => {
+      const hourly: Record<number, Record<string, number>> = {};
+      hourlyMap.forEach((destCounts, hour) => {
+        hourly[hour] = destCounts;
+      });
+      result[restaurantId] = hourly;
+    });
+
+    res.json({
+      date: targetDate.toISOString().split('T')[0],
+      restaurants: result,
+    });
+  } catch (error) {
+    console.error("Error fetching destination breakdown:", error);
+    res.status(500).json({ error: "Failed to fetch destination breakdown" });
   }
 });
 

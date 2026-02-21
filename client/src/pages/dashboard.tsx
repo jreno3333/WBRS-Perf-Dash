@@ -199,6 +199,21 @@ export default function Dashboard() {
   });
   const checkAverageByRestaurant = checkAverageResponse?.restaurants;
 
+  // Fetch destination breakdown (dt1/dt2/dt3/in/app) by restaurant/hour
+  const { data: destinationResponse } = useQuery<{
+    date: string;
+    restaurants: Record<string, Record<number, Record<string, number>>>;
+  }>({
+    queryKey: ["/api/pos/destinations", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/pos/destinations?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval,
+  });
+  const destinationsByRestaurant = destinationResponse?.restaurants;
+
   // Fetch markets data
   const { data: markets } = useQuery<MarketWithRestaurants[]>({
     queryKey: ["/api/markets"],
@@ -700,6 +715,7 @@ export default function Dashboard() {
                       checkAverage={checkAverageByRestaurant?.[restaurant.restaurantId]}
                       consistencyScore={consistencyByRestaurant?.[restaurant.restaurantId]}
                       demandCurveHours={demandCurvesByRestaurant?.[restaurant.restaurantId]}
+                      destinationsByHour={destinationsByRestaurant?.[restaurant.restaurantId]}
                       isToday={isToday}
                       yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
                       weeklyData={weeklySalesData?.restaurants?.[restaurant.restaurantId]}
