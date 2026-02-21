@@ -149,7 +149,9 @@ export class DatabaseStorage {
           if (hour <= normalizedHourCutoff) {
             selectedDateSalesAmount += sales;
           }
-          actualSalesAmount += sales;
+          if (hour <= restaurantCompletedHour) {
+            actualSalesAmount += sales;
+          }
         });
       } else if (!isToday) {
         selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
