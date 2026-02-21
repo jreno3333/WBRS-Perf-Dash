@@ -657,8 +657,16 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
               <thead>
                 <tr className="text-[9px] uppercase tracking-wider text-muted-foreground">
                   <th className="font-normal" />
-                  <th colSpan={3} className="font-normal pb-0.5 text-center border-b border-border/30">Current</th>
-                  <th colSpan={2} className="font-normal pb-0.5 text-center border-b border-border/30 pl-2">Forecast</th>
+                  <th colSpan={3} className="font-normal pb-0 text-center border-b border-border/30">Current</th>
+                  <th colSpan={2} className="font-normal pb-0 text-center border-b border-border/30 pl-2">Forecast</th>
+                </tr>
+                <tr className="text-[8px] uppercase tracking-wider text-muted-foreground/60">
+                  <th className="font-normal" />
+                  <th className="font-normal pb-0.5 text-right">Current</th>
+                  <th className="font-normal pb-0.5 text-right pl-1">LW</th>
+                  <th className="font-normal pb-0.5" />
+                  <th className="font-normal pb-0.5 pl-2" />
+                  <th className="font-normal pb-0.5" />
                 </tr>
               </thead>
               <tbody className="text-[11px]">
