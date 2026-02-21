@@ -305,7 +305,7 @@ export default function Dashboard() {
 
   const { data: yoyBulkData } = useQuery<{
     priorDate: string;
-    data: Record<string, { priorNetSales: number; priorNetSalesPartial: number; priorGuestCount: number; priorDate: string }>;
+    data: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
   }>({
     queryKey: ["/api/historical-sales/yoy-bulk", dateStr],
     queryFn: async () => {

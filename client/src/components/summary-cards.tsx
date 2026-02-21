@@ -18,7 +18,7 @@ interface SummaryCardsProps {
   restaurants: RestaurantSales[];
   lastUpdated: string;
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
-  yoyData?: Record<string, { priorNetSales: number; priorNetSalesPartial: number; priorGuestCount: number; priorDate: string }>;
+  yoyData?: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
   weeklySalesData?: WeeklySalesData;
 }
 
