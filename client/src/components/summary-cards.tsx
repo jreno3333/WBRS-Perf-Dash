@@ -159,8 +159,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   
   // Projected: Use ALL active restaurants for projected daily total and LW full day comparison
   const totalLastWeekFullDay = activeRestaurants.reduce((sum, r) => {
-    const lwRemaining = Math.max(0, (r.forecastSales || 0) - (r.actualSales || 0));
-    return sum + (r.actualLastWeekSales || 0) + lwRemaining;
+    return sum + (r.lastWeekFullDay ?? ((r.actualLastWeekSales || 0) + Math.max(0, (r.forecastSales || 0) - (r.actualSales || 0))));
   }, 0);
   const aheadOfPaceCount = activeRestaurants.filter((r) => r.isAheadOfPace).length;
   

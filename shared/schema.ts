@@ -173,6 +173,7 @@ export interface RestaurantSales {
   lastWeekSales: number; // Normalized last week (for ranking comparison)
   actualLastWeekSales: number; // Full last week sales (all hours, for display)
   forecastSales: number;
+  lastWeekFullDay?: number; // Last week's full day total (partial + remaining hours)
   pacePercentage: number; // How far through the day they are vs last week
   isAheadOfPace: boolean;
   rank: number;

@@ -215,7 +215,9 @@ export class DatabaseStorage {
           }
         }
       }
-      const forecastSalesAmount = actualSalesAmount + lastWeekRemainingHoursSales;
+      const paceRatio = actualLastWeekAmount > 0 ? actualSalesAmount / actualLastWeekAmount : 1;
+      const lastWeekFullDayAmount = actualLastWeekAmount + lastWeekRemainingHoursSales;
+      const forecastSalesAmount = actualSalesAmount + lastWeekRemainingHoursSales * paceRatio;
 
       const completedHours = Math.max(0, normalizedHourCutoff + 1);
       const pacePercentage = (completedHours / 24) * 100;
@@ -293,6 +295,7 @@ export class DatabaseStorage {
         lastWeekSales: lastWeekSalesAmount,
         actualLastWeekSales: actualLastWeekAmount,
         forecastSales: forecastSalesAmount,
+        lastWeekFullDay: lastWeekFullDayAmount,
         pacePercentage,
         isAheadOfPace,
         rank: 0,
