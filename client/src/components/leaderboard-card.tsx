@@ -782,12 +782,12 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
               </div>
             </div>
             {/* Execution Grades Row - only show grades for completed hours (using restaurant's local hour) */}
-            <div className="flex gap-0.5 mb-1">
+            <div className="flex gap-0.5 mb-0.5">
               {activeHours.map((hour) => {
                 const isCompleted = hour.hour <= localGradeCutoff;
                 const hasComparableSales = hour.lastWeekSales > 0;
-                const salesVariancePct = hasComparableSales 
-                  ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+                const salesVariancePct = hasComparableSales
+                  ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
                   : 0;
                 const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
                 // Exclude operator from labor hours (not production/non-production)
@@ -799,10 +799,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
                 const hasValidStaffing = rawEmployeeCount >= 1;
                 const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
-                
+
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
-                
+
                 return (
                   <div
                     key={`grade-${hour.hour}`}
@@ -819,6 +819,28 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 );
               })}
             </div>
+            {/* OOT (Outside Order Taker) row — visible under grades when dt3 >= 5 for any hour */}
+            {activeHours.some(h => {
+              const dest = destinationsByHour?.[h.hour];
+              return dest && (dest['dt3'] || 0) >= 5;
+            }) && (
+              <div className="flex gap-0.5 mb-0.5">
+                {activeHours.map((hour) => {
+                  const isCompleted = hour.hour <= localGradeCutoff;
+                  const dt3Count = isCompleted ? (destinationsByHour?.[hour.hour]?.['dt3'] || 0) : 0;
+                  const isActive = dt3Count >= 5;
+                  return (
+                    <div key={`oot-${hour.hour}`} className="flex-1 text-center">
+                      {isActive ? (
+                        <span className="text-[9px] font-bold text-violet-500">OOT</span>
+                      ) : (
+                        <span className="text-[9px]">&nbsp;</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div 
               className="relative flex items-end gap-0.5 h-12" 
               data-testid={`hourly-chart-${restaurant.restaurantId}`}
@@ -905,7 +927,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                             {(hour as any).speedAttainment}%
                           </span>
                         )}
-                        {/* DT3 outside lane indicator — 5+ orders means the outside lane is active */}
+                        {/* OOT (Outside Order Taker) indicator — dt3 order count */}
                         {isCompleted && (() => {
                           const destHour = destinationsByHour?.[hour.hour];
                           if (!destHour) return null;
@@ -914,7 +936,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                           const isActive = dt3Count >= 5;
                           return (
                             <span className={isActive ? "text-violet-500 font-medium" : "text-muted-foreground"}>
-                              {isActive ? '🟢' : '⚪'} DT3:{dt3Count}
+                              OOT:{dt3Count}
                             </span>
                           );
                         })()}
