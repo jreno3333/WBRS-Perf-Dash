@@ -9,6 +9,7 @@ import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear }
 import { getDailyDriveThruSummary } from "../scraper/hme-api";
 import { getOsatForDate } from "../scraper/qualtrics-api";
 import { getAllHourlyPosSales } from "../xenial-webhook";
+import { getCurrentHourInTimezone } from "../utils/dates";
 
 const router = Router();
 
@@ -485,12 +486,6 @@ router.get("/api/weekly-sales", async (req, res) => {
     // Is the entire selected week in the past? (Friday of selected week < real today)
     const isPastWeek = currentWeekEndStr < realTodayStr;
 
-    // For WTD: hour cutoff on the selected day
-    // Use the last COMPLETED hour (current hour - 1) to match the daily leaderboard logic.
-    // This ensures apples-to-apples: today's POS data only has completed hours, so the prior
-    // week comparison must also use completed hours to avoid an asymmetric denominator.
-    const wtdHourCutoff = (todayStr === realTodayStr) ? Math.max(0, realCurrentHourCT - 1) : 23;
-
     // Prior week dates (apples-to-apples): only match elapsed days in current week
     const priorWeekDates: string[] = [];
     for (let i = 0; i < currentWeekDates.length; i++) {
@@ -593,11 +588,16 @@ router.get("/api/weekly-sales", async (req, res) => {
     const weeklyData: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }> = {};
 
     for (const r of allRestaurants) {
+      // Use each restaurant's local timezone for the hour cutoff (matches DAY calculation in storage.ts)
+      const restaurantWtdHourCutoff = (todayStr === realTodayStr)
+        ? Math.max(0, getCurrentHourInTimezone(r.timezone) - 1)
+        : 23;
+
       // --- WTD: actual sales Sat through selected day ---
       let currentWeekTotal = 0;
       for (const d of currentWeekDates) {
         if (d === todayStr) {
-          currentWeekTotal += sumDateSales(r.id, d, wtdHourCutoff);
+          currentWeekTotal += sumDateSales(r.id, d, restaurantWtdHourCutoff);
         } else {
           currentWeekTotal += sumDateSales(r.id, d);
         }
@@ -608,7 +608,7 @@ router.get("/api/weekly-sales", async (req, res) => {
       for (let i = 0; i < currentWeekDates.length; i++) {
         const d = priorWeekDates[i];
         if (currentWeekDates[i] === todayStr) {
-          priorWeekTotal += sumDateSales(r.id, d, wtdHourCutoff);
+          priorWeekTotal += sumDateSales(r.id, d, restaurantWtdHourCutoff);
         } else {
           priorWeekTotal += sumDateSales(r.id, d);
         }
@@ -631,17 +631,17 @@ router.get("/api/weekly-sales", async (req, res) => {
         }
       } else {
         // Current week — sum actuals through real today + forecast remaining
-        // Use completed hour (current - 1) so actuals only count finished hours,
+        // Use each restaurant's local completed hour so actuals only count finished hours,
         // and forecast picks up from the current in-progress hour onward via LW data.
         // This avoids a gap where POS hasn't reported the in-progress hour yet.
-        const completedHourCT = Math.max(0, realCurrentHourCT - 1);
+        const restaurantCompletedHour = Math.max(0, getCurrentHourInTimezone(r.timezone) - 1);
 
         // 1. Actual: complete days before real today + real today through completed hour
         for (const d of currentWeekFullDates) {
           if (d < realTodayStr) {
             eowActual += sumFullDaySales(r.id, d);
           } else if (d === realTodayStr) {
-            eowActual += sumDateSales(r.id, d, completedHourCT);
+            eowActual += sumDateSales(r.id, d, restaurantCompletedHour);
           }
           // days after real today: skip (will be forecast)
         }
@@ -653,7 +653,7 @@ router.get("/api/weekly-sales", async (req, res) => {
         const priorWeekMatchingToday = priorWeekFullDates[realDaysSinceSat];
 
         // Remaining hours today from LW (starting from the current in-progress hour)
-        forecastRemaining += sumRemainingHoursSales(r.id, priorWeekMatchingToday, completedHourCT);
+        forecastRemaining += sumRemainingHoursSales(r.id, priorWeekMatchingToday, restaurantCompletedHour);
 
         // Full days after real today through Friday from LW
         for (let i = realDaysSinceSat + 1; i < 7; i++) {
