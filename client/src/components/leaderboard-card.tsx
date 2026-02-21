@@ -246,6 +246,36 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   // Check if restaurant is in first week (no historical data expected)
   const isFirstWeek = (restaurant.daysOpen !== undefined && restaurant.daysOpen < 7);
 
+  // Pre-compute values for the sales grid
+  const isDayComplete = restaurant.normalizedHour >= 23;
+  const lwRemaining = Math.max(0, restaurant.forecastSales - restaurant.actualSales);
+  const lwFullDay = displayLastWeek + lwRemaining;
+  const dayForecastVar = lwFullDay > 0
+    ? ((restaurant.forecastSales / lwFullDay) - 1) * 100
+    : 0;
+
+  // YoY: only for SSS restaurants (>18 months open)
+  const isSSS = !restaurant.openDate || (() => {
+    const open = new Date(restaurant.openDate);
+    const now = new Date();
+    return ((now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth())) > 18;
+  })();
+  const yoyPrior = yoyData?.priorNetSales ?? 0;
+  const showYoY = yoyPrior > 0 && isSSS;
+  const currentYoYVar = showYoY ? ((restaurant.actualSales / yoyPrior) - 1) * 100 : 0;
+  const projYoYVar = showYoY
+    ? (((isDayComplete ? restaurant.actualSales : restaurant.forecastSales) / yoyPrior) - 1) * 100
+    : 0;
+
+  // Weekly variances
+  const wkVar = weeklyData && weeklyData.priorWeek > 0
+    ? ((weeklyData.currentWeek / weeklyData.priorWeek) - 1) * 100
+    : 0;
+  const eowVar = weeklyData && weeklyData.priorWeekFull > 0
+    ? ((weeklyData.eowForecast / weeklyData.priorWeekFull) - 1) * 100
+    : 0;
+  const showEow = !!(weeklyData && weeklyData.eowForecast > weeklyData.currentWeek);
+
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
   // Generate all 24 hours, filling in zeros for missing hours
   // Use localCurrentHour for grade display (restaurant's own timezone)
@@ -620,125 +650,82 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 </BadgeWithTooltip>
               )}
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
-              <span className="text-xs">
-                LW: {formatCurrency(displayLastWeek)}
-              </span>
-              <BadgeWithTooltip
-                variant="secondary"
-                className="flex-shrink-0 text-xs border-0 bg-transparent px-0 font-normal text-muted-foreground"
-                tooltipTitle="End-of-Day Forecast"
-                tooltipDetail={
-                  restaurant.normalizedHour >= 23
-                    ? "Day complete"
-                    : `${formatCurrency(restaurant.actualSales)} + ${formatCurrency(Math.max(0, restaurant.forecastSales - restaurant.actualSales))} LW remaining`
-                }
-              >
-                <span className="text-xs">
-                  EOD Forecast: {(() => {
-                    const isDayComplete = restaurant.normalizedHour >= 23;
-                    if (isDayComplete) {
-                      return formatCurrency(restaurant.actualSales);
-                    }
-                    return formatCurrency(restaurant.forecastSales);
-                  })()}
-                </span>
-              </BadgeWithTooltip>
-              {yoyData && yoyData.priorNetSales > 0 && (() => {
-                const isSSS = !restaurant.openDate || (() => {
-                  const open = new Date(restaurant.openDate);
-                  const now = new Date();
-                  return ((now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth())) > 18;
-                })();
-                if (!isSSS) return null;
-                return (
-                  <span className="text-xs">
-                    LY: {formatCurrency(yoyData.priorNetSales)}
-                  </span>
-                );
-              })()}
-            </div>
           </div>
 
-          <div className="flex-shrink-0 text-right">
-            <div className="flex items-center justify-end gap-1.5 sm:gap-2">
-              <div
-                className="text-sm sm:text-base font-semibold tabular-nums"
-                data-testid={`text-sales-${restaurant.restaurantId}`}
-              >
-                {formatCurrency(restaurant.actualSales)}
-              </div>
-              <span className={`text-[10px] sm:text-xs font-medium whitespace-nowrap ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`badge-pace-${restaurant.restaurantId}`}>
-                {formatPercentage(paceVariance)}
-              </span>
-            </div>
-            {yoyData && yoyData.priorNetSales > 0 && (() => {
-              const isDayComplete = restaurant.normalizedHour >= 23;
-              const projectedTotal = isDayComplete ? restaurant.actualSales : restaurant.forecastSales;
-              const projYoYVariance = ((projectedTotal - yoyData.priorNetSales) / yoyData.priorNetSales) * 100;
-              const monthsOpen = restaurant.openDate ? (() => {
-                const open = new Date(restaurant.openDate);
-                const now = new Date();
-                return (now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth());
-              })() : null;
-              return (
-                <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                  <span
-                    className={`text-xs font-medium whitespace-nowrap ${projYoYVariance >= 0 
-                      ? "text-blue-500" 
-                      : "text-orange-500"}`}
-                    data-testid={`badge-yoy-${restaurant.restaurantId}`}
+          <div className="flex-shrink-0 min-w-0">
+            <table className="tabular-nums text-right" style={{ borderSpacing: 0 }}>
+              <thead>
+                <tr className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                  <th className="font-normal" />
+                  <th colSpan={3} className="font-normal pb-0.5 text-center border-b border-border/30">Current</th>
+                  <th colSpan={2} className="font-normal pb-0.5 text-center border-b border-border/30 pl-2">Forecast</th>
+                </tr>
+              </thead>
+              <tbody className="text-[11px]">
+                {/* DAY row */}
+                <tr>
+                  <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5">DAY</td>
+                  <td className="font-semibold text-xs pl-1 pt-0.5" data-testid={`text-sales-${restaurant.restaurantId}`}>
+                    {formatCurrency(restaurant.actualSales)}
+                  </td>
+                  <td className="text-muted-foreground pl-1 pt-0.5">{formatCurrency(displayLastWeek)}</td>
+                  <td
+                    className={`font-medium pl-1 pt-0.5 ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`}
+                    data-testid={`badge-pace-${restaurant.restaurantId}`}
                   >
-                    {projYoYVariance >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
-                    YoY {projYoYVariance >= 0 ? "+" : ""}{Math.round(projYoYVariance)}%
-                  </span>
-                  {monthsOpen !== null && (
-                    <span
-                      className="text-[10px] text-muted-foreground whitespace-nowrap"
-                      data-testid={`text-months-open-${restaurant.restaurantId}`}
+                    {formatPercentage(paceVariance)}
+                  </td>
+                  <td className={`pl-2 pt-0.5 ${!isDayComplete ? "font-semibold" : "text-muted-foreground"}`}>
+                    {!isDayComplete ? formatCurrency(restaurant.forecastSales) : "—"}
+                  </td>
+                  <td className={`font-medium pl-1 pt-0.5 ${!isDayComplete ? (dayForecastVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}>
+                    {!isDayComplete ? formatPercentage(dayForecastVar) : ""}
+                  </td>
+                </tr>
+                {/* WEEK row */}
+                {weeklyData && weeklyData.currentWeek > 0 && (
+                  <tr>
+                    <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5">WTD</td>
+                    <td className="font-semibold pl-1 pt-0.5" data-testid={`text-weekly-${restaurant.restaurantId}`}>
+                      {formatCurrency(weeklyData.currentWeek)}
+                    </td>
+                    <td className="text-muted-foreground pl-1 pt-0.5">
+                      {weeklyData.priorWeek > 0 ? formatCurrency(weeklyData.priorWeek) : ""}
+                    </td>
+                    <td className={`font-medium pl-1 pt-0.5 ${wkVar >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      {weeklyData.priorWeek > 0 ? formatPercentage(wkVar) : ""}
+                    </td>
+                    <td
+                      className={`pl-2 pt-0.5 ${showEow ? "font-semibold" : "text-muted-foreground"}`}
+                      data-testid={`text-eow-${restaurant.restaurantId}`}
                     >
-                      {monthsOpen >= 12 ? `${Math.floor(monthsOpen / 12)}y ${monthsOpen % 12}m` : `${monthsOpen}mo`}
-                    </span>
-                  )}
-                </div>
-              );
-            })()}
-            {weeklyData && weeklyData.currentWeek > 0 && (
-              <>
-                <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                  <span className="text-xs text-muted-foreground">WTD:</span>
-                  <span className="text-xs font-semibold" data-testid={`text-weekly-${restaurant.restaurantId}`}>
-                    {formatCurrency(weeklyData.currentWeek)}
-                  </span>
-                  {weeklyData.priorWeek > 0 && (() => {
-                    const wkVar = ((weeklyData.currentWeek / weeklyData.priorWeek) - 1) * 100;
-                    return (
-                      <span className={`text-xs font-medium whitespace-nowrap ${wkVar >= 0 ? "text-green-500" : "text-red-500"}`}>
-                        {wkVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
-                        vs LW {wkVar >= 0 ? "+" : ""}{Math.round(wkVar)}%
-                      </span>
-                    );
-                  })()}
-                </div>
-                {weeklyData.eowForecast > weeklyData.currentWeek && (
-                  <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                    <span className="text-xs text-muted-foreground">EOW:</span>
-                    <span className="text-xs font-semibold text-purple-500" data-testid={`text-eow-${restaurant.restaurantId}`}>
-                      {formatCurrency(weeklyData.eowForecast)}
-                    </span>
-                    {weeklyData.priorWeekFull > 0 && (() => {
-                      const eowVar = ((weeklyData.eowForecast / weeklyData.priorWeekFull) - 1) * 100;
-                      return (
-                        <span className={`text-xs font-medium whitespace-nowrap ${eowVar >= 0 ? "text-green-500" : "text-red-500"}`}>
-                          {eowVar >= 0 ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
-                          vs LW {eowVar >= 0 ? "+" : ""}{Math.round(eowVar)}%
-                        </span>
-                      );
-                    })()}
-                  </div>
+                      {showEow ? formatCurrency(weeklyData.eowForecast) : "—"}
+                    </td>
+                    <td className={`font-medium pl-1 pt-0.5 ${showEow && weeklyData.priorWeekFull > 0 ? (eowVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}>
+                      {showEow && weeklyData.priorWeekFull > 0 ? formatPercentage(eowVar) : ""}
+                    </td>
+                  </tr>
                 )}
-              </>
-            )}
+                {/* YoY row */}
+                {showYoY && (
+                  <tr>
+                    <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5">YoY</td>
+                    <td
+                      className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
+                      data-testid={`badge-yoy-${restaurant.restaurantId}`}
+                    >
+                      {formatPercentage(currentYoYVar)}
+                    </td>
+                    <td />
+                    <td />
+                    <td className={`font-medium pl-2 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
+                      {!isDayComplete ? formatPercentage(projYoYVar) : ""}
+                    </td>
+                    <td />
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
           
           <div
