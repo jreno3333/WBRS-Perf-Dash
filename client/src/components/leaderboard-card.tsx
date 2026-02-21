@@ -709,7 +709,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 {/* YoY row */}
                 {showYoY && (
                   <tr>
-                    <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">Day YoY</td>
+                    <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">DAY YoY</td>
                     <td
                       className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
                       data-testid={`badge-yoy-${restaurant.restaurantId}`}
