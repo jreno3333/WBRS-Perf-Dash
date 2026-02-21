@@ -253,8 +253,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
 
   // Pre-compute values for the sales grid
   const isDayComplete = restaurant.normalizedHour >= 23;
-  const lwRemaining = Math.max(0, restaurant.forecastSales - restaurant.actualSales);
-  const lwFullDay = displayLastWeek + lwRemaining;
+  const lwFullDay = restaurant.lastWeekFullDay ?? (displayLastWeek + Math.max(0, restaurant.forecastSales - restaurant.actualSales));
   const dayForecastVar = lwFullDay > 0
     ? ((restaurant.forecastSales / lwFullDay) - 1) * 100
     : 0;
