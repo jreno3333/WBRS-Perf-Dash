@@ -301,11 +301,57 @@ router.get("/api/historical-sales/yoy-bulk", async (req, res) => {
       }
     }
 
-    // For restaurants with CSV data but no hourly POS data for partial calc,
-    // estimate partial day from the full day total using hour proportion
-    for (const [restId, data] of Object.entries(result)) {
-      if (data.priorNetSalesPartial === 0 && data.priorNetSales > 0 && hourCutoff < 23) {
-        data.priorNetSalesPartial = data.priorNetSales * ((hourCutoff + 1) / 24);
+    // For restaurants with CSV data but no hourly POS data for LY partial calc,
+    // use last week's same-DOW hourly distribution to estimate what fraction
+    // of the full day's sales would have occurred by hourCutoff.
+    const csvOnlyRestaurants = Object.entries(result)
+      .filter(([_, data]) => data.priorNetSalesPartial === 0 && data.priorNetSales > 0 && hourCutoff < 23)
+      .map(([id]) => id);
+
+    if (csvOnlyRestaurants.length > 0) {
+      // Get last week's same-DOW hourly sales to build a progress curve
+      const lastWeekDate = new Date(currentDate);
+      lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+      const lwDateStr = lastWeekDate.toISOString().split("T")[0];
+      const lwStart = new Date(lwDateStr + "T00:00:00.000Z");
+      const lwEnd = new Date(lwDateStr + "T23:59:59.999Z");
+
+      const lwHourlyRows = await db.select({
+        restaurantId: hourlySales.restaurantId,
+        hour: hourlySales.hour,
+        sales: hourlySales.actualSales,
+      })
+        .from(hourlySales)
+        .where(
+          and(
+            gte(hourlySales.salesDate, lwStart),
+            lte(hourlySales.salesDate, lwEnd)
+          )
+        );
+
+      // Build per-restaurant progress ratios from last week's data
+      const lwByRestaurant = new Map<string, { partial: number; total: number }>();
+      for (const row of lwHourlyRows) {
+        const sales = parseFloat(row.sales || "0");
+        if (sales <= 0) continue;
+        const entry = lwByRestaurant.get(row.restaurantId) || { partial: 0, total: 0 };
+        entry.total += sales;
+        if (row.hour <= hourCutoff) {
+          entry.partial += sales;
+        }
+        lwByRestaurant.set(row.restaurantId, entry);
+      }
+
+      for (const restId of csvOnlyRestaurants) {
+        const lwData = lwByRestaurant.get(restId);
+        if (lwData && lwData.total > 0) {
+          // Use last week's actual distribution curve
+          const progressRatio = lwData.partial / lwData.total;
+          result[restId].priorNetSalesPartial = result[restId].priorNetSales * progressRatio;
+        } else {
+          // Ultimate fallback: linear estimate
+          result[restId].priorNetSalesPartial = result[restId].priorNetSales * ((hourCutoff + 1) / 24);
+        }
       }
     }
 
