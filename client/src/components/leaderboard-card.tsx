@@ -729,17 +729,21 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <tr>
                       <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">DAY YoY</td>
                       <td
-                        className={`font-medium pl-1 pt-0.5 whitespace-nowrap ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
+                        className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
                         data-testid={`badge-yoy-${restaurant.restaurantId}`}
                       >
-                        {formatSignedCurrency(currentYoYDollar)} {formatPercentage(currentYoYVar)}
+                        {formatSignedCurrency(currentYoYDollar)}
                       </td>
                       <td />
-                      <td />
-                      <td className={`font-medium pl-2 pt-0.5 whitespace-nowrap ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
-                        {!isDayComplete ? `${formatSignedCurrency(projYoYDollar)} ${formatPercentage(projYoYVar)}` : ""}
+                      <td className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}>
+                        {formatPercentage(currentYoYVar)}
                       </td>
-                      <td />
+                      <td className={`font-medium pl-2 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
+                        {!isDayComplete ? formatSignedCurrency(projYoYDollar) : ""}
+                      </td>
+                      <td className={`font-medium pl-1 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
+                        {!isDayComplete ? formatPercentage(projYoYVar) : ""}
+                      </td>
                     </tr>
                     <tr>
                       <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 whitespace-nowrap">LY</td>
