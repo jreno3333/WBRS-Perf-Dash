@@ -237,6 +237,11 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     return `${sign}${Math.round(value)}%`;
   };
 
+  const formatSignedCurrency = (amount: number) => {
+    const sign = amount >= 0 ? "+" : "";
+    return `${sign}${formatCurrency(amount)}`;
+  };
+
   // Display variance uses actual local-timezone sales for accurate store-level comparison
   const displayLastWeek = restaurant.actualLastWeekSales ?? restaurant.lastWeekSales;
   const paceVariance = displayLastWeek > 0 
@@ -271,6 +276,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     ? ((restaurant.actualSales / yoyPriorPartial) - 1) * 100 : 0;
   const projYoYVar = showYoY
     ? (((isDayComplete ? restaurant.actualSales : restaurant.forecastSales) / yoyPrior) - 1) * 100
+    : 0;
+  const currentYoYDollar = showYoY ? restaurant.actualSales - yoyPriorPartial : 0;
+  const projYoYDollar = showYoY
+    ? (isDayComplete ? restaurant.actualSales : restaurant.forecastSales) - yoyPrior
     : 0;
 
   // Weekly variances
@@ -716,21 +725,31 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 )}
                 {/* YoY row */}
                 {showYoY && (
-                  <tr>
-                    <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">DAY YoY</td>
-                    <td
-                      className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
-                      data-testid={`badge-yoy-${restaurant.restaurantId}`}
-                    >
-                      {formatPercentage(currentYoYVar)}
-                    </td>
-                    <td />
-                    <td />
-                    <td className={`font-medium pl-2 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
-                      {!isDayComplete ? formatPercentage(projYoYVar) : ""}
-                    </td>
-                    <td />
-                  </tr>
+                  <>
+                    <tr>
+                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">DAY YoY</td>
+                      <td
+                        className={`font-medium pl-1 pt-0.5 whitespace-nowrap ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
+                        data-testid={`badge-yoy-${restaurant.restaurantId}`}
+                      >
+                        {formatSignedCurrency(currentYoYDollar)} {formatPercentage(currentYoYVar)}
+                      </td>
+                      <td />
+                      <td />
+                      <td className={`font-medium pl-2 pt-0.5 whitespace-nowrap ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
+                        {!isDayComplete ? `${formatSignedCurrency(projYoYDollar)} ${formatPercentage(projYoYVar)}` : ""}
+                      </td>
+                      <td />
+                    </tr>
+                    <tr>
+                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 whitespace-nowrap">LY</td>
+                      <td className="text-muted-foreground pl-1">{formatCurrency(yoyPrior)}</td>
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                    </tr>
+                  </>
                 )}
               </tbody>
             </table>
