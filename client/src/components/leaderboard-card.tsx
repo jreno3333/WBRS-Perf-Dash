@@ -167,6 +167,7 @@ interface HourlyCrewData {
 
 interface YoYData {
   priorNetSales: number;
+  priorNetSalesPartial: number;
   priorGuestCount: number;
   priorDate: string;
 }
@@ -261,8 +262,11 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     return ((now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth())) > 18;
   })();
   const yoyPrior = yoyData?.priorNetSales ?? 0;
+  const yoyPriorPartial = yoyData?.priorNetSalesPartial ?? 0;
   const showYoY = yoyPrior > 0 && isSSS;
-  const currentYoYVar = showYoY ? ((restaurant.actualSales / yoyPrior) - 1) * 100 : 0;
+  // Current column: compare partial-day actual vs LY same-time-of-day sales
+  const currentYoYVar = showYoY && yoyPriorPartial > 0
+    ? ((restaurant.actualSales / yoyPriorPartial) - 1) * 100 : 0;
   const projYoYVar = showYoY
     ? (((isDayComplete ? restaurant.actualSales : restaurant.forecastSales) / yoyPrior) - 1) * 100
     : 0;
