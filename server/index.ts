@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
+import { backfillDestinations } from "./xenial-webhook";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -129,7 +130,10 @@ app.use((req, res, next) => {
     },
     async () => {
       log(`serving on port ${port}`);
-      
+
+      // Backfill destination column for existing POS orders (one-time, idempotent)
+      backfillDestinations().catch(() => {});
+
       // Start the automatic 7shifts sync scheduler (with historical data seeding if needed)
       await startScheduler();
     },

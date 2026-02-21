@@ -626,3 +626,31 @@ export function validateWebhookToken(authHeader: string | undefined): boolean {
   // Xenial webhook does not use token authentication - always allow
   return true;
 }
+
+/**
+ * One-time backfill: populate the `destination` column from rawJson for existing records.
+ * Safe to call multiple times — only updates rows where destination IS NULL.
+ */
+export async function backfillDestinations(): Promise<number> {
+  try {
+    // First ensure the column exists (idempotent)
+    await posDb.execute(sql`ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS destination TEXT`);
+
+    // Backfill from stored rawJson payload
+    const result = await posDb.execute(sql`
+      UPDATE pos_orders
+      SET destination = raw_json::jsonb -> 'data' -> 'destination' ->> 'short_name'
+      WHERE destination IS NULL
+        AND raw_json IS NOT NULL
+        AND raw_json::jsonb -> 'data' -> 'destination' ->> 'short_name' IS NOT NULL
+    `);
+    const count = (result as any).rowCount || 0;
+    if (count > 0) {
+      console.log(`[Xenial] Backfilled destination for ${count} existing POS orders`);
+    }
+    return count;
+  } catch (error) {
+    console.error("[Xenial] Error backfilling destinations:", error);
+    return 0;
+  }
+}
