@@ -215,7 +215,14 @@ export class DatabaseStorage {
           }
         }
       }
-      const paceRatio = actualLastWeekAmount > 0 ? actualSalesAmount / actualLastWeekAmount : 1;
+      const rawPaceRatio = actualLastWeekAmount > 0 ? actualSalesAmount / actualLastWeekAmount : 1;
+      // Dampen the pace ratio early in the day to avoid volatile projections.
+      // Typical restaurant operating hours are ~6 AM to 10 PM (16 hours).
+      // Early in the day, blend toward 1.0 (assume same as last week);
+      // as more hours complete, trust the actual pace ratio more.
+      const operatingHours = 16;
+      const dayProgress = isToday ? Math.min((restaurantCompletedHour + 1) / operatingHours, 1) : 1;
+      const paceRatio = 1 + (rawPaceRatio - 1) * dayProgress;
       const lastWeekFullDayAmount = actualLastWeekAmount + lastWeekRemainingHoursSales;
       const forecastSalesAmount = actualSalesAmount + lastWeekRemainingHoursSales * paceRatio;
 
