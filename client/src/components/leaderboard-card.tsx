@@ -403,8 +403,9 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       data-testid={`card-restaurant-${restaurant.restaurantId}`}
     >
       <div className="p-2.5 sm:p-3">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex-shrink-0">
+        <div className="flex items-start sm:items-center gap-2 sm:gap-3">
+          {/* Rank badge */}
+          <div className="flex-shrink-0 mt-0.5 sm:mt-0">
             {restaurant.status === "training" ? (
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-muted-foreground bg-muted/50"
@@ -430,336 +431,346 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
             )}
           </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-              <h3
-                className="font-medium text-sm truncate"
-                data-testid={`text-restaurant-name-${restaurant.restaurantId}`}
-              >
-                {restaurant.restaurantName}
-              </h3>
-              {restaurant.status === "training" && (
-                <Badge variant="secondary" className="flex-shrink-0 text-xs" data-testid={`badge-training-${restaurant.restaurantId}`}>
-                  Training - Opens {restaurant.openDate ? new Date(restaurant.openDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'}
-                </Badge>
-              )}
-              {restaurant.status === "new" && (
-                <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
-                  NU {restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`}
-                </Badge>
-              )}
-              {/* Overall Execution Grade + Daypart Grades */}
-              {overallGrade && (
-                <BadgeWithTooltip
-                  variant="outline"
-                  className={`flex-shrink-0 text-xs font-bold ${overallGrade.color} border-current`}
-                  data-testid={`badge-grade-${restaurant.restaurantId}`}
-                  tooltipContent={
-                    daypartGrades.length > 0 ? (
-                      <div>
-                        <div className="font-medium mb-1">Daypart Grades</div>
-                        <div className="flex flex-col gap-0.5">
-                          {daypartGrades.map(dp => (
-                            <div key={dp.id} className="flex items-center justify-between gap-3">
-                              <span className="text-muted-foreground">{dp.label}</span>
-                              <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div>Overall execution grade based on sales, speed, OSAT, and staffing</div>
-                    )
-                  }
+          {/* Content: stacks vertically on mobile, horizontal on desktop */}
+          <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-3">
+            {/* Name + badges section */}
+            <div className="flex-1 min-w-0">
+              {/* Store name + status badge */}
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <h3
+                  className="font-medium text-sm truncate"
+                  data-testid={`text-restaurant-name-${restaurant.restaurantId}`}
                 >
-                  EXC: {overallGrade.grade}
-                </BadgeWithTooltip>
-              )}
-              {/* Google Reviews Badge */}
-              {restaurant.googleReviews && (
-                <BadgeWithTooltip
-                  className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
-                    restaurant.googleReviews.rating >= 4.5
-                      ? "bg-green-500/10 text-green-500"
-                      : restaurant.googleReviews.rating >= 4.0
-                        ? "bg-blue-500/10 text-blue-500"
-                        : restaurant.googleReviews.rating >= 3.5
+                  {restaurant.restaurantName}
+                </h3>
+                {restaurant.status === "training" && (
+                  <Badge variant="secondary" className="flex-shrink-0 text-xs" data-testid={`badge-training-${restaurant.restaurantId}`}>
+                    Training - Opens {restaurant.openDate ? new Date(restaurant.openDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'}
+                  </Badge>
+                )}
+                {restaurant.status === "new" && (
+                  <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
+                    NU {restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`}
+                  </Badge>
+                )}
+              </div>
+              {/* Metric badges row */}
+              <div className="flex items-center gap-1 flex-wrap">
+                {/* Overall Execution Grade + Daypart Grades */}
+                {overallGrade && (
+                  <BadgeWithTooltip
+                    variant="outline"
+                    className={`flex-shrink-0 text-xs font-bold ${overallGrade.color} border-current`}
+                    data-testid={`badge-grade-${restaurant.restaurantId}`}
+                    tooltipContent={
+                      daypartGrades.length > 0 ? (
+                        <div>
+                          <div className="font-medium mb-1">Daypart Grades</div>
+                          <div className="flex flex-col gap-0.5">
+                            {daypartGrades.map(dp => (
+                              <div key={dp.id} className="flex items-center justify-between gap-3">
+                                <span className="text-muted-foreground">{dp.label}</span>
+                                <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div>Overall execution grade based on sales, speed, OSAT, and staffing</div>
+                      )
+                    }
+                  >
+                    EXC: {overallGrade.grade}
+                  </BadgeWithTooltip>
+                )}
+                {/* Google Reviews Badge */}
+                {restaurant.googleReviews && (
+                  <BadgeWithTooltip
+                    className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
+                      restaurant.googleReviews.rating >= 4.5
+                        ? "bg-green-500/10 text-green-500"
+                        : restaurant.googleReviews.rating >= 4.0
+                          ? "bg-blue-500/10 text-blue-500"
+                          : restaurant.googleReviews.rating >= 3.5
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-red-500/10 text-red-500"
+                    } border-0`}
+                    data-testid={`badge-reviews-${restaurant.restaurantId}`}
+                    tooltipTitle="Google Reviews"
+                    tooltipDetail={`${restaurant.googleReviews.reviewCount.toLocaleString()} total reviews`}
+                  >
+                    <Star className="w-3 h-3" />
+                    <span className="font-medium">
+                      {restaurant.googleReviews.rating.toFixed(1)}
+                      {(restaurant.googleReviews.newReviewsToday || 0) > 0 && (
+                        <span className="ml-1 text-muted-foreground">+{restaurant.googleReviews.newReviewsToday}</span>
+                      )}
+                    </span>
+                  </BadgeWithTooltip>
+                )}
+                {/* OSAT Badge */}
+                {restaurant.osat && restaurant.osat.totalResponses > 0 && (
+                  <BadgeWithTooltip
+                    className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
+                      restaurant.osat.osatPercent >= 85
+                        ? "bg-green-500/10 text-green-500"
+                        : restaurant.osat.osatPercent >= 80
                           ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                           : "bg-red-500/10 text-red-500"
-                  } border-0`}
-                  data-testid={`badge-reviews-${restaurant.restaurantId}`}
-                  tooltipTitle="Google Reviews"
-                  tooltipDetail={`${restaurant.googleReviews.reviewCount.toLocaleString()} total reviews`}
-                >
-                  <Star className="w-3 h-3" />
-                  <span className="font-medium">
-                    {restaurant.googleReviews.rating.toFixed(1)}
-                    {(restaurant.googleReviews.newReviewsToday || 0) > 0 && (
-                      <span className="ml-1 text-muted-foreground">+{restaurant.googleReviews.newReviewsToday}</span>
-                    )}
-                  </span>
-                </BadgeWithTooltip>
-              )}
-              {/* OSAT Badge */}
-              {restaurant.osat && restaurant.osat.totalResponses > 0 && (
-                <BadgeWithTooltip
-                  className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
-                    restaurant.osat.osatPercent >= 85
-                      ? "bg-green-500/10 text-green-500"
-                      : restaurant.osat.osatPercent >= 80
-                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                        : "bg-red-500/10 text-red-500"
-                  } border-0`}
-                  data-testid={`badge-osat-${restaurant.restaurantId}`}
-                  tooltipTitle="Customer Satisfaction (OSAT)"
-                  tooltipDetail={`${restaurant.osat.fiveStarCount} of ${restaurant.osat.totalResponses} responses = 5 stars`}
-                >
-                  <ThumbsUp className="w-3 h-3" />
-                  <span className="font-medium">{restaurant.osat.osatPercent.toFixed(0)}%</span>
-                </BadgeWithTooltip>
-              )}
-              {/* Drive-Thru SOS Badge */}
-              {restaurant.driveThru && (() => {
-                const carCount = restaurant.driveThru.carCount || 0;
-                const carsUnder6 = (restaurant.driveThru as any).carsUnder6Min || 0;
-                const attainment = carCount > 0 ? Math.round((carsUnder6 / carCount) * 100) : 0;
-                const attColor = attainment >= 70
-                  ? "bg-green-500/10 text-green-500"
-                  : attainment >= 50
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                    : "bg-red-500/10 text-red-500";
+                    } border-0`}
+                    data-testid={`badge-osat-${restaurant.restaurantId}`}
+                    tooltipTitle="Customer Satisfaction (OSAT)"
+                    tooltipDetail={`${restaurant.osat.fiveStarCount} of ${restaurant.osat.totalResponses} responses = 5 stars`}
+                  >
+                    <ThumbsUp className="w-3 h-3" />
+                    <span className="font-medium">{restaurant.osat.osatPercent.toFixed(0)}%</span>
+                  </BadgeWithTooltip>
+                )}
+                {/* Drive-Thru SOS Badge */}
+                {restaurant.driveThru && (() => {
+                  const carCount = restaurant.driveThru.carCount || 0;
+                  const carsUnder6 = (restaurant.driveThru as any).carsUnder6Min || 0;
+                  const attainment = carCount > 0 ? Math.round((carsUnder6 / carCount) * 100) : 0;
+                  const attColor = attainment >= 70
+                    ? "bg-green-500/10 text-green-500"
+                    : attainment >= 50
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "bg-red-500/10 text-red-500";
 
-                const isRed = attainment < 50;
-                const avgTime = restaurant.driveThru.avgTotalTime;
-                const timeStr = `${Math.floor(avgTime / 60)}:${(avgTime % 60).toString().padStart(2, '0')}`;
-                return (
+                  const isRed = attainment < 50;
+                  const avgTime = restaurant.driveThru.avgTotalTime;
+                  const timeStr = `${Math.floor(avgTime / 60)}:${(avgTime % 60).toString().padStart(2, '0')}`;
+                  return (
+                    <BadgeWithTooltip
+                      className={`${attColor} border-0 flex-shrink-0 text-xs px-1.5 gap-1 ${isRed ? 'animate-pulse' : ''}`}
+                      data-testid={`badge-sos-${restaurant.restaurantId}`}
+                      tooltipContent={
+                        <div>
+                          <div className="font-medium">Drive-Thru Speed</div>
+                          <div className="text-muted-foreground">
+                            Attainment: {attainment}% under 6 min
+                          </div>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Clock className="w-3 h-3" />
+                            Avg total: {timeStr}
+                          </div>
+                          <div className="text-muted-foreground">
+                            Cars today: {carCount} ({carsUnder6} under 6 min)
+                          </div>
+                        </div>
+                      }
+                    >
+                      <Car className="w-3 h-3" />
+                      <span>{attainment}%</span>
+                    </BadgeWithTooltip>
+                  );
+                })()}
+                {/* Crew Experience Badge */}
+                {crewSummary && crewSummary.avgScore > 0 && (
                   <BadgeWithTooltip
-                    className={`${attColor} border-0 flex-shrink-0 text-xs px-1.5 gap-1 ${isRed ? 'animate-pulse' : ''}`}
-                    data-testid={`badge-sos-${restaurant.restaurantId}`}
+                    className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
+                      crewSummary.avgScore >= 75
+                        ? "bg-green-500/10 text-green-500"
+                        : crewSummary.avgScore >= 50
+                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          : "bg-red-500/10 text-red-500"
+                    } border-0`}
+                    data-testid={`badge-crew-${restaurant.restaurantId}`}
+                    tooltipTitle="Crew Experience Score"
+                    tooltipDetail={`Weighted score (0-100) based on crew tenure mix. Avg tenure: ${formatTenure(crewSummary.avgTenureMonths)}, ${crewSummary.avgCrewCount.toFixed(0)} avg crew/hr. 75+ green, 50-74 caution, <50 concern.`}
+                  >
+                    <GraduationCap className="w-3 h-3" />
+                    <span className="font-medium">{crewSummary.avgScore}</span>
+                  </BadgeWithTooltip>
+                )}
+                {/* Check Average Badge */}
+                {checkAverage && checkAverage.totalOrders > 0 && (
+                  <BadgeWithTooltip
+                    className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0"
+                    data-testid={`badge-check-avg-${restaurant.restaurantId}`}
                     tooltipContent={
                       <div>
-                        <div className="font-medium">Drive-Thru Speed</div>
-                        <div className="text-muted-foreground">
-                          Attainment: {attainment}% under 6 min
-                        </div>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Clock className="w-3 h-3" />
-                          Avg total: {timeStr}
-                        </div>
-                        <div className="text-muted-foreground">
-                          Cars today: {carCount} ({carsUnder6} under 6 min)
-                        </div>
+                        <div className="font-medium">Check Average</div>
+                        <div className="text-muted-foreground">{checkAverage.totalOrders} orders today</div>
+                        <div className="text-muted-foreground">Total: ${checkAverage.totalSales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
                       </div>
                     }
                   >
-                    <Car className="w-3 h-3" />
-                    <span>{attainment}%</span>
+                    <Receipt className="w-3 h-3" />
+                    <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
                   </BadgeWithTooltip>
-                );
-              })()}
-              {/* Crew Experience Badge */}
-              {crewSummary && crewSummary.avgScore > 0 && (
-                <BadgeWithTooltip
-                  className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
-                    crewSummary.avgScore >= 75
-                      ? "bg-green-500/10 text-green-500"
-                      : crewSummary.avgScore >= 50
-                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                        : "bg-red-500/10 text-red-500"
-                  } border-0`}
-                  data-testid={`badge-crew-${restaurant.restaurantId}`}
-                  tooltipTitle="Crew Experience Score"
-                  tooltipDetail={`Weighted score (0-100) based on crew tenure mix. Avg tenure: ${formatTenure(crewSummary.avgTenureMonths)}, ${crewSummary.avgCrewCount.toFixed(0)} avg crew/hr. 75+ green, 50-74 caution, <50 concern.`}
-                >
-                  <GraduationCap className="w-3 h-3" />
-                  <span className="font-medium">{crewSummary.avgScore}</span>
-                </BadgeWithTooltip>
-              )}
-              {/* Check Average Badge */}
-              {checkAverage && checkAverage.totalOrders > 0 && (
-                <BadgeWithTooltip
-                  className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0"
-                  data-testid={`badge-check-avg-${restaurant.restaurantId}`}
-                  tooltipContent={
-                    <div>
-                      <div className="font-medium">Check Average</div>
-                      <div className="text-muted-foreground">{checkAverage.totalOrders} orders today</div>
-                      <div className="text-muted-foreground">Total: ${checkAverage.totalSales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
-                    </div>
-                  }
-                >
-                  <Receipt className="w-3 h-3" />
-                  <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
-                </BadgeWithTooltip>
-              )}
-              {/* Consistency Score Badge */}
-              {consistencyScore !== undefined && consistencyScore > 0 && (
-                <BadgeWithTooltip
-                  variant="outline"
-                  className={`flex-shrink-0 text-xs font-bold ${
-                    consistencyScore >= 75 ? "text-green-500 border-green-300" :
-                    consistencyScore >= 50 ? "text-amber-600 dark:text-amber-400 border-amber-300" :
-                    "text-red-500 border-red-300"
-                  }`}
-                  data-testid={`badge-consistency-${restaurant.restaurantId}`}
-                  tooltipTitle="Consistency Score (0-100)"
-                  tooltipDetail="Measures how stable hourly execution grades are over the last 14 days. Lower grade variance and fewer D/F hours = higher score. 75+ consistent, 50-74 variable, <50 erratic."
-                >
-                  CST: {consistencyScore}
-                </BadgeWithTooltip>
-              )}
-              {/* Revenue Port Badges */}
-              {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
-                <div className="hidden sm:flex items-center gap-1">
-                  {restaurant.revenuePorts.filter(p => !(p === "drive_thru" && restaurant.driveThru)).map(port => {
-                    const config = REVENUE_PORT_CONFIG[port as keyof typeof REVENUE_PORT_CONFIG];
-                    if (!config) return null;
-                    const Icon = config.icon;
-                    return (
-                      <BadgeWithTooltip
-                        key={port}
-                        className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5`}
-                        data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
-                        tooltipTitle={config.label}
-                        tooltipDetail={config.description}
+                )}
+                {/* Consistency Score Badge */}
+                {consistencyScore !== undefined && consistencyScore > 0 && (
+                  <BadgeWithTooltip
+                    variant="outline"
+                    className={`flex-shrink-0 text-xs font-bold ${
+                      consistencyScore >= 75 ? "text-green-500 border-green-300" :
+                      consistencyScore >= 50 ? "text-amber-600 dark:text-amber-400 border-amber-300" :
+                      "text-red-500 border-red-300"
+                    }`}
+                    data-testid={`badge-consistency-${restaurant.restaurantId}`}
+                    tooltipTitle="Consistency Score (0-100)"
+                    tooltipDetail="Measures how stable hourly execution grades are over the last 14 days. Lower grade variance and fewer D/F hours = higher score. 75+ consistent, 50-74 variable, <50 erratic."
+                  >
+                    CST: {consistencyScore}
+                  </BadgeWithTooltip>
+                )}
+                {/* Revenue Port Badges */}
+                {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
+                  <div className="hidden sm:flex items-center gap-1">
+                    {restaurant.revenuePorts.filter(p => !(p === "drive_thru" && restaurant.driveThru)).map(port => {
+                      const config = REVENUE_PORT_CONFIG[port as keyof typeof REVENUE_PORT_CONFIG];
+                      if (!config) return null;
+                      const Icon = config.icon;
+                      return (
+                        <BadgeWithTooltip
+                          key={port}
+                          className={`${config.color} border-0 flex-shrink-0 text-xs px-1.5`}
+                          data-testid={`badge-port-${port}-${restaurant.restaurantId}`}
+                          tooltipTitle={config.label}
+                          tooltipDetail={config.description}
+                        >
+                          <Icon className="w-3 h-3" />
+                        </BadgeWithTooltip>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Weather Badge */}
+                {restaurant.weather && (
+                  <BadgeWithTooltip
+                    variant="secondary"
+                    className="flex-shrink-0 text-xs gap-1"
+                    data-testid={`badge-weather-${restaurant.restaurantId}`}
+                    tooltipContent={
+                      <div>
+                        <div className="font-medium capitalize">{restaurant.weather!.condition}</div>
+                        {restaurant.weather!.highTemp !== undefined ? (
+                          <div className="text-muted-foreground">
+                            High: {Math.round(restaurant.weather!.highTemp)}°F / Low: {Math.round(restaurant.weather!.lowTemp ?? 0)}°F
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Droplets className="w-3 h-3" />{restaurant.weather!.humidity}%
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Wind className="w-3 h-3" />{Math.round(restaurant.weather!.windSpeed)} mph
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    }
+                  >
+                    <WeatherIcon condition={restaurant.weather.condition} />
+                    {restaurant.weather.highTemp !== undefined ? (
+                      <span>{Math.round(restaurant.weather.highTemp)}°/{Math.round(restaurant.weather.lowTemp ?? 0)}°</span>
+                    ) : (
+                      <span>{Math.round(restaurant.weather.temp)}°F</span>
+                    )}
+                  </BadgeWithTooltip>
+                )}
+              </div>
+            </div>
+
+            {/* Sales table */}
+            <div className="flex-shrink-0 mt-1.5 sm:mt-0">
+              <table className="tabular-nums text-right" style={{ borderSpacing: 0 }}>
+                <thead>
+                  <tr className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                    <th className="font-normal" />
+                    <th className="font-normal pb-0.5 text-right">Current</th>
+                    <th className="font-normal pb-0.5 text-right pl-1">LW</th>
+                    <th className="font-normal pb-0.5" />
+                    <th className="font-normal pb-0.5 text-right pl-2" colSpan={2}>Forecast</th>
+                  </tr>
+                </thead>
+                <tbody className="text-[11px]">
+                  {/* DAY row */}
+                  <tr>
+                    <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5">DAY</td>
+                    <td className="font-semibold text-xs pl-1 pt-0.5" data-testid={`text-sales-${restaurant.restaurantId}`}>
+                      {formatCurrency(restaurant.actualSales)}
+                    </td>
+                    <td className="text-muted-foreground pl-1 pt-0.5">{formatCurrency(displayLastWeek)}</td>
+                    <td
+                      className={`font-medium pl-1 pt-0.5 ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`}
+                      data-testid={`badge-pace-${restaurant.restaurantId}`}
+                    >
+                      {formatPercentage(paceVariance)}
+                    </td>
+                    <td className={`pl-2 pt-0.5 ${!isDayComplete ? "font-semibold" : "text-muted-foreground"}`}>
+                      {!isDayComplete ? formatCurrency(restaurant.forecastSales) : "—"}
+                    </td>
+                    <td className={`font-medium pl-1 pt-0.5 ${!isDayComplete ? (dayForecastVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}>
+                      {!isDayComplete ? formatPercentage(dayForecastVar) : ""}
+                    </td>
+                  </tr>
+                  {/* WEEK row */}
+                  {weeklyData && weeklyData.currentWeek > 0 && (
+                    <tr>
+                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5">WTD</td>
+                      <td className="font-semibold pl-1 pt-0.5" data-testid={`text-weekly-${restaurant.restaurantId}`}>
+                        {formatCurrency(weeklyData.currentWeek)}
+                      </td>
+                      <td className="text-muted-foreground pl-1 pt-0.5">
+                        {weeklyData.priorWeek > 0 ? formatCurrency(weeklyData.priorWeek) : ""}
+                      </td>
+                      <td className={`font-medium pl-1 pt-0.5 ${wkVar >= 0 ? "text-green-500" : "text-red-500"}`}>
+                        {weeklyData.priorWeek > 0 ? formatPercentage(wkVar) : ""}
+                      </td>
+                      <td
+                        className={`pl-2 pt-0.5 ${showEow ? "font-semibold" : "text-muted-foreground"}`}
+                        data-testid={`text-eow-${restaurant.restaurantId}`}
                       >
-                        <Icon className="w-3 h-3" />
-                      </BadgeWithTooltip>
-                    );
-                  })}
-                </div>
-              )}
-              {/* Weather Badge */}
-              {restaurant.weather && (
-                <BadgeWithTooltip
-                  variant="secondary"
-                  className="flex-shrink-0 text-xs gap-1"
-                  data-testid={`badge-weather-${restaurant.restaurantId}`}
-                  tooltipContent={
-                    <div>
-                      <div className="font-medium capitalize">{restaurant.weather!.condition}</div>
-                      {restaurant.weather!.highTemp !== undefined ? (
-                        <div className="text-muted-foreground">
-                          High: {Math.round(restaurant.weather!.highTemp)}°F / Low: {Math.round(restaurant.weather!.lowTemp ?? 0)}°F
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <Droplets className="w-3 h-3" />{restaurant.weather!.humidity}%
-                          </div>
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <Wind className="w-3 h-3" />{Math.round(restaurant.weather!.windSpeed)} mph
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  }
-                >
-                  <WeatherIcon condition={restaurant.weather.condition} />
-                  {restaurant.weather.highTemp !== undefined ? (
-                    <span>{Math.round(restaurant.weather.highTemp)}°/{Math.round(restaurant.weather.lowTemp ?? 0)}°</span>
-                  ) : (
-                    <span>{Math.round(restaurant.weather.temp)}°F</span>
+                        {showEow ? formatCurrency(weeklyData.eowForecast) : "—"}
+                      </td>
+                      <td className={`font-medium pl-1 pt-0.5 ${showEow && weeklyData.priorWeekFull > 0 ? (eowVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}>
+                        {showEow && weeklyData.priorWeekFull > 0 ? formatPercentage(eowVar) : ""}
+                      </td>
+                    </tr>
                   )}
-                </BadgeWithTooltip>
-              )}
+                  {/* YoY row */}
+                  {showYoY && (
+                    <>
+                      <tr>
+                        <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">DAY YoY</td>
+                        <td
+                          className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
+                          data-testid={`badge-yoy-${restaurant.restaurantId}`}
+                        >
+                          {formatSignedCurrency(currentYoYDollar)}
+                        </td>
+                        <td />
+                        <td className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}>
+                          {formatPercentage(currentYoYVar)}
+                        </td>
+                        <td className={`font-medium pl-2 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
+                          {!isDayComplete ? formatSignedCurrency(projYoYDollar) : ""}
+                        </td>
+                        <td className={`font-medium pl-1 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
+                          {!isDayComplete ? formatPercentage(projYoYVar) : ""}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 whitespace-nowrap">LY</td>
+                        <td className="text-muted-foreground pl-1">{formatCurrency(yoyPrior)}</td>
+                        <td />
+                        <td />
+                        <td />
+                        <td />
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <div className="flex-shrink-0 min-w-0">
-            <table className="tabular-nums text-right" style={{ borderSpacing: 0 }}>
-              <thead>
-                <tr className="text-[9px] uppercase tracking-wider text-muted-foreground">
-                  <th className="font-normal" />
-                  <th className="font-normal pb-0.5 text-right">Current</th>
-                  <th className="font-normal pb-0.5 text-right pl-1">LW</th>
-                  <th className="font-normal pb-0.5" />
-                  <th className="font-normal pb-0.5 text-right pl-2" colSpan={2}>Forecast</th>
-                </tr>
-              </thead>
-              <tbody className="text-[11px]">
-                {/* DAY row */}
-                <tr>
-                  <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5">DAY</td>
-                  <td className="font-semibold text-xs pl-1 pt-0.5" data-testid={`text-sales-${restaurant.restaurantId}`}>
-                    {formatCurrency(restaurant.actualSales)}
-                  </td>
-                  <td className="text-muted-foreground pl-1 pt-0.5">{formatCurrency(displayLastWeek)}</td>
-                  <td
-                    className={`font-medium pl-1 pt-0.5 ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`}
-                    data-testid={`badge-pace-${restaurant.restaurantId}`}
-                  >
-                    {formatPercentage(paceVariance)}
-                  </td>
-                  <td className={`pl-2 pt-0.5 ${!isDayComplete ? "font-semibold" : "text-muted-foreground"}`}>
-                    {!isDayComplete ? formatCurrency(restaurant.forecastSales) : "—"}
-                  </td>
-                  <td className={`font-medium pl-1 pt-0.5 ${!isDayComplete ? (dayForecastVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}>
-                    {!isDayComplete ? formatPercentage(dayForecastVar) : ""}
-                  </td>
-                </tr>
-                {/* WEEK row */}
-                {weeklyData && weeklyData.currentWeek > 0 && (
-                  <tr>
-                    <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5">WTD</td>
-                    <td className="font-semibold pl-1 pt-0.5" data-testid={`text-weekly-${restaurant.restaurantId}`}>
-                      {formatCurrency(weeklyData.currentWeek)}
-                    </td>
-                    <td className="text-muted-foreground pl-1 pt-0.5">
-                      {weeklyData.priorWeek > 0 ? formatCurrency(weeklyData.priorWeek) : ""}
-                    </td>
-                    <td className={`font-medium pl-1 pt-0.5 ${wkVar >= 0 ? "text-green-500" : "text-red-500"}`}>
-                      {weeklyData.priorWeek > 0 ? formatPercentage(wkVar) : ""}
-                    </td>
-                    <td
-                      className={`pl-2 pt-0.5 ${showEow ? "font-semibold" : "text-muted-foreground"}`}
-                      data-testid={`text-eow-${restaurant.restaurantId}`}
-                    >
-                      {showEow ? formatCurrency(weeklyData.eowForecast) : "—"}
-                    </td>
-                    <td className={`font-medium pl-1 pt-0.5 ${showEow && weeklyData.priorWeekFull > 0 ? (eowVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}>
-                      {showEow && weeklyData.priorWeekFull > 0 ? formatPercentage(eowVar) : ""}
-                    </td>
-                  </tr>
-                )}
-                {/* YoY row */}
-                {showYoY && (
-                  <>
-                    <tr>
-                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">DAY YoY</td>
-                      <td
-                        className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}
-                        data-testid={`badge-yoy-${restaurant.restaurantId}`}
-                      >
-                        {formatSignedCurrency(currentYoYDollar)}
-                      </td>
-                      <td />
-                      <td className={`font-medium pl-1 pt-0.5 ${currentYoYVar >= 0 ? "text-blue-500" : "text-orange-500"}`}>
-                        {formatPercentage(currentYoYVar)}
-                      </td>
-                      <td className={`font-medium pl-2 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
-                        {!isDayComplete ? formatSignedCurrency(projYoYDollar) : ""}
-                      </td>
-                      <td className={`font-medium pl-1 pt-0.5 ${!isDayComplete ? (projYoYVar >= 0 ? "text-blue-500" : "text-orange-500") : ""}`}>
-                        {!isDayComplete ? formatPercentage(projYoYVar) : ""}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 whitespace-nowrap">LY</td>
-                      <td className="text-muted-foreground pl-1">{formatCurrency(yoyPrior)}</td>
-                      <td />
-                      <td />
-                      <td />
-                      <td />
-                    </tr>
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
-          
+          {/* Expand/collapse chevron */}
           <div
-            className="flex-shrink-0 text-muted-foreground cursor-pointer p-1.5 -m-1.5 rounded-lg hover:bg-muted/50 transition-colors"
+            className="flex-shrink-0 mt-0.5 sm:mt-0 text-muted-foreground cursor-pointer p-1.5 -m-1.5 rounded-lg hover:bg-muted/50 transition-colors"
             onClick={() => setIsExpanded(!isExpanded)}
             data-testid={`toggle-expand-${restaurant.restaurantId}`}
           >
