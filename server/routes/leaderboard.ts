@@ -263,8 +263,9 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
     // Build date list for the DB query
     const datesToQuery = [selectedDateStr, lastWeekDateStr];
     if (normalBaselineDateStr) datesToQuery.push(normalBaselineDateStr);
-    const earliest = datesToQuery.sort()[0];
-    const latest = datesToQuery.sort()[datesToQuery.length - 1];
+    const sortedDates = [...datesToQuery].sort();
+    const earliest = sortedDates[0];
+    const latest = sortedDates[sortedDates.length - 1];
 
     // Fetch hourly sales from DB
     const salesRows = await db.select({
@@ -304,8 +305,8 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
       });
     }
 
-    // Aggregate company-wide totals through hourCutoff
-    function aggregateSales(dateStr: string): number {
+    // Aggregate company-wide totals through a given max hour
+    function aggregateThroughHour(dateStr: string, maxHour: number): number {
       let total = 0;
       const dateData = salesMap[dateStr];
       if (!dateData) return 0;
@@ -313,40 +314,38 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
         const rData = dateData[r.id];
         if (!rData) continue;
         for (const [h, s] of Object.entries(rData)) {
-          if (parseInt(h) <= hourCutoff) total += s;
+          if (parseInt(h) <= maxHour) total += s;
         }
       }
       return total;
     }
 
-    // Aggregate full-day totals (for completed days)
-    function aggregateFullDaySales(dateStr: string): number {
-      let total = 0;
-      const dateData = salesMap[dateStr];
-      if (!dateData) return 0;
-      for (const r of activeRestaurants) {
-        const rData = dateData[r.id];
-        if (!rData) continue;
-        for (const s of Object.values(rData)) {
-          total += s;
-        }
-      }
-      return total;
+    // Aggregate full-day totals (all hours)
+    function aggregateFullDay(dateStr: string): number {
+      return aggregateThroughHour(dateStr, 23);
     }
 
-    const todaySales = aggregateSales(selectedDateStr);
-    const lastWeekSales = isToday ? aggregateSales(lastWeekDateStr) : aggregateFullDaySales(lastWeekDateStr);
-    const normalBaselineSales = normalBaselineDateStr
-      ? aggregateFullDaySales(normalBaselineDateStr)
+    // -- Full-day totals (for completed past days) --
+    const lastWeekFullDay = aggregateFullDay(lastWeekDateStr);
+    const normalBaselineFullDay = normalBaselineDateStr ? aggregateFullDay(normalBaselineDateStr) : null;
+
+    // -- Progress-to-date totals (apples-to-apples through same hour) --
+    const todayProgress = aggregateThroughHour(selectedDateStr, hourCutoff);
+    const lastWeekProgress = aggregateThroughHour(lastWeekDateStr, hourCutoff);
+    const normalBaselineProgress = normalBaselineDateStr
+      ? aggregateThroughHour(normalBaselineDateStr, hourCutoff)
       : null;
 
-    // Forecast: today actual + remaining hours from last week
-    let forecastSales = todaySales;
+    // Forecast: today actual + remaining hours from normal baseline (not holiday)
+    // Use normal baseline remaining hours for a more stable forecast when available
+    let forecastSales = todayProgress;
     if (isToday) {
-      const lwDateData = salesMap[lastWeekDateStr];
-      if (lwDateData) {
+      // Add remaining hours from the normal baseline day if available, otherwise from LW
+      const forecastSourceDate = normalBaselineDateStr || lastWeekDateStr;
+      const sourceData = salesMap[forecastSourceDate];
+      if (sourceData) {
         for (const r of activeRestaurants) {
-          const rData = lwDateData[r.id];
+          const rData = sourceData[r.id];
           if (!rData) continue;
           for (const [h, s] of Object.entries(rData)) {
             if (parseInt(h) > hourCutoff) forecastSales += s;
@@ -355,16 +354,20 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
       }
     }
 
-    // Calculate variances
-    const vsHoliday = lastWeekSales > 0 ? ((todaySales / lastWeekSales) - 1) * 100 : null;
-    const vsNormal = normalBaselineSales && normalBaselineSales > 0
-      ? ((todaySales / normalBaselineSales) - 1) * 100
+    // Calculate variances — all progress-to-date (apples-to-apples)
+    const vsHolidayProgress = lastWeekProgress > 0
+      ? ((todayProgress / lastWeekProgress) - 1) * 100
       : null;
-    const holidayVsNormal = normalBaselineSales && normalBaselineSales > 0 && lastWeekSales > 0
-      ? ((lastWeekSales / normalBaselineSales) - 1) * 100
+    const vsNormalProgress = normalBaselineProgress && normalBaselineProgress > 0
+      ? ((todayProgress / normalBaselineProgress) - 1) * 100
       : null;
-    const forecastVsNormal = normalBaselineSales && normalBaselineSales > 0
-      ? ((forecastSales / normalBaselineSales) - 1) * 100
+
+    // Full-day variances — holiday boost vs normal, forecast vs normal
+    const holidayVsNormal = normalBaselineFullDay && normalBaselineFullDay > 0 && lastWeekFullDay > 0
+      ? ((lastWeekFullDay / normalBaselineFullDay) - 1) * 100
+      : null;
+    const forecastVsNormal = normalBaselineFullDay && normalBaselineFullDay > 0
+      ? ((forecastSales / normalBaselineFullDay) - 1) * 100
       : null;
 
     // Determine which scenario we're in
@@ -385,14 +388,16 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
         normalBaseline: normalBaselineDateStr,
       },
       sales: {
-        today: Math.round(todaySales),
-        lastWeek: Math.round(lastWeekSales),
-        normalBaseline: normalBaselineSales != null ? Math.round(normalBaselineSales) : null,
+        today: Math.round(todayProgress),
+        lastWeek: Math.round(lastWeekProgress),
+        lastWeekFullDay: Math.round(lastWeekFullDay),
+        normalBaseline: normalBaselineFullDay != null ? Math.round(normalBaselineFullDay) : null,
+        normalBaselineProgress: normalBaselineProgress != null ? Math.round(normalBaselineProgress) : null,
         forecast: Math.round(forecastSales),
       },
       variance: {
-        vsLastWeek: vsHoliday != null ? Math.round(vsHoliday * 10) / 10 : null,
-        vsNormal: vsNormal != null ? Math.round(vsNormal * 10) / 10 : null,
+        vsLastWeek: vsHolidayProgress != null ? Math.round(vsHolidayProgress * 10) / 10 : null,
+        vsNormal: vsNormalProgress != null ? Math.round(vsNormalProgress * 10) / 10 : null,
         holidayVsNormal: holidayVsNormal != null ? Math.round(holidayVsNormal * 10) / 10 : null,
         forecastVsNormal: forecastVsNormal != null ? Math.round(forecastVsNormal * 10) / 10 : null,
       },
