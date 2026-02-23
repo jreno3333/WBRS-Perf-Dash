@@ -133,6 +133,23 @@ export function getHolidayComparisonContext(date: Date): { thisYear: HolidayInfo
   return { thisYear: thisYearHoliday, lastYear: lastYearHoliday };
 }
 
+/**
+ * Find the nearest non-holiday same-day-of-week baseline date.
+ * Used when a holiday is in the comparison window to provide a "normal day" reference.
+ * Walks backward in 7-day increments (same day-of-week) until it finds a non-holiday date.
+ * Returns the date string (YYYY-MM-DD) or null if none found within 8 weeks.
+ */
+export function getNormalBaselineDate(targetDate: Date): string | null {
+  for (let weeksBack = 2; weeksBack <= 8; weeksBack++) {
+    const candidate = new Date(targetDate);
+    candidate.setDate(candidate.getDate() - (weeksBack * 7));
+    if (!getHolidayForDate(candidate)) {
+      return formatDate(candidate);
+    }
+  }
+  return null;
+}
+
 export function getAllHolidaysForYear(year: number): HolidayInfo[] {
   const holidays = fedHolidays.allForYear(year);
   

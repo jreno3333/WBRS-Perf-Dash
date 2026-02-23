@@ -5,7 +5,7 @@ import { hourlySales, hourlyLabor, hourlyCrew, restaurants, markets, restaurantM
 import { sql, and, gte, lte, eq } from "drizzle-orm";
 import { fetchWeather, fetchHistoricalWeather } from "../utils/weather";
 import { delay } from "../utils/db-helpers";
-import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear } from "../holidays";
+import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear, getNormalBaselineDate } from "../holidays";
 import { getDailyDriveThruSummary } from "../scraper/hme-api";
 import { getOsatForDate } from "../scraper/qualtrics-api";
 import { getAllHourlyPosSales } from "../xenial-webhook";
@@ -213,6 +213,195 @@ router.get("/api/holidays", async (req, res) => {
   } catch (error) {
     console.error("Error fetching holidays:", error);
     res.status(500).json({ error: "Failed to fetch holiday data" });
+  }
+});
+
+// Holiday sales comparison: provides a 3-way comparison when a holiday is in the
+// comparison window.  Returns today's sales, the holiday comparison day (last week),
+// and a "normal" non-holiday same-day-of-week baseline so users can see that current
+// performance isn't actually slower — the comparison target was just inflated by a holiday.
+router.get("/api/holiday-sales-comparison", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const selectedDateStr = date ? String(date) : todayStr;
+    const selectedDate = new Date(`${selectedDateStr}T12:00:00`);
+    const isToday = selectedDateStr === todayStr;
+
+    // Determine holiday context
+    const context = getHolidayContext(selectedDate);
+    const { todayHoliday, lastWeekHoliday } = context;
+
+    // Only return data when a holiday is in play
+    if (!todayHoliday && !lastWeekHoliday) {
+      res.json({ applicable: false });
+      return;
+    }
+
+    // Dates involved
+    const lastWeekDate = new Date(selectedDate);
+    lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+    const lastWeekDateStr = lastWeekDate.toISOString().split('T')[0];
+
+    // Find the normal (non-holiday) baseline — same day-of-week, 2+ weeks back
+    const normalBaselineDateStr = getNormalBaselineDate(selectedDate);
+
+    // Fetch restaurants for aggregation
+    const restaurantList = await storage.getRestaurants();
+    const activeRestaurants = restaurantList.filter(r => {
+      if (!r.openDate) return true;
+      const openDate = new Date(r.openDate);
+      return openDate <= now;
+    });
+
+    // Determine hour cutoff for fair comparison
+    const timezones = Array.from(new Set(activeRestaurants.map(r => r.timezone)));
+    const currentHours = timezones.map(tz => getCurrentHourInTimezone(tz));
+    const hourCutoff = isToday ? Math.min(...currentHours) - 1 : 23;
+
+    // Build date list for the DB query
+    const datesToQuery = [selectedDateStr, lastWeekDateStr];
+    if (normalBaselineDateStr) datesToQuery.push(normalBaselineDateStr);
+    const earliest = datesToQuery.sort()[0];
+    const latest = datesToQuery.sort()[datesToQuery.length - 1];
+
+    // Fetch hourly sales from DB
+    const salesRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      salesDate: hourlySales.salesDate,
+      hour: hourlySales.hour,
+      actualSales: hourlySales.actualSales,
+    }).from(hourlySales).where(
+      and(
+        gte(hourlySales.salesDate, new Date(`${earliest}T00:00:00Z`)),
+        lte(hourlySales.salesDate, new Date(`${latest}T23:59:59Z`))
+      )
+    );
+
+    // Index: { date: { restaurantId: { hour: sales } } }
+    const salesMap: Record<string, Record<string, Record<number, number>>> = {};
+    for (const row of salesRows) {
+      const dStr = new Date(row.salesDate).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      if (!salesMap[dStr]) salesMap[dStr] = {};
+      if (!salesMap[dStr][row.restaurantId]) salesMap[dStr][row.restaurantId] = {};
+      salesMap[dStr][row.restaurantId][row.hour] =
+        (salesMap[dStr][row.restaurantId][row.hour] || 0) + (parseFloat(row.actualSales as string) || 0);
+    }
+
+    // Overlay POS data (takes priority)
+    for (const dStr of datesToQuery) {
+      const targetDt = new Date(`${dStr}T12:00:00Z`);
+      const posSales = await getAllHourlyPosSales(targetDt);
+      posSales.forEach((hourlyMap, restaurantId) => {
+        if (!salesMap[dStr]) salesMap[dStr] = {};
+        if (!salesMap[dStr][restaurantId]) salesMap[dStr][restaurantId] = {};
+        hourlyMap.forEach((sales, hour) => {
+          if (sales > 0) {
+            salesMap[dStr][restaurantId][hour] = sales;
+          }
+        });
+      });
+    }
+
+    // Aggregate company-wide totals through hourCutoff
+    function aggregateSales(dateStr: string): number {
+      let total = 0;
+      const dateData = salesMap[dateStr];
+      if (!dateData) return 0;
+      for (const r of activeRestaurants) {
+        const rData = dateData[r.id];
+        if (!rData) continue;
+        for (const [h, s] of Object.entries(rData)) {
+          if (parseInt(h) <= hourCutoff) total += s;
+        }
+      }
+      return total;
+    }
+
+    // Aggregate full-day totals (for completed days)
+    function aggregateFullDaySales(dateStr: string): number {
+      let total = 0;
+      const dateData = salesMap[dateStr];
+      if (!dateData) return 0;
+      for (const r of activeRestaurants) {
+        const rData = dateData[r.id];
+        if (!rData) continue;
+        for (const s of Object.values(rData)) {
+          total += s;
+        }
+      }
+      return total;
+    }
+
+    const todaySales = aggregateSales(selectedDateStr);
+    const lastWeekSales = isToday ? aggregateSales(lastWeekDateStr) : aggregateFullDaySales(lastWeekDateStr);
+    const normalBaselineSales = normalBaselineDateStr
+      ? aggregateFullDaySales(normalBaselineDateStr)
+      : null;
+
+    // Forecast: today actual + remaining hours from last week
+    let forecastSales = todaySales;
+    if (isToday) {
+      const lwDateData = salesMap[lastWeekDateStr];
+      if (lwDateData) {
+        for (const r of activeRestaurants) {
+          const rData = lwDateData[r.id];
+          if (!rData) continue;
+          for (const [h, s] of Object.entries(rData)) {
+            if (parseInt(h) > hourCutoff) forecastSales += s;
+          }
+        }
+      }
+    }
+
+    // Calculate variances
+    const vsHoliday = lastWeekSales > 0 ? ((todaySales / lastWeekSales) - 1) * 100 : null;
+    const vsNormal = normalBaselineSales && normalBaselineSales > 0
+      ? ((todaySales / normalBaselineSales) - 1) * 100
+      : null;
+    const holidayVsNormal = normalBaselineSales && normalBaselineSales > 0 && lastWeekSales > 0
+      ? ((lastWeekSales / normalBaselineSales) - 1) * 100
+      : null;
+    const forecastVsNormal = normalBaselineSales && normalBaselineSales > 0
+      ? ((forecastSales / normalBaselineSales) - 1) * 100
+      : null;
+
+    // Determine which scenario we're in
+    let scenario: 'today_is_holiday' | 'comparing_to_holiday' = 'comparing_to_holiday';
+    let holidayName = lastWeekHoliday?.name || '';
+    if (todayHoliday) {
+      scenario = 'today_is_holiday';
+      holidayName = todayHoliday.name;
+    }
+
+    res.json({
+      applicable: true,
+      scenario,
+      holidayName,
+      dates: {
+        today: selectedDateStr,
+        lastWeek: lastWeekDateStr,
+        normalBaseline: normalBaselineDateStr,
+      },
+      sales: {
+        today: Math.round(todaySales),
+        lastWeek: Math.round(lastWeekSales),
+        normalBaseline: normalBaselineSales != null ? Math.round(normalBaselineSales) : null,
+        forecast: Math.round(forecastSales),
+      },
+      variance: {
+        vsLastWeek: vsHoliday != null ? Math.round(vsHoliday * 10) / 10 : null,
+        vsNormal: vsNormal != null ? Math.round(vsNormal * 10) / 10 : null,
+        holidayVsNormal: holidayVsNormal != null ? Math.round(holidayVsNormal * 10) / 10 : null,
+        forecastVsNormal: forecastVsNormal != null ? Math.round(forecastVsNormal * 10) / 10 : null,
+      },
+      hourCutoff,
+      isToday,
+    });
+  } catch (error) {
+    console.error("Error fetching holiday sales comparison:", error);
+    res.status(500).json({ error: "Failed to fetch holiday sales comparison" });
   }
 });
 
