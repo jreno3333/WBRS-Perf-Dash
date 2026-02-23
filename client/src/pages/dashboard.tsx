@@ -237,6 +237,26 @@ export default function Dashboard() {
     },
   });
 
+  // Fetch holiday sales comparison (3-way: today vs holiday vs normal baseline)
+  interface HolidaySalesComparison {
+    applicable: boolean;
+    scenario?: 'today_is_holiday' | 'comparing_to_holiday';
+    holidayName?: string;
+    dates?: { today: string; lastWeek: string; normalBaseline: string | null };
+    sales?: { today: number; lastWeek: number; normalBaseline: number | null; forecast: number };
+    variance?: { vsLastWeek: number | null; vsNormal: number | null; holidayVsNormal: number | null; forecastVsNormal: number | null };
+    isToday?: boolean;
+  }
+  const { data: holidaySalesComparison } = useQuery<HolidaySalesComparison>({
+    queryKey: ["/api/holiday-sales-comparison", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/holiday-sales-comparison?date=${dateStr}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval,
+  });
+
   // Fetch weekly sales data (Sat-Fri business week)
   interface WeeklySalesData {
     currentWeekStart: string;
@@ -595,27 +615,105 @@ export default function Dashboard() {
           <>
             {/* Holiday Context Banner */}
             {(holidayData?.todayHoliday || holidayData?.lastWeekHoliday || (holidayData?.comparison?.thisYear && holidayData?.comparison?.lastYear)) && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm">
-                <CalendarDays className="w-4 h-4 text-amber-500 shrink-0" />
-                <div className="flex items-center gap-2 flex-wrap">
-                  {holidayData?.todayHoliday && (
-                    <span className="text-amber-600 dark:text-amber-400 font-medium">
-                      Today: {holidayData.todayHoliday.name}
-                    </span>
-                  )}
-                  {holidayData?.lastWeekHoliday && (
-                    <span className="text-muted-foreground text-xs">
-                      {holidayData.lastWeekHoliday.isLastWeekComparisonDay
-                        ? `Comparing to: ${holidayData.lastWeekHoliday.name}`
-                        : `${holidayData.lastWeekHoliday.name} was ${holidayData.lastWeekHoliday.dayOfWeek}`}
-                    </span>
-                  )}
-                  {holidayData?.comparison?.thisYear && holidayData?.comparison?.lastYear && (
-                    <span className="text-xs text-muted-foreground">
-                      {holidayData.comparison.thisYear.name}: {holidayData.comparison.thisYear.dayOfWeek} this year vs {holidayData.comparison.lastYear.dayOfWeek} last year
-                    </span>
-                  )}
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 overflow-hidden">
+                {/* Header row */}
+                <div className="flex items-center gap-2 px-3 py-2 text-sm">
+                  <CalendarDays className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {holidayData?.todayHoliday && (
+                      <span className="text-amber-600 dark:text-amber-400 font-medium">
+                        Today: {holidayData.todayHoliday.name}
+                      </span>
+                    )}
+                    {holidayData?.lastWeekHoliday && (
+                      <span className="text-muted-foreground text-xs">
+                        {holidayData.lastWeekHoliday.isLastWeekComparisonDay
+                          ? `Comparing to: ${holidayData.lastWeekHoliday.name}`
+                          : `${holidayData.lastWeekHoliday.name} was ${holidayData.lastWeekHoliday.dayOfWeek}`}
+                      </span>
+                    )}
+                    {holidayData?.comparison?.thisYear && holidayData?.comparison?.lastYear && (
+                      <span className="text-xs text-muted-foreground">
+                        {holidayData.comparison.thisYear.name}: {holidayData.comparison.thisYear.dayOfWeek} this year vs {holidayData.comparison.lastYear.dayOfWeek} last year
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Holiday Sales Comparison — 3-way breakdown */}
+                {holidaySalesComparison?.applicable && holidaySalesComparison.sales && (
+                  <div className="border-t border-amber-500/15 px-3 py-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2">
+                      {holidaySalesComparison.scenario === 'today_is_holiday'
+                        ? 'Holiday Impact — Today vs Prior Normal Day'
+                        : 'Holiday Impact — Last Week Was Inflated by Holiday'}
+                    </p>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      {/* Normal baseline column */}
+                      {holidaySalesComparison.sales.normalBaseline != null && holidaySalesComparison.dates?.normalBaseline && (
+                        <div>
+                          <p className="text-muted-foreground mb-0.5">
+                            Normal {new Date(holidaySalesComparison.dates.normalBaseline + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </p>
+                          <p className="font-semibold tabular-nums">
+                            {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(holidaySalesComparison.sales.normalBaseline)}
+                          </p>
+                          {holidaySalesComparison.variance?.holidayVsNormal != null && (
+                            <p className={`text-[10px] mt-0.5 ${holidaySalesComparison.variance.holidayVsNormal >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              Holiday was {holidaySalesComparison.variance.holidayVsNormal >= 0 ? '+' : ''}{holidaySalesComparison.variance.holidayVsNormal.toFixed(1)}% vs this
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Holiday (last week) column */}
+                      <div>
+                        <p className="text-muted-foreground mb-0.5">
+                          {holidaySalesComparison.holidayName}{' '}
+                          <span className="text-amber-500 font-medium">
+                            {new Date(holidaySalesComparison.dates!.lastWeek + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </p>
+                        <p className="font-semibold tabular-nums">
+                          {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(holidaySalesComparison.sales.lastWeek)}
+                        </p>
+                      </div>
+
+                      {/* Today / Forecast column */}
+                      <div>
+                        <p className="text-muted-foreground mb-0.5">
+                          Today {holidaySalesComparison.isToday && holidaySalesComparison.sales.forecast > holidaySalesComparison.sales.today ? '(Forecast)' : ''}
+                        </p>
+                        <p className="font-semibold tabular-nums">
+                          {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(
+                            holidaySalesComparison.isToday && holidaySalesComparison.sales.forecast > holidaySalesComparison.sales.today
+                              ? holidaySalesComparison.sales.forecast
+                              : holidaySalesComparison.sales.today
+                          )}
+                        </p>
+                        <div className="flex flex-col gap-0.5 mt-0.5">
+                          {holidaySalesComparison.variance?.vsLastWeek != null && (
+                            <p className={`text-[10px] ${holidaySalesComparison.variance.vsLastWeek >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              vs Holiday: {holidaySalesComparison.variance.vsLastWeek >= 0 ? '+' : ''}{holidaySalesComparison.variance.vsLastWeek.toFixed(1)}%
+                            </p>
+                          )}
+                          {holidaySalesComparison.variance?.vsNormal != null && (
+                            <p className={`text-[10px] font-medium ${holidaySalesComparison.variance.vsNormal >= 0 ? 'text-blue-500' : 'text-orange-500'}`}>
+                              vs Normal: {holidaySalesComparison.variance.vsNormal >= 0 ? '+' : ''}{holidaySalesComparison.variance.vsNormal.toFixed(1)}%
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Insight message */}
+                    {holidaySalesComparison.scenario === 'comparing_to_holiday' && holidaySalesComparison.variance?.vsLastWeek != null && holidaySalesComparison.variance.vsLastWeek < 0 && holidaySalesComparison.variance?.vsNormal != null && holidaySalesComparison.variance.vsNormal >= -5 && (
+                      <p className="text-[11px] text-blue-500 mt-2 pt-1.5 border-t border-amber-500/10">
+                        Today appears down vs LW because {holidaySalesComparison.holidayName} inflated last week's sales. Compared to a normal {new Date(holidaySalesComparison.dates!.normalBaseline + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}, performance is {holidaySalesComparison.variance.vsNormal >= 0 ? 'on track' : 'within range'}.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
