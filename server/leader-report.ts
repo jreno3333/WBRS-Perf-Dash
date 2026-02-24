@@ -1,8 +1,9 @@
 import { db } from "./db";
-import { emailSubscribers, emailSendLog, restaurants, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, employees } from "@shared/schema";
+import { emailSubscribers, emailSendLog, restaurants, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, employees, reportSchedules } from "@shared/schema";
 import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { osatData as osatDataTable } from "@shared/schema";
+import { getAllHourlyPosSalesRange } from "./xenial-webhook";
 
 function getGradeLabel(score: number): string {
   if (score >= 95) return "A+";
@@ -81,14 +82,25 @@ function formatLeaderTenure(hireDate: string | null | undefined, invitedAt: Date
   return `${totalDays}d`;
 }
 
-const MIN_HOURS_REQUIRED = 30;
-const MIN_HOURS_TOP10 = 30;
-const MIN_SURVEYS_REQUIRED = 2;
+const MIN_HOURS_REQUIRED = 8;
+const MIN_HOURS_TOP10 = 20;
+const MIN_SURVEYS_REQUIRED = 1;
 
-export async function sendLeaderReports(): Promise<{ sent: number; failed: number }> {
+export async function sendLeaderReports(force = false): Promise<{ sent: number; failed: number }> {
   const result = { sent: 0, failed: 0 };
 
   try {
+    // Check if automated sending is enabled (skip check for manual /send-now)
+    if (!force) {
+      const schedules = await db.select().from(reportSchedules)
+        .where(eq(reportSchedules.reportType, 'leader_report'));
+      const schedule = schedules[0];
+      if (schedule && !schedule.isEnabled) {
+        console.log("[leader-report] Automated sending is disabled - skipping");
+        return result;
+      }
+    }
+
     const subscribers = await db.select()
       .from(emailSubscribers)
       .where(and(
@@ -194,6 +206,10 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
     extendedStartDate.setDate(extendedStartDate.getDate() - 7);
     const extendedStartDateStr = extendedStartDate.toISOString().split("T")[0];
 
+    // Use POS orders as primary sales source (matches dashboard leaders.ts)
+    const posSalesByKey = await getAllHourlyPosSalesRange(extendedStartDateStr, endDateStr);
+
+    // Also fetch 7shifts hourly_sales as fallback
     const salesData = await db.select().from(hourlySales).where(
       and(
         gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, extendedStartDateStr),
@@ -233,14 +249,16 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         totalSalesToday: number;
         totalSalesLastWeek: number;
         staffingDiffs: number[];
-        speedValues: number[];
+        speedCarCount: number;
+        speedCarsUnder6: number;
         osatWeighted: { percent: number; responses: number }[];
         hoursCount: number;
       }>();
       const workedAtRestaurants = new Map<string, number>();
       let totalHoursWorked = 0;
       let totalSalesAllHours = 0;
-      let allSpeedValues: number[] = [];
+      let allSpeedCarCount = 0;
+      let allSpeedCarsUnder6 = 0;
       let allOsatWeighted: { percent: number; responses: number }[] = [];
       let leaderTotalSurveys = 0;
 
@@ -252,12 +270,17 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         workedAtRestaurants.set(crew.restaurantId, (workedAtRestaurants.get(crew.restaurantId) || 0) + 1);
 
         const labor = laborByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
-        const sales = salesByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const hme = hmeByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const osatHour = osatByKey.get(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
 
-        const hourSales = sales ? (Number(sales.actualSales) || 0) : 0;
-        if (labor && sales && hourSales > 0) {
+        // Use POS orders as primary sales source, fall back to 7shifts
+        const posKey = `${crew.restaurantId}-${crew.date}-${crew.hour}`;
+        const posSales = posSalesByKey.get(posKey);
+        const fallbackSales = salesByKey.get(posKey);
+        const hourSales = posSales !== undefined ? posSales : (fallbackSales ? (Number(fallbackSales.actualSales) || 0) : 0);
+        const hasSalesData = posSales !== undefined || (fallbackSales && Number(fallbackSales.actualSales) > 0);
+
+        if (labor && hasSalesData && hourSales > 0) {
           totalHoursWorked++;
           totalSalesAllHours += hourSales;
 
@@ -266,28 +289,32 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
             dailyAggregates.set(dayKey, {
               restaurantId: crew.restaurantId,
               totalSalesToday: 0, totalSalesLastWeek: 0,
-              staffingDiffs: [], speedValues: [], osatWeighted: [], hoursCount: 0,
+              staffingDiffs: [], speedCarCount: 0, speedCarsUnder6: 0, osatWeighted: [], hoursCount: 0,
             });
           }
           const day = dailyAggregates.get(dayKey)!;
           day.hoursCount++;
           day.totalSalesToday += hourSales;
 
+          // Look up last week's sales — POS first, then 7shifts fallback
           const crewDate = new Date(crew.date + "T12:00:00");
           const lastWeekDate = new Date(crewDate);
           lastWeekDate.setDate(lastWeekDate.getDate() - 7);
           const lastWeekDateStr = lastWeekDate.toISOString().split("T")[0];
-          const lastWeekSalesRecord = salesByKey.get(`${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`);
-          day.totalSalesLastWeek += lastWeekSalesRecord ? Number(lastWeekSalesRecord.actualSales) || 0 : 0;
+          const posLastWeekKey = `${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`;
+          const posLastWeekSales = posSalesByKey.get(posLastWeekKey);
+          const fallbackLastWeekSales = salesByKey.get(posLastWeekKey);
+          day.totalSalesLastWeek += posLastWeekSales !== undefined ? posLastWeekSales : (fallbackLastWeekSales ? Number(fallbackLastWeekSales.actualSales) || 0 : 0);
 
           const actualStaff = Number(labor.employeeCount) || 0;
           const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
           day.staffingDiffs.push(actualStaff - projectedStaff);
 
-          if (hme && hme.carCount > 0 && hme.carsUnder6Min > 0) {
-            const attainment = Math.round((hme.carsUnder6Min / hme.carCount) * 100);
-            day.speedValues.push(attainment);
-            allSpeedValues.push(attainment);
+          if (hme && hme.carCount > 0 && (hme.carsUnder6Min || 0) > 0) {
+            day.speedCarCount += hme.carCount;
+            day.speedCarsUnder6 += hme.carsUnder6Min || 0;
+            allSpeedCarCount += hme.carCount;
+            allSpeedCarsUnder6 += hme.carsUnder6Min || 0;
           }
           if (osatHour && osatHour.totalResponses > 0) {
             day.osatWeighted.push({ percent: Number(osatHour.osatPercent), responses: osatHour.totalResponses });
@@ -300,10 +327,13 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
       const dailyGrades: { score: number; hours: number }[] = [];
       for (const [, day] of Array.from(dailyAggregates)) {
         const hasComparableSales = day.totalSalesLastWeek > 0;
-        const salesVariancePct = hasComparableSales
+        let salesVariancePct = hasComparableSales
           ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100 : 0;
+        if (hasComparableSales) {
+          salesVariancePct = Math.max(-200, Math.min(200, salesVariancePct));
+        }
         const avgStaffingDiff = day.staffingDiffs.reduce((a, b) => a + b, 0) / day.staffingDiffs.length;
-        const avgSpeed = day.speedValues.length > 0 ? day.speedValues.reduce((a, b) => a + b, 0) / day.speedValues.length : undefined;
+        const avgSpeed = day.speedCarCount > 0 ? Math.round((day.speedCarsUnder6 / day.speedCarCount) * 100) : undefined;
         const totalOsatResponses = day.osatWeighted.reduce((s, o) => s + o.responses, 0);
         const osatPercent = totalOsatResponses > 0
           ? day.osatWeighted.reduce((s, o) => s + o.percent * o.responses, 0) / totalOsatResponses : undefined;
@@ -330,12 +360,12 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
 
         if (components.length > 0) {
           const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-          const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+          const score = Math.round(components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight);
           dailyGrades.push({ score, hours: day.hoursCount });
         }
       }
 
-      if (totalHoursWorked >= MIN_HOURS_REQUIRED && leaderTotalSurveys >= MIN_SURVEYS_REQUIRED && dailyGrades.length > 0) {
+      if (totalHoursWorked >= MIN_HOURS_REQUIRED && dailyGrades.length > 0) {
         const totalGradeHours = dailyGrades.reduce((s, d) => s + d.hours, 0);
         const avgScore = dailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours;
 
@@ -356,11 +386,13 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
         if (displayPosition === "asst_manager") displayPosition = "Manager";
         if (displayPosition.toLowerCase().includes("supervisor")) displayPosition = "Shift Supervisor";
         else if (displayPosition.toLowerCase().includes("manager")) displayPosition = "Manager";
+        // Fallback: if position doesn't normalize, use employee type to classify
+        if (displayPosition !== "Manager" && displayPosition !== "Shift Supervisor") {
+          displayPosition = (leader.type === "manager" || leader.type === "asst_manager") ? "Manager" : "Shift Supervisor";
+        }
 
-        if (displayPosition.toLowerCase().includes("team member")) continue;
-
-        const overallAvgSpeed = allSpeedValues.length > 0
-          ? allSpeedValues.reduce((a, b) => a + b, 0) / allSpeedValues.length : null;
+        const overallAvgSpeed = allSpeedCarCount > 0
+          ? Math.round((allSpeedCarsUnder6 / allSpeedCarCount) * 100) : null;
         const totalSurveyResponses = allOsatWeighted.reduce((s, o) => s + o.responses, 0);
         const overallOsatPercent = totalSurveyResponses > 0
           ? allOsatWeighted.reduce((s, o) => s + o.percent * o.responses, 0) / totalSurveyResponses : null;
@@ -374,7 +406,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           avgGradeScore: Math.round(avgScore),
           grade: getGradeLabel(Math.round(avgScore)),
           avgHourlySales: totalHoursWorked > 0 ? Math.round(totalSalesAllHours / totalHoursWorked) : null,
-          avgSpeed: overallAvgSpeed,
+          avgSpeed: overallAvgSpeed !== null ? Math.round(overallAvgSpeed) : null,
           osatPercent: overallOsatPercent !== null ? Math.round(overallOsatPercent) : null,
           surveyCount: totalSurveyResponses,
           companyRank: 0,
@@ -387,8 +419,8 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
     if (leaders.length === 0) return null;
 
     const top10Eligible = leaders
-      .filter(l => l.hoursWorked >= MIN_HOURS_TOP10 && l.surveyCount >= MIN_SURVEYS_REQUIRED)
-      .sort((a, b) => b.avgGradeScore - a.avgGradeScore || b.hoursWorked - a.hoursWorked);
+      .filter(l => l.hoursWorked >= MIN_HOURS_TOP10 && l.surveyCount > 0)
+      .sort((a, b) => b.avgGradeScore - a.avgGradeScore);
 
     top10Eligible.forEach((l, i) => { l.companyRank = i + 1; l.totalLeaders = top10Eligible.length; });
 

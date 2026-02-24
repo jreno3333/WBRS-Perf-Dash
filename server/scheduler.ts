@@ -299,11 +299,11 @@ async function sendDailyReportsIfNeeded() {
 
     const dailyHour = dailySchedule?.sendHour ?? 6;
     const dailyMinute = dailySchedule?.sendMinute ?? 0;
-    const dailyEnabled = dailySchedule?.isEnabled ?? true;
+    const dailyEnabled = dailySchedule?.isEnabled ?? false;
 
     const leaderHour = leaderSchedule?.sendHour ?? 6;
     const leaderMinute = leaderSchedule?.sendMinute ?? 0;
-    const leaderEnabled = leaderSchedule?.isEnabled ?? true;
+    const leaderEnabled = leaderSchedule?.isEnabled ?? false;
 
     const dailyPastTime = dailyEnabled && isPastScheduledTime(centralHour, centralMinute, dailyHour, dailyMinute);
     const leaderPastTime = leaderEnabled && isPastScheduledTime(centralHour, centralMinute, leaderHour, leaderMinute);
