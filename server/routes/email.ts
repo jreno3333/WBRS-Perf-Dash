@@ -128,7 +128,7 @@ router.get("/api/leader-report/preview", async (req, res) => {
 router.post("/api/leader-report/send-now", async (req, res) => {
   try {
     const { sendLeaderReports } = await import("../leader-report");
-    const result = await sendLeaderReports();
+    const result = await sendLeaderReports(true);
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("Error sending leader report:", error);
@@ -160,7 +160,7 @@ router.get("/api/daily-report/preview", async (req, res) => {
 router.post("/api/daily-report/send-now", async (req, res) => {
   try {
     const { sendDailyReports } = await import("../daily-report");
-    const result = await sendDailyReports();
+    const result = await sendDailyReports(true);
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("Error sending daily report:", error);

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { emailSubscribers, emailSendLog } from "@shared/schema";
+import { emailSubscribers, emailSendLog, reportSchedules } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
@@ -167,10 +167,21 @@ interface RestaurantSummary {
   staffingPct: number | null;
 }
 
-export async function sendDailyReports(): Promise<{ sent: number; failed: number }> {
+export async function sendDailyReports(force = false): Promise<{ sent: number; failed: number }> {
   const result = { sent: 0, failed: 0 };
 
   try {
+    // Check if automated sending is enabled (skip check for manual /send-now)
+    if (!force) {
+      const schedules = await db.select().from(reportSchedules)
+        .where(eq(reportSchedules.reportType, 'daily_report'));
+      const schedule = schedules[0];
+      if (schedule && !schedule.isEnabled) {
+        console.log("[daily-report] Automated sending is disabled - skipping");
+        return result;
+      }
+    }
+
     const subscribers = await db.select()
       .from(emailSubscribers)
       .where(and(
