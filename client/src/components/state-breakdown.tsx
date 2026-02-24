@@ -5,6 +5,7 @@ import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
+import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
 
 interface CrewSummary {
   avgScore: number;
@@ -29,21 +30,7 @@ interface StateBreakdownProps {
   weeklySalesData?: WeeklySalesData;
 }
 
-const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
-
-const scoreToGrade = (score: number): string => {
-  if (score >= 95) return 'A+';
-  if (score >= 90) return 'A';
-  if (score >= 85) return 'A-';
-  if (score >= 80) return 'B+';
-  if (score >= 75) return 'B';
-  if (score >= 70) return 'B-';
-  if (score >= 65) return 'C+';
-  if (score >= 60) return 'C';
-  if (score >= 55) return 'C-';
-  if (score >= 50) return 'D';
-  return 'F';
-};
+const scoreToGrade = scoreToGradeLabel;
 
 function getExecutionGradeScore(
   salesVariancePct: number,
@@ -53,39 +40,7 @@ function getExecutionGradeScore(
   osatPercent: number | undefined = undefined,
   hasValidStaffing: boolean = true
 ): number {
-  const components: { score: number; weight: number }[] = [];
-
-  if (hasComparableSales) {
-    components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
-  } else {
-    components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
-  }
-
-  if (speedAttainment !== undefined && speedAttainment >= 0) {
-    let speedScore = 100;
-    if (speedAttainment < 50) speedScore = 40;
-    else if (speedAttainment < 70) speedScore = 70;
-    components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
-  }
-
-  if (osatPercent !== undefined && osatPercent > 0) {
-    let osatScore = 100;
-    if (osatPercent < 80) osatScore = 40;
-    else if (osatPercent < 85) osatScore = 70;
-    components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
-  }
-
-  if (hasValidStaffing) {
-    let staffingScore = 100;
-    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-    if (staffingDiff > 1) staffingScore = 60;
-    else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
-    components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
-  }
-
-  if (components.length === 0) return 0;
-  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-  return components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
+  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent);
 }
 
 function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>): { grade: string; hoursGraded: number } {
@@ -210,14 +165,7 @@ function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttain
 }
 
 export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData }: StateBreakdownProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Exclude training units from state breakdowns
   const activeRestaurants = restaurants.filter(r => r.status !== "training");

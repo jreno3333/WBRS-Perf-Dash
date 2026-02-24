@@ -6,6 +6,13 @@ import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, Sho
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
+import {
+  computeExecutionScore,
+  scoreToGradeLabel,
+  getGradeColor as sharedGetGradeColor,
+  gradeToMidpoint,
+  formatCurrency,
+} from "@/lib/grading";
 
 const REVENUE_PORT_CONFIG = {
   dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Indoor dining available", disabledDesc: "No indoor dining" },
@@ -38,117 +45,27 @@ function WeatherIcon({ condition }: { condition: string }) {
   }
 }
 
-// Execution Grade Calculator
-// Sales: UP/DOWN (with 5% tolerance), Speed: attainment %, Staffing: PROPER/UNDER/OVER
-// OSAT: 85%+ = excellent, 80-85% = acceptable, <80% = needs improvement
-// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
-const GRADE_WEIGHTS = {
-  sales: 35,
-  speed: 25,
-  osat: 25,
-  staffing: 15,
-};
-
+// Execution Grade — delegates to shared grading module
 function getExecutionGrade(
   salesVariancePct: number,
   speedAttainment: number | undefined,
   staffingDiff: number,
-  hasComparableSales: boolean = true,
-  isFirstWeek: boolean = false,
-  hasValidStaffing: boolean = true,
+  hasComparableSales = true,
+  _isFirstWeek = false,
+  hasValidStaffing = true,
   osatPercent: number | undefined = undefined
 ): { grade: string; color: string; hasGrade: boolean } {
-  const components: { name: string; score: number; weight: number }[] = [];
-  
-  if (hasComparableSales) {
-    const salesScore = salesVariancePct >= -5 ? 100 : 50;
-    components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
-  } else {
-    components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
-  }
-  
-  // Speed component (weight: 25%) - uses attainment (% of cars under 6 min)
-  // >=70% = 100 (green), >=50% = 70 (yellow), <50% = 40 (red)
-  if (speedAttainment !== undefined && speedAttainment >= 0) {
-    let speedScore = 100;
-    if (speedAttainment < 50) speedScore = 40;
-    else if (speedAttainment < 70) speedScore = 70;
-    components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
-  }
-  
-  // OSAT component (weight: 25%) - only if we have customer satisfaction data
-  // 85%+ = 100 (excellent), 80-85% = 70 (acceptable), <80% = 40 (needs improvement)
-  if (osatPercent !== undefined && osatPercent > 0) {
-    let osatScore = 100;
-    if (osatPercent < 80) osatScore = 40;
-    else if (osatPercent < 85) osatScore = 70;
-    components.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
-  }
-  
-  // Staffing component (weight: 15%) - only if we have valid staffing data
-  // Skip when employee count is near-zero (indicates missing/incomplete API data)
-  // PROPER = 100, UNDER/OVER = 60
-  // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
-  // or when last week had no sales (store was closed/no data - can't plan staffing for that)
-  if (hasValidStaffing) {
-    let staffingScore = 100;
-    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-    const isUnderstaffed = staffingDiff < -1;
-    const isOverstaffed = staffingDiff > 1;
-    
-    if (isOverstaffed) {
-      staffingScore = 60;
-    } else if (isUnderstaffed && !isSalesSurge) {
-      staffingScore = 60;
-    }
-    components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
-  }
-  
-  // If no components to grade, return no grade
-  if (components.length === 0) {
-    return { grade: '-', color: 'text-muted-foreground', hasGrade: false };
-  }
-  
-  // Calculate weighted average - normalize weights based on available components
-  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-  const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
-  
-  // Convert score to detailed letter grade
-  const { grade, color } = scoreToGrade(avgScore);
-  return { grade, color, hasGrade: true };
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent);
+  if (score === 0) return { grade: '-', color: 'text-muted-foreground', hasGrade: false };
+  const grade = scoreToGradeLabel(score);
+  return { grade, color: sharedGetGradeColor(grade), hasGrade: true };
 }
 
-function getGradeColor(grade: string): string {
-  if (grade.startsWith('A')) return 'text-green-500';
-  if (grade.startsWith('B')) return 'text-blue-500';
-  if (grade.startsWith('C')) return 'text-yellow-500';
-  if (grade === 'D') return 'text-orange-500';
-  return 'text-red-500';
-}
+const getGradeColor = sharedGetGradeColor;
+const gradeToScore = gradeToMidpoint;
 
-// Convert letter grade to numeric score for averaging (midpoint of each range)
-function gradeToScore(grade: string): number {
-  const scores: Record<string, number> = {
-    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
-    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
-  };
-  return scores[grade] ?? 0;
-}
-
-// Convert average score back to detailed letter grade
 function scoreToGrade(score: number): { grade: string; color: string } {
-  let grade: string;
-  if (score >= 95) grade = 'A+';
-  else if (score >= 90) grade = 'A';
-  else if (score >= 85) grade = 'A-';
-  else if (score >= 80) grade = 'B+';
-  else if (score >= 75) grade = 'B';
-  else if (score >= 70) grade = 'B-';
-  else if (score >= 65) grade = 'C+';
-  else if (score >= 60) grade = 'C';
-  else if (score >= 55) grade = 'C-';
-  else if (score >= 50) grade = 'D';
-  else grade = 'F';
+  const grade = scoreToGradeLabel(score);
   return { grade, color: getGradeColor(grade) };
 }
 
@@ -223,14 +140,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   const formatPercentage = (value: number) => {
     const sign = value >= 0 ? "+" : "";

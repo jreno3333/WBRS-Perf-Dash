@@ -5,6 +5,7 @@ import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, BarChart3, Users, AlertTriangle, Clock, Activity } from "lucide-react";
 import { useState } from "react";
+import { formatCurrency } from "@/lib/grading";
 
 interface AnalyticsPanelProps {
   dateStr: string;
@@ -99,9 +100,6 @@ interface DemandCurveData {
   }[];
 }
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
-
 const formatCompactCurrency = (amount: number) => {
   const abs = Math.abs(amount);
   if (abs >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
@@ -127,6 +125,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
   const [showAllCompliance, setShowAllCompliance] = useState(false);
   const [showAllSuppressed, setShowAllSuppressed] = useState(false);
 
+  // Badge data loads eagerly (shown in collapsed header)
   const { data: anniversaries } = useQuery<{ count: number; anniversaries: AnniversaryData[] }>({
     queryKey: ["/api/analytics/anniversaries"],
     queryFn: async () => {
@@ -134,15 +133,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-  });
-
-  const { data: weeklyForecast } = useQuery<WeeklyForecastData>({
-    queryKey: ["/api/analytics/weekly-forecast", dateStr],
-    queryFn: async () => {
-      const res = await fetch(`/api/analytics/weekly-forecast?date=${dateStr}`);
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
+    staleTime: 10 * 60 * 1000,
   });
 
   const { data: consistency } = useQuery<ConsistencyData>({
@@ -152,6 +143,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    staleTime: 10 * 60 * 1000,
   });
 
   const { data: compliance } = useQuery<ComplianceData>({
@@ -161,6 +153,7 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    staleTime: 10 * 60 * 1000,
   });
 
   const { data: suppressed } = useQuery<SuppressedData>({
@@ -170,6 +163,19 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    staleTime: isToday ? 5 * 60 * 1000 : Infinity,
+  });
+
+  // Expensive panel data — only fetch once panel is expanded
+  const { data: weeklyForecast } = useQuery<WeeklyForecastData>({
+    queryKey: ["/api/analytics/weekly-forecast", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/weekly-forecast?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: expanded,
+    staleTime: isToday ? 5 * 60 * 1000 : Infinity,
   });
 
   const { data: demandCurves } = useQuery<DemandCurveData>({
@@ -179,6 +185,8 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: expanded,
+    staleTime: isToday ? 5 * 60 * 1000 : Infinity,
   });
 
   const upcomingAnniversaries = anniversaries?.anniversaries?.filter(a => a.daysUntil <= 7) || [];

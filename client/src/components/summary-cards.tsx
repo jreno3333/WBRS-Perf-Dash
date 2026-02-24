@@ -3,6 +3,7 @@ import { Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
+import { formatCurrency } from "@/lib/grading";
 
 interface WeeklySalesData {
   currentWeekStart: string;
@@ -116,14 +117,7 @@ function getExecutionGrade(
 }
 
 export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData }: SummaryCardsProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Exclude training units from totals
   const activeRestaurants = restaurants.filter(r => r.status !== "training");

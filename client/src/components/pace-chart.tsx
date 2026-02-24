@@ -13,6 +13,7 @@ import {
   ReferenceLine
 } from "recharts";
 import type { HourlySalesData } from "@shared/schema";
+import { formatCurrency } from "@/lib/grading";
 
 interface PaceChartProps {
   data: HourlySalesData[];
@@ -20,14 +21,7 @@ interface PaceChartProps {
 }
 
 export function PaceChart({ data, restaurantName }: PaceChartProps) {
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+  // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Show all 24 hours individually, filling in zeros for missing hours
   const getHourLabel = (h: number) => 
