@@ -362,7 +362,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
     if (summaries.length === 0) return null;
 
-    summaries.sort((a, b) => b.sales - a.sales);
+    summaries.sort((a, b) => b.grade - a.grade);
 
     const gradedSummaries = summaries.filter(s => s.grade > 0);
     const avgGrade = gradedSummaries.length > 0
