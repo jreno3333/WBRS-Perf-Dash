@@ -235,6 +235,14 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   }
   
   const activeHours = allHours;
+
+  // Compute tooltip alignment so edge-of-chart tooltips don't overflow
+  const getTooltipAlign = (hourIndex: number) => {
+    const total = activeHours.length;
+    if (hourIndex <= 1) return 'left-0';
+    if (hourIndex >= total - 2) return 'right-0';
+    return 'left-1/2 -translate-x-1/2';
+  };
   const maxSales = Math.max(
     ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
     1
@@ -847,7 +855,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         />
                       );
                     })()}
-                    <div className={`absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                    <div className={`absolute bottom-full mb-1 ${getTooltipAlign(hourIndex)} bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{hour.label}</span>
                         {isCompleted && hour.todaySales > 0 && <span className={gradeInfo.color}>{gradeInfo.grade}</span>}
@@ -1127,7 +1135,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                           )}
                         </>
                       )}
-                      <div className={`absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                      <div className={`absolute bottom-full mb-1 ${getTooltipAlign(hourIndex)} bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{hour.label}</span>
