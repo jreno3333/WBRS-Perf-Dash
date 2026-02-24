@@ -84,22 +84,6 @@ interface SuppressedData {
   }[];
 }
 
-interface DemandCurveHour {
-  hour: number;
-  quarters: { label: string; orders: number; sales: number }[];
-  totalOrders: number;
-  totalSales: number;
-  loadProfile: string;
-}
-
-interface DemandCurveData {
-  restaurants: {
-    restaurantId: string;
-    restaurantName: string;
-    hours: DemandCurveHour[];
-  }[];
-}
-
 const formatCompactCurrency = (amount: number) => {
   const abs = Math.abs(amount);
   if (abs >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
@@ -171,17 +155,6 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
     queryKey: ["/api/analytics/weekly-forecast", dateStr],
     queryFn: async () => {
       const res = await fetch(`/api/analytics/weekly-forecast?date=${dateStr}`);
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
-    enabled: expanded,
-    staleTime: isToday ? 5 * 60 * 1000 : Infinity,
-  });
-
-  const { data: demandCurves } = useQuery<DemandCurveData>({
-    queryKey: ["/api/analytics/demand-curves", dateStr],
-    queryFn: async () => {
-      const res = await fetch(`/api/analytics/demand-curves?date=${dateStr}`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -470,64 +443,6 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                       {showAllSuppressed ? 'Show less' : `Show all ${suppressed!.restaurants.length} restaurants`}
                     </button>
                   )}
-                </div>
-              </div>
-            )}
-
-            {/* Demand Curves Summary */}
-            {demandCurves && demandCurves.restaurants.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                  <BarChart3 className="w-3 h-3" /> DEMAND CURVES
-                </h4>
-                <p className="text-[10px] text-muted-foreground mb-2">
-                  POS order volume split into 15-min intervals per hour. Blue = front-loaded (more orders in first half), orange = back-loaded, green = balanced.
-                </p>
-                <div className="space-y-2">
-                  {demandCurves.restaurants.slice(0, 3).map(r => {
-                    const peakHours = r.hours
-                      .filter(h => h.totalOrders > 0)
-                      .sort((a, b) => b.totalOrders - a.totalOrders)
-                      .slice(0, 3);
-                    if (peakHours.length === 0) return null;
-
-                    return (
-                      <div key={r.restaurantId}>
-                        <div className="text-xs font-medium mb-1">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</div>
-                        <div className="flex gap-1">
-                          {r.hours.filter(h => h.hour >= 6 && h.hour <= 22 && h.totalOrders > 0).map(h => {
-                            const maxOrders = Math.max(...r.hours.map(x => x.totalOrders), 1);
-                            const barHeight = Math.max(2, (h.totalOrders / maxOrders) * 24);
-                            const loadColor = h.loadProfile === "front-loaded" ? "bg-blue-400" :
-                              h.loadProfile === "back-loaded" ? "bg-orange-400" : "bg-green-400";
-
-                            return (
-                              <div key={h.hour} className="flex-1 flex flex-col items-center">
-                                <div className="flex items-end h-6 w-full gap-px">
-                                  {h.quarters.map((q, qi) => {
-                                    const qHeight = h.totalOrders > 0 ? Math.max(1, (q.orders / h.totalOrders) * barHeight) : 0;
-                                    return (
-                                      <div
-                                        key={qi}
-                                        className={`flex-1 ${loadColor} rounded-t-[1px] opacity-${qi < 2 ? '90' : '60'}`}
-                                        style={{ height: `${qHeight}px` }}
-                                      />
-                                    );
-                                  })}
-                                </div>
-                                <span className="text-[8px] text-muted-foreground">{h.hour > 12 ? h.hour - 12 : h.hour}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="flex gap-3 mt-0.5">
-                          <span className="text-[9px] text-muted-foreground flex items-center gap-1"><div className="w-2 h-2 bg-blue-400 rounded-sm" /> Front</span>
-                          <span className="text-[9px] text-muted-foreground flex items-center gap-1"><div className="w-2 h-2 bg-green-400 rounded-sm" /> Balanced</span>
-                          <span className="text-[9px] text-muted-foreground flex items-center gap-1"><div className="w-2 h-2 bg-orange-400 rounded-sm" /> Back</span>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
             )}
