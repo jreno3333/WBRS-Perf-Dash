@@ -15,6 +15,7 @@ import { AnalyticsPanel } from "@/components/analytics-panel";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
+import { computeExecutionScore, scoreToGradeLabel, gradeToMidpoint, formatCurrency } from "@/lib/grading";
 
 // Get current date in Central timezone (business day)
 function getCentralDate(): Date {
@@ -22,76 +23,6 @@ function getCentralDate(): Date {
   const centralStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
   const [year, month, day] = centralStr.split('-').map(Number);
   return new Date(year, month - 1, day, 12, 0, 0);
-}
-
-// X-Score calculation — must match leaderboard-card.tsx grade calculation exactly
-// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
-const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
-
-function scoreToGradeLabel(score: number): string {
-  if (score >= 95) return 'A+';
-  if (score >= 90) return 'A';
-  if (score >= 85) return 'A-';
-  if (score >= 80) return 'B+';
-  if (score >= 75) return 'B';
-  if (score >= 70) return 'B-';
-  if (score >= 65) return 'C+';
-  if (score >= 60) return 'C';
-  if (score >= 55) return 'C-';
-  if (score >= 50) return 'D';
-  return 'F';
-}
-
-function gradeToMidpoint(grade: string): number {
-  const scores: Record<string, number> = {
-    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
-    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
-  };
-  return scores[grade] ?? 0;
-}
-
-function getHourlyGradeScore(
-  salesVariancePct: number,
-  speedAttainment: number | undefined,
-  staffingDiff: number,
-  hasComparableSales: boolean,
-  hasValidStaffing: boolean,
-  osatPercent: number | undefined
-): number {
-  const components: { score: number; weight: number }[] = [];
-
-  if (hasComparableSales) {
-    components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
-  } else {
-    components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
-  }
-
-  if (speedAttainment !== undefined && speedAttainment >= 0) {
-    let speedScore = 100;
-    if (speedAttainment < 50) speedScore = 40;
-    else if (speedAttainment < 70) speedScore = 70;
-    components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
-  }
-
-  if (osatPercent !== undefined && osatPercent > 0) {
-    let osatScore = 100;
-    if (osatPercent < 80) osatScore = 40;
-    else if (osatPercent < 85) osatScore = 70;
-    components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
-  }
-
-  if (hasValidStaffing) {
-    let staffingScore = 100;
-    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-    if (staffingDiff > 1) staffingScore = 60;
-    else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
-    components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
-  }
-
-  if (components.length === 0) return 0;
-  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-  const rawScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
-  return gradeToMidpoint(scoreToGradeLabel(rawScore));
 }
 
 function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }): number {
@@ -114,7 +45,8 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
       const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
       const hasValidStaffing = rawEmployeeCount >= 1;
-      return getHourlyGradeScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+      const rawScore = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+      return rawScore > 0 ? gradeToMidpoint(scoreToGradeLabel(rawScore)) : 0;
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }
@@ -149,6 +81,7 @@ export default function Dashboard() {
       return res.json();
     },
     refetchInterval,
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
   });
 
   // Fetch crew summary data for all restaurants
@@ -160,6 +93,7 @@ export default function Dashboard() {
       return res.json();
     },
     refetchInterval,
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
   });
   const crewSummary = crewSummaryResponse?.summary;
 
@@ -178,6 +112,7 @@ export default function Dashboard() {
       return res.json();
     },
     refetchInterval,
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
   });
   const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
 
@@ -196,6 +131,7 @@ export default function Dashboard() {
       return res.json();
     },
     refetchInterval,
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
   });
   const checkAverageByRestaurant = checkAverageResponse?.restaurants;
 
@@ -211,6 +147,7 @@ export default function Dashboard() {
       return res.json();
     },
     refetchInterval,
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
   });
   const destinationsByRestaurant = destinationResponse?.restaurants;
 
@@ -402,6 +339,17 @@ export default function Dashboard() {
     ? markets.find(m => m.id === selectedMarket)?.restaurantIds || []
     : null;
 
+  // Pre-compute X-Scores once (instead of O(n log n) times in the sort comparator)
+  const xScoreMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!leaderboardData?.restaurants || !hourlyByRestaurant) return map;
+    for (const r of leaderboardData.restaurants) {
+      const localCutoff = (r as any).localCurrentHour ?? r.normalizedHour;
+      map.set(r.restaurantId, calculateXScore(hourlyByRestaurant[r.restaurantId], localCutoff, r));
+    }
+    return map;
+  }, [leaderboardData?.restaurants, hourlyByRestaurant]);
+
   // Memoize filtered + sorted restaurants to avoid re-computing the full
   // filter/sort pipeline on every render (e.g. when unrelated state changes).
   const sortedRestaurants = useMemo(() => {
@@ -463,10 +411,8 @@ export default function Dashboard() {
             return bAtt - aAtt;
           }
           case "xscore": {
-            const aLocalCutoff = (a as any).localCurrentHour ?? a.normalizedHour;
-            const bLocalCutoff = (b as any).localCurrentHour ?? b.normalizedHour;
-            const aScore = calculateXScore(hourlyByRestaurant?.[a.restaurantId], aLocalCutoff, a);
-            const bScore = calculateXScore(hourlyByRestaurant?.[b.restaurantId], bLocalCutoff, b);
+            const aScore = xScoreMap.get(a.restaurantId) ?? -1;
+            const bScore = xScoreMap.get(b.restaurantId) ?? -1;
             return bScore - aScore;
           }
           case "google_reviews": {
@@ -492,7 +438,7 @@ export default function Dashboard() {
             return b.actualSales - a.actualSales;
         }
       });
-  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant]);
+  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -649,7 +595,7 @@ export default function Dashboard() {
 
                 {/* Holiday Sales Comparison — 3-way breakdown */}
                 {holidaySalesComparison?.applicable && holidaySalesComparison.sales && (() => {
-                  const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+                  const fmt = formatCurrency;
                   const s = holidaySalesComparison.sales;
                   const v = holidaySalesComparison.variance!;
                   const d = holidaySalesComparison.dates!;

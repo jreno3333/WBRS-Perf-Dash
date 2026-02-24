@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
+import { formatCurrency, GRADE_WEIGHTS as SHARED_GRADE_WEIGHTS, computeExecutionScore } from "@/lib/grading";
 
 interface DailySummaryProps {
   restaurants: LeaderboardData["restaurants"];
@@ -391,9 +392,7 @@ function formatHour(hour: number): string {
   return `${hour - 12}PM`;
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount);
-}
+// formatCurrency is imported from @/lib/grading (module-level singleton)
 
 interface AggregatedSummary {
   name: string;
