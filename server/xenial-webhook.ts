@@ -498,6 +498,111 @@ export async function getCheckAverageByRestaurant(targetDate: Date): Promise<Map
 }
 
 /**
+ * Get 7-day rolling check average by restaurant.
+ * Returns daily check averages for the past 7 days for trend calculation.
+ */
+export async function getCheckAverageTrend(endDate: Date, days: number = 7): Promise<Map<string, { daily: { date: string; orders: number; sales: number; avg: number }[]; avg7d: number; trend: 'up' | 'down' | 'flat' }>> {
+  const endDateStr = endDate.toISOString().split('T')[0];
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - (days - 1));
+  const startDateStr = startDate.toISOString().split('T')[0];
+
+  const startOfRange = new Date(startDateStr + 'T00:00:00.000Z');
+  const endOfRange = new Date(endDateStr + 'T23:59:59.999Z');
+
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], { id: restaurant.id, timezone: restaurant.timezone || 'America/Chicago' });
+    }
+  }
+
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+
+  // restaurantId → date → { orders, sales }
+  const dailyData = new Map<string, Map<string, { orders: number; sales: number }>>();
+
+  for (const tz of timezoneSet) {
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const dateExpr = sql.raw(`to_char((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}', 'YYYY-MM-DD')`);
+    const posResults = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        localDate: sql<string>`${dateExpr}`,
+        orderCount: sql<number>`count(*)::int`,
+        totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startOfRange),
+          lt(posOrders.businessDate, endOfRange),
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${dateExpr}`);
+
+    for (const row of posResults) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (!restaurantInfo) continue;
+      const rid = restaurantInfo.id;
+      if (!dailyData.has(rid)) dailyData.set(rid, new Map());
+      dailyData.get(rid)!.set(row.localDate, {
+        orders: row.orderCount,
+        sales: Number(row.totalSales) || 0,
+      });
+    }
+  }
+
+  const result = new Map<string, { daily: { date: string; orders: number; sales: number; avg: number }[]; avg7d: number; trend: 'up' | 'down' | 'flat' }>();
+
+  dailyData.forEach((dateMap, restaurantId) => {
+    const daily: { date: string; orders: number; sales: number; avg: number }[] = [];
+    let totalOrders = 0;
+    let totalSales = 0;
+
+    // Build daily entries sorted by date
+    const sortedDates = [...dateMap.keys()].sort();
+    for (const d of sortedDates) {
+      const entry = dateMap.get(d)!;
+      const avg = entry.orders > 0 ? entry.sales / entry.orders : 0;
+      daily.push({ date: d, orders: entry.orders, sales: entry.sales, avg: Math.round(avg * 100) / 100 });
+      totalOrders += entry.orders;
+      totalSales += entry.sales;
+    }
+
+    const avg7d = totalOrders > 0 ? Math.round((totalSales / totalOrders) * 100) / 100 : 0;
+
+    // Determine trend: compare first half avg to second half avg
+    let trend: 'up' | 'down' | 'flat' = 'flat';
+    if (daily.length >= 4) {
+      const mid = Math.floor(daily.length / 2);
+      const firstHalf = daily.slice(0, mid).filter(d => d.orders > 0);
+      const secondHalf = daily.slice(mid).filter(d => d.orders > 0);
+      if (firstHalf.length > 0 && secondHalf.length > 0) {
+        const firstAvg = firstHalf.reduce((s, d) => s + d.avg, 0) / firstHalf.length;
+        const secondAvg = secondHalf.reduce((s, d) => s + d.avg, 0) / secondHalf.length;
+        const diff = secondAvg - firstAvg;
+        if (diff > 0.15) trend = 'up';
+        else if (diff < -0.15) trend = 'down';
+      }
+    }
+
+    result.set(restaurantId, { daily, avg7d, trend });
+  });
+
+  return result;
+}
+
+/**
  * Get destination breakdown by restaurant and hour for a given date.
  * Returns per-destination order counts per hour (e.g. dt1, dt2, dt3, in, app).
  * Used to detect when a restaurant is running the outside DT lane (dt3 >= 5 orders/hour).

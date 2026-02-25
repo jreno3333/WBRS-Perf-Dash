@@ -54,7 +54,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "check_avg">("sales");
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
@@ -134,6 +134,53 @@ export default function Dashboard() {
     staleTime: isToday ? 4 * 60 * 1000 : Infinity,
   });
   const checkAverageByRestaurant = checkAverageResponse?.restaurants;
+
+  // Fetch 7-day rolling check average trend
+  interface CheckAverageTrendData {
+    daily: { date: string; orders: number; sales: number; avg: number }[];
+    avg7d: number;
+    trend: 'up' | 'down' | 'flat';
+  }
+  const { data: checkAvgTrendResponse } = useQuery<{ date: string; days: number; restaurants: Record<string, CheckAverageTrendData> }>({
+    queryKey: ["/api/pos/check-average-trend", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/pos/check-average-trend?date=${dateStr}&days=7`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+  });
+  const checkAvgTrendByRestaurant = checkAvgTrendResponse?.restaurants;
+
+  // Fetch notes for the selected date
+  interface RestaurantNote {
+    id: string;
+    restaurantId: string;
+    date: string;
+    hour: number | null;
+    note: string;
+    author: string | null;
+    category: string;
+    createdAt: string;
+  }
+  const { data: notesResponse, refetch: refetchNotes } = useQuery<{ date: string; notes: RestaurantNote[] }>({
+    queryKey: ["/api/notes", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/notes?date=${dateStr}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+  const notesByRestaurant = useMemo(() => {
+    const map: Record<string, RestaurantNote[]> = {};
+    if (notesResponse?.notes) {
+      for (const note of notesResponse.notes) {
+        if (!map[note.restaurantId]) map[note.restaurantId] = [];
+        map[note.restaurantId].push(note);
+      }
+    }
+    return map;
+  }, [notesResponse?.notes]);
 
   // Fetch destination breakdown (dt1/dt2/dt3/in/app) by restaurant/hour
   const { data: destinationResponse } = useQuery<{
@@ -425,6 +472,11 @@ export default function Dashboard() {
             const bOsat = b.osat?.osatPercent ?? 0;
             return bOsat - aOsat;
           }
+          case "check_avg": {
+            const aCA = checkAverageByRestaurant?.[a.restaurantId]?.checkAverage ?? 0;
+            const bCA = checkAverageByRestaurant?.[b.restaurantId]?.checkAverage ?? 0;
+            return bCA - aCA;
+          }
           case "yoy": {
             const aYoy = yoyBulkData?.data?.[a.restaurantId];
             const bYoy = yoyBulkData?.data?.[b.restaurantId];
@@ -438,7 +490,7 @@ export default function Dashboard() {
             return b.actualSales - a.actualSales;
         }
       });
-  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap]);
+  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap, checkAverageByRestaurant]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -678,6 +730,8 @@ export default function Dashboard() {
               hourlyByRestaurant={hourlyByRestaurant}
               yoyData={yoyBulkData?.data}
               weeklySalesData={weeklySalesData}
+              checkAverageByRestaurant={checkAverageByRestaurant}
+              checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
             />
 
             {/* State Breakdown */}
@@ -695,7 +749,7 @@ export default function Dashboard() {
             )}
 
             {/* Analytics Panel */}
-            <AnalyticsPanel dateStr={dateStr} isToday={isToday} />
+            <AnalyticsPanel dateStr={dateStr} isToday={isToday} checkAverageByRestaurant={checkAverageByRestaurant} />
 
             {/* Restaurant Rankings */}
             <div className="space-y-3">
@@ -750,6 +804,7 @@ export default function Dashboard() {
                           <SelectItem value="xscore">Exc Score</SelectItem>
                           <SelectItem value="google_reviews">Google Rating</SelectItem>
                           <SelectItem value="osat">OSAT</SelectItem>
+                          <SelectItem value="check_avg">Check Avg</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -765,12 +820,16 @@ export default function Dashboard() {
                       crewSummary={crewSummary?.[restaurant.restaurantId]}
                       hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
                       checkAverage={checkAverageByRestaurant?.[restaurant.restaurantId]}
+                      checkAvgTrend={checkAvgTrendByRestaurant?.[restaurant.restaurantId]}
                       consistencyScore={consistencyByRestaurant?.[restaurant.restaurantId]}
                       demandCurveHours={demandCurvesByRestaurant?.[restaurant.restaurantId]}
                       destinationsByHour={destinationsByRestaurant?.[restaurant.restaurantId]}
                       isToday={isToday}
                       yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
                       weeklyData={weeklySalesData?.restaurants?.[restaurant.restaurantId]}
+                      notes={notesByRestaurant[restaurant.restaurantId]}
+                      dateStr={dateStr}
+                      onNoteAdded={refetchNotes}
                     />
                   ))}
                 </div>

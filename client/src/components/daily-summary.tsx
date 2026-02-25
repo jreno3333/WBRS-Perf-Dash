@@ -28,6 +28,17 @@ import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@s
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, GRADE_WEIGHTS as SHARED_GRADE_WEIGHTS, computeExecutionScore } from "@/lib/grading";
 
+interface RestaurantNote {
+  id: string;
+  restaurantId: string;
+  date: string;
+  hour: number | null;
+  note: string;
+  author: string | null;
+  category: string;
+  createdAt: string;
+}
+
 interface DailySummaryProps {
   restaurants: LeaderboardData["restaurants"];
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
@@ -39,6 +50,7 @@ interface DailySummaryProps {
   dateRange?: string[];
   expandUnitId?: string | null;
   onUnitExpanded?: () => void;
+  notesByRestaurant?: Record<string, RestaurantNote[]>;
 }
 
 // Tennessee stores are identified by name pattern
@@ -519,7 +531,7 @@ function aggregateInsights(insights: UnitInsight[], name: string, groupRestauran
   };
 }
 
-function UnitSummaryCard({ insight, defaultOpen = false, onExpanded }: { insight: UnitInsight; defaultOpen?: boolean; onExpanded?: () => void }) {
+function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRestaurant }: { insight: UnitInsight; defaultOpen?: boolean; onExpanded?: () => void; notesByRestaurant?: Record<string, RestaurantNote[]> }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const scrollRef = useRef<HTMLDivElement>(null);
   
@@ -746,6 +758,33 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded }: { insight
               </div>
             )}
             
+            {/* Manager Notes */}
+            {notesByRestaurant?.[insight.restaurantId] && notesByRestaurant[insight.restaurantId].length > 0 && (
+              <div className="pt-2 border-t">
+                <div className="flex items-start gap-2">
+                  <MessageSquare className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Manager Notes</span>
+                    <div className="space-y-1 mt-1">
+                      {notesByRestaurant[insight.restaurantId].map(note => (
+                        <div key={note.id} className="text-sm text-muted-foreground">
+                          <span className="text-foreground">{note.note}</span>
+                          {note.hour !== null && (
+                            <span className="ml-1 text-xs text-amber-500">
+                              ({note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`})
+                            </span>
+                          )}
+                          {note.category !== 'general' && (
+                            <span className="ml-1 text-xs text-muted-foreground/70">[{note.category}]</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="pt-2 border-t">
               <div className="flex items-start gap-2">
                 <FileText className="w-4 h-4 text-primary mt-0.5 shrink-0" />
@@ -864,9 +903,9 @@ function AggregatedSummaryCard({ summary, icon }: { summary: AggregatedSummary; 
   );
 }
 
-export function DailySummary({ 
-  restaurants, 
-  hourlyByRestaurant, 
+export function DailySummary({
+  restaurants,
+  hourlyByRestaurant,
   markets,
   crewSummary,
   isCollapsed = false,
@@ -875,6 +914,7 @@ export function DailySummary({
   dateRange,
   expandUnitId,
   onUnitExpanded,
+  notesByRestaurant,
 }: DailySummaryProps) {
   // Fetch category issues for all dates in range
   const datesToFetch = dateRange && dateRange.length > 0 ? dateRange : (selectedDate ? [selectedDate] : []);
@@ -1133,7 +1173,7 @@ export function DailySummary({
                   ))}
                 </div>
                 {sortedUnitInsights.map(insight => (
-                  <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} />
+                  <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} notesByRestaurant={notesByRestaurant} />
                 ))}
               </TabsContent>
               

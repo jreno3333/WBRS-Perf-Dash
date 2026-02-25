@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Info } from "lucide-react";
+import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -15,12 +15,27 @@ interface WeeklySalesData {
   restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
 }
 
+interface CheckAverageData {
+  totalOrders: number;
+  totalSales: number;
+  checkAverage: number;
+  hourly: Record<number, { orders: number; sales: number; avg: number }>;
+}
+
+interface CheckAvgTrendData {
+  daily: { date: string; orders: number; sales: number; avg: number }[];
+  avg7d: number;
+  trend: 'up' | 'down' | 'flat';
+}
+
 interface SummaryCardsProps {
   restaurants: RestaurantSales[];
   lastUpdated: string;
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
   yoyData?: Record<string, { priorNetSales: number; priorGuestCount: number; priorDate: string }>;
   weeklySalesData?: WeeklySalesData;
+  checkAverageByRestaurant?: Record<string, CheckAverageData>;
+  checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
 }
 
 // Grade scoring for X-Score calculation
@@ -116,7 +131,7 @@ function getExecutionGrade(
   return { grade, score: avgScore, hasGrade: true };
 }
 
-export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData }: SummaryCardsProps) {
+export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: SummaryCardsProps) {
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Exclude training units from totals
@@ -337,6 +352,45 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   // Grade background color for the large display
   const gradeBgColor = getGradeBgColor(overallGrade);
 
+  // Calculate company-wide check average and 7-day trend
+  let companyCheckAvg = 0;
+  let companyTotalOrders = 0;
+  let companyTotalSales = 0;
+  if (checkAverageByRestaurant) {
+    for (const r of activeRestaurants) {
+      const ca = checkAverageByRestaurant[r.restaurantId];
+      if (ca) {
+        companyTotalOrders += ca.totalOrders;
+        companyTotalSales += ca.totalSales;
+      }
+    }
+    companyCheckAvg = companyTotalOrders > 0 ? companyTotalSales / companyTotalOrders : 0;
+  }
+
+  // Calculate company-wide 7-day trend
+  let companyAvg7d = 0;
+  let companyTrend: 'up' | 'down' | 'flat' = 'flat';
+  if (checkAvgTrendByRestaurant) {
+    let total7dOrders = 0;
+    let total7dSales = 0;
+    for (const r of activeRestaurants) {
+      const trend = checkAvgTrendByRestaurant[r.restaurantId];
+      if (trend) {
+        for (const d of trend.daily) {
+          total7dOrders += d.orders;
+          total7dSales += d.sales;
+        }
+      }
+    }
+    companyAvg7d = total7dOrders > 0 ? total7dSales / total7dOrders : 0;
+    // Simple trend: compare company today vs 7d avg
+    if (companyCheckAvg > 0 && companyAvg7d > 0) {
+      const diff = companyCheckAvg - companyAvg7d;
+      if (diff > 0.15) companyTrend = 'up';
+      else if (diff < -0.15) companyTrend = 'down';
+    }
+  }
+
   // Calculate 3-hour execution trend
   const hoursWithScores = Object.keys(scoresByHour)
     .map(h => parseInt(h))
@@ -422,6 +476,22 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                 OSAT {Math.round(dailyOsatPercent)}%
                 <span className="text-muted-foreground ml-1">({dailyOsatTotals.totalResponses})</span>
               </p>
+            )}
+            {companyCheckAvg > 0 && (
+              <div className="flex items-center gap-1 mt-1">
+                <Receipt className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                <span className="text-xs font-medium text-teal-600 dark:text-teal-400">
+                  ${companyCheckAvg.toFixed(2)}
+                </span>
+                {companyTrend !== 'flat' && (
+                  companyTrend === 'up'
+                    ? <TrendingUp className="w-3 h-3 text-green-500" />
+                    : <TrendingDown className="w-3 h-3 text-red-500" />
+                )}
+                {companyAvg7d > 0 && (
+                  <span className="text-[10px] text-muted-foreground">7d: ${companyAvg7d.toFixed(2)}</span>
+                )}
+              </div>
             )}
           </div>
           <div className="flex flex-wrap gap-1 justify-end max-w-[120px]">

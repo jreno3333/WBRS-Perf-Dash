@@ -19,6 +19,7 @@ import leadersRouter from "./leaders";
 import arenaRouter from "./arena";
 import historicalSalesRouter from "./historical-sales";
 import analyticsRouter from "./analytics";
+import notesRouter from "./notes";
 
 import { db } from "../db";
 import { users } from "@shared/schema";
@@ -77,6 +78,7 @@ export async function registerRoutes(
   app.use(arenaRouter);
   app.use(historicalSalesRouter);
   app.use(analyticsRouter);
+  app.use(notesRouter);
 
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {
