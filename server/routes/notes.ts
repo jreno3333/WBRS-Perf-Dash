@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { db } from "../db";
 import { restaurantNotes } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -12,7 +13,7 @@ async function ensureNotesTable() {
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS restaurant_notes (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        id VARCHAR PRIMARY KEY,
         restaurant_id VARCHAR NOT NULL,
         date TEXT NOT NULL,
         hour INTEGER,
@@ -72,6 +73,7 @@ router.post("/api/notes", async (req, res) => {
     }
 
     const [newNote] = await db.insert(restaurantNotes).values({
+      id: crypto.randomUUID(),
       restaurantId,
       date,
       hour: hour !== undefined && hour !== null ? parseInt(hour) : null,

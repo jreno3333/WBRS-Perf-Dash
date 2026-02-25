@@ -763,7 +763,7 @@ export type HistoricalDailySales = typeof historicalDailySales.$inferSelect;
 // ─── Restaurant Notes (attached to ranking cards, flow to AI summaries) ──────
 
 export const restaurantNotes = pgTable("restaurant_notes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey(), // UUID generated in app code
   restaurantId: varchar("restaurant_id").notNull(),
   date: text("date").notNull(), // YYYY-MM-DD format
   hour: integer("hour"), // Optional: 0-23 for hour-specific notes, null for day-level
@@ -775,7 +775,6 @@ export const restaurantNotes = pgTable("restaurant_notes", {
 });
 
 export const insertRestaurantNoteSchema = createInsertSchema(restaurantNotes).omit({
-  id: true,
   createdAt: true,
   updatedAt: true,
 });
