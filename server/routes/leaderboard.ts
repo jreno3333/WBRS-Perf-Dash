@@ -9,7 +9,7 @@ import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear, 
 import { getDailyDriveThruSummary } from "../scraper/hme-api";
 import { getOsatForDate } from "../scraper/qualtrics-api";
 import { getAllHourlyPosSales } from "../xenial-webhook";
-import { getCurrentHourInTimezone } from "../utils/dates";
+import { getCurrentHourInTimezone, getNormalizedHourCutoff } from "../utils/dates";
 
 const router = Router();
 
@@ -778,19 +778,20 @@ router.get("/api/weekly-sales", async (req, res) => {
 
     // Build weekly totals per restaurant with hour-level precision + EOW forecast
     const allRestaurants = await storage.getRestaurants();
+    // Use the same company-wide normalized hour cutoff that the DAY calculation uses
+    // so that WTD "Current" = sum of each day's DAY "Current" values
+    const normalizedHourCutoff = (todayStr === realTodayStr)
+      ? getNormalizedHourCutoff(allRestaurants)
+      : 23;
     const weeklyData: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }> = {};
 
     for (const r of allRestaurants) {
-      // Use each restaurant's local timezone for the hour cutoff (matches DAY calculation in storage.ts)
-      const restaurantWtdHourCutoff = (todayStr === realTodayStr)
-        ? Math.max(0, getCurrentHourInTimezone(r.timezone) - 1)
-        : 23;
 
       // --- WTD: actual sales Sat through selected day ---
       let currentWeekTotal = 0;
       for (const d of currentWeekDates) {
         if (d === todayStr) {
-          currentWeekTotal += sumDateSales(r.id, d, restaurantWtdHourCutoff);
+          currentWeekTotal += sumDateSales(r.id, d, normalizedHourCutoff);
         } else {
           currentWeekTotal += sumDateSales(r.id, d);
         }
@@ -801,7 +802,7 @@ router.get("/api/weekly-sales", async (req, res) => {
       for (let i = 0; i < currentWeekDates.length; i++) {
         const d = priorWeekDates[i];
         if (currentWeekDates[i] === todayStr) {
-          priorWeekTotal += sumDateSales(r.id, d, restaurantWtdHourCutoff);
+          priorWeekTotal += sumDateSales(r.id, d, normalizedHourCutoff);
         } else {
           priorWeekTotal += sumDateSales(r.id, d);
         }
@@ -872,7 +873,7 @@ router.get("/api/weekly-sales", async (req, res) => {
       priorWeekEnd: priorWeekEndStr,
       daysInCurrentWeek: currentWeekDates.length,
       daysInPriorWeek: priorWeekDates.length,
-      currentHourCT: todayStr === realTodayStr ? Math.max(0, realCurrentHourCT - 1) : 23,
+      currentHourCT: normalizedHourCutoff,
       restaurants: weeklyData,
     });
   } catch (error) {
