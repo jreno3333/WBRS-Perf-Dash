@@ -116,6 +116,7 @@ interface AttachmentRateData {
   categoryLabels: Record<string, string>;
   benchmarks: Record<string, { min: number; max: number; benchmark: number }>;
   restaurants: Record<string, {
+    restaurantName: string;
     totalOrders: number;
     checkAverage: number;
     categories: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }>;
@@ -543,11 +544,10 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                       </div>
                     </div>
                     {(showAllAttachments ? restaurants : restaurants.slice(0, 5)).map(r => {
-                      // Get restaurant name from check average data or fallback
-                      const name = r.id.replace(/^\d+\s*-\s*/, '').slice(0, 15);
+                      const displayName = (r.restaurantName || r.id).replace(/^\d+\s*-\s*/, '');
                       return (
                         <div key={r.id} className="flex items-center justify-between text-xs">
-                          <span className="truncate mr-2 max-w-[100px]" title={r.id}>{name || r.id.slice(0, 12)}</span>
+                          <span className="truncate mr-2 max-w-[100px]" title={r.restaurantName || r.id}>{displayName}</span>
                           <div className="flex items-center gap-1">
                             {categories.map(cat => {
                               const data = r.categories[cat];

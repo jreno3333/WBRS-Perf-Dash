@@ -582,17 +582,18 @@ export async function getCheckAverageTrend(endDate: Date, days: number = 7): Pro
     const avg7d = totalOrders > 0 ? Math.round((totalSales / totalOrders) * 100) / 100 : 0;
 
     // Determine trend: compare first half avg to second half avg
+    // Use percentage-based threshold (2% change = trending)
     let trend: 'up' | 'down' | 'flat' = 'flat';
-    if (daily.length >= 4) {
-      const mid = Math.floor(daily.length / 2);
+    if (daily.length >= 2) {
+      const mid = Math.max(1, Math.floor(daily.length / 2));
       const firstHalf = daily.slice(0, mid).filter(d => d.orders > 0);
       const secondHalf = daily.slice(mid).filter(d => d.orders > 0);
       if (firstHalf.length > 0 && secondHalf.length > 0) {
         const firstAvg = firstHalf.reduce((s, d) => s + d.avg, 0) / firstHalf.length;
         const secondAvg = secondHalf.reduce((s, d) => s + d.avg, 0) / secondHalf.length;
-        const diff = secondAvg - firstAvg;
-        if (diff > 0.15) trend = 'up';
-        else if (diff < -0.15) trend = 'down';
+        const pctChange = firstAvg > 0 ? ((secondAvg - firstAvg) / firstAvg) * 100 : 0;
+        if (pctChange > 2) trend = 'up';
+        else if (pctChange < -2) trend = 'down';
       }
     }
 
