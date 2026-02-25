@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
-import { posOrders } from "@shared/schema";
+import { posOrders, restaurants } from "@shared/schema";
 import { desc, sql, gte, lt, and } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant, getCheckAverageTrend } from "../xenial-webhook";
 
@@ -344,6 +344,13 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
     const targetDate = date ? new Date(date as string) : new Date();
     const data = await getCheckAverageByRestaurant(targetDate);
 
+    // Look up restaurant names
+    const allRestaurants = await db.select().from(restaurants);
+    const restaurantNameMap = new Map<string, string>();
+    for (const r of allRestaurants) {
+      restaurantNameMap.set(r.id, r.name);
+    }
+
     const categories = ['cheese', 'bacon', 'jalapenos', 'dipping_sauces', 'desserts'] as const;
     const categoryLabels: Record<string, string> = {
       cheese: 'Cheese',
@@ -363,7 +370,8 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
       desserts: { min: 5, max: 20, benchmark: 12 },
     };
 
-    const restaurants: Record<string, {
+    const restaurantResults: Record<string, {
+      restaurantName: string;
       totalOrders: number;
       checkAverage: number;
       categories: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }>;
@@ -400,7 +408,8 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
         };
       }
 
-      restaurants[restaurantId] = {
+      restaurantResults[restaurantId] = {
+        restaurantName: restaurantNameMap.get(restaurantId) || restaurantId,
         totalOrders: entry.totalOrders,
         checkAverage: Math.round(ca * 100) / 100,
         categories: catData,
@@ -412,7 +421,7 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
       date: targetDate.toISOString().split('T')[0],
       categoryLabels,
       benchmarks: targetRates,
-      restaurants,
+      restaurants: restaurantResults,
     });
   } catch (error) {
     console.error("Error fetching attachment rates:", error);

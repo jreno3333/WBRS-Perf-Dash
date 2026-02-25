@@ -383,11 +383,11 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
       }
     }
     companyAvg7d = total7dOrders > 0 ? total7dSales / total7dOrders : 0;
-    // Simple trend: compare company today vs 7d avg
+    // Simple trend: compare company today vs 7d avg (2% threshold)
     if (companyCheckAvg > 0 && companyAvg7d > 0) {
-      const diff = companyCheckAvg - companyAvg7d;
-      if (diff > 0.15) companyTrend = 'up';
-      else if (diff < -0.15) companyTrend = 'down';
+      const pctChange = ((companyCheckAvg - companyAvg7d) / companyAvg7d) * 100;
+      if (pctChange > 2) companyTrend = 'up';
+      else if (pctChange < -2) companyTrend = 'down';
     }
   }
 
