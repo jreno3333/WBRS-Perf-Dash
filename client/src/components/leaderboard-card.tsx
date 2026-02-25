@@ -211,9 +211,9 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
         const err = await response.json().catch(() => null);
         setSaveError(err?.error || 'Failed to save note');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to add note:', e);
-      setSaveError('Network error - could not save note');
+      setSaveError(`Save failed: ${e?.message || 'network error'}`);
     } finally {
       setIsSubmitting(false);
     }

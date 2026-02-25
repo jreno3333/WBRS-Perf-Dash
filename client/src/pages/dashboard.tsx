@@ -735,7 +735,7 @@ export default function Dashboard() {
             />
 
             {/* State Breakdown */}
-            <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} crewSummary={crewSummary} weeklySalesData={weeklySalesData} />
+            <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} crewSummary={crewSummary} weeklySalesData={weeklySalesData} checkAverageByRestaurant={checkAverageByRestaurant} checkAvgTrendByRestaurant={checkAvgTrendByRestaurant} />
 
             {/* Market Breakdown - Only shown if markets exist */}
             {markets && markets.length > 0 && (
@@ -745,6 +745,8 @@ export default function Dashboard() {
                 hourlyByRestaurant={hourlyByRestaurant}
                 crewSummary={crewSummary}
                 weeklySalesData={weeklySalesData}
+                checkAverageByRestaurant={checkAverageByRestaurant}
+                checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
               />
             )}
 
