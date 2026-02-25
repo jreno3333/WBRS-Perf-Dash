@@ -286,8 +286,7 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
       const dStr = new Date(row.salesDate).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
       if (!salesMap[dStr]) salesMap[dStr] = {};
       if (!salesMap[dStr][row.restaurantId]) salesMap[dStr][row.restaurantId] = {};
-      salesMap[dStr][row.restaurantId][row.hour] =
-        (salesMap[dStr][row.restaurantId][row.hour] || 0) + (parseFloat(row.actualSales as string) || 0);
+      salesMap[dStr][row.restaurantId][row.hour] = parseFloat(row.actualSales as string) || 0;
     }
 
     // Overlay POS data (takes priority)
@@ -729,7 +728,7 @@ router.get("/api/weekly-sales", async (req, res) => {
       if (!hourlySalesMap[row.restaurantId]) hourlySalesMap[row.restaurantId] = {};
       if (!hourlySalesMap[row.restaurantId][dateStr]) hourlySalesMap[row.restaurantId][dateStr] = {};
       const h = row.hour;
-      hourlySalesMap[row.restaurantId][dateStr][h] = (hourlySalesMap[row.restaurantId][dateStr][h] || 0) + (parseFloat(row.actualSales as string) || 0);
+      hourlySalesMap[row.restaurantId][dateStr][h] = parseFloat(row.actualSales as string) || 0;
     }
 
     // Overlay POS data for each date (POS takes priority)
