@@ -732,16 +732,17 @@ router.get("/api/weekly-sales", async (req, res) => {
     }
 
     // Overlay POS data for each date (POS takes priority)
+    // When POS has data for a restaurant/date, replace DB data entirely
+    // (matches the DAY calculation in storage.ts which ignores DB when POS exists)
     for (const dateStr of allDates) {
       const targetDate = new Date(`${dateStr}T12:00:00Z`);
       const posSales = await getAllHourlyPosSales(targetDate);
       posSales.forEach((hourlyMap, restaurantId) => {
         if (!hourlySalesMap[restaurantId]) hourlySalesMap[restaurantId] = {};
-        if (!hourlySalesMap[restaurantId][dateStr]) hourlySalesMap[restaurantId][dateStr] = {};
+        // Clear DB data for this restaurant/date so stale hours don't leak through
+        hourlySalesMap[restaurantId][dateStr] = {};
         hourlyMap.forEach((sales, hour) => {
-          if (sales > 0) {
-            hourlySalesMap[restaurantId][dateStr][hour] = sales;
-          }
+          hourlySalesMap[restaurantId][dateStr][hour] = sales;
         });
       });
     }
