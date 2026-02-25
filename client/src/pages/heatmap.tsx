@@ -197,6 +197,36 @@ export default function HeatmapPage() {
     refetchInterval: REFRESH_INTERVAL,
   });
 
+  // Fetch notes for the selected date
+  interface HeatmapNote {
+    id: string;
+    restaurantId: string;
+    date: string;
+    hour: number | null;
+    note: string;
+    author: string | null;
+    category: string;
+    createdAt: string;
+  }
+  const { data: notesResponse } = useQuery<{ date: string; notes: HeatmapNote[] }>({
+    queryKey: ["/api/notes", startDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/notes?date=${startDate}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch notes");
+      return res.json();
+    },
+  });
+  const notesByRestaurant = useMemo(() => {
+    const map: Record<string, HeatmapNote[]> = {};
+    if (notesResponse?.notes) {
+      for (const note of notesResponse.notes) {
+        if (!map[note.restaurantId]) map[note.restaurantId] = [];
+        map[note.restaurantId].push(note);
+      }
+    }
+    return map;
+  }, [notesResponse?.notes]);
+
   // Aggregate leaderboard data across all days in range
   const leaderboardData = useMemo<LeaderboardData | undefined>(() => {
     const allData = leaderboardQueries
@@ -550,7 +580,7 @@ export default function HeatmapPage() {
         
         {/* Daily Performance Summary - First */}
         {leaderboardData && (
-          <DailySummary 
+          <DailySummary
             restaurants={leaderboardData.restaurants}
             hourlyByRestaurant={hourlyData}
             markets={markets}
@@ -561,6 +591,7 @@ export default function HeatmapPage() {
             dateRange={analysisDateRange}
             expandUnitId={expandUnitId}
             onUnitExpanded={() => setExpandUnitId(null)}
+            notesByRestaurant={notesByRestaurant}
           />
         )}
         

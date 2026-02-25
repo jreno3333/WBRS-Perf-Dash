@@ -169,9 +169,20 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
   const [noteHour, setNoteHour] = useState<string>('');
   const [noteCategory, setNoteCategory] = useState('general');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Optimistic: track locally-saved notes so they appear immediately
+  const [pendingNotes, setPendingNotes] = useState<RestaurantNote[]>([]);
+
+  // Merge server notes with optimistic pending notes (de-dup by id)
+  const serverIds = new Set((notes || []).map(n => n.id));
+  const displayNotes = [
+    ...(notes || []),
+    ...pendingNotes.filter(n => !serverIds.has(n.id)),
+  ];
 
   const handleSubmit = async () => {
     if (!noteText.trim() || !dateStr) return;
+    setSaveError(null);
     setIsSubmitting(true);
     try {
       const response = await fetch('/api/notes', {
@@ -187,20 +198,30 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
         }),
       });
       if (response.ok) {
+        const savedNote = await response.json();
+        // Add to local pending notes for immediate display
+        setPendingNotes(prev => [savedNote, ...prev]);
         setNoteText('');
         setNoteHour('');
         setNoteCategory('general');
         setShowAddNote(false);
+        // Refetch from server to sync
         onNoteAdded?.();
+      } else {
+        const err = await response.json().catch(() => null);
+        setSaveError(err?.error || 'Failed to save note');
       }
     } catch (e) {
       console.error('Failed to add note:', e);
+      setSaveError('Network error - could not save note');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (noteId: string) => {
+    // Optimistically remove from pending
+    setPendingNotes(prev => prev.filter(n => n.id !== noteId));
     try {
       await fetch(`/api/notes/${noteId}`, { method: 'DELETE', credentials: 'include' });
       onNoteAdded?.();
@@ -224,12 +245,12 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <StickyNote className="w-3 h-3" />
           <span className="font-medium">Notes</span>
-          {notes && notes.length > 0 && (
-            <span className="text-[10px] bg-muted px-1 rounded">{notes.length}</span>
+          {displayNotes.length > 0 && (
+            <span className="text-[10px] bg-muted px-1 rounded">{displayNotes.length}</span>
           )}
         </div>
         <button
-          onClick={() => setShowAddNote(!showAddNote)}
+          onClick={() => { setShowAddNote(!showAddNote); setSaveError(null); }}
           className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
         >
           {showAddNote ? <X className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
@@ -247,6 +268,11 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
             className="w-full text-xs bg-background border border-border rounded p-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
             rows={2}
           />
+          {saveError && (
+            <div className="text-[10px] text-red-500 bg-red-50 dark:bg-red-950/30 px-2 py-1 rounded">
+              {saveError}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <select
               value={noteHour}
@@ -283,9 +309,9 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
       )}
 
       {/* Existing Notes */}
-      {notes && notes.length > 0 && (
+      {displayNotes.length > 0 && (
         <div className="space-y-1">
-          {notes.map(note => (
+          {displayNotes.map(note => (
             <div key={note.id} className="flex items-start gap-1.5 text-[10px] group">
               <div className={`flex-shrink-0 mt-0.5 ${categoryColors[note.category] || categoryColors.general}`}>
                 <StickyNote className="w-2.5 h-2.5" />
@@ -295,7 +321,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
                 <span className="text-muted-foreground ml-1">
                   {note.hour !== null && `${note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`} · `}
                   {note.category !== 'general' && `${note.category} · `}
-                  {new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                  {note.createdAt ? new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'just now'}
                 </span>
               </div>
               <button
