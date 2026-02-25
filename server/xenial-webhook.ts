@@ -751,6 +751,347 @@ export function validateWebhookToken(authHeader: string | undefined): boolean {
   return true;
 }
 
+// ─── Attachment Rate Analysis from Real POS Item Data ─────────────────────────
+
+/**
+ * Attachment category definitions — maps POS item names/categories to upsell buckets.
+ * Items are classified by matching against item name patterns (case-insensitive).
+ * Child items (modifiers) are checked as well.
+ *
+ * For Whataburger menus, "attachments" are add-on items that increase check average:
+ *   cheese, bacon, jalapeños, dipping sauces, and desserts (shakes/pies/cookies/brownies).
+ */
+
+interface AttachmentCategory {
+  /** Patterns to match in item name (case-insensitive). */
+  namePatterns: RegExp[];
+  /** Patterns for minor_reporting_category name. */
+  minorCategoryPatterns?: RegExp[];
+  /** Patterns for major_reporting_category name. */
+  majorCategoryPatterns?: RegExp[];
+  /** Patterns to EXCLUDE even if name matches (to avoid counting entrees). */
+  excludePatterns?: RegExp[];
+}
+
+const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
+  cheese: {
+    namePatterns: [
+      /\bADD\b.*\bCHEESE\b/i,
+      /\bEXTRA\b.*\bCHEESE\b/i,
+      /\bCHEESE\b.*\bADD\b/i,
+      /\bAMERICAN\b.*\bCHEESE\b/i,
+      /\bPEPPER\s*JACK\b/i,
+      /\bCHEDDAR\b/i,
+      /\bMONTEREY\s*JACK\b/i,
+      /\bQUESO\b/i,
+      /\bCHEESE\s*SAUCE\b/i,
+    ],
+    excludePatterns: [
+      /\bCHEESEBURGER\b/i,
+      /\bGRILLED\s*CHEESE\b/i,
+      /\bCHEESE\s*STEAK\b/i,
+      /\bCHEESE\s*WHATA/i,
+    ],
+  },
+  bacon: {
+    namePatterns: [
+      /\bADD\b.*\bBACON\b/i,
+      /\bEXTRA\b.*\bBACON\b/i,
+      /\bBACON\b.*\bADD\b/i,
+      /\bSIDE\b.*\bBACON\b/i,
+      /\bBACON\s*STRIP/i,
+    ],
+    excludePatterns: [
+      /\bBACON\s*BOB\b/i,
+      /\bBACON\s*BURGER\b/i,
+      /\bBACON\s*CHEESE/i,
+      /\bBACON\s*BLUE/i,
+      /\bBACON\s*WHATA/i,
+      /\bBACON\s*&/i,
+      /\bBACON\s*EGG/i,
+      /\bBACON\s*BISCUIT/i,
+      /\bBACON\s*TAQUITO/i,
+      /\bBOBFRDR/i,
+    ],
+  },
+  jalapenos: {
+    namePatterns: [
+      /\bJALAPEN/i,
+      /\bJAL\b/i,
+    ],
+    excludePatterns: [
+      /\bJALAPEN.*\bBURGER\b/i,
+    ],
+  },
+  dipping_sauces: {
+    namePatterns: [
+      /\bSAUCE\b/i,
+      /\bDIP\b/i,
+      /\bDIPPING\b/i,
+      /\bGRAVY\b/i,
+      /\bRANCH\b/i,
+      /\bKETCHUP\b/i,
+      /\bMUSTARD\b/i,
+      /\bHONEY\s*MUSTARD\b/i,
+      /\bBBQ\b/i,
+      /\bBUFFALO\b/i,
+      /\bHONEY\s*BUTTER\b/i,
+      /\bCREAMY\s*PEPPER\b/i,
+      /\bSPICY\s*KETCHUP\b/i,
+      /\bFANCY\s*KETCHUP\b/i,
+    ],
+    minorCategoryPatterns: [
+      /\bSAUCE/i,
+      /\bDIP/i,
+      /\bCONDIMENT/i,
+    ],
+    excludePatterns: [
+      /\bSAUCE\b.*\bBURGER/i,
+      /\bCHEESE\s*SAUCE\b/i,  // Already counted in cheese
+    ],
+  },
+  desserts: {
+    namePatterns: [
+      /\bSHAKE\b/i,
+      /\bMALT\b/i,
+      /\bPIE\b/i,
+      /\bCOOKIE\b/i,
+      /\bBROWNIE\b/i,
+      /\bCINNAMON\b/i,
+      /\bSUNDAE\b/i,
+      /\bICE\s*CREAM\b/i,
+      /\bDESSERT/i,
+      /\bAPPLE\s*PIE\b/i,
+    ],
+    majorCategoryPatterns: [
+      /\bDESSERT/i,
+    ],
+  },
+};
+
+const ATTACHMENT_BENCHMARKS: Record<string, { min: number; max: number; benchmark: number }> = {
+  cheese: { min: 25, max: 55, benchmark: 40 },
+  bacon: { min: 10, max: 30, benchmark: 20 },
+  jalapenos: { min: 8, max: 25, benchmark: 15 },
+  dipping_sauces: { min: 15, max: 45, benchmark: 30 },
+  desserts: { min: 5, max: 20, benchmark: 12 },
+};
+
+const ATTACHMENT_LABELS: Record<string, string> = {
+  cheese: 'Cheese',
+  bacon: 'Bacon',
+  jalapenos: 'Jalapeños',
+  dipping_sauces: 'Dipping Sauces',
+  desserts: 'Desserts',
+};
+
+interface ParsedItem {
+  name: string;
+  majorCategory?: string;
+  minorCategory?: string;
+}
+
+function classifyItem(item: ParsedItem, category: AttachmentCategory): boolean {
+  const name = item.name || '';
+
+  // Check exclusion patterns first
+  if (category.excludePatterns) {
+    for (const pattern of category.excludePatterns) {
+      if (pattern.test(name)) return false;
+    }
+  }
+
+  // Check item name patterns
+  for (const pattern of category.namePatterns) {
+    if (pattern.test(name)) return true;
+  }
+
+  // Check major reporting category
+  if (category.majorCategoryPatterns && item.majorCategory) {
+    for (const pattern of category.majorCategoryPatterns) {
+      if (pattern.test(item.majorCategory)) return true;
+    }
+  }
+
+  // Check minor reporting category
+  if (category.minorCategoryPatterns && item.minorCategory) {
+    for (const pattern of category.minorCategoryPatterns) {
+      if (pattern.test(item.minorCategory)) return true;
+    }
+  }
+
+  return false;
+}
+
+function extractItemsFromOrder(rawJson: string): ParsedItem[] {
+  try {
+    const payload = JSON.parse(rawJson);
+    const items: ParsedItem[] = [];
+    const rawItems = payload?.data?.items;
+    if (!Array.isArray(rawItems)) return items;
+
+    for (const item of rawItems) {
+      items.push({
+        name: item.name || '',
+        majorCategory: item.reporting_category?.major_reporting_category?.name,
+        minorCategory: item.reporting_category?.minor_reporting_category?.name,
+      });
+      // Also process child_items (modifiers/add-ons)
+      if (Array.isArray(item.child_items)) {
+        for (const child of item.child_items) {
+          items.push({
+            name: child.name || '',
+            majorCategory: child.reporting_category?.major_reporting_category?.name,
+            minorCategory: child.reporting_category?.minor_reporting_category?.name,
+          });
+        }
+      }
+      // Process modifiers array if present
+      if (Array.isArray(item.modifiers)) {
+        for (const mod of item.modifiers) {
+          items.push({
+            name: mod.name || '',
+            majorCategory: mod.reporting_category?.major_reporting_category?.name,
+            minorCategory: mod.reporting_category?.minor_reporting_category?.name,
+          });
+        }
+      }
+    }
+
+    return items;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Compute real attachment rates from item-level POS data.
+ * Parses raw_json from pos_orders for the given date and calculates
+ * what percentage of orders contained items in each attachment category.
+ */
+export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Map<string, {
+  restaurantName: string;
+  totalOrders: number;
+  checkAverage: number;
+  categories: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }>;
+  overallAttachScore: number;
+}>> {
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+
+  // Get restaurant mappings
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; name: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], { id: restaurant.id, name: restaurant.name });
+    }
+  }
+
+  // Fetch all orders with raw_json for the target date
+  const orders = await posDb
+    .select({
+      storeNumber: posOrders.storeNumber,
+      orderTotal: posOrders.orderTotal,
+      rawJson: posOrders.rawJson,
+    })
+    .from(posOrders)
+    .where(
+      and(
+        gte(posOrders.businessDate, startOfDay),
+        lt(posOrders.businessDate, endOfDay),
+        sql`${posOrders.rawJson} IS NOT NULL`
+      )
+    );
+
+  // Group orders by restaurant and process items
+  const restaurantData = new Map<string, {
+    restaurantName: string;
+    totalOrders: number;
+    totalSales: number;
+    categoryHits: Record<string, number>; // orders containing at least one item in category
+  }>();
+
+  const categories = Object.keys(ATTACHMENT_CATEGORIES);
+
+  for (const order of orders) {
+    const restaurantInfo = storeToRestaurant.get(order.storeNumber);
+    if (!restaurantInfo) continue;
+    const rid = restaurantInfo.id;
+
+    if (!restaurantData.has(rid)) {
+      restaurantData.set(rid, {
+        restaurantName: restaurantInfo.name,
+        totalOrders: 0,
+        totalSales: 0,
+        categoryHits: Object.fromEntries(categories.map(c => [c, 0])),
+      });
+    }
+
+    const entry = restaurantData.get(rid)!;
+    entry.totalOrders++;
+    entry.totalSales += Number(order.orderTotal) || 0;
+
+    // Parse items from raw JSON
+    const items = extractItemsFromOrder(order.rawJson || '');
+    if (items.length === 0) continue;
+
+    // For each category, check if ANY item in this order matches
+    for (const cat of categories) {
+      const catDef = ATTACHMENT_CATEGORIES[cat];
+      const hasAttachment = items.some(item => classifyItem(item, catDef));
+      if (hasAttachment) {
+        entry.categoryHits[cat]++;
+      }
+    }
+  }
+
+  // Calculate rates and scores
+  const result = new Map<string, {
+    restaurantName: string;
+    totalOrders: number;
+    checkAverage: number;
+    categories: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }>;
+    overallAttachScore: number;
+  }>();
+
+  restaurantData.forEach((entry, restaurantId) => {
+    if (entry.totalOrders === 0) return;
+
+    const checkAverage = entry.totalSales / entry.totalOrders;
+    const catData: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }> = {};
+    let totalScore = 0;
+
+    for (const cat of categories) {
+      const hits = entry.categoryHits[cat];
+      const attachRate = Math.round((hits / entry.totalOrders) * 1000) / 10; // one decimal
+      const benchmark = ATTACHMENT_BENCHMARKS[cat].benchmark;
+      const vsTarget = Math.round((attachRate - benchmark) * 10) / 10;
+      const catScore = Math.min(100, Math.max(0, (attachRate / benchmark) * 100));
+      totalScore += catScore;
+
+      catData[cat] = {
+        attachRate,
+        estimatedUnits: hits,
+        benchmark,
+        vsTarget,
+      };
+    }
+
+    result.set(restaurantId, {
+      restaurantName: entry.restaurantName,
+      totalOrders: entry.totalOrders,
+      checkAverage: Math.round(checkAverage * 100) / 100,
+      categories: catData,
+      overallAttachScore: Math.round(totalScore / categories.length),
+    });
+  });
+
+  return result;
+}
+
 /**
  * One-time backfill: populate the `destination` column from rawJson for existing records.
  * Safe to call multiple times — only updates rows where destination IS NULL.

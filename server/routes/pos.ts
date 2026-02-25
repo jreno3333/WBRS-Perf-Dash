@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, posDb } from "../db";
 import { posOrders, restaurants } from "@shared/schema";
 import { desc, sql, gte, lt, and } from "drizzle-orm";
-import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant, getCheckAverageTrend } from "../xenial-webhook";
+import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant, getCheckAverageTrend, getAttachmentRatesFromDetail } from "../xenial-webhook";
 
 const router = Router();
 
@@ -335,23 +335,15 @@ router.get("/api/pos/check-average-trend", async (req, res) => {
   }
 });
 
-// Attachment rate analysis - cheese, bacon, jalapenos, dipping sauces, desserts per order
-// Since we don't have item-level POS data (only order totals from Xenial),
-// this generates realistic modeled data based on check average patterns
+// Attachment rate analysis from REAL item-level POS data
+// Parses raw_json items from Xenial orders and classifies add-ons into
+// cheese, bacon, jalapeños, dipping sauces, and desserts
 router.get("/api/pos/attachment-rates", async (req, res) => {
   try {
     const { date } = req.query;
     const targetDate = date ? new Date(date as string) : new Date();
-    const data = await getCheckAverageByRestaurant(targetDate);
+    const data = await getAttachmentRatesFromDetail(targetDate);
 
-    // Look up restaurant names
-    const allRestaurants = await db.select().from(restaurants);
-    const restaurantNameMap = new Map<string, string>();
-    for (const r of allRestaurants) {
-      restaurantNameMap.set(r.id, r.name);
-    }
-
-    const categories = ['cheese', 'bacon', 'jalapenos', 'dipping_sauces', 'desserts'] as const;
     const categoryLabels: Record<string, string> = {
       cheese: 'Cheese',
       bacon: 'Bacon',
@@ -360,9 +352,7 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
       desserts: 'Desserts',
     };
 
-    // Model attachment rates based on check average (higher check avg = better upselling)
-    // These are target ranges for a well-run Whataburger
-    const targetRates: Record<string, { min: number; max: number; benchmark: number }> = {
+    const benchmarks: Record<string, { min: number; max: number; benchmark: number }> = {
       cheese: { min: 25, max: 55, benchmark: 40 },
       bacon: { min: 10, max: 30, benchmark: 20 },
       jalapenos: { min: 8, max: 25, benchmark: 15 },
@@ -378,49 +368,15 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
       overallAttachScore: number;
     }> = {};
 
-    data.forEach((entry, restaurantId) => {
-      if (entry.totalOrders === 0) return;
-
-      const ca = entry.checkAverage;
-      // Use check average as a proxy for upselling behavior
-      // Higher check average suggests better add-on selling
-      const upsellFactor = Math.min(1.2, Math.max(0.5, ca / 10)); // normalize around $10 avg
-
-      const catData: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }> = {};
-      let totalScore = 0;
-
-      for (const cat of categories) {
-        const target = targetRates[cat];
-        // Model rate: use a seeded pseudorandom based on restaurantId + category for consistency
-        const seed = (restaurantId + cat).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-        const baseRate = target.min + ((seed % 100) / 100) * (target.max - target.min);
-        const adjustedRate = Math.round(baseRate * upsellFactor * 10) / 10;
-        const estimatedUnits = Math.round(entry.totalOrders * (adjustedRate / 100));
-        const vsTarget = Math.round((adjustedRate - target.benchmark) * 10) / 10;
-        const catScore = Math.min(100, Math.max(0, (adjustedRate / target.benchmark) * 100));
-        totalScore += catScore;
-
-        catData[cat] = {
-          attachRate: adjustedRate,
-          estimatedUnits,
-          benchmark: target.benchmark,
-          vsTarget,
-        };
-      }
-
-      restaurantResults[restaurantId] = {
-        restaurantName: restaurantNameMap.get(restaurantId) || restaurantId,
-        totalOrders: entry.totalOrders,
-        checkAverage: Math.round(ca * 100) / 100,
-        categories: catData,
-        overallAttachScore: Math.round(totalScore / categories.length),
-      };
+    data.forEach((value, key) => {
+      restaurantResults[key] = value;
     });
 
     res.json({
       date: targetDate.toISOString().split('T')[0],
+      source: "pos_detail",
       categoryLabels,
-      benchmarks: targetRates,
+      benchmarks,
       restaurants: restaurantResults,
     });
   } catch (error) {

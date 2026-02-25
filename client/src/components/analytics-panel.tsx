@@ -113,6 +113,7 @@ function getComplianceColor(pct: number): string {
 
 interface AttachmentRateData {
   date: string;
+  source?: "pos_detail" | "modeled";
   categoryLabels: Record<string, string>;
   benchmarks: Record<string, { min: number; max: number; benchmark: number }>;
   restaurants: Record<string, {
@@ -506,9 +507,14 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                 <div>
                   <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
                     <ShoppingBag className="w-3 h-3" /> ATTACHMENT RATES (UPSELL ANALYSIS)
+                    {attachmentRates?.source === "pos_detail" && (
+                      <Badge variant="outline" className="text-[9px] text-green-600 border-green-300 ml-1 py-0 px-1">LIVE POS</Badge>
+                    )}
                   </h4>
                   <p className="text-[10px] text-muted-foreground mb-2">
-                    Estimated add-on attachment rates per order. Shows how well each restaurant upsells cheese, bacon, jalape&ntilde;os, dipping sauces, and desserts (shakes, brownies, apple pies, cookies). Score 100 = at benchmark.
+                    {attachmentRates?.source === "pos_detail"
+                      ? "Real add-on rates from POS order items. % of orders containing cheese, bacon, jalapeños, dipping sauces, or desserts. Score 100 = at benchmark."
+                      : "Estimated add-on attachment rates per order. Score 100 = at benchmark."}
                   </p>
 
                   {/* Company-wide category averages */}
