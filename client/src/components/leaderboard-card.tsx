@@ -2,7 +2,7 @@ import { useState, memo } from "react";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
@@ -111,18 +111,39 @@ interface DemandCurveHour {
   loadProfile: string;
 }
 
+interface CheckAvgTrendData {
+  daily: { date: string; orders: number; sales: number; avg: number }[];
+  avg7d: number;
+  trend: 'up' | 'down' | 'flat';
+}
+
+interface RestaurantNote {
+  id: string;
+  restaurantId: string;
+  date: string;
+  hour: number | null;
+  note: string;
+  author: string | null;
+  category: string;
+  createdAt: string;
+}
+
 interface LeaderboardCardProps {
   restaurant: RestaurantSales;
   hourlyData?: HourlySalesData[];
   crewSummary?: CrewSummary;
   hourlyCrewData?: HourlyCrewData[];
   checkAverage?: CheckAverageData;
+  checkAvgTrend?: CheckAvgTrendData;
   consistencyScore?: number;
   demandCurveHours?: DemandCurveHour[];
   destinationsByHour?: Record<number, Record<string, number>>;
   isToday?: boolean;
   yoyData?: YoYData;
   weeklyData?: WeeklyRestaurantData;
+  notes?: RestaurantNote[];
+  dateStr?: string;
+  onNoteAdded?: () => void;
 }
 
 function formatTenure(months: number): string {
@@ -136,7 +157,162 @@ function formatTenure(months: number): string {
 
 // Memoize to prevent re-rendering all restaurant cards when the parent
 // dashboard re-renders due to unrelated state changes (sort, market filter, etc.).
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData }: LeaderboardCardProps) {
+// Notes section component for adding/viewing notes on ranking cards
+function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
+  restaurantId: string;
+  dateStr: string;
+  notes?: RestaurantNote[];
+  onNoteAdded?: () => void;
+}) {
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [noteHour, setNoteHour] = useState<string>('');
+  const [noteCategory, setNoteCategory] = useState('general');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!noteText.trim() || !dateStr) return;
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          restaurantId,
+          date: dateStr,
+          hour: noteHour ? parseInt(noteHour) : null,
+          note: noteText.trim(),
+          category: noteCategory,
+        }),
+      });
+      if (response.ok) {
+        setNoteText('');
+        setNoteHour('');
+        setNoteCategory('general');
+        setShowAddNote(false);
+        onNoteAdded?.();
+      }
+    } catch (e) {
+      console.error('Failed to add note:', e);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (noteId: string) => {
+    try {
+      await fetch(`/api/notes/${noteId}`, { method: 'DELETE', credentials: 'include' });
+      onNoteAdded?.();
+    } catch (e) {
+      console.error('Failed to delete note:', e);
+    }
+  };
+
+  const categoryColors: Record<string, string> = {
+    general: 'text-blue-600 dark:text-blue-400',
+    staffing: 'text-amber-600 dark:text-amber-400',
+    equipment: 'text-red-600 dark:text-red-400',
+    weather: 'text-sky-600 dark:text-sky-400',
+    training: 'text-purple-600 dark:text-purple-400',
+    positive: 'text-green-600 dark:text-green-400',
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border/50">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <StickyNote className="w-3 h-3" />
+          <span className="font-medium">Notes</span>
+          {notes && notes.length > 0 && (
+            <span className="text-[10px] bg-muted px-1 rounded">{notes.length}</span>
+          )}
+        </div>
+        <button
+          onClick={() => setShowAddNote(!showAddNote)}
+          className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
+        >
+          {showAddNote ? <X className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
+          {showAddNote ? 'Cancel' : 'Add Note'}
+        </button>
+      </div>
+
+      {/* Add Note Form */}
+      {showAddNote && (
+        <div className="bg-muted/30 rounded-lg p-2 mb-2 space-y-1.5">
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Add a note about what happened..."
+            className="w-full text-xs bg-background border border-border rounded p-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+            rows={2}
+          />
+          <div className="flex items-center gap-2">
+            <select
+              value={noteHour}
+              onChange={(e) => setNoteHour(e.target.value)}
+              className="text-[10px] bg-background border border-border rounded px-1 py-0.5"
+            >
+              <option value="">All Day</option>
+              {Array.from({ length: 18 }, (_, i) => i + 6).map(h => (
+                <option key={h} value={h}>{h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`}</option>
+              ))}
+            </select>
+            <select
+              value={noteCategory}
+              onChange={(e) => setNoteCategory(e.target.value)}
+              className="text-[10px] bg-background border border-border rounded px-1 py-0.5"
+            >
+              <option value="general">General</option>
+              <option value="staffing">Staffing</option>
+              <option value="equipment">Equipment</option>
+              <option value="weather">Weather</option>
+              <option value="training">Training</option>
+              <option value="positive">Positive</option>
+            </select>
+            <button
+              onClick={handleSubmit}
+              disabled={!noteText.trim() || isSubmitting}
+              className="ml-auto flex items-center gap-0.5 text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Send className="w-2.5 h-2.5" />
+              {isSubmitting ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing Notes */}
+      {notes && notes.length > 0 && (
+        <div className="space-y-1">
+          {notes.map(note => (
+            <div key={note.id} className="flex items-start gap-1.5 text-[10px] group">
+              <div className={`flex-shrink-0 mt-0.5 ${categoryColors[note.category] || categoryColors.general}`}>
+                <StickyNote className="w-2.5 h-2.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-foreground">{note.note}</span>
+                <span className="text-muted-foreground ml-1">
+                  {note.hour !== null && `${note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`} · `}
+                  {note.category !== 'general' && `${note.category} · `}
+                  {new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </span>
+              </div>
+              <button
+                onClick={() => handleDelete(note.id)}
+                className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -385,12 +561,29 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         <div>
                           <div className="font-medium mb-1">Daypart Grades</div>
                           <div className="flex flex-col gap-0.5">
-                            {daypartGrades.map(dp => (
-                              <div key={dp.id} className="flex items-center justify-between gap-3">
-                                <span className="text-muted-foreground">{dp.label}</span>
-                                <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
-                              </div>
-                            ))}
+                            {daypartGrades.map(dp => {
+                              // Compute daypart check average for tooltip
+                              let dpCA: number | null = null;
+                              if (checkAverage?.hourly) {
+                                let dpOrders = 0, dpSales = 0;
+                                for (let h = dp.startHour; h <= dp.endHour; h++) {
+                                  const hCA = checkAverage.hourly[h];
+                                  if (hCA) { dpOrders += hCA.orders; dpSales += hCA.sales; }
+                                }
+                                if (dpOrders > 0) dpCA = dpSales / dpOrders;
+                              }
+                              return (
+                                <div key={dp.id} className="flex items-center justify-between gap-3">
+                                  <span className="text-muted-foreground">{dp.label}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
+                                    {dpCA !== null && (
+                                      <span className="text-teal-500 text-[10px]">${dpCA.toFixed(2)}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       ) : (
@@ -501,7 +694,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <span className="font-medium">{crewSummary.avgScore}</span>
                   </BadgeWithTooltip>
                 )}
-                {/* Check Average Badge */}
+                {/* Check Average Badge with 7-day trend */}
                 {checkAverage && checkAverage.totalOrders > 0 && (
                   <BadgeWithTooltip
                     className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0"
@@ -511,11 +704,32 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         <div className="font-medium">Check Average</div>
                         <div className="text-muted-foreground">{checkAverage.totalOrders} orders today</div>
                         <div className="text-muted-foreground">Total: ${checkAverage.totalSales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+                        {checkAvgTrend && (
+                          <div className="mt-1 pt-1 border-t border-border/50">
+                            <div className="font-medium text-[10px] mb-0.5">7-Day Rolling Avg: ${checkAvgTrend.avg7d.toFixed(2)}</div>
+                            <div className="flex gap-1 flex-wrap">
+                              {checkAvgTrend.daily.map(d => (
+                                <div key={d.date} className="text-center">
+                                  <div className="text-[8px] text-muted-foreground">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
+                                  <div className="text-[9px] font-medium">${d.avg.toFixed(0)}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className={`text-[10px] mt-0.5 font-medium ${checkAvgTrend.trend === 'up' ? 'text-green-600' : checkAvgTrend.trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                              {checkAvgTrend.trend === 'up' ? 'Trending Up' : checkAvgTrend.trend === 'down' ? 'Trending Down' : 'Stable'}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     }
                   >
                     <Receipt className="w-3 h-3" />
                     <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
+                    {checkAvgTrend && checkAvgTrend.trend !== 'flat' && (
+                      checkAvgTrend.trend === 'up'
+                        ? <TrendingUp className="w-2.5 h-2.5 text-green-500" />
+                        : <TrendingDown className="w-2.5 h-2.5 text-red-500" />
+                    )}
                   </BadgeWithTooltip>
                 )}
                 {/* Consistency Score Badge */}
@@ -588,6 +802,13 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                       <span>{Math.round(restaurant.weather.temp)}°F</span>
                     )}
                   </BadgeWithTooltip>
+                )}
+                {/* Notes Count Badge */}
+                {notes && notes.length > 0 && (
+                  <Badge variant="outline" className="flex-shrink-0 text-xs gap-0.5 text-muted-foreground border-muted-foreground/30">
+                    <StickyNote className="w-2.5 h-2.5" />
+                    {notes.length}
+                  </Badge>
                 )}
               </div>
             </div>
@@ -982,12 +1203,26 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
               })()}</span>
             </div>
-            {/* Daypart brackets with grades */}
+            {/* Daypart brackets with grades + check average */}
             <div className="flex mt-0.5">
               {DAYPARTS.map(dp => {
                 const spanHours = dp.endHour - dp.startHour + 1;
                 const widthPercent = (spanHours / 24) * 100;
                 const dpGrade = daypartGrades.find(dg => dg.id === dp.id);
+                // Calculate daypart check average from hourly data
+                let dpCheckAvg: number | null = null;
+                if (checkAverage?.hourly) {
+                  let dpOrders = 0;
+                  let dpSales = 0;
+                  for (let h = dp.startHour; h <= dp.endHour; h++) {
+                    const hourCA = checkAverage.hourly[h];
+                    if (hourCA) {
+                      dpOrders += hourCA.orders;
+                      dpSales += hourCA.sales;
+                    }
+                  }
+                  if (dpOrders > 0) dpCheckAvg = dpSales / dpOrders;
+                }
                 return (
                   <div key={dp.id} style={{ width: `${widthPercent}%` }} className="text-center px-px">
                     <div className={`h-1 rounded-sm ${dp.bgColor}`} style={{ opacity: dpGrade?.grade ? 1 : 0.3 }} />
@@ -997,6 +1232,11 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         <span className={`font-bold ${dpGetGradeColor(dpGrade.grade)}`}>{dpGrade.grade}</span>
                       )}
                     </div>
+                    {dpCheckAvg !== null && (
+                      <div className="text-[7px] leading-none text-teal-600 dark:text-teal-400 font-medium">
+                        ${dpCheckAvg.toFixed(0)}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1271,17 +1511,27 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
               <span>{restaurant.pacePercentage.toFixed(0)}% of day</span>
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div 
+              <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   paceVariance >= 0 ? "bg-green-500" : "bg-red-500"
                 }`}
-                style={{ 
-                  width: `${Math.min(100, (restaurant.actualSales / Math.max(displayLastWeek, 1)) * 100)}%` 
+                style={{
+                  width: `${Math.min(100, (restaurant.actualSales / Math.max(displayLastWeek, 1)) * 100)}%`
                 }}
                 data-testid={`progress-${restaurant.restaurantId}`}
               />
             </div>
           </div>
+        )}
+
+        {/* Notes Section */}
+        {isExpanded && (
+          <NotesSection
+            restaurantId={restaurant.restaurantId}
+            dateStr={dateStr || ''}
+            notes={notes}
+            onNoteAdded={onNoteAdded}
+          />
         )}
       </div>
     </div>

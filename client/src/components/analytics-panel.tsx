@@ -3,13 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, BarChart3, Users, AlertTriangle, Clock, Activity } from "lucide-react";
+import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, BarChart3, Users, AlertTriangle, Clock, Activity, ShoppingBag } from "lucide-react";
 import { useState } from "react";
 import { formatCurrency } from "@/lib/grading";
+
+interface CheckAverageData {
+  totalOrders: number;
+  totalSales: number;
+  checkAverage: number;
+  hourly: Record<number, { orders: number; sales: number; avg: number }>;
+}
 
 interface AnalyticsPanelProps {
   dateStr: string;
   isToday: boolean;
+  checkAverageByRestaurant?: Record<string, CheckAverageData>;
 }
 
 interface AnniversaryData {
@@ -103,11 +111,24 @@ function getComplianceColor(pct: number): string {
   return "text-red-600 dark:text-red-400";
 }
 
-export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
+interface AttachmentRateData {
+  date: string;
+  categoryLabels: Record<string, string>;
+  benchmarks: Record<string, { min: number; max: number; benchmark: number }>;
+  restaurants: Record<string, {
+    totalOrders: number;
+    checkAverage: number;
+    categories: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }>;
+    overallAttachScore: number;
+  }>;
+}
+
+export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: AnalyticsPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [showAllConsistency, setShowAllConsistency] = useState(false);
   const [showAllCompliance, setShowAllCompliance] = useState(false);
   const [showAllSuppressed, setShowAllSuppressed] = useState(false);
+  const [showAllAttachments, setShowAllAttachments] = useState(false);
 
   // Badge data loads eagerly (shown in collapsed header)
   const { data: anniversaries } = useQuery<{ count: number; anniversaries: AnniversaryData[] }>({
@@ -155,6 +176,18 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
     queryKey: ["/api/analytics/weekly-forecast", dateStr],
     queryFn: async () => {
       const res = await fetch(`/api/analytics/weekly-forecast?date=${dateStr}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: expanded,
+    staleTime: isToday ? 5 * 60 * 1000 : Infinity,
+  });
+
+  // Attachment rates (add-on upsell analysis)
+  const { data: attachmentRates } = useQuery<AttachmentRateData>({
+    queryKey: ["/api/pos/attachment-rates", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/pos/attachment-rates?date=${dateStr}`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -446,6 +479,113 @@ export function AnalyticsPanel({ dateStr, isToday }: AnalyticsPanelProps) {
                 </div>
               </div>
             )}
+
+            {/* Attachment Rates (Upsell Analysis) */}
+            {attachmentRates && Object.keys(attachmentRates.restaurants).length > 0 && (() => {
+              const restaurants = Object.entries(attachmentRates.restaurants)
+                .map(([id, data]) => ({ id, ...data }))
+                .sort((a, b) => b.overallAttachScore - a.overallAttachScore);
+
+              // Company averages per category
+              const categoryAvgs: Record<string, { totalRate: number; count: number }> = {};
+              for (const r of restaurants) {
+                for (const [cat, data] of Object.entries(r.categories)) {
+                  if (!categoryAvgs[cat]) categoryAvgs[cat] = { totalRate: 0, count: 0 };
+                  categoryAvgs[cat].totalRate += data.attachRate;
+                  categoryAvgs[cat].count++;
+                }
+              }
+
+              const categories = Object.keys(attachmentRates.categoryLabels);
+              const companyAvgScore = restaurants.length > 0
+                ? Math.round(restaurants.reduce((s, r) => s + r.overallAttachScore, 0) / restaurants.length)
+                : 0;
+
+              return (
+                <div>
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                    <ShoppingBag className="w-3 h-3" /> ATTACHMENT RATES (UPSELL ANALYSIS)
+                  </h4>
+                  <p className="text-[10px] text-muted-foreground mb-2">
+                    Estimated add-on attachment rates per order. Shows how well each restaurant upsells cheese, bacon, jalape&ntilde;os, dipping sauces, and desserts (shakes, brownies, apple pies, cookies). Score 100 = at benchmark.
+                  </p>
+
+                  {/* Company-wide category averages */}
+                  <div className="grid grid-cols-5 gap-1.5 mb-3">
+                    {categories.map(cat => {
+                      const label = attachmentRates.categoryLabels[cat];
+                      const avg = categoryAvgs[cat]
+                        ? Math.round((categoryAvgs[cat].totalRate / categoryAvgs[cat].count) * 10) / 10
+                        : 0;
+                      const benchmark = attachmentRates.benchmarks[cat]?.benchmark || 0;
+                      const vsTarget = avg - benchmark;
+                      return (
+                        <div key={cat} className="text-center p-1.5 rounded bg-muted/30">
+                          <div className="text-[9px] font-medium text-muted-foreground truncate">{label}</div>
+                          <div className={`text-sm font-bold ${vsTarget >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                            {avg.toFixed(1)}%
+                          </div>
+                          <div className="text-[8px] text-muted-foreground">target: {benchmark}%</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Per-restaurant breakdown */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
+                      <span>Restaurant</span>
+                      <div className="flex items-center gap-1">
+                        {categories.map(cat => (
+                          <span key={cat} className="w-10 text-center truncate">{attachmentRates.categoryLabels[cat].slice(0, 5)}</span>
+                        ))}
+                        <span className="w-10 text-center">Score</span>
+                      </div>
+                    </div>
+                    {(showAllAttachments ? restaurants : restaurants.slice(0, 5)).map(r => {
+                      // Get restaurant name from check average data or fallback
+                      const name = r.id.replace(/^\d+\s*-\s*/, '').slice(0, 15);
+                      return (
+                        <div key={r.id} className="flex items-center justify-between text-xs">
+                          <span className="truncate mr-2 max-w-[100px]" title={r.id}>{name || r.id.slice(0, 12)}</span>
+                          <div className="flex items-center gap-1">
+                            {categories.map(cat => {
+                              const data = r.categories[cat];
+                              if (!data) return <span key={cat} className="w-10 text-center text-muted-foreground">--</span>;
+                              return (
+                                <span
+                                  key={cat}
+                                  className={`w-10 text-center text-[10px] font-medium ${
+                                    data.vsTarget >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'
+                                  }`}
+                                >
+                                  {data.attachRate.toFixed(0)}%
+                                </span>
+                              );
+                            })}
+                            <span className={`w-10 text-center font-bold ${
+                              r.overallAttachScore >= 100 ? 'text-green-600 dark:text-green-400' :
+                              r.overallAttachScore >= 80 ? 'text-amber-600 dark:text-amber-400' :
+                              'text-red-500'
+                            }`}>
+                              {r.overallAttachScore}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {restaurants.length > 5 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowAllAttachments(!showAllAttachments); }}
+                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-1"
+                      >
+                        {showAllAttachments ? 'Show less' : `Show all ${restaurants.length} restaurants`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Anniversaries */}
             {anniversaries && anniversaries.count > 0 && (

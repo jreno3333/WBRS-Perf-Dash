@@ -759,3 +759,26 @@ export const insertHistoricalDailySalesSchema = createInsertSchema(historicalDai
 
 export type InsertHistoricalDailySales = z.infer<typeof insertHistoricalDailySalesSchema>;
 export type HistoricalDailySales = typeof historicalDailySales.$inferSelect;
+
+// ─── Restaurant Notes (attached to ranking cards, flow to AI summaries) ──────
+
+export const restaurantNotes = pgTable("restaurant_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  hour: integer("hour"), // Optional: 0-23 for hour-specific notes, null for day-level
+  note: text("note").notNull(),
+  author: text("author"), // User display name or email
+  category: text("category").default("general"), // general, staffing, equipment, weather, training, etc.
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertRestaurantNoteSchema = createInsertSchema(restaurantNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertRestaurantNote = z.infer<typeof insertRestaurantNoteSchema>;
+export type RestaurantNote = typeof restaurantNotes.$inferSelect;

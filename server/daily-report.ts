@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { emailSubscribers, emailSendLog, reportSchedules } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes } from "@shared/schema";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
@@ -364,6 +364,21 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
     summaries.sort((a, b) => b.grade - a.grade);
 
+    // Fetch notes for this date
+    let notesByRestaurant: Record<string, { note: string; hour: number | null; category: string }[]> = {};
+    try {
+      const notes = await db.select().from(restaurantNotes)
+        .where(eq(restaurantNotes.date, dateStr))
+        .orderBy(desc(restaurantNotes.createdAt));
+      for (const n of notes) {
+        if (!notesByRestaurant[n.restaurantId]) notesByRestaurant[n.restaurantId] = [];
+        notesByRestaurant[n.restaurantId].push({ note: n.note, hour: n.hour, category: n.category || 'general' });
+      }
+    } catch (e) {
+      // Table might not exist yet - that's fine
+      console.log("[daily-report] Notes table not available:", (e as Error).message?.slice(0, 50));
+    }
+
     const gradedSummaries = summaries.filter(s => s.grade > 0);
     const avgGrade = gradedSummaries.length > 0
       ? gradedSummaries.reduce((s, r) => s + r.grade, 0) / gradedSummaries.length
@@ -488,6 +503,28 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         </div>
       `).join("")}
     </div>
+
+    ${(() => {
+      const allNotes = Object.entries(notesByRestaurant);
+      if (allNotes.length === 0) return '';
+      const totalNoteCount = allNotes.reduce((s, [, n]) => s + n.length, 0);
+      return `
+    <div style="background: white; padding: 20px 24px; border: 1px solid #e4e4e7; border-top: none;">
+      <h3 style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #d97706;">Manager Notes (${totalNoteCount})</h3>
+      ${allNotes.map(([restaurantId, notes]) => {
+        const restaurantName = summaries.find(s => s.id === restaurantId)?.name || restaurantId;
+        return `
+        <div style="margin-bottom: 8px;">
+          <div style="font-size: 12px; font-weight: 600; color: #18181b; margin-bottom: 2px;">${restaurantName}</div>
+          ${notes.map(n => `
+            <div style="font-size: 11px; color: #52525b; padding-left: 8px; border-left: 2px solid #fbbf24; margin-bottom: 4px;">
+              ${n.note}${n.hour !== null ? ` <span style="color: #d97706;">(${n.hour < 12 ? n.hour + 'am' : n.hour === 12 ? '12pm' : (n.hour - 12) + 'pm'})</span>` : ''}${n.category !== 'general' ? ` <span style="color: #a1a1aa;">[${n.category}]</span>` : ''}
+            </div>
+          `).join('')}
+        </div>`;
+      }).join('')}
+    </div>`;
+    })()}
 
     <div style="background: white; padding: 16px 24px; border: 1px solid #e4e4e7; border-top: none; border-radius: 0 0 8px 8px; text-align: center;">
       <a href="${baseUrl}" style="display: inline-block; background-color: #2563eb; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 14px;">
