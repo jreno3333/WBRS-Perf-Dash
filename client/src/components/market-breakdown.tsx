@@ -1,7 +1,7 @@
 import { useState, memo } from "react";
 // Card/Badge imports removed - using plain divs
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt } from "lucide-react";
 import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
@@ -22,12 +22,27 @@ interface WeeklySalesData {
   restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
 }
 
+interface CheckAverageData {
+  totalOrders: number;
+  totalSales: number;
+  checkAverage: number;
+  hourly: Record<number, { orders: number; sales: number; avg: number }>;
+}
+
+interface CheckAvgTrendData {
+  daily: { date: string; orders: number; sales: number; avg: number }[];
+  avg7d: number;
+  trend: 'up' | 'down' | 'flat';
+}
+
 interface MarketBreakdownProps {
   restaurants: RestaurantSales[];
   markets: MarketWithRestaurants[];
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
   crewSummary?: Record<string, CrewSummary>;
   weeklySalesData?: WeeklySalesData;
+  checkAverageByRestaurant?: Record<string, CheckAverageData>;
+  checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
 }
 
 const scoreToGrade = scoreToGradeLabel;
@@ -132,6 +147,60 @@ function getSpeedColor(attainment: number): string {
   return 'bg-red-500/10 text-red-500';
 }
 
+function calculateMarketCheckAvg(
+  restaurantIds: string[],
+  checkAverageByRestaurant?: Record<string, CheckAverageData>,
+  checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>
+): { checkAvg: number; totalOrders: number; avg7d: number; trend: 'up' | 'down' | 'flat'; daily: { date: string; avg: number }[] } {
+  let totalOrders = 0;
+  let totalSales = 0;
+  if (checkAverageByRestaurant) {
+    for (const id of restaurantIds) {
+      const ca = checkAverageByRestaurant[id];
+      if (ca) {
+        totalOrders += ca.totalOrders;
+        totalSales += ca.totalSales;
+      }
+    }
+  }
+  const checkAvg = totalOrders > 0 ? totalSales / totalOrders : 0;
+
+  // Aggregate 7-day daily data across restaurants in market
+  const dailyMap: Record<string, { orders: number; sales: number }> = {};
+  if (checkAvgTrendByRestaurant) {
+    for (const id of restaurantIds) {
+      const trend = checkAvgTrendByRestaurant[id];
+      if (trend) {
+        for (const d of trend.daily) {
+          if (!dailyMap[d.date]) dailyMap[d.date] = { orders: 0, sales: 0 };
+          dailyMap[d.date].orders += d.orders;
+          dailyMap[d.date].sales += d.sales;
+        }
+      }
+    }
+  }
+  const daily = Object.entries(dailyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, d]) => ({ date, avg: d.orders > 0 ? d.sales / d.orders : 0 }));
+
+  let total7dOrders = 0;
+  let total7dSales = 0;
+  for (const d of Object.values(dailyMap)) {
+    total7dOrders += d.orders;
+    total7dSales += d.sales;
+  }
+  const avg7d = total7dOrders > 0 ? total7dSales / total7dOrders : 0;
+
+  let trend: 'up' | 'down' | 'flat' = 'flat';
+  if (checkAvg > 0 && avg7d > 0) {
+    const pctChange = ((checkAvg - avg7d) / avg7d) * 100;
+    if (pctChange > 2) trend = 'up';
+    else if (pctChange < -2) trend = 'down';
+  }
+
+  return { checkAvg, totalOrders, avg7d, trend, daily };
+}
+
 function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAttainment: number | undefined; totalCars: number; carsUnder6Min: number; storesWithData: number } {
   let totalCars = 0;
   let totalUnder6 = 0;
@@ -154,7 +223,7 @@ function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAtta
   };
 }
 
-export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData }: MarketBreakdownProps) {
+export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: MarketBreakdownProps) {
   const activeRestaurants = restaurants.filter(r => r.status !== "training");
 
   const marketStats = markets.map(market => {
@@ -170,6 +239,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
     const crewScore = calculateMarketCrewScore(marketRestaurantIds, crewSummary);
     const osat = calculateMarketOsat(marketRestaurants);
     const speed = calculateMarketSpeed(marketRestaurants);
+    const checkAvg = calculateMarketCheckAvg(marketRestaurantIds, checkAverageByRestaurant, checkAvgTrendByRestaurant);
     
     let weeklyCurrent = 0, weeklyPrior = 0, weeklyEowForecast = 0, weeklyPriorFull = 0;
     if (weeklySalesData?.restaurants) {
@@ -201,6 +271,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
       osat,
       speed,
       weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance, eowForecast: weeklyEowForecast, priorFull: weeklyPriorFull, eowVariance: weeklyEowVariance },
+      checkAvg,
     };
   }).filter(m => m.totalCount > 0);
 
@@ -342,6 +413,42 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                 >
                   <GraduationCap className="w-3 h-3" />
                   <span className="font-medium">{market.crewScore.avgScore}</span>
+                </BadgeWithTooltip>
+              )}
+              {market.checkAvg.checkAvg > 0 && (
+                <BadgeWithTooltip
+                  className="bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0 gap-1"
+                  data-testid={`badge-checkavg-market-${market.id}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Check Average</div>
+                      <div className="text-muted-foreground">{market.checkAvg.totalOrders} orders today</div>
+                      {market.checkAvg.avg7d > 0 && (
+                        <div className="mt-1 pt-1 border-t border-border/50">
+                          <div className="font-medium text-[10px] mb-0.5">7-Day Avg: ${market.checkAvg.avg7d.toFixed(2)}</div>
+                          <div className="flex gap-1 flex-wrap">
+                            {market.checkAvg.daily.map(d => (
+                              <div key={d.date} className="text-center">
+                                <div className="text-[8px] text-muted-foreground">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
+                                <div className="text-[9px] font-medium">${d.avg.toFixed(0)}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className={`text-[10px] mt-0.5 font-medium ${market.checkAvg.trend === 'up' ? 'text-green-600' : market.checkAvg.trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            {market.checkAvg.trend === 'up' ? 'Trending Up' : market.checkAvg.trend === 'down' ? 'Trending Down' : 'Stable'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  }
+                >
+                  <Receipt className="w-3 h-3" />
+                  <span className="font-medium">${market.checkAvg.checkAvg.toFixed(2)}</span>
+                  {market.checkAvg.trend !== 'flat' && (
+                    market.checkAvg.trend === 'up'
+                      ? <TrendingUp className="w-2.5 h-2.5 text-green-500" />
+                      : <TrendingDown className="w-2.5 h-2.5 text-red-500" />
+                  )}
                 </BadgeWithTooltip>
               )}
               {market.xScore.hoursGraded > 0 && (

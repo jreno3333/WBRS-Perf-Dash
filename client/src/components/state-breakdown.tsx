@@ -2,7 +2,7 @@ import { useState, memo } from "react";
 // Card imports removed - using plain divs for cleaner styling
 // Badge import removed - using inline styles
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
@@ -23,11 +23,26 @@ interface WeeklySalesData {
   restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
 }
 
+interface CheckAverageData {
+  totalOrders: number;
+  totalSales: number;
+  checkAverage: number;
+  hourly: Record<number, { orders: number; sales: number; avg: number }>;
+}
+
+interface CheckAvgTrendData {
+  daily: { date: string; orders: number; sales: number; avg: number }[];
+  avg7d: number;
+  trend: 'up' | 'down' | 'flat';
+}
+
 interface StateBreakdownProps {
   restaurants: RestaurantSales[];
   hourlyByRestaurant?: Record<string, HourlySalesData[]>;
   crewSummary?: Record<string, CrewSummary>;
   weeklySalesData?: WeeklySalesData;
+  checkAverageByRestaurant?: Record<string, CheckAverageData>;
+  checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
 }
 
 const scoreToGrade = scoreToGradeLabel;
@@ -142,6 +157,59 @@ function getSpeedColor(attainment: number): string {
   return 'bg-red-500/10 text-red-500';
 }
 
+function calculateStateCheckAvg(
+  restaurantIds: string[],
+  checkAverageByRestaurant?: Record<string, CheckAverageData>,
+  checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>
+): { checkAvg: number; totalOrders: number; avg7d: number; trend: 'up' | 'down' | 'flat'; daily: { date: string; avg: number }[] } {
+  let totalOrders = 0;
+  let totalSales = 0;
+  if (checkAverageByRestaurant) {
+    for (const id of restaurantIds) {
+      const ca = checkAverageByRestaurant[id];
+      if (ca) {
+        totalOrders += ca.totalOrders;
+        totalSales += ca.totalSales;
+      }
+    }
+  }
+  const checkAvg = totalOrders > 0 ? totalSales / totalOrders : 0;
+
+  const dailyMap: Record<string, { orders: number; sales: number }> = {};
+  if (checkAvgTrendByRestaurant) {
+    for (const id of restaurantIds) {
+      const trend = checkAvgTrendByRestaurant[id];
+      if (trend) {
+        for (const d of trend.daily) {
+          if (!dailyMap[d.date]) dailyMap[d.date] = { orders: 0, sales: 0 };
+          dailyMap[d.date].orders += d.orders;
+          dailyMap[d.date].sales += d.sales;
+        }
+      }
+    }
+  }
+  const daily = Object.entries(dailyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, d]) => ({ date, avg: d.orders > 0 ? d.sales / d.orders : 0 }));
+
+  let total7dOrders = 0;
+  let total7dSales = 0;
+  for (const d of Object.values(dailyMap)) {
+    total7dOrders += d.orders;
+    total7dSales += d.sales;
+  }
+  const avg7d = total7dOrders > 0 ? total7dSales / total7dOrders : 0;
+
+  let trend: 'up' | 'down' | 'flat' = 'flat';
+  if (checkAvg > 0 && avg7d > 0) {
+    const pctChange = ((checkAvg - avg7d) / avg7d) * 100;
+    if (pctChange > 2) trend = 'up';
+    else if (pctChange < -2) trend = 'down';
+  }
+
+  return { checkAvg, totalOrders, avg7d, trend, daily };
+}
+
 function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttainment: number | undefined; totalCars: number; carsUnder6Min: number; storesWithData: number } {
   let totalCars = 0;
   let totalUnder6 = 0;
@@ -164,7 +232,7 @@ function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttain
   };
 }
 
-export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData }: StateBreakdownProps) {
+export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: StateBreakdownProps) {
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Exclude training units from state breakdowns
@@ -219,6 +287,16 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
   const alabamaSpeed = calculateStateSpeed(alabamaRestaurants);
   const tennesseeSpeed = calculateStateSpeed(tennesseeRestaurants);
 
+  // Calculate check average for each state
+  const alabamaCheckAvg = calculateStateCheckAvg(
+    alabamaRestaurants.map(r => r.restaurantId),
+    checkAverageByRestaurant, checkAvgTrendByRestaurant
+  );
+  const tennesseeCheckAvg = calculateStateCheckAvg(
+    tennesseeRestaurants.map(r => r.restaurantId),
+    checkAverageByRestaurant, checkAvgTrendByRestaurant
+  );
+
   const getGradeBadgeColor = (grade: string) => {
     if (grade.startsWith('A')) return 'text-green-500 bg-green-500/10 border-green-500/30';
     if (grade.startsWith('B')) return 'text-blue-500 bg-blue-500/10 border-blue-500/30';
@@ -271,6 +349,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
       osat: alabamaOsat,
       speed: alabamaSpeed,
       weekly: alabamaWeekly,
+      checkAvg: alabamaCheckAvg,
     },
     {
       name: "Tennessee",
@@ -286,6 +365,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
       osat: tennesseeOsat,
       speed: tennesseeSpeed,
       weekly: tennesseeWeekly,
+      checkAvg: tennesseeCheckAvg,
     },
   ];
 
@@ -405,6 +485,42 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                 >
                   <GraduationCap className="w-3 h-3" />
                   <span className="font-medium">{state.crewScore.avgScore}</span>
+                </BadgeWithTooltip>
+              )}
+              {state.checkAvg.checkAvg > 0 && (
+                <BadgeWithTooltip
+                  className="bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0 gap-1"
+                  data-testid={`badge-checkavg-state-${state.abbr.toLowerCase()}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Check Average</div>
+                      <div className="text-muted-foreground">{state.checkAvg.totalOrders} orders today</div>
+                      {state.checkAvg.avg7d > 0 && (
+                        <div className="mt-1 pt-1 border-t border-border/50">
+                          <div className="font-medium text-[10px] mb-0.5">7-Day Avg: ${state.checkAvg.avg7d.toFixed(2)}</div>
+                          <div className="flex gap-1 flex-wrap">
+                            {state.checkAvg.daily.map(d => (
+                              <div key={d.date} className="text-center">
+                                <div className="text-[8px] text-muted-foreground">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
+                                <div className="text-[9px] font-medium">${d.avg.toFixed(0)}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className={`text-[10px] mt-0.5 font-medium ${state.checkAvg.trend === 'up' ? 'text-green-600' : state.checkAvg.trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            {state.checkAvg.trend === 'up' ? 'Trending Up' : state.checkAvg.trend === 'down' ? 'Trending Down' : 'Stable'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  }
+                >
+                  <Receipt className="w-3 h-3" />
+                  <span className="font-medium">${state.checkAvg.checkAvg.toFixed(2)}</span>
+                  {state.checkAvg.trend !== 'flat' && (
+                    state.checkAvg.trend === 'up'
+                      ? <TrendingUp className="w-2.5 h-2.5 text-green-500" />
+                      : <TrendingDown className="w-2.5 h-2.5 text-red-500" />
+                  )}
                 </BadgeWithTooltip>
               )}
               {state.xScore.hoursGraded > 0 && (

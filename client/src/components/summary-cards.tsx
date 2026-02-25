@@ -367,20 +367,31 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     companyCheckAvg = companyTotalOrders > 0 ? companyTotalSales / companyTotalOrders : 0;
   }
 
-  // Calculate company-wide 7-day trend
+  // Calculate company-wide 7-day trend with daily breakdown
   let companyAvg7d = 0;
   let companyTrend: 'up' | 'down' | 'flat' = 'flat';
+  let companyDailyAvgs: { date: string; avg: number }[] = [];
   if (checkAvgTrendByRestaurant) {
-    let total7dOrders = 0;
-    let total7dSales = 0;
+    const dailyMap: Record<string, { orders: number; sales: number }> = {};
     for (const r of activeRestaurants) {
       const trend = checkAvgTrendByRestaurant[r.restaurantId];
       if (trend) {
         for (const d of trend.daily) {
-          total7dOrders += d.orders;
-          total7dSales += d.sales;
+          if (!dailyMap[d.date]) dailyMap[d.date] = { orders: 0, sales: 0 };
+          dailyMap[d.date].orders += d.orders;
+          dailyMap[d.date].sales += d.sales;
         }
       }
+    }
+    companyDailyAvgs = Object.entries(dailyMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, d]) => ({ date, avg: d.orders > 0 ? d.sales / d.orders : 0 }));
+
+    let total7dOrders = 0;
+    let total7dSales = 0;
+    for (const d of Object.values(dailyMap)) {
+      total7dOrders += d.orders;
+      total7dSales += d.sales;
     }
     companyAvg7d = total7dOrders > 0 ? total7dSales / total7dOrders : 0;
     // Simple trend: compare company today vs 7d avg (2% threshold)
@@ -478,19 +489,66 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
               </p>
             )}
             {companyCheckAvg > 0 && (
-              <div className="flex items-center gap-1 mt-1">
-                <Receipt className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                <span className="text-xs font-medium text-teal-600 dark:text-teal-400">
-                  ${companyCheckAvg.toFixed(2)}
-                </span>
-                {companyTrend !== 'flat' && (
-                  companyTrend === 'up'
-                    ? <TrendingUp className="w-3 h-3 text-green-500" />
-                    : <TrendingDown className="w-3 h-3 text-red-500" />
-                )}
-                {companyAvg7d > 0 && (
-                  <span className="text-[10px] text-muted-foreground">7d: ${companyAvg7d.toFixed(2)}</span>
-                )}
+              <div className="mt-1.5 pt-1.5 border-t border-border/30">
+                <div className="flex items-center gap-1">
+                  <Receipt className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                  <span className="text-xs font-medium text-teal-600 dark:text-teal-400">
+                    ${companyCheckAvg.toFixed(2)}
+                  </span>
+                  {companyTrend !== 'flat' && (
+                    companyTrend === 'up'
+                      ? <TrendingUp className="w-3 h-3 text-green-500" />
+                      : <TrendingDown className="w-3 h-3 text-red-500" />
+                  )}
+                  {companyAvg7d > 0 && (
+                    <span className="text-[10px] text-muted-foreground">7d: ${companyAvg7d.toFixed(2)}</span>
+                  )}
+                </div>
+                {companyDailyAvgs.length >= 2 && (() => {
+                  const avgs = companyDailyAvgs.map(d => d.avg).filter(a => a > 0);
+                  if (avgs.length < 2) return null;
+                  const min = Math.min(...avgs);
+                  const max = Math.max(...avgs);
+                  const range = max - min || 1;
+                  const w = 100;
+                  const h = 24;
+                  const padding = 2;
+                  const points = companyDailyAvgs
+                    .filter(d => d.avg > 0)
+                    .map((d, i, arr) => {
+                      const x = padding + (i / (arr.length - 1)) * (w - padding * 2);
+                      const y = h - padding - ((d.avg - min) / range) * (h - padding * 2);
+                      return `${x},${y}`;
+                    })
+                    .join(' ');
+                  const trendColor = companyTrend === 'up' ? '#22c55e' : companyTrend === 'down' ? '#ef4444' : '#6b7280';
+                  return (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <svg width={w} height={h} className="shrink-0">
+                        <polyline
+                          points={points}
+                          fill="none"
+                          stroke={trendColor}
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {companyDailyAvgs.filter(d => d.avg > 0).map((d, i, arr) => {
+                          const x = padding + (i / (arr.length - 1)) * (w - padding * 2);
+                          const y = h - padding - ((d.avg - min) / range) * (h - padding * 2);
+                          return <circle key={d.date} cx={x} cy={y} r="1.5" fill={trendColor} />;
+                        })}
+                      </svg>
+                      <div className="flex gap-0.5">
+                        {companyDailyAvgs.filter(d => d.avg > 0).map(d => (
+                          <div key={d.date} className="text-center">
+                            <div className="text-[7px] text-muted-foreground leading-none">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
