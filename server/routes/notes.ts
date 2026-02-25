@@ -1,8 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { db } from "../db";
-import { restaurantNotes } from "@shared/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -25,8 +24,16 @@ async function ensureNotesTable() {
       )
     `);
     tableEnsured = true;
-  } catch (e) {
-    console.error("[Notes] Failed to ensure table:", e);
+    console.log("[Notes] Table ensured successfully");
+  } catch (e: any) {
+    // Table might already exist with old schema - try to verify it exists
+    try {
+      await db.execute(sql`SELECT 1 FROM restaurant_notes LIMIT 0`);
+      tableEnsured = true;
+      console.log("[Notes] Table already exists (verified via SELECT)");
+    } catch {
+      console.error("[Notes] Failed to ensure table:", e?.message || e);
+    }
   }
 }
 
@@ -40,24 +47,29 @@ router.get("/api/notes", async (req, res) => {
       return;
     }
 
-    let notes;
+    let result;
     if (restaurantId) {
-      notes = await db.select().from(restaurantNotes)
-        .where(and(
-          eq(restaurantNotes.date, date as string),
-          eq(restaurantNotes.restaurantId, restaurantId as string)
-        ))
-        .orderBy(desc(restaurantNotes.createdAt));
+      result = await db.execute(sql`
+        SELECT id, restaurant_id AS "restaurantId", date, hour, note, author, category,
+               created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM restaurant_notes
+        WHERE date = ${date as string} AND restaurant_id = ${restaurantId as string}
+        ORDER BY created_at DESC
+      `);
     } else {
-      notes = await db.select().from(restaurantNotes)
-        .where(eq(restaurantNotes.date, date as string))
-        .orderBy(desc(restaurantNotes.createdAt));
+      result = await db.execute(sql`
+        SELECT id, restaurant_id AS "restaurantId", date, hour, note, author, category,
+               created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM restaurant_notes
+        WHERE date = ${date as string}
+        ORDER BY created_at DESC
+      `);
     }
 
-    res.json({ date, notes });
-  } catch (error) {
-    console.error("Error fetching notes:", error);
-    res.status(500).json({ error: "Failed to fetch notes" });
+    res.json({ date, notes: result.rows || [] });
+  } catch (error: any) {
+    console.error("Error fetching notes:", error?.message || error);
+    res.status(500).json({ error: "Failed to fetch notes: " + (error?.message || "unknown") });
   }
 });
 
@@ -65,27 +77,35 @@ router.get("/api/notes", async (req, res) => {
 router.post("/api/notes", async (req, res) => {
   try {
     await ensureNotesTable();
-    const { restaurantId, date, hour, note, author, category } = req.body;
+    const { restaurantId, date, hour, note, author, category } = req.body || {};
 
     if (!restaurantId || !date || !note) {
       res.status(400).json({ error: "restaurantId, date, and note are required" });
       return;
     }
 
-    const [newNote] = await db.insert(restaurantNotes).values({
-      id: crypto.randomUUID(),
-      restaurantId,
-      date,
-      hour: hour !== undefined && hour !== null ? parseInt(hour) : null,
-      note,
-      author: author || null,
-      category: category || "general",
-    }).returning();
+    const id = crypto.randomUUID();
+    const hourVal = hour !== undefined && hour !== null ? parseInt(hour) : null;
+    const catVal = category || "general";
+    const authorVal = author || null;
+
+    const result = await db.execute(sql`
+      INSERT INTO restaurant_notes (id, restaurant_id, date, hour, note, author, category, created_at, updated_at)
+      VALUES (${id}, ${restaurantId}, ${date}, ${hourVal}, ${note}, ${authorVal}, ${catVal}, NOW(), NOW())
+      RETURNING id, restaurant_id AS "restaurantId", date, hour, note, author, category,
+                created_at AS "createdAt", updated_at AS "updatedAt"
+    `);
+
+    const newNote = result.rows?.[0];
+    if (!newNote) {
+      res.status(500).json({ error: "Insert succeeded but no row returned" });
+      return;
+    }
 
     res.json(newNote);
-  } catch (error) {
-    console.error("Error creating note:", error);
-    res.status(500).json({ error: "Failed to create note" });
+  } catch (error: any) {
+    console.error("Error creating note:", error?.message || error);
+    res.status(500).json({ error: "Failed to create note: " + (error?.message || "unknown") });
   }
 });
 
@@ -94,10 +114,10 @@ router.delete("/api/notes/:id", async (req, res) => {
   try {
     await ensureNotesTable();
     const { id } = req.params;
-    await db.delete(restaurantNotes).where(eq(restaurantNotes.id, id));
+    await db.execute(sql`DELETE FROM restaurant_notes WHERE id = ${id}`);
     res.json({ success: true });
-  } catch (error) {
-    console.error("Error deleting note:", error);
+  } catch (error: any) {
+    console.error("Error deleting note:", error?.message || error);
     res.status(500).json({ error: "Failed to delete note" });
   }
 });
@@ -112,19 +132,29 @@ router.get("/api/notes/range", async (req, res) => {
       return;
     }
 
-    const notes = await db.select().from(restaurantNotes)
-      .where(
-        and(
-          sql`${restaurantNotes.date} >= ${startDate as string}`,
-          sql`${restaurantNotes.date} <= ${endDate as string}`
-        )
-      )
-      .orderBy(desc(restaurantNotes.createdAt));
+    const result = await db.execute(sql`
+      SELECT id, restaurant_id AS "restaurantId", date, hour, note, author, category,
+             created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM restaurant_notes
+      WHERE date >= ${startDate as string} AND date <= ${endDate as string}
+      ORDER BY created_at DESC
+    `);
 
-    res.json({ startDate, endDate, notes });
-  } catch (error) {
-    console.error("Error fetching notes range:", error);
+    res.json({ startDate, endDate, notes: result.rows || [] });
+  } catch (error: any) {
+    console.error("Error fetching notes range:", error?.message || error);
     res.status(500).json({ error: "Failed to fetch notes range" });
+  }
+});
+
+// Diagnostic endpoint
+router.get("/api/notes/health", async (_req, res) => {
+  try {
+    await ensureNotesTable();
+    const result = await db.execute(sql`SELECT COUNT(*) as count FROM restaurant_notes`);
+    res.json({ status: "ok", tableEnsured, count: result.rows?.[0]?.count ?? 0 });
+  } catch (error: any) {
+    res.json({ status: "error", tableEnsured, error: error?.message || "unknown" });
   }
 });
 
