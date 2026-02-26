@@ -238,7 +238,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
     shop: 'text-purple-600 dark:text-purple-400',
     hospitality: 'text-teal-600 dark:text-teal-400',
     product: 'text-orange-600 dark:text-orange-400',
-    positive: 'text-green-600 dark:text-green-400',
+    wins: 'text-green-600 dark:text-green-400',
   };
 
   return (
@@ -298,7 +298,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
               <option value="shop">Shop</option>
               <option value="hospitality">Hospitality</option>
               <option value="product">Product</option>
-              <option value="positive">Positive</option>
+              <option value="wins">Wins</option>
             </select>
             <button
               onClick={handleSubmit}
