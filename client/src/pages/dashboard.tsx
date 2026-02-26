@@ -12,6 +12,8 @@ import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
 import { MarketBreakdown } from "@/components/market-breakdown";
 import { AnalyticsPanel } from "@/components/analytics-panel";
+import { BannerTicker } from "@/components/banner-ticker";
+import { PollCard } from "@/components/poll-card";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -602,6 +604,9 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
+        {/* Banner Ticker */}
+        <BannerTicker />
+
         {error ? (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
             <div className="flex items-center gap-3 text-destructive">
@@ -733,6 +738,9 @@ export default function Dashboard() {
               checkAverageByRestaurant={checkAverageByRestaurant}
               checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
             />
+
+            {/* Quick Poll */}
+            <PollCard />
 
             {/* State Breakdown */}
             <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} crewSummary={crewSummary} weeklySalesData={weeklySalesData} checkAverageByRestaurant={checkAverageByRestaurant} checkAvgTrendByRestaurant={checkAvgTrendByRestaurant} />

@@ -781,3 +781,107 @@ export const insertRestaurantNoteSchema = createInsertSchema(restaurantNotes).om
 
 export type InsertRestaurantNote = z.infer<typeof insertRestaurantNoteSchema>;
 export type RestaurantNote = typeof restaurantNotes.$inferSelect;
+
+// ─── Banner Ticker Messages ─────────────────────────────────────────────────
+
+export const tickerMessages = pgTable("ticker_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  message: text("message").notNull(),
+  type: text("type").notNull().default("immediate"), // "immediate" | "scheduled" | "milestone"
+  priority: text("priority").notNull().default("normal"), // "normal" | "high" | "urgent"
+  scheduledAt: timestamp("scheduled_at"), // null = immediate, future = scheduled
+  expiresAt: timestamp("expires_at"), // Auto-expire after this time
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: text("created_by"), // Admin email
+  restaurantId: varchar("restaurant_id"), // null = all restaurants
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTickerMessageSchema = createInsertSchema(tickerMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTickerMessage = z.infer<typeof insertTickerMessageSchema>;
+export type TickerMessage = typeof tickerMessages.$inferSelect;
+
+// ─── Milestone Auto-Detection Configuration ─────────────────────────────────
+
+export const milestoneConfig = pgTable("milestone_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  isEnabled: boolean("is_enabled").notNull().default(false), // Master toggle
+  milestoneTypes: jsonb("milestone_types").$type<{
+    hourlyRecord: boolean;       // "Great job 1679 - new hourly sales record!"
+    dailySalesRecord: boolean;   // "Store 1679 set a new daily sales record!"
+    fastestDriveThru: boolean;   // "Fastest drive-thru hour goes to 1679!"
+    topCheckAverage: boolean;    // "Highest check average this hour: 1679!"
+    paceLeader: boolean;         // "1679 is leading the pace race!"
+  }>().notNull().default({
+    hourlyRecord: true,
+    dailySalesRecord: true,
+    fastestDriveThru: true,
+    topCheckAverage: true,
+    paceLeader: true,
+  }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: text("updated_by"),
+});
+
+export type MilestoneConfig = typeof milestoneConfig.$inferSelect;
+
+// ─── Polls & Voting ─────────────────────────────────────────────────────────
+
+export const polls = pgTable("polls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  question: text("question").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  allowMultipleVotes: boolean("allow_multiple_votes").notNull().default(false),
+  expiresAt: timestamp("expires_at"), // null = no expiry
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPollSchema = createInsertSchema(polls).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPoll = z.infer<typeof insertPollSchema>;
+export type Poll = typeof polls.$inferSelect;
+
+export const pollOptions = pgTable("poll_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pollId: varchar("poll_id").notNull(),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const insertPollOptionSchema = createInsertSchema(pollOptions).omit({
+  id: true,
+});
+
+export type InsertPollOption = z.infer<typeof insertPollOptionSchema>;
+export type PollOption = typeof pollOptions.$inferSelect;
+
+export const pollVotes = pgTable("poll_votes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pollId: varchar("poll_id").notNull(),
+  optionId: varchar("option_id").notNull(),
+  voterId: text("voter_id").notNull(), // session userId or email
+  votedAt: timestamp("voted_at").defaultNow(),
+});
+
+export const insertPollVoteSchema = createInsertSchema(pollVotes).omit({
+  id: true,
+  votedAt: true,
+});
+
+export type InsertPollVote = z.infer<typeof insertPollVoteSchema>;
+export type PollVote = typeof pollVotes.$inferSelect;
+
+// Poll with options and vote counts for API responses
+export interface PollWithResults extends Poll {
+  options: (PollOption & { voteCount: number })[];
+  totalVotes: number;
+  userVotedOptionId?: string | null;
+}

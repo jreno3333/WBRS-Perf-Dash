@@ -11,13 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp, Users, Shield, ShieldOff } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp, Users, Shield, ShieldOff, Megaphone, BarChart3, Zap, Vote } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { NavBar } from "@/components/nav-bar";
 import { format, differenceInDays, isFuture, parseISO, formatDistanceToNow } from "date-fns";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Restaurant, MarketWithRestaurants } from "@shared/schema";
+import type { Restaurant, MarketWithRestaurants, TickerMessage, PollWithResults } from "@shared/schema";
 
 const REVENUE_PORTS = [
   { id: "dine_in", label: "Dine In", icon: Utensils, color: "bg-emerald-500" },
@@ -407,6 +408,12 @@ export default function SettingsPage() {
           <LeaderReportCard />
 
           <HistoricalSalesUploadCard />
+
+          <TickerMessagesCard />
+
+          <MilestoneConfigCard />
+
+          <PollManagementCard />
 
           <UserManagementCard />
         </div>
@@ -2502,6 +2509,544 @@ function HistoricalSalesUploadCard() {
         </CollapsibleContent>
       </Card>
     </Collapsible>
+  );
+}
+
+// ─── Ticker Messages Admin ──────────────────────────────────────────────────
+
+function TickerMessagesCard() {
+  const { toast } = useToast();
+  const [newMessage, setNewMessage] = useState("");
+  const [newPriority, setNewPriority] = useState("normal");
+  const [newType, setNewType] = useState("immediate");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [expiresIn, setExpiresIn] = useState("4"); // hours
+
+  const { data, refetch } = useQuery<{ messages: TickerMessage[] }>({
+    queryKey: ["/api/ticker/admin/messages"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      return apiRequest("POST", "/api/ticker/messages", body);
+    },
+    onSuccess: () => {
+      refetch();
+      setNewMessage("");
+      setScheduledAt("");
+      toast({ title: "Message sent", description: "Ticker message has been created." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create message.", variant: "destructive" });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/ticker/messages/${id}`, { isActive });
+    },
+    onSuccess: () => refetch(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/ticker/messages/${id}`);
+    },
+    onSuccess: () => {
+      refetch();
+      toast({ title: "Deleted", description: "Message removed." });
+    },
+  });
+
+  const handleCreate = () => {
+    if (!newMessage.trim()) return;
+
+    const body: Record<string, unknown> = {
+      message: newMessage.trim(),
+      priority: newPriority,
+      type: newType,
+    };
+
+    if (newType === "scheduled" && scheduledAt) {
+      body.scheduledAt = new Date(scheduledAt).toISOString();
+    }
+
+    if (expiresIn && Number(expiresIn) > 0) {
+      body.expiresAt = new Date(Date.now() + Number(expiresIn) * 60 * 60 * 1000).toISOString();
+    }
+
+    createMutation.mutate(body);
+  };
+
+  const messages = data?.messages || [];
+
+  return (
+    <CollapsibleCard
+      title="Banner Ticker"
+      description="Send real-time messages that scroll across the dashboard banner."
+      icon={<Megaphone className="h-5 w-5 text-primary" />}
+    >
+      <div className="space-y-4">
+        {/* New message form */}
+        <div className="space-y-3 p-4 bg-secondary/30 rounded-lg border border-border">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Plus className="w-4 h-4" />
+            New Message
+          </div>
+
+          <Textarea
+            placeholder="Great job 1679 - you set the new hourly record for the week!"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            className="min-h-[60px]"
+          />
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-xs">Type</Label>
+              <Select value={newType} onValueChange={setNewType}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="immediate">Immediate</SelectItem>
+                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs">Priority</Label>
+              <Select value={newPriority} onValueChange={setNewPriority}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {newType === "scheduled" && (
+              <div>
+                <Label className="text-xs">Send At</Label>
+                <Input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+            )}
+
+            <div>
+              <Label className="text-xs">Expires In (hrs)</Label>
+              <Input
+                type="number"
+                min="1"
+                max="72"
+                value={expiresIn}
+                onChange={(e) => setExpiresIn(e.target.value)}
+                className="h-8 text-xs"
+                placeholder="4"
+              />
+            </div>
+          </div>
+
+          <Button
+            onClick={handleCreate}
+            disabled={!newMessage.trim() || createMutation.isPending}
+            size="sm"
+            className="w-full"
+          >
+            <Send className="w-3.5 h-3.5 mr-2" />
+            {createMutation.isPending ? "Sending..." : "Send Message"}
+          </Button>
+        </div>
+
+        {/* Existing messages */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-muted-foreground">Recent Messages ({messages.length})</h4>
+          {messages.length === 0 && (
+            <p className="text-sm text-muted-foreground py-4 text-center">No ticker messages yet</p>
+          )}
+          {messages.map(msg => (
+            <div
+              key={msg.id}
+              className={`flex items-start gap-3 p-3 rounded-lg border ${
+                msg.isActive ? "bg-card" : "bg-muted/30 opacity-60"
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm">{msg.message}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="outline" className="text-[10px] h-5">
+                    {msg.type}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] h-5 ${
+                      msg.priority === "urgent"
+                        ? "border-red-500/50 text-red-500"
+                        : msg.priority === "high"
+                        ? "border-amber-500/50 text-amber-500"
+                        : ""
+                    }`}
+                  >
+                    {msg.priority}
+                  </Badge>
+                  {msg.expiresAt && (
+                    <span className="text-[10px] text-muted-foreground">
+                      expires {new Date(msg.expiresAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Switch
+                  checked={msg.isActive}
+                  onCheckedChange={(checked) => toggleMutation.mutate({ id: msg.id, isActive: checked })}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                  onClick={() => deleteMutation.mutate(msg.id)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </CollapsibleCard>
+  );
+}
+
+// ─── Milestone Config Admin ─────────────────────────────────────────────────
+
+function MilestoneConfigCard() {
+  const { toast } = useToast();
+
+  const { data, refetch } = useQuery<{ config: {
+    id: string | null;
+    isEnabled: boolean;
+    milestoneTypes: Record<string, boolean>;
+  } }>({
+    queryKey: ["/api/ticker/milestone-config"],
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      return apiRequest("PUT", "/api/ticker/milestone-config", body);
+    },
+    onSuccess: () => {
+      refetch();
+      toast({ title: "Milestone config updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update config.", variant: "destructive" });
+    },
+  });
+
+  const checkMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/ticker/check-milestones", {});
+    },
+    onSuccess: async (res) => {
+      const data = await res.json();
+      refetch();
+      toast({
+        title: "Milestones checked",
+        description: `Found ${data.count || 0} new milestones.`,
+      });
+    },
+  });
+
+  const config = data?.config;
+  const types = config?.milestoneTypes || {};
+
+  const milestoneLabels: Record<string, string> = {
+    hourlyRecord: "Hourly Sales Records",
+    dailySalesRecord: "Daily Sales Records",
+    fastestDriveThru: "Fastest Drive-Thru",
+    topCheckAverage: "Top Check Average",
+    paceLeader: "Pace Race Leader",
+  };
+
+  return (
+    <CollapsibleCard
+      title="Auto-Milestones"
+      description="Automatically detect and announce performance milestones."
+      icon={<Zap className="h-5 w-5 text-amber-500" />}
+      actions={
+        config && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {config.isEnabled ? "On" : "Off"}
+            </span>
+            <Switch
+              checked={config.isEnabled}
+              onCheckedChange={(checked) => updateMutation.mutate({ isEnabled: checked })}
+            />
+          </div>
+        )
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          When enabled, the system automatically detects milestones throughout the day and sends them as ticker messages.
+        </p>
+
+        <div className="space-y-2">
+          {Object.entries(milestoneLabels).map(([key, label]) => (
+            <div key={key} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+              <span className="text-sm">{label}</span>
+              <Switch
+                checked={types[key] ?? true}
+                onCheckedChange={(checked) => {
+                  const newTypes = { ...types, [key]: checked };
+                  updateMutation.mutate({ milestoneTypes: newTypes });
+                }}
+                disabled={!config?.isEnabled}
+              />
+            </div>
+          ))}
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => checkMutation.mutate()}
+          disabled={!config?.isEnabled || checkMutation.isPending}
+          className="w-full"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 mr-2 ${checkMutation.isPending ? "animate-spin" : ""}`} />
+          {checkMutation.isPending ? "Checking..." : "Check Milestones Now"}
+        </Button>
+      </div>
+    </CollapsibleCard>
+  );
+}
+
+// ─── Poll Management Admin ──────────────────────────────────────────────────
+
+function PollManagementCard() {
+  const { toast } = useToast();
+  const [newQuestion, setNewQuestion] = useState("");
+  const [newOptions, setNewOptions] = useState(["", ""]);
+  const [newExpiresIn, setNewExpiresIn] = useState("24");
+
+  const { data, refetch } = useQuery<{ polls: PollWithResults[] }>({
+    queryKey: ["/api/polls/admin"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      return apiRequest("POST", "/api/polls", body);
+    },
+    onSuccess: () => {
+      refetch();
+      setNewQuestion("");
+      setNewOptions(["", ""]);
+      toast({ title: "Poll created", description: "Your poll is now live." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create poll.", variant: "destructive" });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/polls/${id}`, { isActive });
+    },
+    onSuccess: () => refetch(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/polls/${id}`);
+    },
+    onSuccess: () => {
+      refetch();
+      toast({ title: "Deleted", description: "Poll removed." });
+    },
+  });
+
+  const handleCreate = () => {
+    const filteredOptions = newOptions.filter(o => o.trim().length > 0);
+    if (!newQuestion.trim() || filteredOptions.length < 2) {
+      toast({ title: "Error", description: "Question and at least 2 options required.", variant: "destructive" });
+      return;
+    }
+
+    const body: Record<string, unknown> = {
+      question: newQuestion.trim(),
+      options: filteredOptions,
+    };
+
+    if (newExpiresIn && Number(newExpiresIn) > 0) {
+      body.expiresAt = new Date(Date.now() + Number(newExpiresIn) * 60 * 60 * 1000).toISOString();
+    }
+
+    createMutation.mutate(body);
+  };
+
+  const addOption = () => {
+    if (newOptions.length < 10) {
+      setNewOptions([...newOptions, ""]);
+    }
+  };
+
+  const removeOption = (idx: number) => {
+    if (newOptions.length > 2) {
+      setNewOptions(newOptions.filter((_, i) => i !== idx));
+    }
+  };
+
+  const updateOption = (idx: number, value: string) => {
+    const updated = [...newOptions];
+    updated[idx] = value;
+    setNewOptions(updated);
+  };
+
+  const existingPolls = data?.polls || [];
+
+  return (
+    <CollapsibleCard
+      title="Polls"
+      description="Create polls for users to vote on - displayed on the dashboard."
+      icon={<BarChart3 className="h-5 w-5 text-primary" />}
+    >
+      <div className="space-y-4">
+        {/* New poll form */}
+        <div className="space-y-3 p-4 bg-secondary/30 rounded-lg border border-border">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Plus className="w-4 h-4" />
+            Create Poll
+          </div>
+
+          <div>
+            <Label className="text-xs">Question</Label>
+            <Input
+              placeholder="Who will have the highest check average today?"
+              value={newQuestion}
+              onChange={(e) => setNewQuestion(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs">Options</Label>
+            {newOptions.map((opt, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <Input
+                  placeholder={`Option ${idx + 1}`}
+                  value={opt}
+                  onChange={(e) => updateOption(idx, e.target.value)}
+                  className="h-8 text-sm"
+                />
+                {newOptions.length > 2 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeOption(idx)}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {newOptions.length < 10 && (
+              <Button variant="ghost" size="sm" onClick={addOption} className="text-xs">
+                <Plus className="w-3 h-3 mr-1" /> Add Option
+              </Button>
+            )}
+          </div>
+
+          <div>
+            <Label className="text-xs">Expires In (hours)</Label>
+            <Input
+              type="number"
+              min="1"
+              max="168"
+              value={newExpiresIn}
+              onChange={(e) => setNewExpiresIn(e.target.value)}
+              className="h-8 text-xs w-24"
+              placeholder="24"
+            />
+          </div>
+
+          <Button
+            onClick={handleCreate}
+            disabled={!newQuestion.trim() || newOptions.filter(o => o.trim()).length < 2 || createMutation.isPending}
+            size="sm"
+            className="w-full"
+          >
+            <Vote className="w-3.5 h-3.5 mr-2" />
+            {createMutation.isPending ? "Creating..." : "Create Poll"}
+          </Button>
+        </div>
+
+        {/* Existing polls */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-muted-foreground">Polls ({existingPolls.length})</h4>
+          {existingPolls.length === 0 && (
+            <p className="text-sm text-muted-foreground py-4 text-center">No polls yet</p>
+          )}
+          {existingPolls.map(poll => (
+            <div
+              key={poll.id}
+              className={`p-3 rounded-lg border ${
+                poll.isActive ? "bg-card" : "bg-muted/30 opacity-60"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{poll.question}</p>
+                  <div className="mt-2 space-y-1">
+                    {poll.options.map(opt => (
+                      <div key={opt.id} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{opt.label}</span>
+                        <span className="font-medium">
+                          {opt.voteCount} votes
+                          {poll.totalVotes > 0 && (
+                            <span className="text-muted-foreground ml-1">
+                              ({Math.round((opt.voteCount / poll.totalVotes) * 100)}%)
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {poll.totalVotes} total votes
+                    {poll.expiresAt && ` · expires ${new Date(poll.expiresAt).toLocaleString()}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Switch
+                    checked={poll.isActive}
+                    onCheckedChange={(checked) => toggleMutation.mutate({ id: poll.id, isActive: checked })}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                    onClick={() => deleteMutation.mutate(poll.id)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </CollapsibleCard>
   );
 }
 
