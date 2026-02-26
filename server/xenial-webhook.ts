@@ -932,6 +932,8 @@ interface ParsedItem {
   name: string;
   majorCategory?: string;
   minorCategory?: string;
+  itemType?: string;        // "standard" or "modifier"
+  isChildOfMeal?: boolean;  // whether this item is inside a meal/combo
 }
 
 /** Chicken entree items that come with an included dipping sauce. */
@@ -949,6 +951,36 @@ const CHICKEN_WITH_SAUCE_PATTERNS: RegExp[] = [
 function isChickenWithIncludedSauce(item: ParsedItem): boolean {
   const name = item.name || '';
   return CHICKEN_WITH_SAUCE_PATTERNS.some(p => p.test(name));
+}
+
+/** Patterns indicating an item is a meal/combo (top-level parent). */
+const MEAL_PATTERNS: RegExp[] = [
+  /\bMEAL\b/i,
+  /\bCOMBO\b/i,
+  /\b#\d+\b/,  // Whataburger numbered combos like #1, #2, etc.
+];
+
+function isMealItem(name: string): boolean {
+  return MEAL_PATTERNS.some(p => p.test(name));
+}
+
+/** Detect medium/large fries or drinks inside a meal — indicates a Whatasize upsell. */
+const UPSIZED_SIDE_PATTERNS: RegExp[] = [
+  /\b(?:MED|MEDIUM|LG|LARGE)\s+FRIES\b/i,
+  /\b(?:MED|MEDIUM|LG|LARGE)\s+FR\b/i,
+  /\b(?:MED|MEDIUM|LG|LARGE)\s+ONION\s*RING/i,
+];
+
+const UPSIZED_DRINK_PATTERNS: RegExp[] = [
+  /\b(?:MED|MEDIUM|LG|LARGE)\s+(?:COKE|SPRITE|DR\s*PEPPER|FANTA|LEMONADE|TEA|SWEET\s*TEA|UNSWEET|DIET|ROOT\s*BEER|HI-?C|MELLO|POWERADE|MINUTE\s*MAID|COFFEE|MILK|OJ|ORANGE\s*JUICE)\b/i,
+  /\b(?:MED|MEDIUM|LG|LARGE)\s+(?:DRINK|BEVERAGE|SOFT\s*DRINK)\b/i,
+];
+
+function isUpsizedMealSide(item: ParsedItem): boolean {
+  if (!item.isChildOfMeal) return false;
+  const name = item.name || '';
+  return UPSIZED_SIDE_PATTERNS.some(p => p.test(name)) ||
+         UPSIZED_DRINK_PATTERNS.some(p => p.test(name));
 }
 
 function classifyItem(item: ParsedItem, category: AttachmentCategory): boolean {
@@ -990,24 +1022,30 @@ function extractItemsFromOrder(rawJson: string): ParsedItem[] {
     const rawItems = payload?.data?.items;
     if (!Array.isArray(rawItems)) return items;
 
-    // Recursively extract items from any nesting depth
-    const collectItems = (itemList: any[]) => {
+    // Recursively extract items, tracking parent context
+    const collectItems = (itemList: any[], insideMeal: boolean) => {
       for (const item of itemList) {
+        const name = item.name || '';
+        const thisIsMeal = isMealItem(name);
+        const childInsideMeal = insideMeal || thisIsMeal;
+
         items.push({
-          name: item.name || '',
+          name,
           majorCategory: item.reporting_category?.major_reporting_category?.name,
           minorCategory: item.reporting_category?.minor_reporting_category?.name,
+          itemType: item.item_type,
+          isChildOfMeal: insideMeal,
         });
         if (Array.isArray(item.child_items)) {
-          collectItems(item.child_items);
+          collectItems(item.child_items, childInsideMeal);
         }
         if (Array.isArray(item.modifiers)) {
-          collectItems(item.modifiers);
+          collectItems(item.modifiers, childInsideMeal);
         }
       }
     }
 
-    collectItems(rawItems);
+    collectItems(rawItems, false);
     return items;
   } catch {
     return [];
@@ -1093,10 +1131,20 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
       const catDef = ATTACHMENT_CATEGORIES[cat];
 
       if (cat === 'dipping_sauces') {
-        // Chicken strips/tenders/nuggets include 1 sauce each — only count additional sauces as upsells
-        const sauceCount = items.filter(item => classifyItem(item, catDef)).length;
+        // Only count "standard" (non-modifier) sauce items — modifiers are sandwich toppings, not paid sauce purchases.
+        // Then subtract included sauces from chicken strip/tender/nugget orders.
+        const sauceCount = items.filter(item =>
+          item.itemType !== 'modifier' && classifyItem(item, catDef)
+        ).length;
         const chickenEntreeCount = items.filter(item => isChickenWithIncludedSauce(item)).length;
         if (sauceCount > chickenEntreeCount) {
+          entry.categoryHits[cat]++;
+        }
+      } else if (cat === 'whatasize') {
+        // Whatasize: POS doesn't use a separate "WHATASIZE" line item — it just rings up the larger size.
+        // Detect by looking for medium/large fries or drinks inside a meal/combo.
+        const hasUpsizedSide = items.some(item => isUpsizedMealSide(item));
+        if (hasUpsizedSide) {
           entry.categoryHits[cat]++;
         }
       } else {
