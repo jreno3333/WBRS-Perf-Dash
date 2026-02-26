@@ -829,12 +829,34 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     )}
                   </BadgeWithTooltip>
                 )}
-                {/* Notes Count Badge */}
+                {/* Notes Count Badge — click to preview */}
                 {notes && notes.length > 0 && (
-                  <Badge variant="outline" className="flex-shrink-0 text-xs gap-0.5 text-muted-foreground border-muted-foreground/30">
+                  <BadgeWithTooltip
+                    variant="outline"
+                    className="flex-shrink-0 text-xs gap-0.5 text-muted-foreground border-muted-foreground/30"
+                    side="bottom"
+                    tooltipContent={
+                      <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                        <div className="font-medium text-foreground flex items-center gap-1">
+                          <StickyNote className="w-3 h-3" />
+                          {notes.length} Note{notes.length !== 1 ? 's' : ''}
+                        </div>
+                        {notes.map(note => (
+                          <div key={note.id} className="text-[11px] leading-snug">
+                            <span className="text-foreground">{note.note}</span>
+                            <span className="text-muted-foreground ml-1">
+                              {note.hour !== null && `${note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`} · `}
+                              {note.category !== 'general' && `${note.category} · `}
+                              {note.createdAt ? new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  >
                     <StickyNote className="w-2.5 h-2.5" />
                     {notes.length}
-                  </Badge>
+                  </BadgeWithTooltip>
                 )}
               </div>
             </div>
