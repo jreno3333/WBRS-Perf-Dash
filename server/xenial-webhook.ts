@@ -785,21 +785,32 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
       /\bMONTEREY\s*JACK\b/i,
       /\bQUESO\b/i,
       /\bCHEESE\s*SAUCE\b/i,
+      /\bCHEESE\s*SLICE/i,          // "SMALL CHEESE SLICE", "CHEESE SLICE", etc.
+      /\b(?:SM|SMALL|LG|LARGE)\s+CHEESE\b/i, // Sized cheese modifiers
+    ],
+    minorCategoryPatterns: [
+      /\bCheese\b/i,                // POS minor_reporting_category: "Cheese"
     ],
     excludePatterns: [
       /\bCHEESEBURGER\b/i,
       /\bGRILLED\s*CHEESE\b/i,
       /\bCHEESE\s*STEAK\b/i,
       /\bCHEESE\s*WHATA/i,
+      /\bMAC\b.*\bCHEESE\b/i,       // Mac & Cheese is a side, not a cheese add-on
     ],
   },
   bacon: {
     namePatterns: [
+      /\bBACON\b/i,                  // Standalone "BACON" modifier items
+      /\bBACON\s*STRIP/i,
+      /\bBACON\s*SLICE/i,
       /\bADD\b.*\bBACON\b/i,
       /\bEXTRA\b.*\bBACON\b/i,
       /\bBACON\b.*\bADD\b/i,
       /\bSIDE\b.*\bBACON\b/i,
-      /\bBACON\s*STRIP/i,
+    ],
+    minorCategoryPatterns: [
+      /\bBacon\b/i,                  // POS minor_reporting_category for bacon modifiers
     ],
     excludePatterns: [
       /\bBACON\s*BOB\b/i,
@@ -812,6 +823,7 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
       /\bBACON\s*BISCUIT/i,
       /\bBACON\s*TAQUITO/i,
       /\bBOBFRDR/i,
+      /\bBACON\s*SANDWICH/i,
     ],
   },
   jalapenos: {
@@ -870,7 +882,9 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
   whatasize: {
     namePatterns: [
       /\bWHATASIZE\b/i,
+      /\bWHATA\s*SIZE\b/i,           // "WHATA SIZE" with space
       /\bUPSIZE\b/i,
+      /\bUP\s*SIZE\b/i,              // "UP SIZE" with space
       /\bUPGRADE\b/i,
       /\bSIZE\s*UP\b/i,
       /\bMAKE\s*IT\s*(?:A\s*)?(?:MED|MEDIUM|LG|LARGE)\b/i,
@@ -884,6 +898,11 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
       /\bCOMBO\b.*\bLG\b/i,
       /\bCOMBO\b.*\bLARGE\b/i,
       /\bSUPERSIZE\b/i,
+    ],
+    minorCategoryPatterns: [
+      /\bWhatasize\b/i,
+      /\bSize\s*Upgrade\b/i,
+      /\bUpsize\b/i,
     ],
     excludePatterns: [
       /\bLG\s+(?!COMBO|MEAL|SIZE)/i,  // Exclude standalone LG items like "LG DIET DR PEPPER"
@@ -954,34 +973,24 @@ function extractItemsFromOrder(rawJson: string): ParsedItem[] {
     const rawItems = payload?.data?.items;
     if (!Array.isArray(rawItems)) return items;
 
-    for (const item of rawItems) {
-      items.push({
-        name: item.name || '',
-        majorCategory: item.reporting_category?.major_reporting_category?.name,
-        minorCategory: item.reporting_category?.minor_reporting_category?.name,
-      });
-      // Also process child_items (modifiers/add-ons)
-      if (Array.isArray(item.child_items)) {
-        for (const child of item.child_items) {
-          items.push({
-            name: child.name || '',
-            majorCategory: child.reporting_category?.major_reporting_category?.name,
-            minorCategory: child.reporting_category?.minor_reporting_category?.name,
-          });
+    // Recursively extract items from any nesting depth
+    const collectItems = (itemList: any[]) => {
+      for (const item of itemList) {
+        items.push({
+          name: item.name || '',
+          majorCategory: item.reporting_category?.major_reporting_category?.name,
+          minorCategory: item.reporting_category?.minor_reporting_category?.name,
+        });
+        if (Array.isArray(item.child_items)) {
+          collectItems(item.child_items);
         }
-      }
-      // Process modifiers array if present
-      if (Array.isArray(item.modifiers)) {
-        for (const mod of item.modifiers) {
-          items.push({
-            name: mod.name || '',
-            majorCategory: mod.reporting_category?.major_reporting_category?.name,
-            minorCategory: mod.reporting_category?.minor_reporting_category?.name,
-          });
+        if (Array.isArray(item.modifiers)) {
+          collectItems(item.modifiers);
         }
       }
     }
 
+    collectItems(rawItems);
     return items;
   } catch {
     return [];
