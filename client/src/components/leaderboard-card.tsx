@@ -326,7 +326,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
                   {note.author && `${note.author.split('@')[0]} · `}
                   {note.hour !== null && `${note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`} · `}
                   {note.category !== 'general' && `${note.category} · `}
-                  {note.createdAt ? new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'just now'}
+                  {note.createdAt ? new Date(note.createdAt + (String(note.createdAt).match(/[Z+-]/) ? '' : 'Z')).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'just now'}
                 </span>
               </div>
               <button
@@ -853,7 +853,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                               {note.author && `${note.author.split('@')[0]} · `}
                               {note.hour !== null && `${note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`} · `}
                               {note.category !== 'general' && `${note.category} · `}
-                              {note.createdAt ? new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}
+                              {note.createdAt ? new Date(note.createdAt + (String(note.createdAt).match(/[Z+-]/) ? '' : 'Z')).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}
                             </span>
                           </div>
                         ))}
