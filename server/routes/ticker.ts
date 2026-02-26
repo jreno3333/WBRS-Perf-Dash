@@ -272,50 +272,50 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
   // ── 1. Hourly Sales Record ──────────────────────────────────────────────
 
   if (types.hourlyRecord) {
-    // Get today's sales for the last completed hour
-    const todayHourly = await db
-      .select()
-      .from(hourlySales)
-      .where(
-        and(
-          eq(hourlySales.hour, prevHour),
-          sql`${hourlySales.salesDate}::date = ${dateStr}::date`
-        )
-      );
+    // Get today's sales for the last completed hour — use DISTINCT ON to pick
+    // only the most-recently-scraped row per restaurant (avoids stale duplicates
+    // that can exist when there is no unique constraint on the table).
+    const todayHourlyResult = await db.execute(sql`
+      SELECT DISTINCT ON (restaurant_id) restaurant_id, actual_sales
+      FROM hourly_sales
+      WHERE hour = ${prevHour} AND sales_date::date = ${dateStr}::date
+      ORDER BY restaurant_id, scraped_at DESC NULLS LAST
+    `);
+    const todayHourly = (todayHourlyResult.rows || []) as { restaurant_id: string; actual_sales: string }[];
 
     for (const hourData of todayHourly) {
-      const restaurant = restaurantMap.get(hourData.restaurantId);
+      const restaurant = restaurantMap.get(hourData.restaurant_id);
       if (!restaurant) continue;
-      const sales = parseFloat(hourData.actualSales);
+      const sales = parseFloat(hourData.actual_sales);
       if (sales <= 0) continue;
       const name = restaurant.unitNumber || restaurant.name;
 
-      // 4-week rolling best for THIS store at THIS hour
-      const historicalForStore = await db
-        .select({ actualSales: hourlySales.actualSales })
-        .from(hourlySales)
-        .where(
-          and(
-            eq(hourlySales.restaurantId, hourData.restaurantId),
-            eq(hourlySales.hour, prevHour),
-            sql`${hourlySales.salesDate}::date = ANY(ARRAY[${sql.join(fourWeekDates.map(d => sql`${d}::date`), sql`, `)}])`,
-          )
-        );
+      // 4-week rolling best for THIS store at THIS hour (latest row per date)
+      const historicalResult = await db.execute(sql`
+        SELECT DISTINCT ON (sales_date::date) actual_sales
+        FROM hourly_sales
+        WHERE restaurant_id = ${hourData.restaurant_id}
+          AND hour = ${prevHour}
+          AND sales_date::date = ANY(ARRAY[${sql.join(fourWeekDates.map(d => sql`${d}::date`), sql`, `)}])
+        ORDER BY sales_date::date, scraped_at DESC NULLS LAST
+      `);
+      const historicalForStore = (historicalResult.rows || []) as { actual_sales: string }[];
 
-      const best4Week = Math.max(0, ...historicalForStore.map(h => parseFloat(h.actualSales)));
+      const best4Week = Math.max(0, ...historicalForStore.map(h => parseFloat(h.actual_sales)));
 
-      // All-time company record for this hour (any store, any day)
-      const [companyRecord] = await db
-        .select({ maxSales: sql<string>`MAX(${hourlySales.actualSales}::numeric)` })
-        .from(hourlySales)
-        .where(
-          and(
-            eq(hourlySales.hour, prevHour),
-            sql`${hourlySales.salesDate}::date < ${dateStr}::date` // Exclude today
-          )
-        );
+      // All-time company record for this hour (any store, any day) — latest row per store/date
+      const companyRecordResult = await db.execute(sql`
+        SELECT MAX(actual_sales::numeric) AS max_sales
+        FROM (
+          SELECT DISTINCT ON (restaurant_id, sales_date::date) actual_sales
+          FROM hourly_sales
+          WHERE hour = ${prevHour} AND sales_date::date < ${dateStr}::date
+          ORDER BY restaurant_id, sales_date::date, scraped_at DESC NULLS LAST
+        ) sub
+      `);
+      const companyRecord = (companyRecordResult.rows?.[0] || {}) as { max_sales: string };
 
-      const allTimeBest = parseFloat(companyRecord?.maxSales || "0");
+      const allTimeBest = parseFloat(companyRecord?.max_sales || "0");
 
       if (allTimeBest > 0 && sales > allTimeBest) {
         // NEW COMPANY RECORD
@@ -338,15 +338,19 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
 
   if (types.dailySalesRecord && centralHour >= 12) {
     // Only check after noon so there's meaningful data
-    const todayAll = await db
-      .select()
-      .from(hourlySales)
-      .where(sql`${hourlySales.salesDate}::date = ${dateStr}::date`);
+    // Use DISTINCT ON to get only the latest-scraped row per restaurant/hour
+    const todayAllResult = await db.execute(sql`
+      SELECT DISTINCT ON (restaurant_id, hour) restaurant_id, hour, actual_sales
+      FROM hourly_sales
+      WHERE sales_date::date = ${dateStr}::date
+      ORDER BY restaurant_id, hour, scraped_at DESC NULLS LAST
+    `);
+    const todayAll = (todayAllResult.rows || []) as { restaurant_id: string; hour: number; actual_sales: string }[];
 
     // Sum today's sales by restaurant
     const todaySalesByStore: Record<string, number> = {};
     for (const h of todayAll) {
-      todaySalesByStore[h.restaurantId] = (todaySalesByStore[h.restaurantId] || 0) + parseFloat(h.actualSales);
+      todaySalesByStore[h.restaurant_id] = (todaySalesByStore[h.restaurant_id] || 0) + parseFloat(h.actual_sales);
     }
 
     for (const [rid, todayTotal] of Object.entries(todaySalesByStore)) {
@@ -356,18 +360,21 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
       const name = restaurant.unitNumber || restaurant.name;
 
       // Get same-day-of-week totals for last 4 weeks (through same hour for fair comparison)
+      // Use a subquery with DISTINCT ON to deduplicate before summing
       const historicalTotals: number[] = [];
       for (const histDate of fourWeekDates) {
-        const [result] = await db
-          .select({ total: sql<string>`COALESCE(SUM(${hourlySales.actualSales}::numeric), 0)` })
-          .from(hourlySales)
-          .where(
-            and(
-              eq(hourlySales.restaurantId, rid),
-              sql`${hourlySales.salesDate}::date = ${histDate}::date`,
-              lte(hourlySales.hour, prevHour) // Only compare through same hour
-            )
-          );
+        const histResult = await db.execute(sql`
+          SELECT COALESCE(SUM(actual_sales::numeric), 0) AS total
+          FROM (
+            SELECT DISTINCT ON (hour) actual_sales
+            FROM hourly_sales
+            WHERE restaurant_id = ${rid}
+              AND sales_date::date = ${histDate}::date
+              AND hour <= ${prevHour}
+            ORDER BY hour, scraped_at DESC NULLS LAST
+          ) sub
+        `);
+        const result = (histResult.rows?.[0] || {}) as { total: string };
         historicalTotals.push(parseFloat(result?.total || "0"));
       }
 
@@ -512,18 +519,22 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
 
   if (types.paceLeader && centralHour === 14) {
     // Single daily announcement at 2 PM — who is most ahead of last week
-    const todayAll = await db
-      .select()
-      .from(hourlySales)
-      .where(sql`${hourlySales.salesDate}::date = ${dateStr}::date`);
+    // Use DISTINCT ON to get only the latest-scraped row per restaurant/hour
+    const paceResult = await db.execute(sql`
+      SELECT DISTINCT ON (restaurant_id, hour) restaurant_id, actual_sales, past_actual_sales
+      FROM hourly_sales
+      WHERE sales_date::date = ${dateStr}::date
+      ORDER BY restaurant_id, hour, scraped_at DESC NULLS LAST
+    `);
+    const paceRows = (paceResult.rows || []) as { restaurant_id: string; actual_sales: string; past_actual_sales: string | null }[];
 
     const salesByRestaurant: Record<string, { today: number; lastWeek: number }> = {};
-    for (const h of todayAll) {
-      if (!salesByRestaurant[h.restaurantId]) {
-        salesByRestaurant[h.restaurantId] = { today: 0, lastWeek: 0 };
+    for (const h of paceRows) {
+      if (!salesByRestaurant[h.restaurant_id]) {
+        salesByRestaurant[h.restaurant_id] = { today: 0, lastWeek: 0 };
       }
-      salesByRestaurant[h.restaurantId].today += parseFloat(h.actualSales);
-      salesByRestaurant[h.restaurantId].lastWeek += parseFloat(h.pastActualSales || "0");
+      salesByRestaurant[h.restaurant_id].today += parseFloat(h.actual_sales);
+      salesByRestaurant[h.restaurant_id].lastWeek += parseFloat(h.past_actual_sales || "0");
     }
 
     // Rank all stores by pace %
