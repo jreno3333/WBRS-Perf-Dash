@@ -319,6 +319,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
               <div className="flex-1 min-w-0">
                 <span className="text-foreground">{note.note}</span>
                 <span className="text-muted-foreground ml-1">
+                  {note.author && `${note.author.split('@')[0]} · `}
                   {note.hour !== null && `${note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`} · `}
                   {note.category !== 'general' && `${note.category} · `}
                   {note.createdAt ? new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'just now'}
@@ -845,6 +846,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                           <div key={note.id} className="text-[11px] leading-snug">
                             <span className="text-foreground">{note.note}</span>
                             <span className="text-muted-foreground ml-1">
+                              {note.author && `${note.author.split('@')[0]} · `}
                               {note.hour !== null && `${note.hour === 0 ? '12am' : note.hour < 12 ? `${note.hour}am` : note.hour === 12 ? '12pm' : `${note.hour - 12}pm`} · `}
                               {note.category !== 'general' && `${note.category} · `}
                               {note.createdAt ? new Date(note.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}

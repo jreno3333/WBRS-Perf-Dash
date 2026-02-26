@@ -87,7 +87,8 @@ router.post("/api/notes", async (req, res) => {
     const id = crypto.randomUUID();
     const hourVal = hour !== undefined && hour !== null ? parseInt(hour) : null;
     const catVal = category || "general";
-    const authorVal = author || null;
+    // Auto-populate author from session email; fall back to request body
+    const authorVal = req.session?.email || author || null;
 
     const result = await db.execute(sql`
       INSERT INTO restaurant_notes (id, restaurant_id, date, hour, note, author, category, created_at, updated_at)
