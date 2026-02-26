@@ -1,9 +1,41 @@
 import { Router, Request, Response } from "express";
 import { db } from "../db";
-import { tickerMessages, milestoneConfig, restaurants, hourlySales } from "@shared/schema";
-import { eq, and, or, lte, gte, isNull, desc, sql } from "drizzle-orm";
+import { tickerMessages, milestoneConfig, restaurants, hourlySales, hmeTimerData, posOrders } from "@shared/schema";
+import { eq, and, or, lte, gte, isNull, desc, sql, ne } from "drizzle-orm";
+import { getCentralTime } from "../utils/dates";
 
 const router = Router();
+
+// ─── Helper: Get end-of-day midnight Central ────────────────────────────────
+
+function getEndOfDayCentral(): Date {
+  const now = new Date();
+  // Get current Central date
+  const centralDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+
+  // Parse to get the date components
+  const [year, month, day] = centralDate.split("-").map(Number);
+
+  // Create midnight of the NEXT day in Central (= end of today)
+  // We'll approximate by using the offset. Central is UTC-6 (CST) or UTC-5 (CDT)
+  const jan = new Date(year, 0, 1);
+  const jul = new Date(year, 6, 1);
+  const isDST = now.getTimezoneOffset() !== Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+  // Use a simpler approach: set to 23:59:59 Central
+  const endOfDay = new Date(`${centralDate}T23:59:59${isDST ? "-05:00" : "-06:00"}`);
+  return endOfDay;
+}
+
+// ─── Helper: Format dollar amounts ──────────────────────────────────────────
+
+function fmtDollars(val: number): string {
+  return "$" + val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
 
 // ─── Public: Get active ticker messages ─────────────────────────────────────
 
@@ -141,7 +173,6 @@ router.get("/api/ticker/milestone-config", async (_req: Request, res: Response) 
     const [config] = await db.select().from(milestoneConfig).limit(1);
 
     if (!config) {
-      // Return defaults
       return res.json({
         config: {
           id: null,
@@ -207,121 +238,364 @@ router.put("/api/ticker/milestone-config", async (req: Request, res: Response) =
   }
 });
 
-// ─── Milestone Auto-Detection (called by scheduler or manually) ─────────────
+// ─── Milestone Auto-Detection ───────────────────────────────────────────────
+// Tiered system:
+//   - "Great job" messages: beat your own 4-week best for that hour/day
+//   - "NEW COMPANY RECORD" messages: beat the best ANY store has ever done
+// All milestones expire at end of day (midnight Central)
 
-router.post("/api/ticker/check-milestones", async (req: Request, res: Response) => {
-  try {
-    // Check if milestones are enabled
-    const [config] = await db.select().from(milestoneConfig).limit(1);
-    if (!config?.isEnabled) {
-      return res.json({ milestones: [], message: "Milestones are disabled" });
-    }
+export async function checkMilestones(): Promise<{ milestones: string[]; count: number }> {
+  const [config] = await db.select().from(milestoneConfig).limit(1);
+  if (!config?.isEnabled) {
+    return { milestones: [], count: 0 };
+  }
 
-    const types = config.milestoneTypes as Record<string, boolean>;
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-    const currentHour = parseInt(
-      now.toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false })
-    );
+  const types = config.milestoneTypes as Record<string, boolean>;
+  const { hour: centralHour, date: dateStr } = getCentralTime();
+  const prevHour = centralHour === 0 ? 23 : centralHour - 1;
+  const endOfDay = getEndOfDayCentral();
 
-    const milestones: string[] = [];
+  const milestones: { msg: string; priority: "normal" | "high" | "urgent" }[] = [];
 
-    // Get all restaurants
-    const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
-    const restaurantMap = new Map(allRestaurants.map(r => [r.id, r]));
+  // Get all active restaurants
+  const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
+  const restaurantMap = new Map(allRestaurants.map(r => [r.id, r]));
 
-    if (types.hourlyRecord) {
-      // Check if any restaurant set an hourly sales record for the current hour
-      // Compare current hour sales to same hour last 4 weeks
-      const todayHourly = await db
-        .select()
+  // Build date strings for last 4 weeks (same day of week)
+  const fourWeekDates: string[] = [];
+  for (let w = 1; w <= 4; w++) {
+    const d = new Date();
+    d.setDate(d.getDate() - w * 7);
+    fourWeekDates.push(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(d));
+  }
+
+  // ── 1. Hourly Sales Record ──────────────────────────────────────────────
+
+  if (types.hourlyRecord) {
+    // Get today's sales for the last completed hour
+    const todayHourly = await db
+      .select()
+      .from(hourlySales)
+      .where(
+        and(
+          eq(hourlySales.hour, prevHour),
+          sql`${hourlySales.salesDate}::date = ${dateStr}::date`
+        )
+      );
+
+    for (const hourData of todayHourly) {
+      const restaurant = restaurantMap.get(hourData.restaurantId);
+      if (!restaurant) continue;
+      const sales = parseFloat(hourData.actualSales);
+      if (sales <= 0) continue;
+      const name = restaurant.unitNumber || restaurant.name;
+
+      // 4-week rolling best for THIS store at THIS hour
+      const historicalForStore = await db
+        .select({ actualSales: hourlySales.actualSales })
         .from(hourlySales)
         .where(
           and(
-            eq(hourlySales.hour, currentHour - 1), // Check last completed hour
-            sql`${hourlySales.salesDate}::date = ${dateStr}::date`
+            eq(hourlySales.restaurantId, hourData.restaurantId),
+            eq(hourlySales.hour, prevHour),
+            sql`${hourlySales.salesDate}::date = ANY(ARRAY[${sql.join(fourWeekDates.map(d => sql`${d}::date`), sql`, `)}])`,
           )
         );
 
-      for (const hourData of todayHourly) {
-        const restaurant = restaurantMap.get(hourData.restaurantId);
-        if (!restaurant) continue;
-        const sales = parseFloat(hourData.actualSales);
-        const lastWeek = parseFloat(hourData.pastActualSales || "0");
+      const best4Week = Math.max(0, ...historicalForStore.map(h => parseFloat(h.actualSales)));
 
-        if (sales > 0 && lastWeek > 0 && sales > lastWeek * 1.15) {
-          const name = restaurant.unitNumber || restaurant.name;
-          milestones.push(
-            `Great job ${name}! $${sales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} in hour ${currentHour - 1} - that's ${Math.round(((sales - lastWeek) / lastWeek) * 100)}% above last week!`
-          );
-        }
+      // All-time company record for this hour (any store, any day)
+      const [companyRecord] = await db
+        .select({ maxSales: sql<string>`MAX(${hourlySales.actualSales}::numeric)` })
+        .from(hourlySales)
+        .where(
+          and(
+            eq(hourlySales.hour, prevHour),
+            sql`${hourlySales.salesDate}::date < ${dateStr}::date` // Exclude today
+          )
+        );
+
+      const allTimeBest = parseFloat(companyRecord?.maxSales || "0");
+
+      if (allTimeBest > 0 && sales > allTimeBest) {
+        // NEW COMPANY RECORD
+        milestones.push({
+          msg: `NEW COMPANY RECORD! ${name} just posted ${fmtDollars(sales)} at hour ${prevHour} - beating the previous record of ${fmtDollars(allTimeBest)}!`,
+          priority: "urgent",
+        });
+      } else if (best4Week > 0 && sales > best4Week) {
+        // Beat their own 4-week best
+        const pctAbove = Math.round(((sales - best4Week) / best4Week) * 100);
+        milestones.push({
+          msg: `Great job ${name}! ${fmtDollars(sales)} at hour ${prevHour} - ${pctAbove}% above your 4-week best!`,
+          priority: "high",
+        });
       }
     }
+  }
 
-    if (types.paceLeader) {
-      // Find the restaurant leading the pace (highest % ahead of last week)
-      const todayAll = await db
-        .select()
-        .from(hourlySales)
-        .where(sql`${hourlySales.salesDate}::date = ${dateStr}::date`);
+  // ── 2. Daily Sales Record (cumulative so far) ───────────────────────────
 
-      const salesByRestaurant: Record<string, { today: number; lastWeek: number }> = {};
-      for (const h of todayAll) {
-        if (!salesByRestaurant[h.restaurantId]) {
-          salesByRestaurant[h.restaurantId] = { today: 0, lastWeek: 0 };
-        }
-        salesByRestaurant[h.restaurantId].today += parseFloat(h.actualSales);
-        salesByRestaurant[h.restaurantId].lastWeek += parseFloat(h.pastActualSales || "0");
+  if (types.dailySalesRecord && centralHour >= 12) {
+    // Only check after noon so there's meaningful data
+    const todayAll = await db
+      .select()
+      .from(hourlySales)
+      .where(sql`${hourlySales.salesDate}::date = ${dateStr}::date`);
+
+    // Sum today's sales by restaurant
+    const todaySalesByStore: Record<string, number> = {};
+    for (const h of todayAll) {
+      todaySalesByStore[h.restaurantId] = (todaySalesByStore[h.restaurantId] || 0) + parseFloat(h.actualSales);
+    }
+
+    for (const [rid, todayTotal] of Object.entries(todaySalesByStore)) {
+      if (todayTotal <= 0) continue;
+      const restaurant = restaurantMap.get(rid);
+      if (!restaurant) continue;
+      const name = restaurant.unitNumber || restaurant.name;
+
+      // Get same-day-of-week totals for last 4 weeks (through same hour for fair comparison)
+      const historicalTotals: number[] = [];
+      for (const histDate of fourWeekDates) {
+        const [result] = await db
+          .select({ total: sql<string>`COALESCE(SUM(${hourlySales.actualSales}::numeric), 0)` })
+          .from(hourlySales)
+          .where(
+            and(
+              eq(hourlySales.restaurantId, rid),
+              sql`${hourlySales.salesDate}::date = ${histDate}::date`,
+              lte(hourlySales.hour, prevHour) // Only compare through same hour
+            )
+          );
+        historicalTotals.push(parseFloat(result?.total || "0"));
       }
 
-      let bestPace = 0;
-      let bestRestaurant = "";
-      for (const [rid, totals] of Object.entries(salesByRestaurant)) {
-        if (totals.lastWeek > 0) {
-          const pace = ((totals.today - totals.lastWeek) / totals.lastWeek) * 100;
-          if (pace > bestPace) {
-            bestPace = pace;
-            const r = restaurantMap.get(rid);
-            bestRestaurant = r?.unitNumber || r?.name || rid;
+      const best4WeekDaily = Math.max(0, ...historicalTotals);
+
+      if (best4WeekDaily > 0 && todayTotal > best4WeekDaily * 1.05) {
+        const pctAbove = Math.round(((todayTotal - best4WeekDaily) / best4WeekDaily) * 100);
+        milestones.push({
+          msg: `${name} is on a record-setting day! ${fmtDollars(todayTotal)} through hour ${prevHour} - ${pctAbove}% above the 4-week best pace!`,
+          priority: "high",
+        });
+      }
+    }
+  }
+
+  // ── 3. Fastest Drive-Thru Hour ──────────────────────────────────────────
+
+  if (types.fastestDriveThru) {
+    try {
+      // Get today's HME data for the last completed hour
+      const todayHme = await db
+        .select()
+        .from(hmeTimerData)
+        .where(
+          and(
+            eq(hmeTimerData.date, dateStr),
+            eq(hmeTimerData.hour, prevHour),
+            sql`${hmeTimerData.carCount} >= 5` // Need meaningful volume
+          )
+        );
+
+      if (todayHme.length > 0) {
+        // Find the fastest store this hour
+        let fastestTime = Infinity;
+        let fastestStore = "";
+        let fastestCars = 0;
+
+        for (const hme of todayHme) {
+          const avgTime = hme.avgServiceTime;
+          if (avgTime > 0 && avgTime < fastestTime) {
+            fastestTime = avgTime;
+            const r = restaurantMap.get(hme.restaurantId);
+            fastestStore = r?.unitNumber || r?.name || hme.restaurantId;
+            fastestCars = hme.carCount;
+          }
+        }
+
+        if (fastestStore && fastestTime < 180) {
+          // Under 3 minutes is notable
+          const mins = Math.floor(fastestTime / 60);
+          const secs = fastestTime % 60;
+
+          // Check company record for this hour
+          const [companyBest] = await db
+            .select({ bestTime: sql<string>`MIN(${hmeTimerData.avgServiceTime})` })
+            .from(hmeTimerData)
+            .where(
+              and(
+                eq(hmeTimerData.hour, prevHour),
+                ne(hmeTimerData.date, dateStr),
+                sql`${hmeTimerData.carCount} >= 5`
+              )
+            );
+
+          const allTimeBestDT = parseInt(companyBest?.bestTime || "999");
+
+          if (fastestTime < allTimeBestDT) {
+            milestones.push({
+              msg: `NEW DT RECORD! ${fastestStore} averaged ${mins}:${secs.toString().padStart(2, "0")} window time at hour ${prevHour} with ${fastestCars} cars!`,
+              priority: "urgent",
+            });
+          } else {
+            milestones.push({
+              msg: `Fastest drive-thru at hour ${prevHour}: ${fastestStore} with ${mins}:${secs.toString().padStart(2, "0")} avg window time (${fastestCars} cars)!`,
+              priority: "normal",
+            });
           }
         }
       }
-
-      if (bestPace > 5 && bestRestaurant) {
-        milestones.push(
-          `${bestRestaurant} is leading the pace race at +${bestPace.toFixed(1)}% vs last week!`
-        );
-      }
+    } catch (e) {
+      // HME data may not be available for all stores
     }
+  }
 
-    // Auto-create ticker messages for detected milestones
-    for (const msg of milestones) {
-      // Check if a similar milestone message already exists today
-      const existing = await db
-        .select()
-        .from(tickerMessages)
+  // ── 4. Top Check Average ────────────────────────────────────────────────
+
+  if (types.topCheckAverage) {
+    try {
+      // Get POS check averages for the last completed hour
+      const hourStart = new Date(`${dateStr}T${prevHour.toString().padStart(2, "0")}:00:00`);
+      const hourEnd = new Date(`${dateStr}T${(prevHour + 1).toString().padStart(2, "0")}:00:00`);
+
+      const checkAvgByStore = await db
+        .select({
+          storeNumber: posOrders.storeNumber,
+          avgCheck: sql<string>`ROUND(AVG(${posOrders.orderTotal}::numeric), 2)`,
+          orderCount: sql<string>`COUNT(*)`,
+        })
+        .from(posOrders)
         .where(
           and(
-            eq(tickerMessages.type, "milestone"),
-            eq(tickerMessages.message, msg),
-            sql`${tickerMessages.createdAt}::date = ${dateStr}::date`
+            sql`${posOrders.orderClosedAt} >= ${hourStart}`,
+            sql`${posOrders.orderClosedAt} < ${hourEnd}`,
+            sql`${posOrders.orderTotal}::numeric > 0`
           )
         )
-        .limit(1);
+        .groupBy(posOrders.storeNumber);
 
-      if (existing.length === 0) {
-        await db.insert(tickerMessages).values({
-          message: msg,
-          type: "milestone",
-          priority: "high",
-          isActive: true,
-          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000), // Expire after 4 hours
-          createdBy: "system",
+      if (checkAvgByStore.length > 0) {
+        // Find best check average this hour (min 5 orders)
+        let bestAvg = 0;
+        let bestStore = "";
+        let bestCount = 0;
+
+        for (const store of checkAvgByStore) {
+          const avg = parseFloat(store.avgCheck);
+          const cnt = parseInt(store.orderCount);
+          if (cnt >= 5 && avg > bestAvg) {
+            bestAvg = avg;
+            bestStore = store.storeNumber;
+            bestCount = cnt;
+          }
+        }
+
+        if (bestStore && bestAvg > 0) {
+          // Find the restaurant name from unit number
+          const matchedRestaurant = allRestaurants.find(r => r.unitNumber === bestStore);
+          const displayName = matchedRestaurant?.unitNumber || matchedRestaurant?.name || bestStore;
+
+          milestones.push({
+            msg: `Highest check average at hour ${prevHour}: ${displayName} at $${bestAvg.toFixed(2)} across ${bestCount} orders!`,
+            priority: "normal",
+          });
+        }
+      }
+    } catch (e) {
+      // POS data may not be available
+    }
+  }
+
+  // ── 5. Pace Leader of the Day (posted at 2 PM Central) ───────────────
+
+  if (types.paceLeader && centralHour === 14) {
+    // Single daily announcement at 2 PM — who is most ahead of last week
+    const todayAll = await db
+      .select()
+      .from(hourlySales)
+      .where(sql`${hourlySales.salesDate}::date = ${dateStr}::date`);
+
+    const salesByRestaurant: Record<string, { today: number; lastWeek: number }> = {};
+    for (const h of todayAll) {
+      if (!salesByRestaurant[h.restaurantId]) {
+        salesByRestaurant[h.restaurantId] = { today: 0, lastWeek: 0 };
+      }
+      salesByRestaurant[h.restaurantId].today += parseFloat(h.actualSales);
+      salesByRestaurant[h.restaurantId].lastWeek += parseFloat(h.pastActualSales || "0");
+    }
+
+    // Rank all stores by pace %
+    const paceRanking: { name: string; pace: number; todaySales: number; dollarsAhead: number }[] = [];
+    for (const [rid, totals] of Object.entries(salesByRestaurant)) {
+      if (totals.lastWeek > 500) {
+        const pace = ((totals.today - totals.lastWeek) / totals.lastWeek) * 100;
+        const r = restaurantMap.get(rid);
+        paceRanking.push({
+          name: r?.unitNumber || r?.name || rid,
+          pace,
+          todaySales: totals.today,
+          dollarsAhead: totals.today - totals.lastWeek,
         });
       }
     }
 
-    return res.json({ milestones, count: milestones.length });
+    paceRanking.sort((a, b) => b.pace - a.pace);
+
+    if (paceRanking.length > 0 && paceRanking[0].pace > 0) {
+      const leader = paceRanking[0];
+      milestones.push({
+        msg: `Pace Leader of the Day: ${leader.name} at +${leader.pace.toFixed(1)}% vs last week (${fmtDollars(leader.todaySales)} today, ${fmtDollars(leader.dollarsAhead)} ahead)!`,
+        priority: "high",
+      });
+    }
+  }
+
+  // ── Save milestones as ticker messages ──────────────────────────────────
+
+  const savedMessages: string[] = [];
+
+  for (const { msg, priority } of milestones) {
+    // Dedup: check if this exact message already exists today
+    const existing = await db
+      .select()
+      .from(tickerMessages)
+      .where(
+        and(
+          eq(tickerMessages.type, "milestone"),
+          eq(tickerMessages.message, msg),
+          sql`${tickerMessages.createdAt}::date = ${dateStr}::date`
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(tickerMessages).values({
+        message: msg,
+        type: "milestone",
+        priority,
+        isActive: true,
+        expiresAt: endOfDay, // Stays up rest of day
+        createdBy: "system",
+      });
+      savedMessages.push(msg);
+    }
+  }
+
+  return { milestones: savedMessages, count: savedMessages.length };
+}
+
+// API endpoint for manual trigger
+router.post("/api/ticker/check-milestones", async (_req: Request, res: Response) => {
+  try {
+    const [config] = await db.select().from(milestoneConfig).limit(1);
+    if (!config?.isEnabled) {
+      return res.json({ milestones: [], count: 0, message: "Milestones are disabled" });
+    }
+
+    const result = await checkMilestones();
+    return res.json(result);
   } catch (error) {
     console.error("[ticker] Failed to check milestones:", error);
     return res.status(500).json({ message: "Failed to check milestones" });
