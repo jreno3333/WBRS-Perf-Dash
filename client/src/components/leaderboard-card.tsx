@@ -234,8 +234,10 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
     general: 'text-blue-600 dark:text-blue-400',
     staffing: 'text-amber-600 dark:text-amber-400',
     equipment: 'text-red-600 dark:text-red-400',
-    weather: 'text-sky-600 dark:text-sky-400',
-    training: 'text-purple-600 dark:text-purple-400',
+    'events/large orders': 'text-sky-600 dark:text-sky-400',
+    shop: 'text-purple-600 dark:text-purple-400',
+    hospitality: 'text-teal-600 dark:text-teal-400',
+    product: 'text-orange-600 dark:text-orange-400',
     positive: 'text-green-600 dark:text-green-400',
   };
 
@@ -292,8 +294,10 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
               <option value="general">General</option>
               <option value="staffing">Staffing</option>
               <option value="equipment">Equipment</option>
-              <option value="weather">Weather</option>
-              <option value="training">Training</option>
+              <option value="events/large orders">Events/Large Orders</option>
+              <option value="shop">Shop</option>
+              <option value="hospitality">Hospitality</option>
+              <option value="product">Product</option>
               <option value="positive">Positive</option>
             </select>
             <button
