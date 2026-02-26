@@ -934,6 +934,23 @@ interface ParsedItem {
   minorCategory?: string;
 }
 
+/** Chicken entree items that come with an included dipping sauce. */
+const CHICKEN_WITH_SAUCE_PATTERNS: RegExp[] = [
+  /\bCHICKEN\s*STRIP/i,
+  /\bCHICKEN\s*TENDER/i,
+  /\bCHICKEN\s*NUGGET/i,
+  /\bCHICKEN\s*FINGER/i,
+  /\bCHICKEN\s*BITE/i,
+  /\bWHATACHICK.*\bBITE/i,
+  /\bWHATACHICK.*\bSTRIP/i,
+  /\bWHATACHICK.*\bNUGGET/i,
+];
+
+function isChickenWithIncludedSauce(item: ParsedItem): boolean {
+  const name = item.name || '';
+  return CHICKEN_WITH_SAUCE_PATTERNS.some(p => p.test(name));
+}
+
 function classifyItem(item: ParsedItem, category: AttachmentCategory): boolean {
   const name = item.name || '';
 
@@ -1074,9 +1091,19 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
     // For each category, check if ANY item in this order matches
     for (const cat of categories) {
       const catDef = ATTACHMENT_CATEGORIES[cat];
-      const hasAttachment = items.some(item => classifyItem(item, catDef));
-      if (hasAttachment) {
-        entry.categoryHits[cat]++;
+
+      if (cat === 'dipping_sauces') {
+        // Chicken strips/tenders/nuggets include 1 sauce each — only count additional sauces as upsells
+        const sauceCount = items.filter(item => classifyItem(item, catDef)).length;
+        const chickenEntreeCount = items.filter(item => isChickenWithIncludedSauce(item)).length;
+        if (sauceCount > chickenEntreeCount) {
+          entry.categoryHits[cat]++;
+        }
+      } else {
+        const hasAttachment = items.some(item => classifyItem(item, catDef));
+        if (hasAttachment) {
+          entry.categoryHits[cat]++;
+        }
       }
     }
   }
