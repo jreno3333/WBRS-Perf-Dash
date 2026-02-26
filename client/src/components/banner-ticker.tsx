@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Megaphone, Trophy, Zap, Star } from "lucide-react";
 import type { TickerMessage } from "@shared/schema";
 
@@ -15,6 +15,50 @@ const typeIcons: Record<string, typeof Star> = {
   immediate: Megaphone,
   scheduled: Megaphone,
 };
+
+/** Scrolls text horizontally when it overflows its container */
+function MarqueeText({ text, className }: { text: string; className?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [shouldScroll, setShouldScroll] = useState(false);
+  const [duration, setDuration] = useState(10);
+
+  const measure = useCallback(() => {
+    const container = containerRef.current;
+    const span = textRef.current;
+    if (!container || !span) return;
+    const overflow = span.scrollWidth > container.clientWidth + 2;
+    setShouldScroll(overflow);
+    if (overflow) {
+      // ~50px per second scroll speed
+      setDuration(Math.max(5, span.scrollWidth / 50));
+    }
+  }, []);
+
+  useEffect(() => {
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [text, measure]);
+
+  return (
+    <div ref={containerRef} className="overflow-hidden whitespace-nowrap">
+      <span
+        ref={textRef}
+        className={`${className} inline-block ${shouldScroll ? "animate-marquee" : ""}`}
+        style={shouldScroll ? { animationDuration: `${duration}s` } : undefined}
+      >
+        {text}
+        {shouldScroll && (
+          <>
+            <span className="mx-12" aria-hidden="true">•</span>
+            <span aria-hidden="true">{text}</span>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
 
 export function BannerTicker() {
   const { data } = useQuery<{ messages: TickerMessage[] }>({
@@ -71,9 +115,8 @@ export function BannerTicker() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: -20, opacity: 0 }}
               transition={{ duration: 0.4, ease: "easeInOut" }}
-              className={`text-sm font-medium ${prio.textClass} whitespace-nowrap`}
             >
-              {current.message}
+              <MarqueeText text={current.message} className={`text-sm font-medium ${prio.textClass}`} />
             </motion.div>
           </AnimatePresence>
         </div>
