@@ -518,7 +518,7 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                   </p>
 
                   {/* Company-wide category averages */}
-                  <div className="grid grid-cols-5 gap-1.5 mb-3">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mb-3">
                     {categories.map(cat => {
                       const label = attachmentRates.categoryLabels[cat];
                       const avg = categoryAvgs[cat]
