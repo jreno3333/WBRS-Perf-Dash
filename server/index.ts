@@ -6,6 +6,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startScheduler } from "./scheduler";
 import { backfillDestinations } from "./xenial-webhook";
+import { ensureFeatureTables } from "./db";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -93,6 +94,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Create feature tables (ticker, polls, milestones) if they don't exist
+  await ensureFeatureTables();
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
