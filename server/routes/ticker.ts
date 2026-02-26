@@ -37,6 +37,37 @@ function fmtDollars(val: number): string {
   return "$" + val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+// ─── Helper: Format hour in a store's local timezone ────────────────────────
+
+function fmtHourLocal(centralHour: number, timezone: string): string {
+  // Build a date at the given Central hour today
+  const { date: dateStr } = getCentralTime();
+  const isDST = (() => {
+    const now = new Date();
+    const jan = new Date(now.getFullYear(), 0, 1);
+    const jul = new Date(now.getFullYear(), 6, 1);
+    return now.getTimezoneOffset() !== Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+  })();
+  const offset = isDST ? "-05:00" : "-06:00"; // Central offset
+  const dt = new Date(`${dateStr}T${centralHour.toString().padStart(2, "0")}:00:00${offset}`);
+
+  // Format in the restaurant's local timezone
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(dt);
+
+  // Add short timezone abbreviation (e.g., "CT", "ET")
+  const tzAbbr = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    timeZoneName: "short",
+  }).formatToParts(dt).find(p => p.type === "timeZoneName")?.value || "";
+
+  return `${formatted} ${tzAbbr}`;
+}
+
 // ─── Public: Get active ticker messages ─────────────────────────────────────
 
 router.get("/api/ticker/messages", async (_req: Request, res: Response) => {
@@ -317,17 +348,19 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
 
       const allTimeBest = parseFloat(companyRecord?.max_sales || "0");
 
+      const localTime = fmtHourLocal(prevHour, restaurant.timezone || "America/Chicago");
+
       if (allTimeBest > 0 && sales > allTimeBest) {
         // NEW COMPANY RECORD
         milestones.push({
-          msg: `NEW COMPANY RECORD! ${name} just posted ${fmtDollars(sales)} at hour ${prevHour} - beating the previous record of ${fmtDollars(allTimeBest)}!`,
+          msg: `NEW COMPANY RECORD! ${name} just posted ${fmtDollars(sales)} at ${localTime} - beating the previous record of ${fmtDollars(allTimeBest)}!`,
           priority: "urgent",
         });
       } else if (best4Week > 0 && sales > best4Week) {
         // Beat their own 4-week best
         const pctAbove = Math.round(((sales - best4Week) / best4Week) * 100);
         milestones.push({
-          msg: `Great job ${name}! ${fmtDollars(sales)} at hour ${prevHour} - ${pctAbove}% above your 4-week best!`,
+          msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${pctAbove}% above your 4-week best!`,
           priority: "high",
         });
       }
@@ -383,14 +416,14 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
       if (best4WeekDaily > 0 && todayTotal > best4WeekDaily * 1.05) {
         const pctAbove = Math.round(((todayTotal - best4WeekDaily) / best4WeekDaily) * 100);
         milestones.push({
-          msg: `${name} is on a record-setting day! ${fmtDollars(todayTotal)} through hour ${prevHour} - ${pctAbove}% above the 4-week best pace!`,
+          msg: `${name} is on a record-setting day! ${fmtDollars(todayTotal)} through ${fmtHourLocal(prevHour, restaurant.timezone || "America/Chicago")} - ${pctAbove}% above the 4-week best pace!`,
           priority: "high",
         });
       }
     }
   }
 
-  // ── 3. Fastest Drive-Thru Hour ──────────────────────────────────────────
+  // ── 3. Best Drive-Thru Speed Attainment (% of orders under 6 min) ───────
 
   if (types.fastestDriveThru) {
     try {
@@ -407,48 +440,76 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
         );
 
       if (todayHme.length > 0) {
-        // Find the fastest store this hour
-        let fastestTime = Infinity;
-        let fastestStore = "";
-        let fastestCars = 0;
+        // Find the store with the highest speed attainment (% under 6 min) this hour
+        let bestAttainment = 0;
+        let bestStore = "";
+        let bestRestaurant: typeof allRestaurants[0] | undefined;
+        let bestCars = 0;
+        let bestUnder6 = 0;
 
         for (const hme of todayHme) {
-          const avgTime = hme.avgServiceTime;
-          if (avgTime > 0 && avgTime < fastestTime) {
-            fastestTime = avgTime;
+          if (hme.carCount <= 0) continue;
+          const attainment = Math.round((hme.carsUnder6Min / hme.carCount) * 100);
+          if (attainment > bestAttainment) {
+            bestAttainment = attainment;
             const r = restaurantMap.get(hme.restaurantId);
-            fastestStore = r?.unitNumber || r?.name || hme.restaurantId;
-            fastestCars = hme.carCount;
+            bestRestaurant = r;
+            bestStore = r?.unitNumber || r?.name || hme.restaurantId;
+            bestCars = hme.carCount;
+            bestUnder6 = hme.carsUnder6Min;
           }
         }
 
-        if (fastestStore && fastestTime < 180) {
-          // Under 3 minutes is notable
-          const mins = Math.floor(fastestTime / 60);
-          const secs = fastestTime % 60;
+        if (bestStore && bestAttainment > 0) {
+          const localTime = fmtHourLocal(prevHour, bestRestaurant?.timezone || "America/Chicago");
 
-          // Check company record for this hour
-          const [companyBest] = await db
-            .select({ bestTime: sql<string>`MIN(${hmeTimerData.avgServiceTime})` })
+          // Check this store's own best attainment for this hour in the last 4 weeks
+          const historicalHme = await db
+            .select({
+              carCount: hmeTimerData.carCount,
+              carsUnder6Min: hmeTimerData.carsUnder6Min,
+            })
             .from(hmeTimerData)
             .where(
               and(
+                eq(hmeTimerData.restaurantId, bestRestaurant?.id || ""),
                 eq(hmeTimerData.hour, prevHour),
-                ne(hmeTimerData.date, dateStr),
+                sql`${hmeTimerData.date} = ANY(ARRAY[${sql.join(fourWeekDates.map(d => sql`${d}`), sql`, `)}])`,
                 sql`${hmeTimerData.carCount} >= 5`
               )
             );
 
-          const allTimeBestDT = parseInt(companyBest?.bestTime || "999");
+          const best4WeekAttainment = Math.max(0, ...historicalHme.map(h =>
+            h.carCount > 0 ? Math.round((h.carsUnder6Min / h.carCount) * 100) : 0
+          ));
 
-          if (fastestTime < allTimeBestDT) {
+          // Check company-wide all-time best attainment for this hour
+          const companyBestResult = await db.execute(sql`
+            SELECT car_count, cars_under_6_min
+            FROM hme_timer_data
+            WHERE hour = ${prevHour}
+              AND date <> ${dateStr}
+              AND car_count >= 5
+          `);
+          const companyRows = (companyBestResult.rows || []) as { car_count: number; cars_under_6_min: number }[];
+          const allTimeBestAttainment = Math.max(0, ...companyRows.map(r =>
+            r.car_count > 0 ? Math.round((r.cars_under_6_min / r.car_count) * 100) : 0
+          ));
+
+          if (allTimeBestAttainment > 0 && bestAttainment > allTimeBestAttainment) {
             milestones.push({
-              msg: `NEW DT RECORD! ${fastestStore} averaged ${mins}:${secs.toString().padStart(2, "0")} window time at hour ${prevHour} with ${fastestCars} cars!`,
+              msg: `NEW DT RECORD! ${bestStore} hit ${bestAttainment}% under 6 min at ${localTime} (${bestUnder6}/${bestCars} cars) - beating the previous record of ${allTimeBestAttainment}%!`,
               priority: "urgent",
             });
-          } else {
+          } else if (best4WeekAttainment > 0 && bestAttainment > best4WeekAttainment) {
             milestones.push({
-              msg: `Fastest drive-thru at hour ${prevHour}: ${fastestStore} with ${mins}:${secs.toString().padStart(2, "0")} avg window time (${fastestCars} cars)!`,
+              msg: `Great speed ${bestStore}! ${bestAttainment}% under 6 min at ${localTime} (${bestUnder6}/${bestCars} cars) - above your 4-week best of ${best4WeekAttainment}%!`,
+              priority: "high",
+            });
+          } else if (bestAttainment >= 70) {
+            // Meeting the 70% goal is noteworthy
+            milestones.push({
+              msg: `Best DT speed at ${localTime}: ${bestStore} with ${bestAttainment}% under 6 min (${bestUnder6}/${bestCars} cars)!`,
               priority: "normal",
             });
           }
@@ -504,8 +565,9 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
           const matchedRestaurant = allRestaurants.find(r => r.unitNumber === bestStore);
           const displayName = matchedRestaurant?.unitNumber || matchedRestaurant?.name || bestStore;
 
+          const localTime = fmtHourLocal(prevHour, matchedRestaurant?.timezone || "America/Chicago");
           milestones.push({
-            msg: `Highest check average at hour ${prevHour}: ${displayName} at $${bestAvg.toFixed(2)} across ${bestCount} orders!`,
+            msg: `Highest check average at ${localTime}: ${displayName} at $${bestAvg.toFixed(2)} across ${bestCount} orders!`,
             priority: "normal",
           });
         }
