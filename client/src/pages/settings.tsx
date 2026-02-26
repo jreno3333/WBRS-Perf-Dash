@@ -2532,6 +2532,7 @@ function TickerMessagesCard() {
     },
     onSuccess: () => {
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/ticker/messages"] });
       setNewMessage("");
       setScheduledAt("");
       toast({ title: "Message sent", description: "Ticker message has been created." });
@@ -2545,7 +2546,10 @@ function TickerMessagesCard() {
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
       return apiRequest("PATCH", `/api/ticker/messages/${id}`, { isActive });
     },
-    onSuccess: () => refetch(),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/ticker/messages"] });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -2554,6 +2558,7 @@ function TickerMessagesCard() {
     },
     onSuccess: () => {
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/ticker/messages"] });
       toast({ title: "Deleted", description: "Message removed." });
     },
   });
@@ -2850,6 +2855,7 @@ function PollManagementCard() {
     },
     onSuccess: () => {
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/polls/active"] });
       setNewQuestion("");
       setNewOptions(["", ""]);
       toast({ title: "Poll created", description: "Your poll is now live." });
@@ -2863,7 +2869,10 @@ function PollManagementCard() {
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
       return apiRequest("PATCH", `/api/polls/${id}`, { isActive });
     },
-    onSuccess: () => refetch(),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/polls/active"] });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -2872,6 +2881,7 @@ function PollManagementCard() {
     },
     onSuccess: () => {
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/polls/active"] });
       toast({ title: "Deleted", description: "Poll removed." });
     },
   });
