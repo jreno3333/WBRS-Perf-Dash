@@ -465,53 +465,6 @@ export const emailSendLog = pgTable("email_send_log", {
   sentAt: timestamp("sent_at").defaultNow(),
 });
 
-// Workstream applicants table - tracks applicant data by week/unit/position
-export const applicants = pgTable("applicants", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  digestKey: text("digest_key").notNull().unique(), // Workstream unique applicant ID
-  restaurantId: varchar("restaurant_id"), // Mapped restaurant ID (nullable if location not matched)
-  workstreamLocationId: text("workstream_location_id"), // Workstream location digest_key
-  workstreamLocationName: text("workstream_location_name"), // Original location name from Workstream
-  positionTitle: text("position_title").notNull(), // Job title (e.g., "Team Member", "Shift Leader")
-  positionLevel: text("position_level"), // Normalized: team_member, shift_supervisor, manager, operator
-  firstName: text("first_name"),
-  lastName: text("last_name"),
-  email: text("email"),
-  phone: text("phone"),
-  status: text("status").notNull(), // in_progress, hired, rejected, etc.
-  currentStage: text("current_stage"), // Application, Interview, Offer, etc.
-  refererSource: text("referer_source"), // Indeed, Walk-in, Referral, etc.
-  appliedAt: timestamp("applied_at"), // When the application was submitted
-  hiredAt: timestamp("hired_at"), // When they were hired (if applicable)
-  weekStart: text("week_start"), // YYYY-MM-DD of the week start (Monday)
-  syncedAt: timestamp("synced_at").defaultNow(),
-});
-
-export const insertApplicantSchema = createInsertSchema(applicants).omit({
-  id: true,
-  syncedAt: true,
-});
-
-export type InsertApplicant = z.infer<typeof insertApplicantSchema>;
-export type Applicant = typeof applicants.$inferSelect;
-
-// Workstream location mapping to our restaurants
-export const workstreamLocations = pgTable("workstream_locations", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workstreamDigestKey: text("workstream_digest_key").notNull().unique(),
-  workstreamName: text("workstream_name").notNull(),
-  restaurantId: varchar("restaurant_id"), // Our restaurant ID if matched
-  syncedAt: timestamp("synced_at").defaultNow(),
-});
-
-export const insertWorkstreamLocationSchema = createInsertSchema(workstreamLocations).omit({
-  id: true,
-  syncedAt: true,
-});
-
-export type InsertWorkstreamLocation = z.infer<typeof insertWorkstreamLocationSchema>;
-export type WorkstreamLocation = typeof workstreamLocations.$inferSelect;
-
 // Markets table - for grouping restaurants into multi-unit management groups
 export const markets = pgTable("markets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
