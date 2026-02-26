@@ -508,10 +508,10 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
     }
   }
 
-  // ── 5. Pace Leader ──────────────────────────────────────────────────────
+  // ── 5. Pace Leader of the Day (posted at 2 PM Central) ───────────────
 
-  if (types.paceLeader && centralHour >= 10) {
-    // Only announce after 10 AM when there's meaningful data
+  if (types.paceLeader && centralHour === 14) {
+    // Single daily announcement at 2 PM — who is most ahead of last week
     const todayAll = await db
       .select()
       .from(hourlySales)
@@ -526,25 +526,27 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
       salesByRestaurant[h.restaurantId].lastWeek += parseFloat(h.pastActualSales || "0");
     }
 
-    let bestPace = 0;
-    let bestRestaurant = "";
-    let bestTodaySales = 0;
+    // Rank all stores by pace %
+    const paceRanking: { name: string; pace: number; todaySales: number; dollarsAhead: number }[] = [];
     for (const [rid, totals] of Object.entries(salesByRestaurant)) {
       if (totals.lastWeek > 500) {
-        // Need meaningful baseline
         const pace = ((totals.today - totals.lastWeek) / totals.lastWeek) * 100;
-        if (pace > bestPace) {
-          bestPace = pace;
-          const r = restaurantMap.get(rid);
-          bestRestaurant = r?.unitNumber || r?.name || rid;
-          bestTodaySales = totals.today;
-        }
+        const r = restaurantMap.get(rid);
+        paceRanking.push({
+          name: r?.unitNumber || r?.name || rid,
+          pace,
+          todaySales: totals.today,
+          dollarsAhead: totals.today - totals.lastWeek,
+        });
       }
     }
 
-    if (bestPace > 5 && bestRestaurant) {
+    paceRanking.sort((a, b) => b.pace - a.pace);
+
+    if (paceRanking.length > 0 && paceRanking[0].pace > 0) {
+      const leader = paceRanking[0];
       milestones.push({
-        msg: `${bestRestaurant} is leading the pace race at +${bestPace.toFixed(1)}% vs last week (${fmtDollars(bestTodaySales)} so far)!`,
+        msg: `Pace Leader of the Day: ${leader.name} at +${leader.pace.toFixed(1)}% vs last week (${fmtDollars(leader.todaySales)} today, ${fmtDollars(leader.dollarsAhead)} ahead)!`,
         priority: "high",
       });
     }
