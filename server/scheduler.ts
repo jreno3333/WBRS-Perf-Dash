@@ -189,6 +189,9 @@ async function runScheduledSync() {
     // Arena evaluation hooks
     await runArenaHourlyIfNeeded();
     await runArenaEndOfDayIfNeeded();
+
+    // Milestone auto-detection (hourly)
+    await runMilestoneCheckIfNeeded();
   } catch (error) {
     log(`Sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
@@ -203,6 +206,38 @@ let lastLeaderReportSend: string | null = null;
 // Arena evaluation tracking
 let lastArenaHourlyEval: string | null = null;
 let lastArenaDailyEval: string | null = null;
+
+// Milestone check tracking
+let lastMilestoneCheck: string | null = null;
+
+// Run milestone detection at the top of each hour
+async function runMilestoneCheckIfNeeded() {
+  const now = new Date();
+  const currentMinute = now.getMinutes();
+  if (currentMinute > 9) return; // Only in first 10 minutes of each hour
+
+  const { hour: centralHour, date: centralDate } = getCentralTime(now);
+  const checkKey = `${centralDate}-${centralHour}`;
+  if (lastMilestoneCheck === checkKey) return;
+
+  // Only check during business hours (6 AM - 11 PM Central)
+  if (centralHour < 6 || centralHour > 23) return;
+
+  lastMilestoneCheck = checkKey;
+
+  try {
+    const { checkMilestones } = await import("./routes/ticker");
+    const result = await checkMilestones();
+    if (result.count > 0) {
+      log(`Milestone check: ${result.count} new milestones detected`);
+      for (const m of result.milestones) {
+        log(`  → ${m}`);
+      }
+    }
+  } catch (error) {
+    log(`Milestone check error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
 // Run hourly arena badge evaluation (top of each hour)
 async function runArenaHourlyIfNeeded() {
