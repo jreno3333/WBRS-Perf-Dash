@@ -690,13 +690,13 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                   {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
               </div>
-              {/* Low daypart grades (below B) and OSAT category issues */}
+              {/* Daypart grades and OSAT category issues */}
               {(
-                (insight.daypartGrades && insight.daypartGrades.some(dp => !dp.grade.startsWith('A') && !dp.grade.startsWith('B'))) ||
+                (insight.daypartGrades && insight.daypartGrades.length > 0) ||
                 (insight.categoryIssues && insight.categoryIssues.length > 0)
               ) && (
                 <div className="flex items-center gap-1 flex-wrap">
-                  {insight.daypartGrades?.filter(dp => !dp.grade.startsWith('A') && !dp.grade.startsWith('B')).map(dp => (
+                  {insight.daypartGrades?.map(dp => (
                     <Badge
                       key={dp.id}
                       variant="outline"
@@ -926,12 +926,6 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
               </div>
             )}
 
-            <div className="pt-2 border-t">
-              <div className="flex items-start gap-2">
-                <FileText className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                <p className="text-sm">{insight.recommendation}</p>
-              </div>
-            </div>
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
