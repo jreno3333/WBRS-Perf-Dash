@@ -317,7 +317,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         );
 
         if (gradeInfo.hasGrade) {
-          hourlyGradeScores.push(gradeToScore(gradeInfo.grade));
+          hourlyGradeScores.push(gradeInfo.score);
         }
       }
 
