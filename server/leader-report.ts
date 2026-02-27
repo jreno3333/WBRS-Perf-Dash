@@ -362,7 +362,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
 
         if (components.length > 0) {
           const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-          const score = Math.round(components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight);
+          const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
           dailyGrades.push({ score, hours: day.hoursCount });
         }
       }
