@@ -97,8 +97,27 @@ export async function ensureFeatureTables() {
         voter_id TEXT NOT NULL,
         voted_at TIMESTAMP DEFAULT now()
       );
+
+      CREATE TABLE IF NOT EXISTS email_alerts (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        restaurant_id VARCHAR,
+        restaurant_name TEXT,
+        subject TEXT NOT NULL,
+        body_text TEXT,
+        sender_email TEXT,
+        sentiment TEXT NOT NULL DEFAULT 'negative',
+        category TEXT DEFAULT 'general',
+        severity INTEGER DEFAULT 1,
+        source TEXT DEFAULT 'zapier',
+        external_id TEXT,
+        raw_payload JSONB,
+        received_at TIMESTAMP DEFAULT now(),
+        email_date TIMESTAMP,
+        parsed_at TIMESTAMP DEFAULT now()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS email_alerts_external_id_idx ON email_alerts(external_id) WHERE external_id IS NOT NULL;
     `);
-    console.log("[db] Feature tables (ticker, polls, milestones) ready");
+    console.log("[db] Feature tables (ticker, polls, milestones, email_alerts) ready");
   } catch (error) {
     console.error("[db] Failed to ensure feature tables:", error);
   }

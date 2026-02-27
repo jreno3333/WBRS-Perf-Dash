@@ -885,3 +885,57 @@ export interface PollWithResults extends Poll {
   totalVotes: number;
   userVotedOptionId?: string | null;
 }
+
+// ─── Email Alert Ingestion (Zapier webhook → complaint tracking) ─────────────
+
+export const emailAlerts = pgTable("email_alerts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id"), // Matched restaurant (null if unmatched)
+  restaurantName: text("restaurant_name"), // Extracted or mapped restaurant name
+  subject: text("subject").notNull(),
+  bodyText: text("body_text"), // Plain text body (stripped from HTML)
+  senderEmail: text("sender_email"),
+  sentiment: text("sentiment").notNull().default("negative"), // "positive" | "negative" | "neutral"
+  category: text("category").default("general"), // "food_quality" | "service" | "cleanliness" | "order_accuracy" | "wait_time" | "staff" | "general"
+  severity: integer("severity").default(1), // 1 = low, 2 = medium, 3 = high (e.g., health dept, refund request)
+  source: text("source").default("zapier"), // "zapier" | "manual" | "api"
+  externalId: text("external_id"), // Zapier payload ID or email message-id for dedup
+  rawPayload: jsonb("raw_payload"), // Full Zapier JSON for debugging
+  receivedAt: timestamp("received_at").defaultNow(), // When the alert was ingested
+  emailDate: timestamp("email_date"), // Original email send date
+  parsedAt: timestamp("parsed_at").defaultNow(),
+});
+
+export const insertEmailAlertSchema = createInsertSchema(emailAlerts).omit({
+  id: true,
+  receivedAt: true,
+  parsedAt: true,
+});
+
+export type InsertEmailAlert = z.infer<typeof insertEmailAlertSchema>;
+export type EmailAlert = typeof emailAlerts.$inferSelect;
+
+// API response types for complaint performance index
+export interface ComplaintIndexData {
+  restaurantId: string;
+  restaurantName: string;
+  totalAlerts: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  // Performance index: complaints per 500 transactions (lower is better)
+  complaintsPer500: number;
+  performanceIndex: number; // 0-100 score (100 = no complaints)
+  trend: "improving" | "declining" | "stable";
+  categoryBreakdown: Record<string, number>;
+}
+
+export interface ComplaintDashboardData {
+  restaurants: ComplaintIndexData[];
+  totalAlerts: number;
+  avgComplaintsPer500: number;
+  avgPerformanceIndex: number;
+  periodStart: string;
+  periodEnd: string;
+  recentAlerts: EmailAlert[];
+}

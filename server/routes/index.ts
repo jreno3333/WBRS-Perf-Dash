@@ -22,6 +22,7 @@ import analyticsRouter from "./analytics";
 import notesRouter from "./notes";
 import tickerRouter from "./ticker";
 import pollsRouter from "./polls";
+import emailAlertsRouter from "./email-alerts";
 
 import { db } from "../db";
 import { users } from "@shared/schema";
@@ -55,6 +56,7 @@ export async function registerRoutes(
       "/api/db-status",
       "/api/xenial/",
       "/api/arena/",
+      "/api/zapier/",
     ];
     const fullPath = req.originalUrl.split('?')[0];
     if (openPaths.some(p => fullPath.startsWith(p))) {
@@ -83,6 +85,7 @@ export async function registerRoutes(
   app.use(notesRouter);
   app.use(tickerRouter);
   app.use(pollsRouter);
+  app.use(emailAlertsRouter);
 
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {
