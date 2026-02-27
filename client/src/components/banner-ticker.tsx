@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Megaphone, Trophy, Zap, Star, X } from "lucide-react";
+import { Megaphone, Trophy, Zap, Star, X, ChevronDown } from "lucide-react";
 import type { TickerMessage } from "@shared/schema";
 
 const priorityConfig = {
@@ -10,14 +10,14 @@ const priorityConfig = {
   normal: { icon: Megaphone, bgClass: "bg-primary/5 border-primary/20", textClass: "text-foreground", iconClass: "text-primary" },
 };
 
-const typeIcons: Record<string, typeof Star> = {
-  milestone: Star,
-  immediate: Megaphone,
-  scheduled: Megaphone,
-};
+function getIcon(msg: TickerMessage) {
+  if (msg.type === "milestone") return Star;
+  const prio = priorityConfig[msg.priority as keyof typeof priorityConfig] || priorityConfig.normal;
+  return prio.icon;
+}
 
 /** Scrolls text horizontally when it overflows its container */
-function MarqueeText({ text, className, paused }: { text: string; className?: string; paused?: boolean }) {
+function MarqueeText({ text, className }: { text: string; className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   const [shouldScroll, setShouldScroll] = useState(false);
@@ -30,7 +30,6 @@ function MarqueeText({ text, className, paused }: { text: string; className?: st
     const overflow = span.scrollWidth > container.clientWidth + 2;
     setShouldScroll(overflow);
     if (overflow) {
-      // ~50px per second scroll speed
       setDuration(Math.max(5, span.scrollWidth / 50));
     }
   }, []);
@@ -46,7 +45,7 @@ function MarqueeText({ text, className, paused }: { text: string; className?: st
       <span
         ref={textRef}
         className={`${className} inline-block ${shouldScroll ? "animate-marquee" : ""}`}
-        style={shouldScroll ? { animationDuration: `${duration}s`, animationPlayState: paused ? "paused" : "running" } : undefined}
+        style={shouldScroll ? { animationDuration: `${duration}s` } : undefined}
       >
         {text}
         {shouldScroll && (
@@ -60,12 +59,8 @@ function MarqueeText({ text, className, paused }: { text: string; className?: st
   );
 }
 
-/** Expanded popover showing the full message text, wrapping naturally */
-function ExpandedMessage({ message, onClose }: { message: TickerMessage; onClose: () => void }) {
-  const prio = priorityConfig[message.priority as keyof typeof priorityConfig] || priorityConfig.normal;
-  const PrioIcon = message.type === "milestone" ? Star : prio.icon;
-
-  // Close on Escape
+/** Expanded view showing ALL messages in a scrollable list */
+function AllMessages({ messages, onClose }: { messages: TickerMessage[]; onClose: () => void }) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -74,26 +69,42 @@ function ExpandedMessage({ message, onClose }: { message: TickerMessage; onClose
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: 0.2 }}
-      className={`rounded-lg border ${prio.bgClass} px-4 py-3 shadow-lg`}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.25, ease: "easeInOut" }}
+      className="rounded-lg border border-border bg-card overflow-hidden"
     >
-      <div className="flex items-start gap-3">
-        <div className={`shrink-0 mt-0.5 ${prio.iconClass}`}>
-          <PrioIcon className="w-4 h-4" />
-        </div>
-        <p className={`text-sm font-medium ${prio.textClass} flex-1 whitespace-normal break-words`}>
-          {message.message}
-        </p>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+        <span className="text-xs font-medium text-muted-foreground">
+          {messages.length} message{messages.length !== 1 ? "s" : ""}
+        </span>
         <button
           onClick={onClose}
-          className="shrink-0 ml-2 p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+          className="p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Close"
         >
           <X className="w-3.5 h-3.5" />
         </button>
+      </div>
+
+      {/* Scrollable message list */}
+      <div className="max-h-60 overflow-y-auto divide-y divide-border">
+        {messages.map((msg) => {
+          const prio = priorityConfig[msg.priority as keyof typeof priorityConfig] || priorityConfig.normal;
+          const Icon = getIcon(msg);
+          return (
+            <div key={msg.id} className={`flex items-start gap-3 px-4 py-2.5 ${prio.bgClass.replace("border-", "")}`}>
+              <div className={`shrink-0 mt-0.5 ${prio.iconClass}`}>
+                <Icon className="w-4 h-4" />
+              </div>
+              <p className={`text-sm font-medium ${prio.textClass} whitespace-normal break-words`}>
+                {msg.message}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </motion.div>
   );
@@ -102,21 +113,21 @@ function ExpandedMessage({ message, onClose }: { message: TickerMessage; onClose
 export function BannerTicker() {
   const { data } = useQuery<{ messages: TickerMessage[] }>({
     queryKey: ["/api/ticker/messages"],
-    refetchInterval: 30 * 1000, // Refresh every 30 seconds
+    refetchInterval: 30 * 1000,
   });
 
   const messages = data?.messages || [];
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
-  // Cycle through messages — paused while a message is expanded
+  // Cycle through messages — paused while expanded
   useEffect(() => {
-    if (messages.length <= 1 || expandedId) return;
+    if (messages.length <= 1 || expanded) return;
     const interval = setInterval(() => {
       setCurrentIndex(prev => (prev + 1) % messages.length);
-    }, 10000); // 10 seconds per message
+    }, 10000);
     return () => clearInterval(interval);
-  }, [messages.length, expandedId]);
+  }, [messages.length, expanded]);
 
   // Reset index if messages change
   useEffect(() => {
@@ -130,17 +141,16 @@ export function BannerTicker() {
   const current = messages[currentIndex];
   if (!current) return null;
 
-  const isExpanded = expandedId === current.id;
   const prio = priorityConfig[current.priority as keyof typeof priorityConfig] || priorityConfig.normal;
-  const PrioIcon = prio.icon;
+  const PrioIcon = getIcon(current);
 
   return (
     <AnimatePresence mode="wait">
-      {isExpanded ? (
-        <ExpandedMessage
-          key={`expanded-${current.id}`}
-          message={current}
-          onClose={() => setExpandedId(null)}
+      {expanded ? (
+        <AllMessages
+          key="all-messages"
+          messages={messages}
+          onClose={() => setExpanded(false)}
         />
       ) : (
         <motion.div
@@ -150,19 +160,15 @@ export function BannerTicker() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
           className={`relative overflow-hidden rounded-lg border ${prio.bgClass} px-4 py-2 cursor-pointer`}
-          onClick={() => setExpandedId(current.id)}
+          onClick={() => setExpanded(true)}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpandedId(current.id); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded(true); }}
         >
           <div className="flex items-center gap-3">
             {/* Icon */}
             <div className={`shrink-0 ${prio.iconClass}`}>
-              {current.type === "milestone" ? (
-                <Star className="w-4 h-4" />
-              ) : (
-                <PrioIcon className="w-4 h-4" />
-              )}
+              <PrioIcon className="w-4 h-4" />
             </div>
 
             {/* Scrolling message area */}
@@ -180,20 +186,11 @@ export function BannerTicker() {
               </AnimatePresence>
             </div>
 
-            {/* Message counter */}
+            {/* Expand hint + counter */}
             {messages.length > 1 && (
-              <div className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                {messages.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentIndex(idx)}
-                    className={`w-1.5 h-1.5 rounded-full transition-all ${
-                      idx === currentIndex
-                        ? "bg-primary w-4"
-                        : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
-                    }`}
-                  />
-                ))}
+              <div className="shrink-0 flex items-center gap-1 text-muted-foreground">
+                <span className="text-xs">{currentIndex + 1}/{messages.length}</span>
+                <ChevronDown className="w-3.5 h-3.5" />
               </div>
             )}
           </div>

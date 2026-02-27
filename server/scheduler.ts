@@ -210,13 +210,9 @@ let lastArenaDailyEval: string | null = null;
 // Milestone check tracking
 let lastMilestoneCheck: string | null = null;
 
-// Run milestone detection at the top of each hour
+// Run milestone detection once per hour (after data syncs complete)
 async function runMilestoneCheckIfNeeded() {
-  const now = new Date();
-  const currentMinute = now.getMinutes();
-  if (currentMinute > 9) return; // Only in first 10 minutes of each hour
-
-  const { hour: centralHour, date: centralDate } = getCentralTime(now);
+  const { hour: centralHour, date: centralDate } = getCentralTime();
   const checkKey = `${centralDate}-${centralHour}`;
   if (lastMilestoneCheck === checkKey) return;
 
