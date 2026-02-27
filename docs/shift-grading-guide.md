@@ -67,12 +67,19 @@ Compares actual employees on the clock to the recommended staffing level based o
 
 | Average Score | Grade | Color |
 |---------------|-------|-------|
-| 95-100 | A+ | Green |
-| 85-94 | A | Green |
-| 75-84 | B | Blue |
-| 65-74 | C | Yellow |
-| 55-64 | D | Orange |
-| Below 55 | F | Red |
+| 97-100 | A+ | Green |
+| 93-96 | A | Green |
+| 90-92 | A- | Green |
+| 87-89 | B+ | Blue |
+| 83-86 | B | Blue |
+| 80-82 | B- | Blue |
+| 77-79 | C+ | Yellow |
+| 73-76 | C | Yellow |
+| 70-72 | C- | Yellow |
+| 67-69 | D+ | Orange |
+| 63-66 | D | Orange |
+| 60-62 | D- | Orange |
+| Below 60 | F | Red |
 
 ---
 
