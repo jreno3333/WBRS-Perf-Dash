@@ -40,16 +40,18 @@ interface SummaryCardsProps {
 
 // Grade scoring for X-Score calculation
 const scoreToGrade = (score: number): string => {
-  if (score >= 95) return 'A+';
-  if (score >= 90) return 'A';
-  if (score >= 85) return 'A-';
-  if (score >= 80) return 'B+';
-  if (score >= 75) return 'B';
-  if (score >= 70) return 'B-';
-  if (score >= 65) return 'C+';
-  if (score >= 60) return 'C';
-  if (score >= 55) return 'C-';
-  if (score >= 50) return 'D';
+  if (score >= 97) return 'A+';
+  if (score >= 93) return 'A';
+  if (score >= 90) return 'A-';
+  if (score >= 87) return 'B+';
+  if (score >= 83) return 'B';
+  if (score >= 80) return 'B-';
+  if (score >= 77) return 'C+';
+  if (score >= 73) return 'C';
+  if (score >= 70) return 'C-';
+  if (score >= 67) return 'D+';
+  if (score >= 63) return 'D';
+  if (score >= 60) return 'D-';
   return 'F';
 };
 
@@ -57,7 +59,7 @@ const getGradeColor = (grade: string): string => {
   if (grade.startsWith('A')) return 'text-green-500';
   if (grade.startsWith('B')) return 'text-blue-500';
   if (grade.startsWith('C')) return 'text-yellow-500';
-  if (grade === 'D') return 'text-orange-500';
+  if (grade.startsWith('D')) return 'text-orange-500';
   return 'text-red-500';
 };
 
@@ -65,7 +67,7 @@ const getGradeBgColor = (grade: string): string => {
   if (grade.startsWith('A')) return 'bg-green-500/10 border-green-500/30';
   if (grade.startsWith('B')) return 'bg-blue-500/10 border-blue-500/30';
   if (grade.startsWith('C')) return 'bg-yellow-500/10 border-yellow-500/30';
-  if (grade === 'D') return 'bg-orange-500/10 border-orange-500/30';
+  if (grade.startsWith('D')) return 'bg-orange-500/10 border-orange-500/30';
   return 'bg-red-500/10 border-red-500/30';
 };
 
@@ -320,12 +322,12 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   // Count stores by execution grade (group by letter family)
   const gradeCounts = { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
   Object.values(restaurantGrades).forEach(grade => {
-    const family = grade.startsWith('A') ? 'A' : grade.startsWith('B') ? 'B' : grade.startsWith('C') ? 'C' : grade === 'D' ? 'D' : 'F';
+    const family = grade.startsWith('A') ? 'A' : grade.startsWith('B') ? 'B' : grade.startsWith('C') ? 'C' : grade.startsWith('D') ? 'D' : 'F';
     gradeCounts[family as keyof typeof gradeCounts]++;
   });
   
-  // Count D/F hourly scores (score < 55 = D or F grade)
-  const dfHourCount = allHourlyScores.filter(s => s < 55).length;
+  // Count D/F hourly scores (score < 60 = F grade)
+  const dfHourCount = allHourlyScores.filter(s => s < 60).length;
 
   const overallXScore = allHourlyScores.length > 0
     ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length
