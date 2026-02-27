@@ -44,6 +44,7 @@ interface WeeklyForecastData {
     lastWeek: number;
     forecast: number;
     source: "actual" | "partial" | "projected";
+    lastWeekAtThisPoint?: number;
   }[];
 }
 
@@ -324,11 +325,20 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                     >
                       <div className="font-medium text-[10px] text-muted-foreground">{day.dayName.slice(0, 3)}</div>
                       <div className="font-semibold">{formatCompactCurrency(day.forecast)}</div>
-                      {day.lastWeek > 0 && (
-                        <div className={`text-[10px] ${day.forecast >= day.lastWeek ? "text-green-600" : "text-red-600"}`}>
-                          {day.forecast >= day.lastWeek ? "+" : ""}{((day.forecast - day.lastWeek) / day.lastWeek * 100).toFixed(0)}%
-                        </div>
-                      )}
+                      {day.lastWeek > 0 && (() => {
+                        // For the partial (current) day, use progress-matched LW sales
+                        // so the % matches the Summary card's apples-to-apples comparison.
+                        const compareLW = (day.source === "partial" && day.lastWeekAtThisPoint != null && day.lastWeekAtThisPoint > 0)
+                          ? day.lastWeekAtThisPoint
+                          : day.lastWeek;
+                        const compareValue = day.source === "partial" ? day.actual : day.forecast;
+                        const pct = ((compareValue - compareLW) / compareLW * 100);
+                        return (
+                          <div className={`text-[10px] ${pct >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {pct >= 0 ? "+" : ""}{pct.toFixed(0)}%
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>

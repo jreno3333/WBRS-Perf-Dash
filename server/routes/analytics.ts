@@ -145,6 +145,38 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
       salesByDate.set(dateKey, (salesByDate.get(dateKey) || 0) + (Number(row.totalSales) || 0));
     }
 
+    // For the partial (current) day, get progress-matched last-week sales
+    // so the percentage matches the Summary card's apples-to-apples comparison.
+    // The Summary card compares today's actual (hours completed) vs last week's
+    // same hours only. Without this, we'd compare today vs last week's FULL day.
+    const partialDay = weekDays.find(wd => wd.isPast && !wd.isComplete);
+    let lastWeekProgressMatched: number | null = null;
+    if (partialDay) {
+      // Get current hour in Central time
+      const centralHourFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        hour: "numeric",
+        hour12: false,
+      });
+      const currentCentralHour = parseInt(centralHourFormatter.format(new Date()), 10);
+      // Compare through completed hours (current hour - 1)
+      const completedHourCutoff = currentCentralHour - 1;
+
+      const lastWeekDate = new Date(partialDay.date + "T12:00:00");
+      lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+      const lwDateStr = lastWeekDate.toISOString().split("T")[0];
+
+      const progressMatchedRows = await db.select({
+        totalSales: sql<number>`sum(${hourlySales.actualSales}::numeric)`,
+      })
+      .from(hourlySales)
+      .where(
+        sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${lwDateStr} AND ${hourlySales.hour} <= ${completedHourCutoff}`
+      );
+
+      lastWeekProgressMatched = Number(progressMatchedRows[0]?.totalSales) || 0;
+    }
+
     // Build weekly forecast
     let actualTotal = 0;
     let forecastTotal = 0;
@@ -158,16 +190,16 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
       if (wd.isComplete) {
         actualTotal += actual;
         forecastTotal += actual;
-        return { ...wd, actual, lastWeek, forecast: actual, source: "actual" as const };
+        return { ...wd, actual, lastWeek, forecast: actual, source: "actual" as const, lastWeekAtThisPoint: undefined as number | undefined };
       } else if (wd.isPast) {
         // Today: actual so far + remaining projected from LW
         actualTotal += actual;
         forecastTotal += Math.max(actual, lastWeek);
-        return { ...wd, actual, lastWeek, forecast: Math.max(actual, lastWeek), source: "partial" as const };
+        return { ...wd, actual, lastWeek, forecast: Math.max(actual, lastWeek), source: "partial" as const, lastWeekAtThisPoint: lastWeekProgressMatched ?? undefined };
       } else {
         // Future: use last week same day
         forecastTotal += lastWeek;
-        return { ...wd, actual: 0, lastWeek, forecast: lastWeek, source: "projected" as const };
+        return { ...wd, actual: 0, lastWeek, forecast: lastWeek, source: "projected" as const, lastWeekAtThisPoint: undefined as number | undefined };
       }
     });
 
