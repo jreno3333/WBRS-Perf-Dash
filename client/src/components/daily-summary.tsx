@@ -34,7 +34,8 @@ import {
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency, GRADE_WEIGHTS as SHARED_GRADE_WEIGHTS, computeExecutionScore } from "@/lib/grading";
+import { formatCurrency, GRADE_WEIGHTS as SHARED_GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor as sharedGetGradeColor, gradeToMidpoint } from "@/lib/grading";
+import { DAYPARTS } from "@/lib/dayparts";
 
 interface RestaurantNote {
   id: string;
@@ -121,6 +122,7 @@ interface UnitInsight {
   crewScore?: number;
   crewTenureMonths?: number;
   crewAvgCount?: number;
+  daypartGrades?: { id: string; label: string; shortLabel: string; grade: string; score: number; color: string }[];
 }
 
 function getGradeLabel(score: number): { label: string; color: string } {
@@ -393,6 +395,43 @@ function analyzeUnit(
     }
   }
   
+  // Calculate daypart grades from hourly data
+  const daypartGrades: UnitInsight["daypartGrades"] = [];
+  if (hourlyData && hourlyData.length > 0) {
+    const completedHours = hourlyData.filter(h => h.todaySales > 0);
+    for (const dp of DAYPARTS) {
+      const dpHours = completedHours.filter(h => h.hour >= dp.startHour && h.hour <= dp.endHour);
+      const dpScores = dpHours.map(hour => {
+        const hasComparableSales = hour.lastWeekSales > 0;
+        const salesVariancePct = hasComparableSales
+          ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+          : 0;
+        const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+        const positions = hour.positionBreakdown || {};
+        const operatorHrs = positions['_operatorScheduled'] || 0;
+        const rawEmployeeCount = Number(hour.employeeCount) || 0;
+        const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+        const staffingDiff = actualStaff - staffing.total;
+        const hasValidStaffing = rawEmployeeCount >= 1;
+        const score = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+        return score > 0 ? gradeToMidpoint(scoreToGradeLabel(score)) : 0;
+      }).filter(s => s > 0);
+
+      if (dpScores.length > 0) {
+        const avg = dpScores.reduce((a, b) => a + b, 0) / dpScores.length;
+        const grade = scoreToGradeLabel(avg);
+        daypartGrades.push({
+          id: dp.id,
+          label: dp.label,
+          shortLabel: dp.shortLabel,
+          grade,
+          score: avg,
+          color: sharedGetGradeColor(grade),
+        });
+      }
+    }
+  }
+
   return {
     restaurantId: restaurant.restaurantId,
     restaurantName: restaurant.restaurantName,
@@ -416,6 +455,7 @@ function analyzeUnit(
     osatResponses: totalOsatResponses > 0 ? totalOsatResponses : undefined,
     surveyHours: surveyHours.length > 0 ? surveyHours : undefined,
     weather: restaurant.weather,
+    daypartGrades: daypartGrades.length > 0 ? daypartGrades : undefined,
   };
 }
 
@@ -596,58 +636,86 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger asChild>
           <CardHeader className="cursor-pointer pb-2">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-3 flex-wrap">
-                <CardTitle className="text-base">{insight.restaurantName}</CardTitle>
-                <Badge variant="outline" className="text-xs">{insight.state}</Badge>
-                <Badge className={`${insight.gradeColor} bg-transparent border`}>
-                  {insight.gradeLabel}
-                </Badge>
-                {insight.osatPercent !== undefined && insight.osatResponses && insight.osatResponses > 0 && (
-                  <Badge
-                    variant="outline"
-                    className={`text-xs ${insight.osatPercent >= 85 ? "text-green-600 border-green-300" : insight.osatPercent >= 80 ? "text-yellow-600 border-yellow-300" : "text-red-600 border-red-300"}`}
-                  >
-                    <ThumbsUp className="w-3 h-3 mr-1" />
-                    OSAT {insight.osatPercent.toFixed(0)}% ({insight.osatResponses})
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <CardTitle className="text-base">{insight.restaurantName}</CardTitle>
+                  <Badge variant="outline" className="text-xs">{insight.state}</Badge>
+                  <Badge className={`${insight.gradeColor} bg-transparent border`}>
+                    {insight.gradeLabel}
                   </Badge>
-                )}
-                {insight.weather && (
-                  <Badge variant="secondary" className="text-xs gap-1">
-                    <WeatherIcon condition={insight.weather.condition} />
-                    {insight.weather.highTemp !== undefined ? (
-                      <span>{Math.round(insight.weather.highTemp)}°/{Math.round(insight.weather.lowTemp ?? 0)}°</span>
-                    ) : (
-                      <span>{Math.round(insight.weather.temp)}°F</span>
-                    )}
-                  </Badge>
-                )}
-                {insight.crewScore !== undefined && insight.crewScore > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className={`text-xs gap-1 border-0 ${
-                      insight.crewScore >= 75
-                        ? "bg-green-500/10 text-green-500"
-                        : insight.crewScore >= 50
-                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                          : "bg-red-500/10 text-red-500"
-                    }`}
-                  >
-                    <GraduationCap className="w-3 h-3" />
-                    <span className="font-medium">{insight.crewScore}</span>
-                    {insight.crewTenureMonths !== undefined && (
-                      <span className="text-[10px] text-muted-foreground ml-0.5">({formatTenure(insight.crewTenureMonths)})</span>
-                    )}
-                  </Badge>
-                )}
+                  {insight.osatPercent !== undefined && insight.osatResponses && insight.osatResponses > 0 && (
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${insight.osatPercent >= 85 ? "text-green-600 border-green-300" : insight.osatPercent >= 80 ? "text-yellow-600 border-yellow-300" : "text-red-600 border-red-300"}`}
+                    >
+                      <ThumbsUp className="w-3 h-3 mr-1" />
+                      OSAT {insight.osatPercent.toFixed(0)}% ({insight.osatResponses})
+                    </Badge>
+                  )}
+                  {insight.weather && (
+                    <Badge variant="secondary" className="text-xs gap-1">
+                      <WeatherIcon condition={insight.weather.condition} />
+                      {insight.weather.highTemp !== undefined ? (
+                        <span>{Math.round(insight.weather.highTemp)}°/{Math.round(insight.weather.lowTemp ?? 0)}°</span>
+                      ) : (
+                        <span>{Math.round(insight.weather.temp)}°F</span>
+                      )}
+                    </Badge>
+                  )}
+                  {insight.crewScore !== undefined && insight.crewScore > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className={`text-xs gap-1 border-0 ${
+                        insight.crewScore >= 75
+                          ? "bg-green-500/10 text-green-500"
+                          : insight.crewScore >= 50
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-red-500/10 text-red-500"
+                      }`}
+                    >
+                      <GraduationCap className="w-3 h-3" />
+                      <span className="font-medium">{insight.crewScore}</span>
+                      {insight.crewTenureMonths !== undefined && (
+                        <span className="text-[10px] text-muted-foreground ml-0.5">({formatTenure(insight.crewTenureMonths)})</span>
+                      )}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">{formatCurrency(insight.totalSales)}</span>
+                  <span className={`text-sm ${insight.salesVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {insight.salesVariance >= 0 ? "+" : ""}{insight.salesVariance.toFixed(1)}%
+                  </span>
+                  {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">{formatCurrency(insight.totalSales)}</span>
-                <span className={`text-sm ${insight.salesVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {insight.salesVariance >= 0 ? "+" : ""}{insight.salesVariance.toFixed(1)}%
-                </span>
-                {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </div>
+              {/* Low daypart grades (below B) and OSAT category issues */}
+              {(
+                (insight.daypartGrades && insight.daypartGrades.some(dp => !dp.grade.startsWith('A') && !dp.grade.startsWith('B'))) ||
+                (insight.categoryIssues && insight.categoryIssues.length > 0)
+              ) && (
+                <div className="flex items-center gap-1 flex-wrap">
+                  {insight.daypartGrades?.filter(dp => !dp.grade.startsWith('A') && !dp.grade.startsWith('B')).map(dp => (
+                    <Badge
+                      key={dp.id}
+                      variant="outline"
+                      className={`text-[10px] px-1.5 py-0 ${dp.color} border-current/30`}
+                    >
+                      {dp.shortLabel}: {dp.grade}
+                    </Badge>
+                  ))}
+                  {insight.categoryIssues?.slice(0, 3).map((issue, i) => (
+                    <Badge
+                      key={i}
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700"
+                    >
+                      {issue.category}: {issue.avgRating.toFixed(1)}★
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </CardHeader>
         </CollapsibleTrigger>
