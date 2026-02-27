@@ -286,6 +286,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
     };
 
     const dailyDetails: DailyDetail[] = [];
+    const dailyRawScores = new Map<string, number>();
 
     const dailyEntries = Array.from(dailyMap.entries());
     for (const [dateKey, dayData] of dailyEntries) {
@@ -353,6 +354,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
       const dailyGradeScore = totalGradeWeight > 0
         ? gradeComponents.reduce((s, c) => s + c.score * c.weight, 0) / totalGradeWeight
         : 0;
+      dailyRawScores.set(dateKey, dailyGradeScore);
 
       const wentWell: string[] = [];
       const needsImprovement: string[] = [];
@@ -442,6 +444,13 @@ router.get("/api/people/leader-detail", async (req, res) => {
       });
     }
 
+    // Keep raw (unrounded) daily scores for computing the overall average,
+    // matching crew.ts which rounds only once at the end.
+    const rawDailyGrades: { score: number; hours: number }[] = [];
+    for (const d of dailyDetails) {
+      rawDailyGrades.push({ score: dailyRawScores.get(d.date) ?? d.gradeScore, hours: d.hoursWorked });
+    }
+
     dailyDetails.sort((a, b) => b.date.localeCompare(a.date));
 
     let displayPosition = leaderInfo.position || '';
@@ -454,9 +463,12 @@ router.get("/api/people/leader-detail", async (req, res) => {
     if (displayPosition.toLowerCase().includes('supervisor')) displayPosition = 'Shift Supervisor';
     if (displayPosition.toLowerCase().includes('manager') && displayPosition !== 'Shift Supervisor') displayPosition = 'Manager';
 
-    const totalHours = dailyDetails.reduce((s, d) => s + d.hoursWorked, 0);
-    const overallScore = dailyDetails.length > 0
-      ? dailyDetails.reduce((s, d) => s + d.gradeScore * d.hoursWorked, 0) / totalHours : 0;
+    // Compute overall from raw (unrounded) daily scores — matches crew.ts which
+    // rounds only once at the end, avoiding per-day rounding drift.
+    const totalGradeHours = rawDailyGrades.reduce((s, d) => s + d.hours, 0);
+    const totalHours = totalGradeHours;
+    const overallScore = rawDailyGrades.length > 0
+      ? rawDailyGrades.reduce((s, d) => s + d.score * d.hours, 0) / totalGradeHours : 0;
 
     res.json({
       leader: {
