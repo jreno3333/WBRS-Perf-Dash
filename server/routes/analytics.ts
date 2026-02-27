@@ -296,16 +296,18 @@ router.get("/api/analytics/consistency", async (req, res) => {
     }
 
     function scoreToLabel(score: number): string {
-      if (score >= 95) return "A+";
-      if (score >= 90) return "A";
-      if (score >= 85) return "A-";
-      if (score >= 80) return "B+";
-      if (score >= 75) return "B";
-      if (score >= 70) return "B-";
-      if (score >= 65) return "C+";
-      if (score >= 60) return "C";
-      if (score >= 55) return "C-";
-      if (score >= 50) return "D";
+      if (score >= 97) return "A+";
+      if (score >= 93) return "A";
+      if (score >= 90) return "A-";
+      if (score >= 87) return "B+";
+      if (score >= 83) return "B";
+      if (score >= 80) return "B-";
+      if (score >= 77) return "C+";
+      if (score >= 73) return "C";
+      if (score >= 70) return "C-";
+      if (score >= 67) return "D+";
+      if (score >= 63) return "D";
+      if (score >= 60) return "D-";
       return "F";
     }
 
@@ -379,7 +381,7 @@ router.get("/api/analytics/consistency", async (req, res) => {
             hourlyScores.push(grade);
             daysWithData.add(dateStr2);
             const label = scoreToLabel(grade);
-            if (label === "D" || label === "F") dfCount++;
+            if (label.startsWith("D") || label === "F") dfCount++;
           }
         }
       }

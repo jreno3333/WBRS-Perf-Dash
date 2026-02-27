@@ -105,16 +105,18 @@ interface UnitInsight {
 }
 
 function getGradeLabel(score: number): { label: string; color: string } {
-  if (score >= 95) return { label: "A+", color: "text-green-600" };
-  if (score >= 90) return { label: "A", color: "text-green-600" };
-  if (score >= 85) return { label: "A-", color: "text-green-500" };
-  if (score >= 80) return { label: "B+", color: "text-blue-600" };
-  if (score >= 75) return { label: "B", color: "text-blue-500" };
-  if (score >= 70) return { label: "B-", color: "text-blue-400" };
-  if (score >= 65) return { label: "C+", color: "text-yellow-600" };
-  if (score >= 60) return { label: "C", color: "text-yellow-500" };
-  if (score >= 55) return { label: "C-", color: "text-yellow-400" };
-  if (score >= 50) return { label: "D", color: "text-orange-500" };
+  if (score >= 97) return { label: "A+", color: "text-green-600" };
+  if (score >= 93) return { label: "A", color: "text-green-600" };
+  if (score >= 90) return { label: "A-", color: "text-green-500" };
+  if (score >= 87) return { label: "B+", color: "text-blue-600" };
+  if (score >= 83) return { label: "B", color: "text-blue-500" };
+  if (score >= 80) return { label: "B-", color: "text-blue-400" };
+  if (score >= 77) return { label: "C+", color: "text-yellow-600" };
+  if (score >= 73) return { label: "C", color: "text-yellow-500" };
+  if (score >= 70) return { label: "C-", color: "text-yellow-400" };
+  if (score >= 67) return { label: "D+", color: "text-orange-600" };
+  if (score >= 63) return { label: "D", color: "text-orange-500" };
+  if (score >= 60) return { label: "D-", color: "text-orange-400" };
   return { label: "F", color: "text-red-500" };
 }
 
