@@ -707,24 +707,6 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     </BadgeWithTooltip>
                   );
                 })()}
-                {/* Crew Experience Badge */}
-                {crewSummary && crewSummary.avgScore > 0 && (
-                  <BadgeWithTooltip
-                    className={`flex-shrink-0 text-xs px-1.5 gap-1 ${
-                      crewSummary.avgScore >= 75
-                        ? "bg-green-500/10 text-green-500"
-                        : crewSummary.avgScore >= 50
-                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                          : "bg-red-500/10 text-red-500"
-                    } border-0`}
-                    data-testid={`badge-crew-${restaurant.restaurantId}`}
-                    tooltipTitle="Crew Experience Score"
-                    tooltipDetail={`Weighted score (0-100) based on crew tenure mix. Avg tenure: ${formatTenure(crewSummary.avgTenureMonths)}, ${crewSummary.avgCrewCount.toFixed(0)} avg crew/hr. 75+ green, 50-74 caution, <50 concern.`}
-                  >
-                    <GraduationCap className="w-3 h-3" />
-                    <span className="font-medium">{crewSummary.avgScore}</span>
-                  </BadgeWithTooltip>
-                )}
                 {/* Check Average Badge with 7-day trend */}
                 {checkAverage && checkAverage.totalOrders > 0 && (
                   <BadgeWithTooltip
@@ -763,22 +745,6 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     )}
                   </BadgeWithTooltip>
                 )}
-                {/* Consistency Score Badge */}
-                {consistencyScore !== undefined && consistencyScore > 0 && (
-                  <BadgeWithTooltip
-                    variant="outline"
-                    className={`flex-shrink-0 text-xs font-bold ${
-                      consistencyScore >= 75 ? "text-green-500 border-green-300" :
-                      consistencyScore >= 50 ? "text-amber-600 dark:text-amber-400 border-amber-300" :
-                      "text-red-500 border-red-300"
-                    }`}
-                    data-testid={`badge-consistency-${restaurant.restaurantId}`}
-                    tooltipTitle="Consistency Score (0-100)"
-                    tooltipDetail="Measures how stable hourly execution grades are over the last 14 days. Lower grade variance and fewer D/F hours = higher score. 75+ consistent, 50-74 variable, <50 erratic."
-                  >
-                    CST: {consistencyScore}
-                  </BadgeWithTooltip>
-                )}
                 {/* Revenue Port Badges */}
                 {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
                   <div className="hidden sm:flex items-center gap-1">
@@ -799,40 +765,6 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                       );
                     })}
                   </div>
-                )}
-                {/* Weather Badge */}
-                {restaurant.weather && (
-                  <BadgeWithTooltip
-                    variant="secondary"
-                    className="flex-shrink-0 text-xs gap-1"
-                    data-testid={`badge-weather-${restaurant.restaurantId}`}
-                    tooltipContent={
-                      <div>
-                        <div className="font-medium capitalize">{restaurant.weather!.condition}</div>
-                        {restaurant.weather!.highTemp !== undefined ? (
-                          <div className="text-muted-foreground">
-                            High: {Math.round(restaurant.weather!.highTemp)}°F / Low: {Math.round(restaurant.weather!.lowTemp ?? 0)}°F
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Droplets className="w-3 h-3" />{restaurant.weather!.humidity}%
-                            </div>
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Wind className="w-3 h-3" />{Math.round(restaurant.weather!.windSpeed)} mph
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    }
-                  >
-                    <WeatherIcon condition={restaurant.weather.condition} />
-                    {restaurant.weather.highTemp !== undefined ? (
-                      <span>{Math.round(restaurant.weather.highTemp)}°/{Math.round(restaurant.weather.lowTemp ?? 0)}°</span>
-                    ) : (
-                      <span>{Math.round(restaurant.weather.temp)}°F</span>
-                    )}
-                  </BadgeWithTooltip>
                 )}
                 {/* Notes Count Badge — click to preview */}
                 {notes && notes.length > 0 && (

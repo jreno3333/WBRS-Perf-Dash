@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
-import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets } from "@shared/schema";
+import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 
@@ -97,6 +97,20 @@ router.get("/api/performance-history", async (req, res) => {
         gte(hourlyCrew.date, dateRange[0]),
         lte(hourlyCrew.date, dateRange[dateRange.length - 1])
       ));
+
+    // Fetch daily weather data for the date range
+    const allWeatherData = await db.select().from(dailyWeather)
+      .where(and(
+        gte(dailyWeather.date, dateRange[0]),
+        lte(dailyWeather.date, dateRange[dateRange.length - 1])
+      ));
+
+    // Build weather lookup by restaurantId-date
+    const weatherByKey = new Map<string, typeof allWeatherData[0]>();
+    allWeatherData.forEach(w => {
+      const key = `${w.restaurantId}-${w.date}`;
+      weatherByKey.set(key, w);
+    });
 
     // Get all restaurants and filter out training stores
     const allRestaurants = await storage.getRestaurants();
@@ -222,6 +236,7 @@ router.get("/api/performance-history", async (req, res) => {
       osatPercent?: number;
       osatResponses?: number;
       avgXp?: number; // Average experience score for the day (0-100)
+      weather?: { highTemp: number; lowTemp: number; condition: string } | null;
     };
 
     type RestaurantHistory = {
@@ -464,6 +479,12 @@ router.get("/api/performance-history", async (req, res) => {
           });
         }
 
+        // Look up weather for this restaurant+date
+        const weatherRecord = weatherByKey.get(`${restaurant.id}-${dateStr}`);
+        const dayWeather = weatherRecord && weatherRecord.highTemp != null && weatherRecord.condition
+          ? { highTemp: parseFloat(String(weatherRecord.highTemp)), lowTemp: parseFloat(String(weatherRecord.lowTemp ?? "0")), condition: weatherRecord.condition }
+          : null;
+
         historyByRestaurant.get(restaurant.id)!.dailyGrades.push({
           date: dateStr,
           grade,
@@ -476,6 +497,7 @@ router.get("/api/performance-history", async (req, res) => {
           osatPercent,
           osatResponses,
           avgXp,
+          weather: dayWeather,
         });
       }
     }
