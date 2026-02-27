@@ -357,10 +357,11 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
           priority: "urgent",
         });
       } else if (best4Week > 0 && sales > best4Week) {
-        // Beat their own 4-week best
+        // Beat their own 4-week same-day-of-week best for this hour
         const pctAbove = Math.round(((sales - best4Week) / best4Week) * 100);
+        const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
         milestones.push({
-          msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${pctAbove}% above your 4-week best!`,
+          msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${pctAbove}% above your best ${dayName} at this hour in 4 weeks!`,
           priority: "high",
         });
       }
@@ -415,8 +416,10 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
 
       if (best4WeekDaily > 0 && todayTotal > best4WeekDaily * 1.05) {
         const pctAbove = Math.round(((todayTotal - best4WeekDaily) / best4WeekDaily) * 100);
+        // Get the day-of-week name for a clearer message
+        const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
         milestones.push({
-          msg: `${name} is on a record-setting day! ${fmtDollars(todayTotal)} through ${fmtHourLocal(prevHour, restaurant.timezone || "America/Chicago")} - ${pctAbove}% above the 4-week best pace!`,
+          msg: `${name} is outpacing their best ${dayName} in 4 weeks! ${fmtDollars(todayTotal)} through ${fmtHourLocal(prevHour, restaurant.timezone || "America/Chicago")} - ${pctAbove}% above the previous best.`,
           priority: "high",
         });
       }
