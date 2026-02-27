@@ -153,7 +153,20 @@ router.get("/api/crew/summary", async (req, res) => {
 router.get("/api/people/performance", async (req, res) => {
   try {
     const { date, days = "7", restaurantId: filterRestaurantId, search: searchQuery, position: positionFilter } = req.query;
-    const endDate = date ? new Date(String(date)) : new Date();
+
+    // Exclude current day (Central Time) — partial day data creates misleading
+    // scores. Matches leader-detail.ts so both views use the same date range.
+    const now = new Date();
+    const todayCentral = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    const yesterdayCentral = new Date(`${todayCentral}T12:00:00Z`);
+    yesterdayCentral.setDate(yesterdayCentral.getDate() - 1);
+
+    let endDate = date ? new Date(String(date)) : yesterdayCentral;
+    const endDateCheck = endDate.toISOString().split('T')[0];
+    if (endDateCheck >= todayCentral) {
+      endDate = yesterdayCentral;
+    }
+
     const numDays = Math.min(parseInt(String(days)) || 7, 180);
 
     const getScalingRequirements = (periodDays: number): { minHours: number; minSurveys: number } => {
