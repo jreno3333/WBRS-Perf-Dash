@@ -465,7 +465,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
         position: displayPosition,
         totalHours,
         avgGradeScore: Math.round(overallScore),
-        gradeLabel: getGradeLabel(overallScore),
+        gradeLabel: getGradeLabel(Math.round(overallScore)),
       },
       dateRange: { start: startDateStr, end: endDateStr },
       dailyDetails,
