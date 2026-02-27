@@ -346,7 +346,7 @@ router.get("/api/people/performance", async (req, res) => {
 
       const dailyGrades: { score: number; hours: number }[] = [];
       for (const [, day] of Array.from(dailyAggregates)) {
-        const hasComparableSales = day.totalSalesLastWeek > 2000 && day.totalSalesToday > 500;
+        const hasComparableSales = day.totalSalesLastWeek > 0;
         let salesVariancePct = hasComparableSales
           ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100
           : 0;
@@ -401,16 +401,18 @@ router.get("/api/people/performance", async (req, res) => {
         const avgScore = Math.round(avgScoreRaw);
 
         let grade = 'F';
-        if (avgScore >= 95) grade = 'A+';
-        else if (avgScore >= 90) grade = 'A';
-        else if (avgScore >= 85) grade = 'A-';
-        else if (avgScore >= 80) grade = 'B+';
-        else if (avgScore >= 75) grade = 'B';
-        else if (avgScore >= 70) grade = 'B-';
-        else if (avgScore >= 65) grade = 'C+';
-        else if (avgScore >= 60) grade = 'C';
-        else if (avgScore >= 55) grade = 'C-';
-        else if (avgScore >= 50) grade = 'D';
+        if (avgScore >= 97) grade = 'A+';
+        else if (avgScore >= 93) grade = 'A';
+        else if (avgScore >= 90) grade = 'A-';
+        else if (avgScore >= 87) grade = 'B+';
+        else if (avgScore >= 83) grade = 'B';
+        else if (avgScore >= 80) grade = 'B-';
+        else if (avgScore >= 77) grade = 'C+';
+        else if (avgScore >= 73) grade = 'C';
+        else if (avgScore >= 70) grade = 'C-';
+        else if (avgScore >= 67) grade = 'D+';
+        else if (avgScore >= 63) grade = 'D';
+        else if (avgScore >= 60) grade = 'D-';
 
         let primaryRestaurantId = '';
         let maxHours = 0;

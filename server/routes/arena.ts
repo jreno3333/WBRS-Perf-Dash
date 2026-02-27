@@ -360,7 +360,7 @@ router.get("/api/arena/command-center", requireArenaAccess, async (req: Request,
           osatPercent: osat && osat.totalResponses > 0 ? osat.osatPercent : null,
           osatResponses: osat?.totalResponses || 0,
         });
-        if (score >= 95) aplusHoursToday++;
+        if (score >= 97) aplusHoursToday++;
       }
     }
 
