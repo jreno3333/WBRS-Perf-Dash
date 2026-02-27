@@ -5,14 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { 
-  ChevronDown, 
-  ChevronUp, 
-  TrendingUp, 
-  TrendingDown, 
-  AlertTriangle, 
-  CheckCircle, 
-  Users, 
+import {
+  ChevronDown,
+  ChevronUp,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  CheckCircle,
+  Users,
   Clock,
   Target,
   ThumbsUp,
@@ -22,7 +22,15 @@ import {
   Globe,
   MessageSquare,
   AlertCircle,
-  ArrowUpDown
+  ArrowUpDown,
+  Sun,
+  Cloud,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  CloudFog,
+  CloudDrizzle,
+  GraduationCap
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -102,6 +110,17 @@ interface UnitInsight {
   osatResponses?: number;
   surveyHours?: { hour: number; percent: number; responses: number; leaders: HourlyLeader[] }[];
   categoryIssues?: CategoryIssue[];
+  weather?: {
+    temp: number;
+    highTemp?: number;
+    lowTemp?: number;
+    condition: string;
+    humidity: number;
+    windSpeed: number;
+  } | null;
+  crewScore?: number;
+  crewTenureMonths?: number;
+  crewAvgCount?: number;
 }
 
 function getGradeLabel(score: number): { label: string; color: string } {
@@ -396,6 +415,7 @@ function analyzeUnit(
     osatPercent: avgOsatPercent,
     osatResponses: totalOsatResponses > 0 ? totalOsatResponses : undefined,
     surveyHours: surveyHours.length > 0 ? surveyHours : undefined,
+    weather: restaurant.weather,
   };
 }
 
@@ -404,6 +424,29 @@ function formatHour(hour: number): string {
   if (hour === 12) return "12PM";
   if (hour < 12) return `${hour}AM`;
   return `${hour - 12}PM`;
+}
+
+function WeatherIcon({ condition }: { condition: string }) {
+  const iconClass = "w-3.5 h-3.5";
+  switch (condition.toLowerCase()) {
+    case "clear": return <Sun className={iconClass} />;
+    case "partly cloudy": return <Cloud className={iconClass} />;
+    case "foggy": return <CloudFog className={iconClass} />;
+    case "rain": return <CloudRain className={iconClass} />;
+    case "showers": return <CloudDrizzle className={iconClass} />;
+    case "snow": return <CloudSnow className={iconClass} />;
+    case "thunderstorm": return <CloudLightning className={iconClass} />;
+    default: return <Sun className={iconClass} />;
+  }
+}
+
+function formatTenure(months: number): string {
+  if (months < 1) return '<1mo';
+  const years = Math.floor(months / 12);
+  const remainingMonths = Math.round(months % 12);
+  if (years === 0) return `${remainingMonths}mo`;
+  if (remainingMonths === 0) return `${years}yr`;
+  return `${years}yr ${remainingMonths}mo`;
 }
 
 // formatCurrency is imported from @/lib/grading (module-level singleton)
@@ -561,12 +604,40 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                   {insight.gradeLabel}
                 </Badge>
                 {insight.osatPercent !== undefined && insight.osatResponses && insight.osatResponses > 0 && (
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={`text-xs ${insight.osatPercent >= 85 ? "text-green-600 border-green-300" : insight.osatPercent >= 80 ? "text-yellow-600 border-yellow-300" : "text-red-600 border-red-300"}`}
                   >
                     <ThumbsUp className="w-3 h-3 mr-1" />
                     OSAT {insight.osatPercent.toFixed(0)}% ({insight.osatResponses})
+                  </Badge>
+                )}
+                {insight.weather && (
+                  <Badge variant="secondary" className="text-xs gap-1">
+                    <WeatherIcon condition={insight.weather.condition} />
+                    {insight.weather.highTemp !== undefined ? (
+                      <span>{Math.round(insight.weather.highTemp)}°/{Math.round(insight.weather.lowTemp ?? 0)}°</span>
+                    ) : (
+                      <span>{Math.round(insight.weather.temp)}°F</span>
+                    )}
+                  </Badge>
+                )}
+                {insight.crewScore !== undefined && insight.crewScore > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className={`text-xs gap-1 border-0 ${
+                      insight.crewScore >= 75
+                        ? "bg-green-500/10 text-green-500"
+                        : insight.crewScore >= 50
+                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          : "bg-red-500/10 text-red-500"
+                    }`}
+                  >
+                    <GraduationCap className="w-3 h-3" />
+                    <span className="font-medium">{insight.crewScore}</span>
+                    {insight.crewTenureMonths !== undefined && (
+                      <span className="text-[10px] text-muted-foreground ml-0.5">({formatTenure(insight.crewTenureMonths)})</span>
+                    )}
                   </Badge>
                 )}
               </div>
@@ -1054,9 +1125,16 @@ export function DailySummary({
       if (categoryIssuesByRestaurant[r.restaurantId]) {
         insight.categoryIssues = categoryIssuesByRestaurant[r.restaurantId];
       }
+      // Add crew experience data if available
+      if (crewSummary?.[r.restaurantId]) {
+        const crew = crewSummary[r.restaurantId];
+        insight.crewScore = crew.avgScore;
+        insight.crewTenureMonths = crew.avgTenureMonths;
+        insight.crewAvgCount = crew.avgCrewCount;
+      }
       return insight;
     });
-  }, [restaurants, hourlyByRestaurant, markets, categoryIssuesByRestaurant]);
+  }, [restaurants, hourlyByRestaurant, markets, categoryIssuesByRestaurant, crewSummary]);
   
   // Sort unit insights based on selected sort
   const sortedUnitInsights = useMemo(() => {

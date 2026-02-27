@@ -23,6 +23,14 @@ import {
   Clock,
   ThumbsUp,
   Minus,
+  Sun,
+  Cloud,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  CloudFog,
+  CloudDrizzle,
+  GraduationCap,
 } from "lucide-react";
 
 interface DailyGrade {
@@ -36,6 +44,7 @@ interface DailyGrade {
   osatPercent?: number;
   osatResponses?: number;
   avgXp?: number;
+  weather?: { highTemp: number; lowTemp: number; condition: string } | null;
 }
 
 interface RestaurantHistory {
@@ -131,6 +140,19 @@ function TrendIndicator({ value }: { value: number }) {
   return <Minus className="w-4 h-4 text-muted-foreground" />;
 }
 
+function WeatherIcon({ condition, className = "w-3 h-3" }: { condition: string; className?: string }) {
+  switch (condition.toLowerCase()) {
+    case "clear": return <Sun className={className} />;
+    case "partly cloudy": return <Cloud className={className} />;
+    case "foggy": return <CloudFog className={className} />;
+    case "rain": return <CloudRain className={className} />;
+    case "showers": return <CloudDrizzle className={className} />;
+    case "snow": return <CloudSnow className={className} />;
+    case "thunderstorm": return <CloudLightning className={className} />;
+    default: return <Sun className={className} />;
+  }
+}
+
 function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
   return (
     <div className="flex gap-1 flex-wrap">
@@ -142,11 +164,27 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
           <div
             key={idx}
             className={`flex flex-col items-center p-1.5 rounded ${getGradeBgColor(grade.gradeLabel)} min-w-[50px]`}
-            title={`${formatted}: ${grade.gradeLabel} (${grade.grade.toFixed(0)})`}
+            title={`${formatted}: ${grade.gradeLabel} (${grade.grade.toFixed(0)})${grade.weather ? ` | ${grade.weather.condition} ${Math.round(grade.weather.highTemp)}°/${Math.round(grade.weather.lowTemp)}°` : ""}${grade.avgXp !== undefined ? ` | XP: ${Math.round(grade.avgXp)}` : ""}`}
           >
             <span className="text-[10px] text-muted-foreground">{dayName}</span>
             <span className={`text-sm font-bold ${getGradeColor(grade.gradeLabel)}`}>{grade.gradeLabel}</span>
             <span className="text-[9px] text-muted-foreground">{datePart}</span>
+            {(grade.weather || grade.avgXp !== undefined) && (
+              <div className="flex items-center gap-1 mt-0.5">
+                {grade.weather && (
+                  <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
+                    <WeatherIcon condition={grade.weather.condition} className="w-2.5 h-2.5" />
+                    {Math.round(grade.weather.highTemp)}°
+                  </span>
+                )}
+                {grade.avgXp !== undefined && (
+                  <span className={`flex items-center gap-0.5 text-[9px] ${grade.avgXp >= 75 ? "text-green-600" : grade.avgXp >= 50 ? "text-amber-600" : "text-red-500"}`}>
+                    <GraduationCap className="w-2.5 h-2.5" />
+                    {Math.round(grade.avgXp)}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
