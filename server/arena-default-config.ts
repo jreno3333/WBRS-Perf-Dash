@@ -484,6 +484,6 @@ export const DEFAULT_ARENA_CONFIG = {
     { name: "Dinner Rush", start: 17, end: 19 },
   ],
 
-  gradeThresholds: { "A+": 95, A: 85, B: 75, C: 65, D: 55, F: 0 },
+  gradeThresholds: { "A+": 97, A: 90, B: 80, C: 70, D: 60, F: 0 },
   fiscalWeekStart: "MO",
 };

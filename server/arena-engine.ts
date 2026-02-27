@@ -16,23 +16,25 @@ import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 // ─── GRADE COMPUTATION (extracted from leaders.ts) ───
 
 export function getGradeLabel(score: number): string {
-  if (score >= 95) return "A+";
-  if (score >= 90) return "A";
-  if (score >= 85) return "A-";
-  if (score >= 80) return "B+";
-  if (score >= 75) return "B";
-  if (score >= 70) return "B-";
-  if (score >= 65) return "C+";
-  if (score >= 60) return "C";
-  if (score >= 55) return "C-";
-  if (score >= 50) return "D";
+  if (score >= 97) return "A+";
+  if (score >= 93) return "A";
+  if (score >= 90) return "A-";
+  if (score >= 87) return "B+";
+  if (score >= 83) return "B";
+  if (score >= 80) return "B-";
+  if (score >= 77) return "C+";
+  if (score >= 73) return "C";
+  if (score >= 70) return "C-";
+  if (score >= 67) return "D+";
+  if (score >= 63) return "D";
+  if (score >= 60) return "D-";
   return "F";
 }
 
 export function gradeToMinScore(grade: string): number {
   const map: Record<string, number> = {
-    "A+": 95, A: 90, "A-": 85, "B+": 80, B: 75, "B-": 70,
-    "C+": 65, C: 60, "C-": 55, D: 50, F: 0,
+    "A+": 97, A: 93, "A-": 90, "B+": 87, B: 83, "B-": 80,
+    "C+": 77, C: 73, "C-": 70, "D+": 67, D: 63, "D-": 60, F: 0,
   };
   return map[grade] ?? 0;
 }

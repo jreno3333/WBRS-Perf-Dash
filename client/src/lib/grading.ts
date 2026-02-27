@@ -15,24 +15,26 @@ export const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 } as
 // ──────────────────────────────────────────
 
 export function scoreToGradeLabel(score: number): string {
-  if (score >= 95) return 'A+';
-  if (score >= 90) return 'A';
-  if (score >= 85) return 'A-';
-  if (score >= 80) return 'B+';
-  if (score >= 75) return 'B';
-  if (score >= 70) return 'B-';
-  if (score >= 65) return 'C+';
-  if (score >= 60) return 'C';
-  if (score >= 55) return 'C-';
-  if (score >= 50) return 'D';
+  if (score >= 97) return 'A+';
+  if (score >= 93) return 'A';
+  if (score >= 90) return 'A-';
+  if (score >= 87) return 'B+';
+  if (score >= 83) return 'B';
+  if (score >= 80) return 'B-';
+  if (score >= 77) return 'C+';
+  if (score >= 73) return 'C';
+  if (score >= 70) return 'C-';
+  if (score >= 67) return 'D+';
+  if (score >= 63) return 'D';
+  if (score >= 60) return 'D-';
   return 'F';
 }
 
 /** Midpoint numeric value for a given letter grade (for averaging). */
 export function gradeToMidpoint(grade: string): number {
   const scores: Record<string, number> = {
-    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
-    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25,
+    'A+': 98, 'A': 95, 'A-': 91, 'B+': 88, 'B': 85, 'B-': 81,
+    'C+': 78, 'C': 75, 'C-': 71, 'D+': 68, 'D': 65, 'D-': 61, 'F': 30,
   };
   return scores[grade] ?? 0;
 }
@@ -45,7 +47,7 @@ export function getGradeColor(grade: string): string {
   if (grade.startsWith('A')) return 'text-green-500';
   if (grade.startsWith('B')) return 'text-blue-500';
   if (grade.startsWith('C')) return 'text-yellow-500';
-  if (grade === 'D') return 'text-orange-500';
+  if (grade.startsWith('D')) return 'text-orange-500';
   return 'text-red-500';
 }
 
@@ -53,7 +55,7 @@ export function getGradeBgColor(grade: string): string {
   if (grade.startsWith('A')) return 'bg-green-500/10 border-green-500/30';
   if (grade.startsWith('B')) return 'bg-blue-500/10 border-blue-500/30';
   if (grade.startsWith('C')) return 'bg-yellow-500/10 border-yellow-500/30';
-  if (grade === 'D') return 'bg-orange-500/10 border-orange-500/30';
+  if (grade.startsWith('D')) return 'bg-orange-500/10 border-orange-500/30';
   return 'bg-red-500/10 border-red-500/30';
 }
 
@@ -61,7 +63,7 @@ export function getGradeBadgeColor(grade: string): string {
   if (grade.startsWith('A')) return 'text-green-500 bg-green-500/10 border-green-500/30';
   if (grade.startsWith('B')) return 'text-blue-500 bg-blue-500/10 border-blue-500/30';
   if (grade.startsWith('C')) return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30';
-  if (grade === 'D') return 'text-orange-500 bg-orange-500/10 border-orange-500/30';
+  if (grade.startsWith('D')) return 'text-orange-500 bg-orange-500/10 border-orange-500/30';
   return 'text-red-500 bg-red-500/10 border-red-500/30';
 }
 

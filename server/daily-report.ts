@@ -122,23 +122,25 @@ function getExecutionGrade(
 
 function gradeToScore(grade: string): number {
   const scores: Record<string, number> = {
-    'A+': 97, 'A': 92, 'A-': 87, 'B+': 82, 'B': 77, 'B-': 72,
-    'C+': 67, 'C': 62, 'C-': 57, 'D': 52, 'F': 25
+    'A+': 98, 'A': 95, 'A-': 91, 'B+': 88, 'B': 85, 'B-': 81,
+    'C+': 78, 'C': 75, 'C-': 71, 'D+': 68, 'D': 65, 'D-': 61, 'F': 30
   };
   return scores[grade] ?? 0;
 }
 
 function scoreToGradeLabel(score: number): string {
-  if (score >= 95) return "A+";
-  if (score >= 90) return "A";
-  if (score >= 85) return "A-";
-  if (score >= 80) return "B+";
-  if (score >= 75) return "B";
-  if (score >= 70) return "B-";
-  if (score >= 65) return "C+";
-  if (score >= 60) return "C";
-  if (score >= 55) return "C-";
-  if (score >= 50) return "D";
+  if (score >= 97) return "A+";
+  if (score >= 93) return "A";
+  if (score >= 90) return "A-";
+  if (score >= 87) return "B+";
+  if (score >= 83) return "B";
+  if (score >= 80) return "B-";
+  if (score >= 77) return "C+";
+  if (score >= 73) return "C";
+  if (score >= 70) return "C-";
+  if (score >= 67) return "D+";
+  if (score >= 63) return "D";
+  if (score >= 60) return "D-";
   return "F";
 }
 
