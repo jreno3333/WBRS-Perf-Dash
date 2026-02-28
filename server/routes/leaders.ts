@@ -3,6 +3,7 @@ import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange } from "../xenial-webhook";
+import { getTotalRequiredStaff } from "../labor-model";
 
 const router = Router();
 
@@ -194,8 +195,8 @@ router.get("/api/leaders", async (req, res) => {
           day.totalSalesLastWeek += posLastWeekSales !== undefined ? posLastWeekSales : (fallbackLastWeekSales ? Number(fallbackLastWeekSales.actualSales) || 0 : 0);
 
           const actualStaff = Number(labor.employeeCount) || 0;
-          const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
-          day.staffingDiffs.push(actualStaff - projectedStaff);
+          const requiredStaff = getTotalRequiredStaff(crew.hour, hourSales);
+          day.staffingDiffs.push(actualStaff - requiredStaff);
 
           if (hme && hme.carCount > 0 && (hme.carsUnder6Min || 0) > 0) {
             day.speedCarCount += hme.carCount;
