@@ -407,6 +407,8 @@ export default function SettingsPage() {
 
           <LeaderReportCard />
 
+          <PushReportCard />
+
           <HistoricalSalesUploadCard />
 
           <TickerMessagesCard />
@@ -2307,6 +2309,250 @@ function LeaderReportCard() {
                 )}
               </div>
             )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function PushReportCard() {
+  const { toast } = useToast();
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+
+  const { data: subscribers, isLoading: subscribersLoading } = useQuery<EmailSubscriber[]>({
+    queryKey: ["/api/email-subscribers"],
+  });
+
+  const { data: schedules } = useQuery<ReportSchedule[]>({
+    queryKey: ["/api/report-schedules"],
+  });
+
+  const pushSchedule = schedules?.find(s => s.reportType === 'push_report');
+  const pushSubscribers = (subscribers || []).filter(s => s.reportTypes?.includes('push_report'));
+
+  const scheduleUpdateMutation = useMutation({
+    mutationFn: async ({ reportType, sendHour, sendMinute, isEnabled }: { reportType: string; sendHour?: number; sendMinute?: number; isEnabled?: boolean }) => {
+      return apiRequest("PATCH", `/api/report-schedules/${reportType}`, { sendHour, sendMinute, isEnabled });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/report-schedules"] });
+      toast({ title: "Schedule updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to update schedule", variant: "destructive" });
+    },
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/email-subscribers", {
+        email: newEmail.trim(),
+        name: newName.trim() || null,
+        reportTypes: ['push_report'],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+      setNewEmail("");
+      setNewName("");
+      toast({ title: "Subscriber added", description: "Push reports will be sent to this email." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to add subscriber", variant: "destructive" });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/email-subscribers/${id}`, { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (sub: EmailSubscriber) => {
+      const remaining = (sub.reportTypes || []).filter(t => t !== 'push_report');
+      if (remaining.length === 0) {
+        return apiRequest("DELETE", `/api/email-subscribers/${sub.id}`);
+      }
+      return apiRequest("PATCH", `/api/email-subscribers/${sub.id}`, { reportTypes: remaining });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+      toast({ title: "Subscriber removed from push report" });
+    },
+  });
+
+  const sendNowMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/push-report/send-now");
+    },
+    onSuccess: async (response) => {
+      const data = await response.json();
+      toast({
+        title: "Push reports sent",
+        description: `${data.sent} email(s) sent, ${data.failed} failed.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to send push reports", variant: "destructive" });
+    },
+  });
+
+  const formatScheduleTime = (hour: number, minute: number) => {
+    const h = hour.toString().padStart(2, '0');
+    const m = minute.toString().padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const handleTimeChange = (timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+      scheduleUpdateMutation.mutate({ reportType: 'push_report', sendHour: h, sendMinute: m });
+    }
+  };
+
+  const handleToggleSchedule = (checked: boolean) => {
+    scheduleUpdateMutation.mutate({ reportType: 'push_report', isEnabled: checked });
+  };
+
+  return (
+    <Collapsible>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5" />
+                Push Report (Per-Unit)
+              </CardTitle>
+              <CardDescription>
+                Individual unit performance reports for the previous day, sent to subscribers. Also available on-demand from the Daily Performance page.
+              </CardDescription>
+            </div>
+            <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between gap-4 p-3 border rounded-md">
+              <div className="flex items-center gap-3 min-w-0">
+                <Checkbox
+                  checked={pushSchedule?.isEnabled ?? false}
+                  onCheckedChange={(checked) => handleToggleSchedule(checked === true)}
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Automated Sending</p>
+                  <p className="text-xs text-muted-foreground">Sends individual reports for every unit to all subscribers</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Send at</Label>
+                <Input
+                  type="time"
+                  className="w-28"
+                  value={formatScheduleTime(pushSchedule?.sendHour ?? 6, pushSchedule?.sendMinute ?? 30)}
+                  onChange={(e) => handleTimeChange(e.target.value)}
+                  disabled={!(pushSchedule?.isEnabled ?? false)}
+                />
+                <span className="text-xs text-muted-foreground">CT</span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium">Subscribers</h4>
+              <div className="flex gap-2 flex-wrap">
+                <Input
+                  type="text"
+                  placeholder="Name (optional)"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-40"
+                />
+                <Input
+                  type="email"
+                  placeholder="Email address"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="flex-1 min-w-[200px]"
+                />
+                <Button
+                  onClick={() => addMutation.mutate()}
+                  disabled={!newEmail.trim() || addMutation.isPending}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add
+                </Button>
+              </div>
+
+              {subscribersLoading ? (
+                <div className="text-center py-4 text-muted-foreground text-sm">Loading subscribers...</div>
+              ) : pushSubscribers.length > 0 ? (
+                <div className="space-y-2">
+                  {pushSubscribers.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="flex items-center gap-3 p-3 rounded-md border"
+                    >
+                      <Checkbox
+                        checked={sub.isActive}
+                        onCheckedChange={(checked) => {
+                          toggleMutation.mutate({ id: sub.id, isActive: !!checked });
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {sub.name || sub.email}
+                        </div>
+                        {sub.name && (
+                          <div className="text-xs text-muted-foreground truncate">{sub.email}</div>
+                        )}
+                      </div>
+                      <Badge variant={sub.isActive ? "default" : "secondary"} className="shrink-0">
+                        {sub.isActive ? "Active" : "Paused"}
+                      </Badge>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeMutation.mutate(sub)}
+                        disabled={removeMutation.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Send className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No subscribers yet.</p>
+                  <p className="text-sm">Add email addresses to receive per-unit push reports.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 flex-wrap pt-2 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sendNowMutation.mutate()}
+                disabled={sendNowMutation.isPending || pushSubscribers.length === 0}
+              >
+                <Send className="h-4 w-4 mr-1" />
+                {sendNowMutation.isPending ? "Sending..." : "Send All Unit Reports Now"}
+              </Button>
+            </div>
+
+            <div className="p-3 rounded-md bg-muted/50">
+              <p className="text-xs text-muted-foreground">
+                Push reports can also be generated on-demand for individual units from the Daily Performance page.
+                Expand any unit card and click the "Report" button to preview, print/save as PDF, or share via link.
+              </p>
+            </div>
           </CardContent>
         </CollapsibleContent>
       </Card>
