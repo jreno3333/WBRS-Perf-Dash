@@ -798,8 +798,13 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
     const startOfDay = new Date(dateStr + "T00:00:00.000Z");
     const endOfDay = new Date(dateStr + "T23:59:59.999Z");
 
-    // Get location mappings (xenial store number -> restaurant ID)
+    // Get location mappings and restaurant timezones
     const mappings = await db.select().from(locationMapping);
+    const allRestaurants = await db.select({ id: restaurants.id, timezone: restaurants.timezone }).from(restaurants);
+    const restaurantTzMap = new Map<string, string>();
+    for (const r of allRestaurants) {
+      restaurantTzMap.set(r.id, r.timezone || "America/New_York");
+    }
     const storeToRestaurantId = new Map<string, string>();
     for (const m of mappings) {
       if (m.restaurantId) {
@@ -807,51 +812,62 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
       }
     }
 
-    // Query POS orders grouped by store, hour, and 15-min quarter
-    const rows = await posDb
-      .select({
-        storeNumber: posOrders.storeNumber,
-        hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
-        quarter: sql<number>`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago') / 15)::int`,
-        orders: sql<number>`count(*)::int`,
-        sales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
-      })
-      .from(posOrders)
-      .where(
-        and(
-          gte(posOrders.businessDate, startOfDay),
-          lt(posOrders.businessDate, endOfDay)
-        )
-      )
-      .groupBy(
-        posOrders.storeNumber,
-        sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`,
-        sql`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago') / 15)`
-      );
+    // Group stores by timezone so each query uses the correct local time
+    const tzToStores = new Map<string, string[]>();
+    for (const [store, restaurantId] of storeToRestaurantId) {
+      const tz = restaurantTzMap.get(restaurantId) || "America/New_York";
+      if (!tzToStores.has(tz)) tzToStores.set(tz, []);
+      tzToStores.get(tz)!.push(store);
+    }
 
     // Build per-restaurant, per-hour, per-quarter structure
     const restaurantHours = new Map<string, Map<number, { orders: number; sales: number }[]>>();
 
-    for (const row of rows) {
-      const restaurantId = storeToRestaurantId.get(row.storeNumber);
-      if (!restaurantId) continue;
+    // Query each timezone group with its correct local time conversion
+    for (const [tz, storeNumbers] of tzToStores) {
+      const rows = await posDb
+        .select({
+          storeNumber: posOrders.storeNumber,
+          hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::int`,
+          quarter: sql<number>`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz}) / 15)::int`,
+          orders: sql<number>`count(*)::int`,
+          sales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+        })
+        .from(posOrders)
+        .where(
+          and(
+            sql`${posOrders.storeNumber} IN (${sql.join(storeNumbers.map(s => sql`${s}`), sql`, `)})`,
+            gte(posOrders.businessDate, startOfDay),
+            lt(posOrders.businessDate, endOfDay)
+          )
+        )
+        .groupBy(
+          posOrders.storeNumber,
+          sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})`,
+          sql`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz}) / 15)`
+        );
 
-      if (!restaurantHours.has(restaurantId)) {
-        restaurantHours.set(restaurantId, new Map());
+      for (const row of rows) {
+        const restaurantId = storeToRestaurantId.get(row.storeNumber);
+        if (!restaurantId) continue;
+
+        if (!restaurantHours.has(restaurantId)) {
+          restaurantHours.set(restaurantId, new Map());
+        }
+        const hourMap = restaurantHours.get(restaurantId)!;
+        if (!hourMap.has(row.hour)) {
+          hourMap.set(row.hour, [
+            { orders: 0, sales: 0 },
+            { orders: 0, sales: 0 },
+            { orders: 0, sales: 0 },
+            { orders: 0, sales: 0 },
+          ]);
+        }
+        const quarters = hourMap.get(row.hour)!;
+        const qi = Math.min(Math.max(row.quarter, 0), 3);
+        quarters[qi].orders = Number(row.orders) || 0;
+        quarters[qi].sales = Number(row.sales) || 0;
       }
-      const hourMap = restaurantHours.get(restaurantId)!;
-      if (!hourMap.has(row.hour)) {
-        hourMap.set(row.hour, [
-          { orders: 0, sales: 0 },
-          { orders: 0, sales: 0 },
-          { orders: 0, sales: 0 },
-          { orders: 0, sales: 0 },
-        ]);
-      }
-      const quarters = hourMap.get(row.hour)!;
-      const qi = Math.min(Math.max(row.quarter, 0), 3);
-      quarters[qi].orders = Number(row.orders) || 0;
-      quarters[qi].sales = Number(row.sales) || 0;
     }
 
     // Format response
