@@ -121,10 +121,10 @@ router.post("/api/push-report/send-unit", async (req, res) => {
       return;
     }
 
-    const { buildUnitReportHtml } = await import("../push-report");
+    const { buildUnitReportHtml, getAbsoluteBaseUrl } = await import("../push-report");
     const { sendDailyReportEmail } = await import("../email");
 
-    const html = await buildUnitReportHtml(date, restaurantId);
+    const html = await buildUnitReportHtml(date, restaurantId, getAbsoluteBaseUrl());
     if (!html) {
       res.status(404).json({ error: "No data available for this unit/date" });
       return;

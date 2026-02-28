@@ -6,6 +6,14 @@ import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
 import { getTotalRequiredStaff } from "./labor-model";
 
+export function getAbsoluteBaseUrl(): string {
+  return process.env.REPL_SLUG
+    ? `https://${process.env.REPL_SLUG}.replit.app`
+    : process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : "http://localhost:5000";
+}
+
 const GRADE_WEIGHTS = {
   sales: 35,
   speed: 25,
@@ -128,7 +136,7 @@ function gradeToMidpoint(grade: string): number {
   return map[grade] || 0;
 }
 
-export async function buildUnitReportHtml(dateStr: string, restaurantId: string): Promise<string | null> {
+export async function buildUnitReportHtml(dateStr: string, restaurantId: string, baseUrl?: string): Promise<string | null> {
   try {
     const parts = dateStr.split('-');
     const targetDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
@@ -385,11 +393,10 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago"
     }).format(new Date(`${dateStr}T12:00:00`));
 
-    const baseUrl = process.env.REPL_SLUG
-      ? `https://${process.env.REPL_SLUG}.replit.app`
-      : process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : "http://localhost:5000";
+    // Use provided baseUrl for emails (absolute), or empty string for in-app preview (relative)
+    if (baseUrl === undefined) {
+      baseUrl = "";
+    }
 
     // ─── Build the HTML ──────────────────────────────────────────────────
     return `
@@ -744,8 +751,9 @@ export async function sendPushReports(force = false): Promise<{ sent: number; fa
     }).format(yesterday);
 
     // For each restaurant, build and send individual reports
+    const emailBaseUrl = getAbsoluteBaseUrl();
     for (const rest of allRestaurants) {
-      const reportHtml = await buildUnitReportHtml(yesterdayStr, rest.id);
+      const reportHtml = await buildUnitReportHtml(yesterdayStr, rest.id, emailBaseUrl);
       if (!reportHtml) continue;
 
       const subject = `${rest.name} - Performance Report - ${dayOfWeek}, ${formattedDate}`;
