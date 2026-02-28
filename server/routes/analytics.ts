@@ -824,12 +824,16 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
     const restaurantHours = new Map<string, Map<number, { orders: number; sales: number }[]>>();
 
     // Query each timezone group with its correct local time conversion
+    const VALID_TIMEZONES = new Set(["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"]);
     for (const [tz, storeNumbers] of tzToStores) {
+      // Validate timezone to safely inline it via sql.raw()
+      const safeTz = VALID_TIMEZONES.has(tz) ? tz : "America/New_York";
+      const tzSql = sql.raw(`'${safeTz}'`);
       const rows = await posDb
         .select({
           storeNumber: posOrders.storeNumber,
-          hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::int`,
-          quarter: sql<number>`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz}) / 15)::int`,
+          hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzSql})::int`,
+          quarter: sql<number>`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzSql}) / 15)::int`,
           orders: sql<number>`count(*)::int`,
           sales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
         })
@@ -843,8 +847,8 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
         )
         .groupBy(
           posOrders.storeNumber,
-          sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})`,
-          sql`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz}) / 15)`
+          sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzSql})`,
+          sql`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzSql}) / 15)`
         );
 
       for (const row of rows) {
