@@ -4,6 +4,7 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
+import { getTotalRequiredStaff } from "./labor-model";
 
 const GRADE_WEIGHTS = {
   sales: 35,
@@ -12,64 +13,6 @@ const GRADE_WEIGHTS = {
   staffing: 15,
 };
 
-const BREAKFAST_RAMP_UP: Array<{ maxSales: number; staff: number }> = [
-  { maxSales: 118.87, staff: 3 }, { maxSales: 237.76, staff: 4 },
-  { maxSales: 356.67, staff: 5 }, { maxSales: 475.55, staff: 6 },
-  { maxSales: 594.45, staff: 7 }, { maxSales: 686.95, staff: 8 },
-  { maxSales: 779.42, staff: 9 }, { maxSales: 871.93, staff: 10 },
-  { maxSales: 964.42, staff: 11 }, { maxSales: 1056.89, staff: 12 },
-  { maxSales: 1149.40, staff: 13 }, { maxSales: 1241.89, staff: 14 },
-  { maxSales: 1334.39, staff: 15 }, { maxSales: 1426.87, staff: 16 },
-  { maxSales: 1519.37, staff: 17 }, { maxSales: 1611.87, staff: 18 },
-  { maxSales: 1704.37, staff: 19 }, { maxSales: 1796.84, staff: 20 },
-  { maxSales: 1889.35, staff: 21 }, { maxSales: 1981.84, staff: 22 },
-  { maxSales: 2074.32, staff: 23 }, { maxSales: 2166.82, staff: 24 },
-  { maxSales: 2259.32, staff: 25 }, { maxSales: 2351.81, staff: 26 },
-  { maxSales: 2444.29, staff: 27 }, { maxSales: 2536.79, staff: 28 },
-  { maxSales: 2629.28, staff: 29 }, { maxSales: Infinity, staff: 30 },
-];
-
-const NON_BREAKFAST_RAMP_UP: Array<{ maxSales: number; staff: number }> = [
-  { maxSales: 154.53, staff: 3 }, { maxSales: 309.09, staff: 4 },
-  { maxSales: 463.67, staff: 5 }, { maxSales: 618.23, staff: 6 },
-  { maxSales: 772.79, staff: 7 }, { maxSales: 893.04, staff: 8 },
-  { maxSales: 1013.28, staff: 9 }, { maxSales: 1133.53, staff: 10 },
-  { maxSales: 1253.76, staff: 11 }, { maxSales: 1374.01, staff: 12 },
-  { maxSales: 1494.26, staff: 13 }, { maxSales: 1614.50, staff: 14 },
-  { maxSales: 1734.74, staff: 15 }, { maxSales: 1854.98, staff: 16 },
-  { maxSales: 1975.23, staff: 17 }, { maxSales: 2095.47, staff: 18 },
-  { maxSales: 2215.72, staff: 19 }, { maxSales: 2335.95, staff: 20 },
-  { maxSales: 2456.20, staff: 21 }, { maxSales: 2576.44, staff: 22 },
-  { maxSales: 2696.69, staff: 23 }, { maxSales: 2816.93, staff: 24 },
-  { maxSales: 2937.17, staff: 25 }, { maxSales: 3057.42, staff: 26 },
-  { maxSales: 3177.66, staff: 27 }, { maxSales: 3297.90, staff: 28 },
-  { maxSales: 3418.14, staff: 29 }, { maxSales: Infinity, staff: 30 },
-];
-
-const NON_PRODUCTION_BY_HOUR: Record<number, number> = {
-  0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0,
-  6: 0.5, 7: 0.5, 8: 1, 9: 0.5,
-  10: 1, 11: 1, 12: 1.5, 13: 1.5,
-  14: 0, 15: 0.5, 16: 1, 17: 1.5, 18: 1.5,
-  19: 1, 20: 0.5, 21: 0, 22: 0, 23: 0.5,
-};
-
-function isBreakfastHour(hour: number): boolean {
-  return hour >= 6 && hour < 11;
-}
-
-function getProductionStaff(hour: number, hourlySales: number): number {
-  if (hourlySales <= 0) return 0;
-  const rampUp = isBreakfastHour(hour) ? BREAKFAST_RAMP_UP : NON_BREAKFAST_RAMP_UP;
-  for (const tier of rampUp) {
-    if (hourlySales <= tier.maxSales) return tier.staff;
-  }
-  return 30;
-}
-
-function getTotalRequiredStaff(hour: number, hourlySales: number): number {
-  return (NON_PRODUCTION_BY_HOUR[hour] || 0) + getProductionStaff(hour, hourlySales);
-}
 
 function getExecutionGrade(
   salesVariancePct: number,

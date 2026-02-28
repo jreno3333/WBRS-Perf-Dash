@@ -4,6 +4,7 @@ import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { osatData as osatDataTable } from "@shared/schema";
 import { getAllHourlyPosSalesRange } from "./xenial-webhook";
+import { getTotalRequiredStaff } from "./labor-model";
 
 function getGradeLabel(score: number): string {
   if (score >= 97) return "A+";
@@ -309,8 +310,8 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
           day.totalSalesLastWeek += posLastWeekSales !== undefined ? posLastWeekSales : (fallbackLastWeekSales ? Number(fallbackLastWeekSales.actualSales) || 0 : 0);
 
           const actualStaff = Number(labor.employeeCount) || 0;
-          const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
-          day.staffingDiffs.push(actualStaff - projectedStaff);
+          const requiredStaff = getTotalRequiredStaff(crew.hour, hourSales);
+          day.staffingDiffs.push(actualStaff - requiredStaff);
 
           if (hme && hme.carCount > 0 && (hme.carsUnder6Min || 0) > 0) {
             day.speedCarCount += hme.carCount;

@@ -3,6 +3,7 @@ import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange } from "../xenial-webhook";
+import { getTotalRequiredStaff } from "../labor-model";
 
 const router = Router();
 
@@ -116,7 +117,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
       carsUnder6Min?: number;
       staffingDiff: number;
       actualStaff: number;
-      projectedStaff: number;
+      requiredStaff: number;
       osatPercent?: number;
       osatResponses?: number;
       score: number;
@@ -163,8 +164,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
           ? ((todaySales - lastWeekSales) / lastWeekSales) * 100 : 0;
 
         const actualStaff = Number(labor.employeeCount) || 0;
-        const projectedStaff = (Number(labor.projectedLabor) || 0) / 10;
-        const staffingDiff = actualStaff - projectedStaff;
+        const requiredStaff = getTotalRequiredStaff(crew.hour, todaySales);
+        const staffingDiff = actualStaff - requiredStaff;
 
         const salesSurge = salesVariancePct >= 20;
 
@@ -223,7 +224,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
           carsUnder6Min: hmeCarsUnder6Min,
           staffingDiff,
           actualStaff,
-          projectedStaff,
+          requiredStaff,
           osatPercent: hourOsatPercent,
           osatResponses: hourOsatResponses,
           score,
@@ -419,7 +420,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
           speedAttainment: h.speedAttainment,
           staffingDiff: Math.round(h.staffingDiff * 10) / 10,
           actualStaff: Math.round(h.actualStaff * 10) / 10,
-          requiredStaff: Math.round(h.projectedStaff * 10) / 10,
+          requiredStaff: Math.round(h.requiredStaff * 10) / 10,
           osatPercent: h.osatPercent,
           gradeScore: Math.round(h.score),
           gradeLabel: getGradeLabel(h.score),
