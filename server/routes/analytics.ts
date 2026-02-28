@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
-import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, dailySales } from "@shared/schema";
+import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, dailySales, locationMapping } from "@shared/schema";
 import { eq, and, gte, lte, lt, sql } from "drizzle-orm";
 
 const router = Router();
@@ -788,4 +788,126 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
 
 // ─── Demand Curves (Sub-hourly POS Transaction Analysis) ───────────────────
 // Groups POS transactions into 15-minute buckets within each hour
+router.get("/api/analytics/demand-curves", async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ error: "date parameter required" });
+    }
+    const dateStr = String(date);
+    const startOfDay = new Date(dateStr + "T00:00:00.000Z");
+    const endOfDay = new Date(dateStr + "T23:59:59.999Z");
+
+    // Get location mappings (xenial store number -> restaurant ID)
+    const mappings = await db.select().from(locationMapping);
+    const storeToRestaurantId = new Map<string, string>();
+    for (const m of mappings) {
+      if (m.restaurantId) {
+        storeToRestaurantId.set(m.xenialStoreNumber, m.restaurantId);
+      }
+    }
+
+    // Query POS orders grouped by store, hour, and 15-min quarter
+    const rows = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
+        quarter: sql<number>`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago') / 15)::int`,
+        orders: sql<number>`count(*)::int`,
+        sales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startOfDay),
+          lt(posOrders.businessDate, endOfDay)
+        )
+      )
+      .groupBy(
+        posOrders.storeNumber,
+        sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`,
+        sql`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago') / 15)`
+      );
+
+    // Build per-restaurant, per-hour, per-quarter structure
+    const restaurantHours = new Map<string, Map<number, { orders: number; sales: number }[]>>();
+
+    for (const row of rows) {
+      const restaurantId = storeToRestaurantId.get(row.storeNumber);
+      if (!restaurantId) continue;
+
+      if (!restaurantHours.has(restaurantId)) {
+        restaurantHours.set(restaurantId, new Map());
+      }
+      const hourMap = restaurantHours.get(restaurantId)!;
+      if (!hourMap.has(row.hour)) {
+        hourMap.set(row.hour, [
+          { orders: 0, sales: 0 },
+          { orders: 0, sales: 0 },
+          { orders: 0, sales: 0 },
+          { orders: 0, sales: 0 },
+        ]);
+      }
+      const quarters = hourMap.get(row.hour)!;
+      const qi = Math.min(Math.max(row.quarter, 0), 3);
+      quarters[qi].orders = Number(row.orders) || 0;
+      quarters[qi].sales = Number(row.sales) || 0;
+    }
+
+    // Format response
+    const result: {
+      restaurantId: string;
+      hours: {
+        hour: number;
+        quarters: { label: string; orders: number; sales: number }[];
+        totalOrders: number;
+        totalSales: number;
+        loadProfile: string;
+      }[];
+    }[] = [];
+
+    for (const [restaurantId, hourMap] of restaurantHours) {
+      const hours: typeof result[0]["hours"] = [];
+      for (const [hour, quarters] of hourMap) {
+        const totalOrders = quarters.reduce((s, q) => s + q.orders, 0);
+        const totalSales = quarters.reduce((s, q) => s + q.sales, 0);
+        const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+        const ampm = hour < 12 ? "am" : "pm";
+        const quarterLabels = quarters.map((q, qi) => ({
+          label: `${h12}:${(qi * 15).toString().padStart(2, "0")}${ampm}`,
+          orders: q.orders,
+          sales: Math.round(q.sales * 100) / 100,
+        }));
+
+        // Classify load profile based on order distribution across quarters
+        const maxQ = Math.max(...quarters.map((q) => q.orders));
+        const minQ = Math.min(...quarters.map((q) => q.orders));
+        const loadProfile =
+          totalOrders === 0
+            ? "none"
+            : maxQ - minQ <= 2
+              ? "steady"
+              : quarters[0].orders + quarters[1].orders > quarters[2].orders + quarters[3].orders
+                ? "front-loaded"
+                : "back-loaded";
+
+        hours.push({
+          hour,
+          quarters: quarterLabels,
+          totalOrders,
+          totalSales: Math.round(totalSales * 100) / 100,
+          loadProfile,
+        });
+      }
+      hours.sort((a, b) => a.hour - b.hour);
+      result.push({ restaurantId, hours });
+    }
+
+    res.json({ restaurants: result });
+  } catch (error) {
+    console.error("Error computing demand curves:", error);
+    res.status(500).json({ error: "Failed to compute demand curves" });
+  }
+});
+
 export default router;
