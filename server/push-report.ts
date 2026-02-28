@@ -668,7 +668,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
 
     <!-- ═══ FOOTER ═══ -->
     <div class="section" style="padding: 16px 24px; border-radius: 0 0 8px 8px; text-align: center;">
-      <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${restaurantId}" style="display: inline-block; background-color: #2563eb; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 14px;" class="no-print">
+      <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${restaurantId}" target="_top" style="display: inline-block; background-color: #2563eb; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 14px;" class="no-print">
         View in Dashboard
       </a>
       <p style="font-size: 11px; color: #a1a1aa; margin-top: 12px;">
