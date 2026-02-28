@@ -972,16 +972,16 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 );
               })}
             </div>
-            {/* OOT (Outside Order Taker) row — visible under grades when dt3 >= 5 for any hour */}
+            {/* OOT (Outside Order Taker) row — visible under grades when dt3 >= 1 for any hour */}
             {activeHours.some(h => {
               const dest = destinationsByHour?.[h.hour];
-              return dest && (dest['dt3'] || 0) >= 5;
+              return dest && (dest['dt3'] || 0) >= 1;
             }) && (
               <div className="flex gap-0.5 mb-0.5">
                 {activeHours.map((hour) => {
                   const isCompleted = hour.hour <= localGradeCutoff;
                   const dt3Count = isCompleted ? (destinationsByHour?.[hour.hour]?.['dt3'] || 0) : 0;
-                  const isActive = dt3Count >= 5;
+                  const isActive = dt3Count >= 1;
                   return (
                     <div key={`oot-${hour.hour}`} className="flex-1 text-center">
                       {isActive ? (
@@ -1086,7 +1086,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                           if (!destHour) return null;
                           const dt3Count = destHour['dt3'] || 0;
                           if (dt3Count === 0) return null;
-                          const isActive = dt3Count >= 5;
+                          const isActive = dt3Count >= 1;
                           return (
                             <span className={isActive ? "text-violet-500 font-medium" : "text-muted-foreground"}>
                               OOT:{dt3Count}
