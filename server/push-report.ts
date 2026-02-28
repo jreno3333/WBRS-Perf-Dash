@@ -371,34 +371,9 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       .filter(h => h.lastWeekSales > 0 && Math.abs(h.variance) >= 20)
       .map(h => ({ hour: h.hour, variance: h.variance, type: h.variance >= 0 ? 'above' as const : 'below' as const, leaders: h.leaders }));
 
-    // Low OSAT hours
-    const lowOsatHours = surveyHours.filter(s => s.percent < 80);
-
     // Category issue concerns
     if (categoryIssues.length > 0) {
       concerns.push(`Guest concerns: ${categoryIssues.map(c => `${c.category} (${c.avgRating}\u2605, ${c.lowCount} low)`).join(', ')}`);
-    }
-
-    // ─── Coaching recommendation ─────────────────────────────────────────
-    let recommendation = "";
-    if (understaffedCount > overstaffedCount && understaffedCount >= 2) {
-      const peak = staffingIssueHours.filter(s => s.type === 'under').sort((a, b) => b.diff - a.diff)[0];
-      recommendation = `Review staffing during ${formatHour(peak?.hour || 12)} - consistently understaffed. Consider adjusting schedule.`;
-    } else if (overstaffedCount > understaffedCount && overstaffedCount >= 2) {
-      const peak = staffingIssueHours.filter(s => s.type === 'over').sort((a, b) => b.diff - a.diff)[0];
-      recommendation = `Review staffing during ${formatHour(peak?.hour || 14)} - labor running high. Optimize scheduling.`;
-    } else if (speedIssueHours.length >= 2) {
-      recommendation = "Focus on drive-thru efficiency. Consider cross-training and positioning adjustments.";
-    } else if (lowOsatHours.length >= 2) {
-      recommendation = "Customer satisfaction needs attention. Review order accuracy, service speed, and team friendliness.";
-    } else if (categoryIssues.length >= 2) {
-      recommendation = `Guest feedback flagged: ${categoryIssues.slice(0, 2).map(c => c.category).join(' & ')}. Coach leaders on these areas.`;
-    } else if (salesVariance <= -10) {
-      recommendation = "Sales trending down. Review local marketing, check for competitor activity, and ensure full menu availability.";
-    } else if (strengths.length > concerns.length) {
-      recommendation = "Strong performance today. Maintain current operations and recognize the team.";
-    } else {
-      recommendation = "Balanced day. Continue monitoring key metrics and address any emerging patterns.";
     }
 
     // ─── Rank among all restaurants ──────────────────────────────────────
@@ -611,12 +586,6 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
         <div style="font-size: 11px; color: #dc2626; font-weight: 500;">Slow hours: ${speedIssueHours.map(s => `${formatHour(s.hour)} (${s.attainment}%)${s.leaders.length ? ' - ' + s.leaders[0] : ''}`).join(' \u2022 ')}</div>
       </div>` : ''}
     </div>` : ''}
-
-    <!-- ═══ COACHING RECOMMENDATION ═══ -->
-    <div class="section" style="padding: 16px 24px; background: linear-gradient(to right, #eff6ff, white);">
-      <h3 style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #1d4ed8;">Coaching Focus</h3>
-      <div style="font-size: 12px; color: #1e40af;">${recommendation}</div>
-    </div>
 
     <!-- ═══ SALES OUTLIERS (hours significantly above/below) ═══ -->
     ${salesOutliers.length > 0 ? `
