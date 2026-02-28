@@ -22,6 +22,7 @@ import analyticsRouter from "./analytics";
 import notesRouter from "./notes";
 import tickerRouter from "./ticker";
 import pollsRouter from "./polls";
+import pushReportRouter, { registerPublicShareRoute } from "./push-report";
 
 import { db } from "../db";
 import { users } from "@shared/schema";
@@ -47,6 +48,9 @@ export async function registerRoutes(
   // Auth routes (no auth required) — must be registered before middleware
   app.use(authRouter);
 
+  // Public shared report route (no auth required)
+  registerPublicShareRoute(app);
+
   // Auth middleware — protect all /api/* routes except auth, diagnostics, and webhooks
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     const openPaths = [
@@ -55,6 +59,7 @@ export async function registerRoutes(
       "/api/db-status",
       "/api/xenial/",
       "/api/arena/",
+      "/api/push-report/shared/",
     ];
     const fullPath = req.originalUrl.split('?')[0];
     if (openPaths.some(p => fullPath.startsWith(p))) {
@@ -83,6 +88,7 @@ export async function registerRoutes(
   app.use(notesRouter);
   app.use(tickerRouter);
   app.use(pollsRouter);
+  app.use(pushReportRouter);
 
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {

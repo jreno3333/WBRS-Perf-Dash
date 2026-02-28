@@ -1,0 +1,310 @@
+import { useState, useRef, useCallback } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import {
+  FileText,
+  Printer,
+  Share2,
+  Link2,
+  Mail,
+  Check,
+  Copy,
+  Loader2,
+  Eye,
+} from "lucide-react";
+
+interface UnitReportDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  restaurantId: string;
+  restaurantName: string;
+  date: string;
+}
+
+export function UnitReportDialog({
+  open,
+  onOpenChange,
+  restaurantId,
+  restaurantName,
+  date,
+}: UnitReportDialogProps) {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<"preview" | "share">("preview");
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const previewUrl = `/api/push-report/preview?date=${date}&unit=${restaurantId}`;
+
+  const formattedDate = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${date}T12:00:00`));
+
+  const handlePrint = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.print();
+    } else {
+      // Fallback: open in new tab for printing
+      window.open(previewUrl, "_blank");
+    }
+  }, [previewUrl]);
+
+  const handleGenerateShareLink = useCallback(async () => {
+    setIsGeneratingLink(true);
+    try {
+      const response = await fetch("/api/push-report/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ date, restaurantId }),
+      });
+
+      if (!response.ok) throw new Error("Failed to generate share link");
+
+      const data = await response.json();
+      setShareUrl(data.url);
+      toast({
+        title: data.existing ? "Share link retrieved" : "Share link created",
+        description: "Link is ready to copy or send.",
+      });
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to generate share link. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  }, [date, restaurantId, toast]);
+
+  const handleCopyLink = useCallback(async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setIsCopied(true);
+      toast({ title: "Copied!", description: "Link copied to clipboard." });
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const input = document.createElement("input");
+      input.value = shareUrl;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  }, [shareUrl, toast]);
+
+  const handleSendEmail = useCallback(async () => {
+    if (!emailTo.trim()) return;
+    setIsSendingEmail(true);
+    try {
+      const response = await fetch("/api/push-report/send-unit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ date, restaurantId, email: emailTo.trim() }),
+      });
+
+      if (!response.ok) throw new Error("Failed to send report");
+
+      const data = await response.json();
+      if (data.success) {
+        toast({
+          title: "Report sent!",
+          description: `Unit report sent to ${emailTo.trim()}`,
+        });
+        setEmailTo("");
+      } else {
+        throw new Error("Send failed");
+      }
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to send report. Check email configuration.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  }, [date, restaurantId, emailTo, toast]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-500" />
+            Unit Report: {restaurantName}
+          </DialogTitle>
+          <DialogDescription>{formattedDate}</DialogDescription>
+        </DialogHeader>
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b pb-1">
+          <Button
+            variant={activeTab === "preview" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("preview")}
+            className="gap-1.5"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Preview
+          </Button>
+          <Button
+            variant={activeTab === "share" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("share")}
+            className="gap-1.5"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            Share
+          </Button>
+        </div>
+
+        {/* Preview Tab */}
+        {activeTab === "preview" && (
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 border rounded-md overflow-hidden min-h-[400px]">
+              <iframe
+                ref={iframeRef}
+                src={previewUrl}
+                className="w-full h-full min-h-[400px]"
+                title="Report Preview"
+                style={{ border: "none" }}
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-3">
+              <Button onClick={handlePrint} className="gap-1.5">
+                <Printer className="w-4 h-4" />
+                Print / Save PDF
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.open(previewUrl, "_blank")}
+                className="gap-1.5"
+              >
+                <Eye className="w-4 h-4" />
+                Open Full Page
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Share Tab */}
+        {activeTab === "share" && (
+          <div className="space-y-4">
+            {/* Generate Share Link */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium flex items-center gap-1.5">
+                <Link2 className="w-4 h-4 text-blue-500" />
+                Share via Link
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Generate a public link that anyone can view without logging in.
+              </p>
+              {!shareUrl ? (
+                <Button
+                  onClick={handleGenerateShareLink}
+                  disabled={isGeneratingLink}
+                  variant="outline"
+                  className="gap-1.5"
+                >
+                  {isGeneratingLink ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Link2 className="w-4 h-4" />
+                  )}
+                  Generate Share Link
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={shareUrl}
+                    readOnly
+                    className="flex-1 text-xs font-mono"
+                  />
+                  <Button
+                    onClick={handleCopyLink}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 shrink-0"
+                  >
+                    {isCopied ? (
+                      <Check className="w-3.5 h-3.5 text-green-500" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    {isCopied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t pt-4 space-y-2">
+              <h4 className="text-sm font-medium flex items-center gap-1.5">
+                <Mail className="w-4 h-4 text-blue-500" />
+                Send via Email
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Send this unit's report directly to an email address.
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="email"
+                  placeholder="email@example.com"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  className="flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSendEmail();
+                  }}
+                />
+                <Button
+                  onClick={handleSendEmail}
+                  disabled={isSendingEmail || !emailTo.trim()}
+                  className="gap-1.5 shrink-0"
+                >
+                  {isSendingEmail ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4" />
+                  )}
+                  Send
+                </Button>
+              </div>
+            </div>
+
+            {shareUrl && (
+              <div className="border-t pt-3">
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Check className="w-3 h-3 text-green-500" />
+                  Share link active
+                </Badge>
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

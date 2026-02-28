@@ -885,3 +885,23 @@ export interface PollWithResults extends Poll {
   totalVotes: number;
   userVotedOptionId?: string | null;
 }
+
+// ─── Report Share Tokens (public shareable links for unit reports) ───────────
+
+export const reportShareTokens = pgTable("report_share_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  token: text("token").notNull().unique(),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  createdBy: text("created_by"), // User email who created the share
+  expiresAt: timestamp("expires_at"), // null = never expires
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertReportShareTokenSchema = createInsertSchema(reportShareTokens).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertReportShareToken = z.infer<typeof insertReportShareTokenSchema>;
+export type ReportShareToken = typeof reportShareTokens.$inferSelect;

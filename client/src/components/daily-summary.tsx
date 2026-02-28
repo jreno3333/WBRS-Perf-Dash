@@ -36,6 +36,7 @@ import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@s
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, GRADE_WEIGHTS as SHARED_GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor as sharedGetGradeColor, gradeToMidpoint } from "@/lib/grading";
 import { DAYPARTS } from "@/lib/dayparts";
+import { UnitReportDialog } from "@/components/unit-report-dialog";
 
 interface RestaurantNote {
   id: string;
@@ -616,8 +617,9 @@ function aggregateInsights(insights: UnitInsight[], name: string, groupRestauran
   };
 }
 
-function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRestaurant }: { insight: UnitInsight; defaultOpen?: boolean; onExpanded?: () => void; notesByRestaurant?: Record<string, RestaurantNote[]> }) {
+function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRestaurant, selectedDate }: { insight: UnitInsight; defaultOpen?: boolean; onExpanded?: () => void; notesByRestaurant?: Record<string, RestaurantNote[]>; selectedDate?: string }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -924,6 +926,35 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Unit Report Button */}
+            {selectedDate && (
+              <div className="pt-2 border-t flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setReportDialogOpen(true);
+                  }}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Report
+                </Button>
+              </div>
+            )}
+
+            {/* Unit Report Dialog */}
+            {selectedDate && (
+              <UnitReportDialog
+                open={reportDialogOpen}
+                onOpenChange={setReportDialogOpen}
+                restaurantId={insight.restaurantId}
+                restaurantName={insight.restaurantName}
+                date={selectedDate}
+              />
             )}
 
           </CardContent>
@@ -1315,7 +1346,7 @@ export function DailySummary({
                   ))}
                 </div>
                 {sortedUnitInsights.map(insight => (
-                  <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} notesByRestaurant={notesByRestaurant} />
+                  <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} notesByRestaurant={notesByRestaurant} selectedDate={selectedDate} />
                 ))}
               </TabsContent>
               

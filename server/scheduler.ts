@@ -4,6 +4,7 @@ import { syncAllGoogleReviews, markEndOfDaySnapshots } from "./google-places";
 import { syncOsatData } from "./scraper/qualtrics-api";
 import { sendDailyReports } from "./daily-report";
 import { sendLeaderReports } from "./leader-report";
+import { sendPushReports } from "./push-report";
 import { db } from "./db";
 import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews, reportSchedules, emailSendLog } from "@shared/schema";
 import { sql, isNotNull, lt, eq, and, like } from "drizzle-orm";
@@ -202,6 +203,7 @@ let lastYesterdaySync: string | null = null;
 let lastWeatherSave: string | null = null;
 let lastDailyReportSend: string | null = null;
 let lastLeaderReportSend: string | null = null;
+let lastPushReportSend: string | null = null;
 
 // Arena evaluation tracking
 let lastArenaHourlyEval: string | null = null;
@@ -327,6 +329,7 @@ async function sendDailyReportsIfNeeded() {
     
     const dailySchedule = schedules.find(s => s.reportType === 'daily_report');
     const leaderSchedule = schedules.find(s => s.reportType === 'leader_report');
+    const pushSchedule = schedules.find(s => s.reportType === 'push_report');
 
     const dailyHour = dailySchedule?.sendHour ?? 6;
     const dailyMinute = dailySchedule?.sendMinute ?? 0;
@@ -336,11 +339,16 @@ async function sendDailyReportsIfNeeded() {
     const leaderMinute = leaderSchedule?.sendMinute ?? 0;
     const leaderEnabled = leaderSchedule?.isEnabled ?? false;
 
+    const pushHour = pushSchedule?.sendHour ?? 6;
+    const pushMinute = pushSchedule?.sendMinute ?? 30;
+    const pushEnabled = pushSchedule?.isEnabled ?? false;
+
     const dailyPastTime = dailyEnabled && isPastScheduledTime(centralHour, centralMinute, dailyHour, dailyMinute);
     const leaderPastTime = leaderEnabled && isPastScheduledTime(centralHour, centralMinute, leaderHour, leaderMinute);
-    
+    const pushPastTime = pushEnabled && isPastScheduledTime(centralHour, centralMinute, pushHour, pushMinute);
+
     if (centralMinute < 5) {
-      log(`Report schedule check: CT ${centralHour}:${String(centralMinute).padStart(2, '0')} | Daily=${dailyEnabled ? `${dailyHour}:${String(dailyMinute).padStart(2, '0')}` : 'off'}(${dailyPastTime ? 'PAST TIME' : 'not yet'}) | Leader=${leaderEnabled ? `${leaderHour}:${String(leaderMinute).padStart(2, '0')}` : 'off'}(${leaderPastTime ? 'PAST TIME' : 'not yet'}) | lastSent: daily=${lastDailyReportSend}, leader=${lastLeaderReportSend}`);
+      log(`Report schedule check: CT ${centralHour}:${String(centralMinute).padStart(2, '0')} | Daily=${dailyEnabled ? `${dailyHour}:${String(dailyMinute).padStart(2, '0')}` : 'off'}(${dailyPastTime ? 'PAST TIME' : 'not yet'}) | Leader=${leaderEnabled ? `${leaderHour}:${String(leaderMinute).padStart(2, '0')}` : 'off'}(${leaderPastTime ? 'PAST TIME' : 'not yet'}) | Push=${pushEnabled ? `${pushHour}:${String(pushMinute).padStart(2, '0')}` : 'off'}(${pushPastTime ? 'PAST TIME' : 'not yet'}) | lastSent: daily=${lastDailyReportSend}, leader=${lastLeaderReportSend}, push=${lastPushReportSend}`);
     }
 
     if (dailyPastTime) {
@@ -379,6 +387,26 @@ async function sendDailyReportsIfNeeded() {
         } else {
           lastLeaderReportSend = centralDate;
           log("Leader reports already sent today (found in DB log) - skipping");
+        }
+      }
+    }
+
+    if (pushPastTime) {
+      if (lastPushReportSend !== centralDate) {
+        const alreadySent = await hasReportBeenSentToday('push', yesterdayDate);
+        if (!alreadySent) {
+          lastPushReportSend = centralDate;
+          log("Sending push (unit) reports...");
+          try {
+            const pushResult = await sendPushReports();
+            log(`Push reports: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+          } catch (error) {
+            log(`Push report error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            lastPushReportSend = null;
+          }
+        } else {
+          lastPushReportSend = centralDate;
+          log("Push reports already sent today (found in DB log) - skipping");
         }
       }
     }
