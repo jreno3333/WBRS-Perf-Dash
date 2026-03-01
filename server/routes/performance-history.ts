@@ -4,7 +4,8 @@ import { storage } from "../storage";
 import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
-import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint } from "../lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
+import { getAllHourlyPosOrderCountRange } from "../xenial-webhook";
 
 const router = Router();
 
@@ -92,6 +93,11 @@ router.get("/api/performance-history", async (req, res) => {
         lte(hmeTimerData.date, dateRange[dateRange.length - 1])
       ));
 
+    // Fetch POS order counts for transaction variance (current + comparison week)
+    const txnExpandedStart = expandedStartDate.toISOString().split('T')[0];
+    const txnExpandedEnd = endDateTs.toISOString().split('T')[0];
+    const posOrderCounts = await getAllHourlyPosOrderCountRange(txnExpandedStart, txnExpandedEnd);
+
     // Fetch hourly crew data for experience scores (XP)
     const allCrewData = await db.select().from(hourlyCrew)
       .where(and(
@@ -152,6 +158,7 @@ router.get("/api/performance-history", async (req, res) => {
       date: string;
       grade: number;
       gradeLabel: string;
+      baseGrade: number;
       totalSales: number;
       salesVariance: number;
       hasComparableSales: boolean;
@@ -159,8 +166,11 @@ router.get("/api/performance-history", async (req, res) => {
       staffingDiff: number;
       osatPercent?: number;
       osatResponses?: number;
+      transactionVariance?: number;
       avgXp?: number; // Average experience score for the day (0-100)
       weather?: { highTemp: number; lowTemp: number; condition: string } | null;
+      bonuses?: { id: string; label: string; points: number }[];
+      bonusPoints?: number;
     };
 
     type RestaurantHistory = {
@@ -293,6 +303,9 @@ router.get("/api/performance-history", async (req, res) => {
         // PER-HOUR GRADE CALCULATION — matches leaderboard-card.tsx exactly
         // Each hour gets a grade → converted to letter → converted to midpoint score → averaged
         const hourlyMidpoints: number[] = [];
+        const hourlyRawScores: number[] = []; // Raw scores for bonus evaluation
+        let dailyTxnTotal = 0;
+        let dailyTxnLastWeekTotal = 0;
         for (const hourSales of restaurantSales) {
           const todaySales = parseFloat(hourSales.actualSales || "0");
           if (todaySales <= 0) continue;
@@ -306,6 +319,18 @@ router.get("/api/performance-history", async (req, res) => {
           const salesVariancePct = hasComparableSales
             ? ((todaySales - lastWeekSales) / lastWeekSales) * 100
             : 0;
+
+          // Transaction data from POS orders
+          const txnKey = `${restaurant.id}-${dateStr}-${hour}`;
+          const txnLastWeekKey = `${restaurant.id}-${weekAgoDateStr}-${hour}`;
+          const hourTxnCount = posOrderCounts.get(txnKey) || 0;
+          const hourTxnLastWeek = posOrderCounts.get(txnLastWeekKey) || 0;
+          dailyTxnTotal += hourTxnCount;
+          dailyTxnLastWeekTotal += hourTxnLastWeek;
+          const hasComparableTransactions = hourTxnLastWeek > 0 && hourTxnCount > 0;
+          const txnVariancePct = hasComparableTransactions
+            ? ((hourTxnCount - hourTxnLastWeek) / hourTxnLastWeek) * 100
+            : undefined;
 
           const staffing = getStaffingBreakdown(hour, todaySales);
           const laborRecord = laborByKey.get(`${restaurant.id}-${dateStr}-${hour}`);
@@ -331,20 +356,27 @@ router.get("/api/performance-history", async (req, res) => {
           const result = computeHourlyScore({
             salesVariancePct,
             hasComparableSales,
+            transactionVariancePct: txnVariancePct,
+            hasComparableTransactions,
             speedAttainment,
             staffingDiff,
             hasValidStaffing,
             osatPercent: hourOsatPercent,
           });
           if (result.hasGrade && result.score > 0) {
+            hourlyRawScores.push(result.score);
             hourlyMidpoints.push(scoringGradeToMidpoint(scoreToGradeLabel(result.score)));
           }
         }
 
-        const grade = hourlyMidpoints.length > 0
+        // Compute daily transaction variance for bonus evaluation
+        const dailyTxnVariance = dailyTxnLastWeekTotal > 0
+          ? ((dailyTxnTotal - dailyTxnLastWeekTotal) / dailyTxnLastWeekTotal) * 100
+          : undefined;
+
+        const baseGrade = hourlyMidpoints.length > 0
           ? hourlyMidpoints.reduce((a, b) => a + b, 0) / hourlyMidpoints.length
           : 0;
-        const gradeLabel = grade > 0 ? scoreToGradeLabel(grade) : '-';
 
         // Calculate daily-level sales variance for display
         const weekAgoTotalSales = allHourlySales
@@ -359,9 +391,21 @@ router.get("/api/performance-history", async (req, res) => {
           salesVariance = Math.max(-200, Math.min(200, salesVariance));
         }
 
+        // Compute daily bonus points using raw hourly scores + daily-level metrics
+        const bonusResult = baseGrade > 0 ? computeDailyBonuses({
+          dailyOsatPercent: osatPercent,
+          dailySurveyCount: osatResponses,
+          dailySalesVariancePct: hasComparableSalesDaily ? salesVariance : undefined,
+          dailyTransactionVariancePct: dailyTxnVariance,
+          hourlyScores: hourlyRawScores,
+        }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
+
+        // Apply bonus points to get final grade (capped at 100)
+        const grade = baseGrade > 0 ? Math.min(baseGrade + bonusResult.cappedBonus, 100) : 0;
+        const gradeLabel = grade > 0 ? scoreToGradeLabel(grade) : '-';
+
         // Staffing diff for display (average across hours)
         let staffingDiffDisplay = 0;
-        const laborForDate = allHourlyLabor.filter(l => l.date === dateStr && l.restaurantId === restaurant.id);
         const staffingDiffs: number[] = [];
         for (const hourSales of restaurantSales) {
           const todaySales = parseFloat(hourSales.actualSales || "0");
@@ -412,6 +456,7 @@ router.get("/api/performance-history", async (req, res) => {
           date: dateStr,
           grade,
           gradeLabel,
+          baseGrade,
           totalSales,
           salesVariance,
           hasComparableSales: hasComparableSalesDaily,
@@ -419,8 +464,13 @@ router.get("/api/performance-history", async (req, res) => {
           staffingDiff: staffingDiffDisplay,
           osatPercent,
           osatResponses,
+          transactionVariance: dailyTxnVariance,
           avgXp,
           weather: dayWeather,
+          bonuses: bonusResult.bonuses.length > 0
+            ? bonusResult.bonuses.map(b => ({ id: b.id, label: b.label, points: b.points }))
+            : undefined,
+          bonusPoints: bonusResult.cappedBonus > 0 ? bonusResult.cappedBonus : undefined,
         });
       }
     }

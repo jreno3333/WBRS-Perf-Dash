@@ -31,20 +31,26 @@ import {
   CloudFog,
   CloudDrizzle,
   GraduationCap,
+  Sparkles,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DailyGrade {
   date: string;
   grade: number;
   gradeLabel: string;
+  baseGrade?: number;
   totalSales: number;
   salesVariance: number;
   avgSpeed?: number;
   staffingDiff: number;
   osatPercent?: number;
   osatResponses?: number;
+  transactionVariance?: number;
   avgXp?: number;
   weather?: { highTemp: number; lowTemp: number; condition: string } | null;
+  bonuses?: { id: string; label: string; points: number }[];
+  bonusPoints?: number;
 }
 
 interface RestaurantHistory {
@@ -160,14 +166,21 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
         const formatted = formatDate(grade.date);
         const dayName = formatted.split(",")[0];
         const datePart = formatted.split(",")[1]?.trim() || "";
-        return (
+        const hasBonuses = grade.bonuses && grade.bonuses.length > 0;
+
+        const gradeCell = (
           <div
             key={idx}
-            className={`flex flex-col items-center p-1.5 rounded ${getGradeBgColor(grade.gradeLabel)} min-w-[50px]`}
-            title={`${formatted}: ${grade.gradeLabel} (${grade.grade.toFixed(0)})${grade.weather ? ` | ${grade.weather.condition} ${Math.round(grade.weather.highTemp)}°/${Math.round(grade.weather.lowTemp)}°` : ""}${grade.avgXp !== undefined ? ` | XP: ${Math.round(grade.avgXp)}` : ""}`}
+            className={`flex flex-col items-center p-1.5 rounded ${getGradeBgColor(grade.gradeLabel)} min-w-[50px] relative`}
+            title={`${formatted}: ${grade.gradeLabel} (${grade.grade.toFixed(0)})${hasBonuses ? ` | +${grade.bonusPoints} bonus` : ""}${grade.weather ? ` | ${grade.weather.condition} ${Math.round(grade.weather.highTemp)}°/${Math.round(grade.weather.lowTemp)}°` : ""}${grade.avgXp !== undefined ? ` | XP: ${Math.round(grade.avgXp)}` : ""}`}
           >
             <span className="text-[10px] text-muted-foreground">{dayName}</span>
-            <span className={`text-sm font-bold ${getGradeColor(grade.gradeLabel)}`}>{grade.gradeLabel}</span>
+            <div className="flex items-center gap-0.5">
+              <span className={`text-sm font-bold ${getGradeColor(grade.gradeLabel)}`}>{grade.gradeLabel}</span>
+              {hasBonuses && (
+                <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+              )}
+            </div>
             <span className="text-[9px] text-muted-foreground">{datePart}</span>
             {(grade.weather || grade.avgXp !== undefined) && (
               <div className="flex items-center gap-1 mt-0.5">
@@ -187,6 +200,36 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
             )}
           </div>
         );
+
+        if (hasBonuses) {
+          return (
+            <Popover key={idx}>
+              <PopoverTrigger asChild>
+                <span className="inline-flex cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                  {gradeCell}
+                </span>
+              </PopoverTrigger>
+              <PopoverContent side="top" className="w-auto max-w-[260px] p-2 text-xs">
+                <div className="font-medium flex items-center gap-1 mb-1">
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  +{grade.bonusPoints} Bonus Points
+                </div>
+                <div className="space-y-0.5 text-muted-foreground">
+                  {grade.bonuses!.map((b) => (
+                    <div key={b.id}>+{b.points} {b.label}</div>
+                  ))}
+                </div>
+                {grade.baseGrade !== undefined && (
+                  <div className="mt-1 pt-1 border-t text-muted-foreground">
+                    Base: {grade.baseGrade.toFixed(0)} → Final: {grade.grade.toFixed(0)}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          );
+        }
+
+        return gradeCell;
       })}
     </div>
   );
