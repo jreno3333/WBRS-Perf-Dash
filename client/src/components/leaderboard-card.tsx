@@ -1,4 +1,5 @@
 import { useState, memo } from "react";
+import { Link } from "wouter";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
@@ -588,38 +589,41 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     className={`flex-shrink-0 text-xs font-bold ${overallGrade.color} border-current`}
                     data-testid={`badge-grade-${restaurant.restaurantId}`}
                     tooltipContent={
-                      daypartGrades.length > 0 ? (
-                        <div>
-                          <div className="font-medium mb-1">Daypart Grades</div>
-                          <div className="flex flex-col gap-0.5">
-                            {daypartGrades.map(dp => {
-                              // Compute daypart check average for tooltip
-                              let dpCA: number | null = null;
-                              if (checkAverage?.hourly) {
-                                let dpOrders = 0, dpSales = 0;
-                                for (let h = dp.startHour; h <= dp.endHour; h++) {
-                                  const hCA = checkAverage.hourly[h];
-                                  if (hCA) { dpOrders += hCA.orders; dpSales += hCA.sales; }
+                      <>
+                        {daypartGrades.length > 0 ? (
+                          <div>
+                            <div className="font-medium mb-1">Daypart Grades</div>
+                            <div className="flex flex-col gap-0.5">
+                              {daypartGrades.map(dp => {
+                                // Compute daypart check average for tooltip
+                                let dpCA: number | null = null;
+                                if (checkAverage?.hourly) {
+                                  let dpOrders = 0, dpSales = 0;
+                                  for (let h = dp.startHour; h <= dp.endHour; h++) {
+                                    const hCA = checkAverage.hourly[h];
+                                    if (hCA) { dpOrders += hCA.orders; dpSales += hCA.sales; }
+                                  }
+                                  if (dpOrders > 0) dpCA = dpSales / dpOrders;
                                 }
-                                if (dpOrders > 0) dpCA = dpSales / dpOrders;
-                              }
-                              return (
-                                <div key={dp.id} className="flex items-center justify-between gap-3">
-                                  <span className="text-muted-foreground">{dp.label}</span>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
-                                    {dpCA !== null && (
-                                      <span className="text-teal-500 text-[10px]">${dpCA.toFixed(2)}</span>
-                                    )}
+                                return (
+                                  <div key={dp.id} className="flex items-center justify-between gap-3">
+                                    <span className="text-muted-foreground">{dp.label}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
+                                      {dpCA !== null && (
+                                        <span className="text-teal-500 text-[10px]">${dpCA.toFixed(2)}</span>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div>Overall execution grade based on sales, speed, OSAT, and staffing</div>
-                      )
+                        ) : (
+                          <div>Overall execution grade based on sales, transactions, OSAT, speed, and staffing</div>
+                        )}
+                        <div className="mt-1.5 pt-1.5 border-t"><Link href="/scoring" className="text-blue-500 hover:underline text-[10px]">How is this calculated?</Link></div>
+                      </>
                     }
                   >
                     EXC: {overallGrade.grade}

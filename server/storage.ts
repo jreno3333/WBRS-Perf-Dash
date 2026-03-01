@@ -18,7 +18,7 @@ import {
 } from "@shared/schema";
 import { db, posDb } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { getPosSalesByRestaurant, getAllHourlyPosSales } from "./xenial-webhook";
+import { getPosSalesByRestaurant, getAllHourlyPosSales, getCheckAverageByRestaurant } from "./xenial-webhook";
 import { getHourlyOsatForDate } from "./scraper/qualtrics-api";
 import { getCurrentHourInTimezone, getTodayInTimezone, getNormalizedHourCutoff } from "./utils/dates";
 import { deduplicateHourly } from "./utils/db-helpers";
@@ -596,6 +596,8 @@ export class DatabaseStorage {
     const posHourlySales = await getAllHourlyPosSales(selectedDate);
     const posLastWeekHourlySales = await getAllHourlyPosSales(lastWeek);
     const hourlyOsatData = await getHourlyOsatForDate(selectedDateStr);
+    const checkAvgData = await getCheckAverageByRestaurant(selectedDate);
+    const checkAvgLastWeek = await getCheckAverageByRestaurant(lastWeek);
 
     const result: Record<string, HourlySalesData[]> = {};
 
@@ -739,6 +741,8 @@ export class DatabaseStorage {
         if (todaySales > 0 || lastWeekSales > 0 || forecastSales > 0 || projectedLabor > 0 || actualLabor > 0 || hasOsatData) {
           const hmeHourData = hmeByHour.get(hour);
           const leaders = leadersByHour.get(hour);
+          const txnData = checkAvgData.get(restaurant.id)?.hourly.get(hour);
+          const txnLastWeek = checkAvgLastWeek.get(restaurant.id)?.hourly.get(hour);
           hourlyDataForRestaurant.push({
             hour,
             todaySales,
@@ -756,6 +760,8 @@ export class DatabaseStorage {
             speedAttainment: hmeHourData && hmeHourData.carCount > 0 && hmeHourData.carsUnder6Min > 0 ? Math.round((hmeHourData.carsUnder6Min / hmeHourData.carCount) * 100) : undefined,
             osatPercent: osatHourData?.osatPercent,
             osatResponses: osatHourData?.totalResponses,
+            transactionCount: txnData?.orders,
+            lastWeekTransactionCount: txnLastWeek?.orders,
           });
         }
       }

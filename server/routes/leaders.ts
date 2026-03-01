@@ -4,24 +4,11 @@ import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
+import { computeHourlyScore, scoreToGradeLabel } from "../lib/scoring";
 
 const router = Router();
 
-function getGradeLabel(score: number): string {
-  if (score >= 97) return "A+";
-  if (score >= 93) return "A";
-  if (score >= 90) return "A-";
-  if (score >= 87) return "B+";
-  if (score >= 83) return "B";
-  if (score >= 80) return "B-";
-  if (score >= 77) return "C+";
-  if (score >= 73) return "C";
-  if (score >= 70) return "C-";
-  if (score >= 67) return "D+";
-  if (score >= 63) return "D";
-  if (score >= 60) return "D-";
-  return "F";
-}
+const getGradeLabel = scoreToGradeLabel;
 
 const MIN_HOURS_REQUIRED = 8;
 const MIN_HOURS_TOP10 = 20;
@@ -226,29 +213,17 @@ router.get("/api/leaders", async (req, res) => {
           ? day.osatWeighted.reduce((s, o) => s + o.percent * o.responses, 0) / totalOsatResponses : undefined;
         const salesSurge = salesVariancePct >= 20;
 
-        const components: { weight: number; score: number }[] = [];
-        if (hasComparableSales) {
-          components.push({ weight: 35, score: salesVariancePct >= -5 ? 100 : 50 });
-        } else {
-          components.push({ weight: 35, score: 100 });
-        }
+        const gradeResult = computeHourlyScore({
+          salesVariancePct,
+          hasComparableSales,
+          speedAttainment: avgSpeed,
+          staffingDiff: avgStaffingDiff,
+          hasValidStaffing: day.staffingDiffs.length > 0,
+          osatPercent,
+        });
 
-        const effectiveSurge = salesSurge || !hasComparableSales;
-        let staffingScore = 100;
-        if (Math.abs(avgStaffingDiff) > 1) staffingScore = avgStaffingDiff > 1 ? 60 : (effectiveSurge ? 100 : 60);
-        components.push({ weight: 15, score: staffingScore });
-
-        if (avgSpeed !== undefined) {
-          components.push({ weight: 25, score: avgSpeed < 50 ? 40 : avgSpeed < 70 ? 70 : 100 });
-        }
-        if (osatPercent !== undefined) {
-          components.push({ weight: 25, score: osatPercent < 80 ? 40 : osatPercent < 85 ? 70 : 100 });
-        }
-
-        if (components.length > 0) {
-          const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-          const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
-          dailyGrades.push({ score, hours: day.hoursCount });
+        if (gradeResult.hasGrade) {
+          dailyGrades.push({ score: gradeResult.score, hours: day.hoursCount });
         }
       }
 

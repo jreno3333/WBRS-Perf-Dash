@@ -16,7 +16,6 @@ import leaderDetailRouter from "./leader-detail";
 import marketsRouter from "./markets";
 import performanceHistoryRouter from "./performance-history";
 import leadersRouter from "./leaders";
-import arenaRouter from "./arena";
 import historicalSalesRouter from "./historical-sales";
 import analyticsRouter from "./analytics";
 import notesRouter from "./notes";
@@ -58,7 +57,6 @@ export async function registerRoutes(
       "/api/diagnostics",
       "/api/db-status",
       "/api/xenial/",
-      "/api/arena/",
       "/api/push-report/shared/",
     ];
     const fullPath = req.originalUrl.split('?')[0];
@@ -82,7 +80,6 @@ export async function registerRoutes(
   app.use(marketsRouter);
   app.use(performanceHistoryRouter);
   app.use(leadersRouter);
-  app.use(arenaRouter);
   app.use(historicalSalesRouter);
   app.use(analyticsRouter);
   app.use(notesRouter);

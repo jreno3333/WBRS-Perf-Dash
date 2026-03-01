@@ -4,14 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Link } from "wouter";
-import { AlertTriangle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Grid3X3, CalendarDays } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
 import { NavBar } from "@/components/nav-bar";
-import { format, parseISO, isValid, eachDayOfInterval } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, RestaurantSales } from "@shared/schema";
 
 interface HeatmapData {
@@ -52,10 +48,12 @@ function getHeatColor(sales: number, maxSales: number): string {
   return "bg-green-600 dark:bg-green-600/80";
 }
 
-// Get current date in Central timezone (business day)
-function getCentralDateStr(): string {
+// Get yesterday in Central timezone (finalized previous-day data)
+function getYesterdayStr(): string {
   const now = new Date();
-  return now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return yesterday.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 }
 
 export default function HeatmapPage() {
@@ -68,11 +66,9 @@ export default function HeatmapPage() {
   const urlUnit = urlParams.get('unit');
   const [expandUnitId, setExpandUnitId] = useState<string | null>(urlUnit);
   
-  // Date selection state
-  const todayStr = getCentralDateStr();
-  const [startDate, setStartDate] = useState<string>(urlDate || todayStr);
-  const [endDate, setEndDate] = useState<string>(urlDate || todayStr);
-  const [isDateRangeMode, setIsDateRangeMode] = useState(false);
+  // Date selection state - defaults to yesterday (finalized data)
+  const yesterdayStr = getYesterdayStr();
+  const startDate = urlDate || yesterdayStr;
   
   // When coming from email link, ensure summary is expanded
   useEffect(() => {
@@ -81,66 +77,14 @@ export default function HeatmapPage() {
     }
   }, []);
   
-  // Auto-adjust endDate if startDate changes to be after endDate
-  const handleStartDateChange = (newStartDate: string) => {
-    if (!newStartDate) return;
-    setStartDate(newStartDate);
-    if (isDateRangeMode && newStartDate > endDate) {
-      setEndDate(newStartDate);
-    }
-  };
+  // Single-day analysis (no date range mode)
+  const analysisDateRange = useMemo(() => [startDate], [startDate]);
 
-  const handleEndDateChange = (newEndDate: string) => {
-    if (!newEndDate) return;
-    setEndDate(newEndDate);
-  };
-
-  const goToPreviousDay = () => {
-    const prev = new Date(startDate + "T12:00:00");
-    prev.setDate(prev.getDate() - 1);
-    const prevStr = format(prev, "yyyy-MM-dd");
-    setStartDate(prevStr);
-    if (!isDateRangeMode) setEndDate(prevStr);
-  };
-
-  const goToNextDay = () => {
-    const next = new Date(startDate + "T12:00:00");
-    next.setDate(next.getDate() + 1);
-    const nextStr = format(next, "yyyy-MM-dd");
-    if (nextStr <= todayStr) {
-      setStartDate(nextStr);
-      if (!isDateRangeMode) setEndDate(nextStr);
-    }
-  };
-
-  const goToToday = () => {
-    setStartDate(todayStr);
-    setEndDate(todayStr);
-  };
-  
-  // Compute the active analysis date or date range
-  const analysisDateRange = useMemo(() => {
-    if (!isDateRangeMode) {
-      return [startDate];
-    }
-    
-    try {
-      const start = parseISO(startDate);
-      const end = parseISO(endDate);
-      if (!isValid(start) || !isValid(end) || start > end) {
-        return [startDate];
-      }
-      return eachDayOfInterval({ start, end }).map(d => format(d, 'yyyy-MM-dd'));
-    } catch {
-      return [startDate];
-    }
-  }, [startDate, endDate, isDateRangeMode]);
-  
   // Auto-refresh every 5 minutes (300000ms) for all-day monitoring
   const REFRESH_INTERVAL = 5 * 60 * 1000;
-  
-  const heatmapStartDate = isDateRangeMode ? startDate : startDate;
-  const heatmapEndDate = isDateRangeMode ? endDate : startDate;
+
+  const heatmapStartDate = startDate;
+  const heatmapEndDate = startDate; // Single-day view only
 
   const { data, isLoading } = useQuery<HeatmapData>({
     queryKey: ['/api/hourly-heatmap', heatmapStartDate, heatmapEndDate],
@@ -360,9 +304,6 @@ export default function HeatmapPage() {
     return result;
   }, [crewQueries]);
 
-  // Use first date in range for single-date dependent queries
-  const dateStr = startDate;
-  
   const activeDates = useMemo(() => {
     if (!data) return [];
     return data.dateRange;
@@ -488,95 +429,22 @@ export default function HeatmapPage() {
             <h1 className="text-xl font-bold">Daily Performance</h1>
           </div>
           
-          {/* Date Navigation + Controls */}
+          {/* Date Display */}
           <div className="flex items-center gap-2 flex-wrap">
-            {!isDateRangeMode && (
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={goToPreviousDay} data-testid="button-prev-day">
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <div className="flex items-center gap-1">
-                  <CalendarDays className="w-4 h-4 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    value={startDate}
-                    max={todayStr}
-                    onChange={(e) => handleStartDateChange(e.target.value)}
-                    className="w-36 h-8 text-sm"
-                    data-testid="input-start-date"
-                  />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={goToNextDay}
-                  disabled={startDate >= todayStr}
-                  data-testid="button-next-day"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-
-            {isDateRangeMode && (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="start-date-range" className="text-sm text-muted-foreground whitespace-nowrap">
-                  <CalendarDays className="w-4 h-4 inline mr-1" />From:
-                </Label>
-                <Input
-                  id="start-date-range"
-                  type="date"
-                  value={startDate}
-                  max={todayStr}
-                  onChange={(e) => handleStartDateChange(e.target.value)}
-                  className="w-36 h-8 text-sm"
-                />
-                <Label htmlFor="end-date" className="text-sm text-muted-foreground">To:</Label>
-                <Input
-                  id="end-date"
-                  type="date"
-                  value={endDate}
-                  min={startDate}
-                  max={todayStr}
-                  onChange={(e) => handleEndDateChange(e.target.value)}
-                  className="w-36 h-8 text-sm"
-                  data-testid="input-end-date"
-                />
-              </div>
-            )}
-
-            <Button
-              variant={isDateRangeMode ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => {
-                setIsDateRangeMode(!isDateRangeMode);
-                if (!isDateRangeMode) {
-                  setEndDate(startDate);
-                }
-              }}
-              data-testid="button-toggle-range"
-            >
-              {isDateRangeMode ? "Single Day" : "Date Range"}
-            </Button>
-
-            {startDate !== todayStr && (
-              <Button variant="ghost" size="sm" onClick={goToToday} data-testid="button-reset-date">
-                Today
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">
+                {new Date(startDate + 'T12:00:00').toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </span>
+            </div>
             <NavBar />
           </div>
         </div>
-        
-        {/* Date Range Display */}
-        {isDateRangeMode && analysisDateRange.length > 1 && (
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              Analyzing {analysisDateRange.length} days: {format(parseISO(analysisDateRange[0]), 'MMM d')} - {format(parseISO(analysisDateRange[analysisDateRange.length - 1]), 'MMM d')}
-            </Badge>
-          </div>
-        )}
         
         {/* Daily Performance Summary - First */}
         {leaderboardData && (

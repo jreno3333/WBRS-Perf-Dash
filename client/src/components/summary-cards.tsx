@@ -3,7 +3,7 @@ import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency } from "@/lib/grading";
+import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS } from "@/lib/grading";
 
 interface WeeklySalesData {
   currentWeekStart: string;
@@ -38,99 +38,20 @@ interface SummaryCardsProps {
   checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
 }
 
-// Grade scoring for X-Score calculation
-const scoreToGrade = (score: number): string => {
-  if (score >= 97) return 'A+';
-  if (score >= 93) return 'A';
-  if (score >= 90) return 'A-';
-  if (score >= 87) return 'B+';
-  if (score >= 83) return 'B';
-  if (score >= 80) return 'B-';
-  if (score >= 77) return 'C+';
-  if (score >= 73) return 'C';
-  if (score >= 70) return 'C-';
-  if (score >= 67) return 'D+';
-  if (score >= 63) return 'D';
-  if (score >= 60) return 'D-';
-  return 'F';
-};
-
-const getGradeColor = (grade: string): string => {
-  if (grade.startsWith('A')) return 'text-green-500';
-  if (grade.startsWith('B')) return 'text-blue-500';
-  if (grade.startsWith('C')) return 'text-yellow-500';
-  if (grade.startsWith('D')) return 'text-orange-500';
-  return 'text-red-500';
-};
-
-const getGradeBgColor = (grade: string): string => {
-  if (grade.startsWith('A')) return 'bg-green-500/10 border-green-500/30';
-  if (grade.startsWith('B')) return 'bg-blue-500/10 border-blue-500/30';
-  if (grade.startsWith('C')) return 'bg-yellow-500/10 border-yellow-500/30';
-  if (grade.startsWith('D')) return 'bg-orange-500/10 border-orange-500/30';
-  return 'bg-red-500/10 border-red-500/30';
-};
-
-// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
-const GRADE_WEIGHTS = {
-  sales: 35,
-  speed: 25,
-  osat: 25,
-  staffing: 15,
-};
-
 function getExecutionGrade(
   salesVariancePct: number,
   speedAttainment: number | undefined,
   staffingDiff: number,
-  hasComparableSales: boolean = true,
-  osatPercent: number | undefined = undefined,
-  hasValidStaffing: boolean = true
-): { grade: string; score: number; hasGrade: boolean } {
-  const components: { name: string; score: number; weight: number }[] = [];
-  
-  if (hasComparableSales) {
-    const salesScore = salesVariancePct >= -5 ? 100 : 50;
-    components.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
-  } else {
-    components.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
+  hasComparableSales: boolean,
+  osatPercent: number | undefined,
+  hasValidStaffing: boolean,
+): { grade: string; color: string; score: number; hasGrade: boolean; components: { name: string; score: number; weight: number }[] } {
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent);
+  if (score === 0) {
+    return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false, components: [] };
   }
-  
-  if (speedAttainment !== undefined && speedAttainment >= 0) {
-    let speedScore = 100;
-    if (speedAttainment < 50) speedScore = 40;
-    else if (speedAttainment < 70) speedScore = 70;
-    components.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
-  }
-  
-  // OSAT component (weight: 25%) - only if we have customer satisfaction data
-  if (osatPercent !== undefined && osatPercent > 0) {
-    let osatScore = 100;
-    if (osatPercent < 80) osatScore = 40;
-    else if (osatPercent < 85) osatScore = 70;
-    components.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
-  }
-  
-  // Staffing component (weight: 15%) - only if we have valid staffing data
-  // SALES SURGE EXCEPTION: No understaffing penalty when sales are 20%+ above last week
-  if (hasValidStaffing) {
-    let staffingScore = 100;
-    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-    if (staffingDiff > 1) staffingScore = 60;
-    else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
-    components.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
-  }
-  
-  if (components.length === 0) {
-    return { grade: '-', score: 0, hasGrade: false };
-  }
-  
-  // Calculate weighted average - normalize weights based on available components
-  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-  const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
-  
-  const grade = scoreToGrade(avgScore);
-  return { grade, score: avgScore, hasGrade: true };
+  const grade = scoreToGradeLabel(score);
+  return { grade, color: getGradeColor(grade), score, hasGrade: true, components: [] };
 }
 
 export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: SummaryCardsProps) {
@@ -309,7 +230,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
       // Calculate this restaurant's overall grade
       if (restaurantHourlyScores.length > 0) {
         const avgScore = restaurantHourlyScores.reduce((a, b) => a + b, 0) / restaurantHourlyScores.length;
-        restaurantGrades[restaurantId] = scoreToGrade(avgScore);
+        restaurantGrades[restaurantId] = scoreToGradeLabel(avgScore);
       }
     }
   }
@@ -332,7 +253,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const overallXScore = allHourlyScores.length > 0
     ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length
     : 0;
-  const overallGrade = scoreToGrade(overallXScore);
+  const overallGrade = scoreToGradeLabel(overallXScore);
   const gradeColor = getGradeColor(overallGrade);
 
   // Calculate projected daily: sum of all restaurant forecast sales
@@ -414,7 +335,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const hourlyAvgScores = last4Hours.map(h => ({
     hour: h,
     avgScore: scoresByHour[h].reduce((a, b) => a + b, 0) / scoresByHour[h].length,
-    grade: scoreToGrade(scoresByHour[h].reduce((a, b) => a + b, 0) / scoresByHour[h].length)
+    grade: scoreToGradeLabel(scoresByHour[h].reduce((a, b) => a + b, 0) / scoresByHour[h].length)
   })).reverse(); // Reverse so oldest is first for trend display
   
   // Determine trend direction (compare first hour to last hour in the 3-hour window)

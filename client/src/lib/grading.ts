@@ -1,14 +1,39 @@
 /**
- * Shared Execution Grade Utilities
+ * Shared Execution Grade Utilities (Client-Side)
  *
- * Centralizes grade calculation logic that was duplicated across
- * dashboard.tsx, leaderboard-card.tsx, summary-cards.tsx,
- * state-breakdown.tsx, market-breakdown.tsx, and daily-summary.tsx.
+ * Mirrors the server-side scoring module (server/lib/scoring.ts).
+ * Graduated scoring with 5 weighted components + daily bonus points.
  *
- * WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
+ * WEIGHTS: Sales 30%, Transactions 15%, OSAT 30%, Speed 15%, Staffing 10%
  */
 
-export const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 } as const;
+export const GRADE_WEIGHTS = { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10 } as const;
+
+export const BONUS_CAP = 8;
+
+export const BONUS_DEFINITIONS = [
+  { id: "perfectOsat", label: "Perfect OSAT", points: 3, description: "100% OSAT with 5+ surveys for the day" },
+  { id: "highVolumeOsat", label: "High-Volume OSAT", points: 2, description: "85%+ OSAT with 10+ surveys for the day" },
+  { id: "salesGrowth", label: "Sales Growth", points: 2, description: "Daily sales 5%+ above same day last week" },
+  { id: "transactionGrowth", label: "Transaction Growth", points: 2, description: "Transaction count 5%+ above same day last week" },
+  { id: "recoveryKicker", label: "Recovery", points: 3, description: "Had 2+ hours graded C or below, but daily avg still B- or better" },
+  { id: "consistency", label: "Consistency", points: 2, description: "No hour graded below B for the entire day" },
+] as const;
+
+export type BonusId = typeof BONUS_DEFINITIONS[number]["id"];
+
+export interface BonusResult {
+  id: BonusId;
+  label: string;
+  points: number;
+  description: string;
+}
+
+export interface DailyBonusResult {
+  bonuses: BonusResult[];
+  totalBonus: number;
+  cappedBonus: number;
+}
 
 // ──────────────────────────────────────────
 // Score <-> Grade conversions
@@ -68,13 +93,55 @@ export function getGradeBadgeColor(grade: string): string {
 }
 
 // ──────────────────────────────────────────
-// Weighted execution grade calculation
+// Graduated component scoring
 // ──────────────────────────────────────────
 
-interface GradeComponent {
-  score: number;
-  weight: number;
+/** Sales variance % → 0-100 score (graduated) */
+export function scoreSalesVariance(variancePct: number): number {
+  if (variancePct >= 10) return 100;
+  if (variancePct >= 5) return 95;
+  if (variancePct >= 0) return 90;
+  if (variancePct >= -5) return 80;
+  if (variancePct >= -10) return 60;
+  return 40;
 }
+
+/** Transaction variance % → 0-100 score (graduated) */
+export function scoreTransactionVariance(variancePct: number): number {
+  if (variancePct >= 10) return 100;
+  if (variancePct >= 5) return 95;
+  if (variancePct >= 0) return 90;
+  if (variancePct >= -5) return 80;
+  if (variancePct >= -10) return 60;
+  return 40;
+}
+
+/** OSAT % → 0-100 score (graduated) */
+export function scoreOsat(osatPct: number): number {
+  if (osatPct >= 90) return 100;
+  if (osatPct >= 85) return 90;
+  if (osatPct >= 80) return 70;
+  if (osatPct >= 75) return 50;
+  return 40;
+}
+
+/** Speed attainment % → 0-100 score */
+export function scoreSpeed(attainmentPct: number): number {
+  if (attainmentPct >= 70) return 100;
+  if (attainmentPct >= 50) return 70;
+  return 40;
+}
+
+/** Staffing diff → 0-100 score */
+export function scoreStaffing(staffingDiff: number, isSalesSurge: boolean): number {
+  if (staffingDiff > 1) return 60;
+  if (staffingDiff < -1 && !isSalesSurge) return 60;
+  return 100;
+}
+
+// ──────────────────────────────────────────
+// Weighted execution grade calculation
+// ──────────────────────────────────────────
 
 /**
  * Compute the weighted execution grade score (0-100 numeric).
@@ -87,39 +154,37 @@ export function computeExecutionScore(
   hasComparableSales: boolean,
   hasValidStaffing: boolean,
   osatPercent: number | undefined,
+  transactionVariancePct?: number,
+  hasComparableTransactions?: boolean,
 ): number {
-  const components: GradeComponent[] = [];
+  const components: { score: number; weight: number }[] = [];
 
-  // Sales (35%)
+  // Sales (30%)
   if (hasComparableSales) {
-    components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
+    components.push({ score: scoreSalesVariance(salesVariancePct), weight: GRADE_WEIGHTS.sales });
   } else {
-    components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
+    components.push({ score: 90, weight: GRADE_WEIGHTS.sales });
   }
 
-  // Speed (25%)
-  if (speedAttainment !== undefined && speedAttainment >= 0) {
-    let speedScore = 100;
-    if (speedAttainment < 50) speedScore = 40;
-    else if (speedAttainment < 70) speedScore = 70;
-    components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
+  // Transactions (15%)
+  if (hasComparableTransactions && transactionVariancePct !== undefined) {
+    components.push({ score: scoreTransactionVariance(transactionVariancePct), weight: GRADE_WEIGHTS.transactions });
   }
 
-  // OSAT (25%)
+  // OSAT (30%)
   if (osatPercent !== undefined && osatPercent > 0) {
-    let osatScore = 100;
-    if (osatPercent < 80) osatScore = 40;
-    else if (osatPercent < 85) osatScore = 70;
-    components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
+    components.push({ score: scoreOsat(osatPercent), weight: GRADE_WEIGHTS.osat });
   }
 
-  // Staffing (15%)
+  // Speed (15%)
+  if (speedAttainment !== undefined && speedAttainment >= 0) {
+    components.push({ score: scoreSpeed(speedAttainment), weight: GRADE_WEIGHTS.speed });
+  }
+
+  // Staffing (10%)
   if (hasValidStaffing) {
-    let staffingScore = 100;
     const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-    if (staffingDiff > 1) staffingScore = 60;
-    else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
-    components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
+    components.push({ score: scoreStaffing(staffingDiff, isSalesSurge), weight: GRADE_WEIGHTS.staffing });
   }
 
   if (components.length === 0) return 0;
@@ -129,7 +194,6 @@ export function computeExecutionScore(
 
 /**
  * Full execution grade result (label + color + hasGrade flag).
- * This is what leaderboard-card.tsx and others use for display.
  */
 export function getExecutionGrade(
   salesVariancePct: number,
@@ -138,16 +202,73 @@ export function getExecutionGrade(
   hasComparableSales = true,
   hasValidStaffing = true,
   osatPercent: number | undefined = undefined,
+  transactionVariancePct?: number,
+  hasComparableTransactions?: boolean,
 ): { grade: string; color: string; score: number; hasGrade: boolean } {
   const score = computeExecutionScore(
     salesVariancePct, speedAttainment, staffingDiff,
     hasComparableSales, hasValidStaffing, osatPercent,
+    transactionVariancePct, hasComparableTransactions,
   );
   if (score === 0) {
     return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false };
   }
   const grade = scoreToGradeLabel(score);
   return { grade, color: getGradeColor(grade), score, hasGrade: true };
+}
+
+// ──────────────────────────────────────────
+// Daily bonus points
+// ──────────────────────────────────────────
+
+export interface DailyBonusInput {
+  dailyOsatPercent?: number;
+  dailySurveyCount?: number;
+  dailySalesVariancePct?: number;
+  dailyTransactionVariancePct?: number;
+  hourlyScores: number[];
+}
+
+export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
+  const bonuses: BonusResult[] = [];
+
+  // Perfect OSAT: 100% with ≥5 surveys
+  if (input.dailyOsatPercent !== undefined && input.dailyOsatPercent >= 100 && (input.dailySurveyCount ?? 0) >= 5) {
+    bonuses.push({ ...BONUS_DEFINITIONS[0] });
+  }
+  // High-volume OSAT: ≥85% with ≥10 surveys (only if not perfect)
+  else if (input.dailyOsatPercent !== undefined && input.dailyOsatPercent >= 85 && (input.dailySurveyCount ?? 0) >= 10) {
+    bonuses.push({ ...BONUS_DEFINITIONS[1] });
+  }
+
+  // Sales growth: ≥+5% vs last week
+  if (input.dailySalesVariancePct !== undefined && input.dailySalesVariancePct >= 5) {
+    bonuses.push({ ...BONUS_DEFINITIONS[2] });
+  }
+
+  // Transaction growth: ≥+5% vs last week
+  if (input.dailyTransactionVariancePct !== undefined && input.dailyTransactionVariancePct >= 5) {
+    bonuses.push({ ...BONUS_DEFINITIONS[3] });
+  }
+
+  // Recovery kicker: ≥2 hours at C or below (<77), but daily avg ≥ B- (80)
+  if (input.hourlyScores.length >= 4) {
+    const badHours = input.hourlyScores.filter(s => s < 77).length;
+    const dailyAvg = input.hourlyScores.reduce((a, b) => a + b, 0) / input.hourlyScores.length;
+    if (badHours >= 2 && dailyAvg >= 80) {
+      bonuses.push({ ...BONUS_DEFINITIONS[4] });
+    }
+  }
+
+  // Consistency: no hour below B (83)
+  if (input.hourlyScores.length >= 4 && input.hourlyScores.every(s => s >= 83)) {
+    bonuses.push({ ...BONUS_DEFINITIONS[5] });
+  }
+
+  const totalBonus = bonuses.reduce((sum, b) => sum + b.points, 0);
+  const cappedBonus = Math.min(totalBonus, BONUS_CAP);
+
+  return { bonuses, totalBonus, cappedBonus };
 }
 
 // ──────────────────────────────────────────

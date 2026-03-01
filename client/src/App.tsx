@@ -17,7 +17,7 @@ const CrewExperiencePage = lazy(() => import("@/pages/crew-experience"));
 const PerformanceHistoryPage = lazy(() => import("@/pages/performance-history"));
 const LeadersPage = lazy(() => import("@/pages/leaders"));
 const LoginPage = lazy(() => import("@/pages/login"));
-const ArenaPage = lazy(() => import("@/pages/arena"));
+const ScoringGuidePage = lazy(() => import("@/pages/scoring-guide"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -54,6 +54,7 @@ function ProtectedRoutes() {
         <Route path="/crew" component={CrewExperiencePage} />
         <Route path="/history" component={PerformanceHistoryPage} />
         <Route path="/leaders" component={LeadersPage} />
+        <Route path="/scoring" component={ScoringGuidePage} />
         <Route component={NotFound} />
       </Switch>
     </AuthGuard>
@@ -76,7 +77,6 @@ function App() {
         <Suspense fallback={<PageLoadingFallback />}>
           <Switch>
             <Route path="/login" component={LoginPage} />
-            <Route path="/arena" component={ArenaPage} />
             <Route>
               <ProtectedRoutes />
             </Route>

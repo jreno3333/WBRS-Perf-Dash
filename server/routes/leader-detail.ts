@@ -4,6 +4,7 @@ import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
+import { computeHourlyScore, scoreToGradeLabel, computeDailyScore } from "../lib/scoring";
 
 const router = Router();
 
@@ -167,24 +168,6 @@ router.get("/api/people/leader-detail", async (req, res) => {
         const requiredStaff = getTotalRequiredStaff(crew.hour, todaySales);
         const staffingDiff = actualStaff - requiredStaff;
 
-        const salesSurge = salesVariancePct >= 20;
-
-        const components: { weight: number; score: number }[] = [];
-
-        if (hasComparableSales) {
-          const salesScore = salesVariancePct >= -5 ? 100 : 50;
-          components.push({ weight: 35, score: salesScore });
-        } else {
-          components.push({ weight: 35, score: 100 });
-        }
-
-        const effectiveSurge = salesSurge || !hasComparableSales;
-        let staffingScore: number;
-        if (Math.abs(staffingDiff) <= 1) staffingScore = 100;
-        else if (staffingDiff > 1) staffingScore = 60;
-        else staffingScore = effectiveSurge ? 100 : 60;
-        components.push({ weight: 15, score: staffingScore });
-
         const speedSeconds = hme && hme.avgTotalTime > 0 ? hme.avgTotalTime : undefined;
         const hmeCarCount = hme && hme.carCount > 0 ? hme.carCount : undefined;
         const rawCarsUnder6 = hme ? (hme.carsUnder6Min || 0) : 0;
@@ -193,23 +176,20 @@ router.get("/api/people/leader-detail", async (req, res) => {
         const hourSpeedAttainment = hasValidAttainmentData
           ? Math.round((rawCarsUnder6 / hmeCarCount!) * 100)
           : undefined;
-        if (hourSpeedAttainment !== undefined) {
-          let speedScore = 100;
-          if (hourSpeedAttainment < 50) speedScore = 40;
-          else if (hourSpeedAttainment < 70) speedScore = 70;
-          components.push({ weight: 25, score: speedScore });
-        }
 
         const hourOsatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
         const hourOsatResponses = osatHour && osatHour.totalResponses > 0 ? osatHour.totalResponses : undefined;
-        if (hourOsatPercent !== undefined) {
-          let osatScore = 100;
-          if (hourOsatPercent < 80) osatScore = 40;
-          else if (hourOsatPercent < 85) osatScore = 70;
-          components.push({ weight: 25, score: osatScore });
-        }
-        const totalWeight = components.reduce((s, c) => s + c.weight, 0);
-        const score = components.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight;
+
+        const hourlyResult = computeHourlyScore({
+          salesVariancePct,
+          hasComparableSales,
+          speedAttainment: hourSpeedAttainment,
+          staffingDiff,
+          hasValidStaffing: true,
+          osatPercent: hourOsatPercent,
+          osatResponses: hourOsatResponses,
+        });
+        const score = hourlyResult.score;
 
         dayData.hours.push({
           hour: crew.hour,
@@ -232,21 +212,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
       }
     }
 
-    const getGradeLabel = (score: number): string => {
-      if (score >= 97) return "A+";
-      if (score >= 93) return "A";
-      if (score >= 90) return "A-";
-      if (score >= 87) return "B+";
-      if (score >= 83) return "B";
-      if (score >= 80) return "B-";
-      if (score >= 77) return "C+";
-      if (score >= 73) return "C";
-      if (score >= 70) return "C-";
-      if (score >= 67) return "D+";
-      if (score >= 63) return "D";
-      if (score >= 60) return "D-";
-      return "F";
-    };
+    const getGradeLabel = scoreToGradeLabel;
 
     type DayFeedback = {
       wentWell: string[];
@@ -326,35 +292,16 @@ router.get("/api/people/leader-detail", async (req, res) => {
       }
 
       // Compute daily grade from daily aggregates (not hourly average)
-      const salesSurge = dailySalesVariancePct >= 20;
-      const gradeComponents: { weight: number; score: number }[] = [];
-      if (hasComparableSales) {
-        gradeComponents.push({ weight: 35, score: dailySalesVariancePct >= -5 ? 100 : 50 });
-      } else {
-        gradeComponents.push({ weight: 35, score: 100 });
-      }
-      const effectiveDailySurge = salesSurge || !hasComparableSales;
-      let staffingScore = 100;
-      if (Math.abs(avgStaffingDiff) <= 1) staffingScore = 100;
-      else if (avgStaffingDiff > 1) staffingScore = 60;
-      else staffingScore = effectiveDailySurge ? 100 : 60;
-      gradeComponents.push({ weight: 15, score: staffingScore });
-      if (avgSpeed !== undefined) {
-        let speedScore = 100;
-        if (avgSpeed < 50) speedScore = 40;
-        else if (avgSpeed < 70) speedScore = 70;
-        gradeComponents.push({ weight: 25, score: speedScore });
-      }
-      if (osatPercent !== undefined) {
-        let osatGradeScore = 100;
-        if (osatPercent < 80) osatGradeScore = 40;
-        else if (osatPercent < 85) osatGradeScore = 70;
-        gradeComponents.push({ weight: 25, score: osatGradeScore });
-      }
-      const totalGradeWeight = gradeComponents.reduce((s, c) => s + c.weight, 0);
-      const dailyGradeScore = totalGradeWeight > 0
-        ? gradeComponents.reduce((s, c) => s + c.score * c.weight, 0) / totalGradeWeight
-        : 0;
+      const dailyResult = computeHourlyScore({
+        salesVariancePct: dailySalesVariancePct,
+        hasComparableSales,
+        speedAttainment: avgSpeed,
+        staffingDiff: avgStaffingDiff,
+        hasValidStaffing: true,
+        osatPercent,
+        osatResponses,
+      });
+      const dailyGradeScore = dailyResult.score;
       dailyRawScores.set(dateKey, dailyGradeScore);
 
       const wentWell: string[] = [];
@@ -383,6 +330,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
         }
       }
 
+      const salesSurge = dailySalesVariancePct >= 20;
       if (Math.abs(avgStaffingDiff) <= 1) {
         wentWell.push("Staffing levels were properly aligned with projections");
       } else if (avgStaffingDiff > 1) {

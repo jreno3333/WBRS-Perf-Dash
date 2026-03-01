@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ChevronDown,
   ChevronUp,
@@ -30,11 +31,13 @@ import {
   CloudLightning,
   CloudFog,
   CloudDrizzle,
-  GraduationCap
+  GraduationCap,
+  Sparkles
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency, GRADE_WEIGHTS as SHARED_GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor as sharedGetGradeColor, gradeToMidpoint } from "@/lib/grading";
+import { formatCurrency, GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor, gradeToMidpoint, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
+import type { DailyBonusResult } from "@/lib/grading";
 import { DAYPARTS } from "@/lib/dayparts";
 import { UnitReportDialog } from "@/components/unit-report-dialog";
 
@@ -124,31 +127,10 @@ interface UnitInsight {
   crewTenureMonths?: number;
   crewAvgCount?: number;
   daypartGrades?: { id: string; label: string; shortLabel: string; grade: string; score: number; color: string }[];
+  bonusResult?: DailyBonusResult;
 }
 
-function getGradeLabel(score: number): { label: string; color: string } {
-  if (score >= 97) return { label: "A+", color: "text-green-600" };
-  if (score >= 93) return { label: "A", color: "text-green-600" };
-  if (score >= 90) return { label: "A-", color: "text-green-500" };
-  if (score >= 87) return { label: "B+", color: "text-blue-600" };
-  if (score >= 83) return { label: "B", color: "text-blue-500" };
-  if (score >= 80) return { label: "B-", color: "text-blue-400" };
-  if (score >= 77) return { label: "C+", color: "text-yellow-600" };
-  if (score >= 73) return { label: "C", color: "text-yellow-500" };
-  if (score >= 70) return { label: "C-", color: "text-yellow-400" };
-  if (score >= 67) return { label: "D+", color: "text-orange-600" };
-  if (score >= 63) return { label: "D", color: "text-orange-500" };
-  if (score >= 60) return { label: "D-", color: "text-orange-400" };
-  return { label: "F", color: "text-red-500" };
-}
-
-// WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
-const GRADE_WEIGHTS = {
-  sales: 35,
-  speed: 25,
-  osat: 25,
-  staffing: 15,
-};
+// getGradeLabel / GRADE_WEIGHTS imported from @/lib/grading
 
 function analyzeUnit(
   restaurant: LeaderboardData["restaurants"][0],
@@ -249,62 +231,40 @@ function analyzeUnit(
         }
       }
       
-      // Calculate hourly grade score with weighted formula
-      // WEIGHTS: Sales 35%, Speed 25%, OSAT 25%, Staffing 15%
-      const gradeComponents: { name: string; score: number; weight: number }[] = [];
-      
-      // Sales component (weight: 35%)
-      // When last week had $0, treat as positive (store was likely closed last week)
-      if (hasComparableSales) {
-        const salesScore = hourVariance >= -5 ? 100 : 50;
-        gradeComponents.push({ name: 'sales', score: salesScore, weight: GRADE_WEIGHTS.sales });
-      } else {
-        gradeComponents.push({ name: 'sales', score: 100, weight: GRADE_WEIGHTS.sales });
-      }
-      
-      // Speed component (weight: 25%) - uses attainment (% under 6 min)
-      if (hasValidSpeed) {
-        let speedScore = 100;
-        if (hourSpeedAtt < 50) speedScore = 40;
-        else if (hourSpeedAtt < 70) speedScore = 70;
-        gradeComponents.push({ name: 'speed', score: speedScore, weight: GRADE_WEIGHTS.speed });
-      }
-      
-      // OSAT component (weight: 25%) - only if we have customer satisfaction data
-      if (hasValidOsat) {
-        let osatScore = 100;
-        if (hour.osatPercent! < 80) osatScore = 40;
-        else if (hour.osatPercent! < 85) osatScore = 70;
-        gradeComponents.push({ name: 'osat', score: osatScore, weight: GRADE_WEIGHTS.osat });
-      }
-      
-      // Staffing component (weight: 15%) - only if we have valid staffing data
-      if (hasValidStaffing) {
-        const isSalesSurge = hourVariance >= 20 || !hasComparableSales;
-        const isUnderstaffed = staffingDiff < -1;
-        const isOverstaffed = staffingDiff > 1;
-        
-        let staffingScore = 100;
-        if (isOverstaffed || (isUnderstaffed && !isSalesSurge)) {
-          staffingScore = 60;
-        }
-        gradeComponents.push({ name: 'staffing', score: staffingScore, weight: GRADE_WEIGHTS.staffing });
-      }
-      
-      if (gradeComponents.length > 0) {
-        // Calculate weighted average normalized by available components
-        const totalWeight = gradeComponents.reduce((sum, c) => sum + c.weight, 0);
-        const weightedScore = gradeComponents.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
-        hourlyScores.push(weightedScore);
+      // Calculate hourly grade score using shared scoring module
+      const score = computeExecutionScore(hourVariance, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+      if (score > 0) {
+        hourlyScores.push(score);
       }
     }
   }
   
-  const avgGrade = hourlyScores.length > 0 
-    ? hourlyScores.reduce((a, b) => a + b, 0) / hourlyScores.length 
+  const avgGrade = hourlyScores.length > 0
+    ? hourlyScores.reduce((a, b) => a + b, 0) / hourlyScores.length
     : 0;
-  const { label: gradeLabel, color: gradeColor } = getGradeLabel(avgGrade);
-  
+  const gradeLabel = scoreToGradeLabel(avgGrade);
+  const gradeColor = getGradeColor(gradeLabel);
+
+  // Compute daily bonuses
+  const validHours = hourlyData ? hourlyData.filter(h => h.todaySales > 0) : [];
+  const dailyTotalSales = validHours.reduce((s, h) => s + h.todaySales, 0);
+  const dailyTotalLWSales = validHours.reduce((s, h) => s + h.lastWeekSales, 0);
+  const dailySalesVar = dailyTotalLWSales > 0 ? ((dailyTotalSales - dailyTotalLWSales) / dailyTotalLWSales) * 100 : undefined;
+  const dailyTotalTxn = validHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
+  const dailyTotalLWTxn = validHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
+  const dailyTxnVar = dailyTotalLWTxn > 0 ? ((dailyTotalTxn - dailyTotalLWTxn) / dailyTotalLWTxn) * 100 : undefined;
+  const osatHoursForBonus = validHours.filter(h => h.osatPercent !== undefined && (h.osatResponses ?? 0) > 0);
+  const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
+  const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
+
+  const bonusResult = computeDailyBonuses({
+    dailyOsatPercent: dailyOsatPct,
+    dailySurveyCount: dailyOsatResponses,
+    dailySalesVariancePct: dailySalesVar,
+    dailyTransactionVariancePct: dailyTxnVar,
+    hourlyScores: hourlyScores,
+  });
+
   // Generate strengths
   if (salesVariance >= 5) {
     strengths.push(`Sales up ${salesVariance.toFixed(1)}% vs last week`);
@@ -427,7 +387,7 @@ function analyzeUnit(
           shortLabel: dp.shortLabel,
           grade,
           score: avg,
-          color: sharedGetGradeColor(grade),
+          color: getGradeColor(grade),
         });
       }
     }
@@ -457,6 +417,7 @@ function analyzeUnit(
     surveyHours: surveyHours.length > 0 ? surveyHours : undefined,
     weather: restaurant.weather,
     daypartGrades: daypartGrades.length > 0 ? daypartGrades : undefined,
+    bonusResult,
   };
 }
 
@@ -521,7 +482,8 @@ function aggregateInsights(insights: UnitInsight[], name: string, groupRestauran
   const totalSales = insights.reduce((sum, i) => sum + i.totalSales, 0);
   const avgVariance = insights.reduce((sum, i) => sum + i.salesVariance, 0) / unitCount;
   const avgGrade = insights.reduce((sum, i) => sum + i.avgGrade, 0) / unitCount;
-  const { label: gradeLabel, color: gradeColor } = getGradeLabel(avgGrade);
+  const gradeLabel = scoreToGradeLabel(avgGrade);
+  const gradeColor = getGradeColor(gradeLabel);
   
   const understaffedUnits = insights.filter(i => i.staffingIssues.filter(s => s.type === "under").length >= 2).length;
   const overstaffedUnits = insights.filter(i => i.staffingIssues.filter(s => s.type === "over").length >= 2).length;
@@ -646,6 +608,29 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                   <Badge className={`${insight.gradeColor} bg-transparent border`}>
                     {insight.gradeLabel}
                   </Badge>
+                  {insight.bonusResult && insight.bonusResult.cappedBonus > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-0.5 text-yellow-500 text-xs font-semibold ml-1 cursor-help">
+                          <Sparkles className="w-3 h-3" />+{insight.bonusResult.cappedBonus}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <div className="text-xs space-y-1">
+                          <div className="font-semibold">Bonus Points Earned</div>
+                          {insight.bonusResult.bonuses.map(b => (
+                            <div key={b.id} className="flex justify-between gap-4">
+                              <span>{b.label}</span>
+                              <span className="text-yellow-500 font-semibold">+{b.points}</span>
+                            </div>
+                          ))}
+                          {insight.bonusResult.totalBonus > BONUS_CAP && (
+                            <div className="text-muted-foreground border-t pt-1">Capped at +{BONUS_CAP} (earned {insight.bonusResult.totalBonus})</div>
+                          )}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                   {insight.osatPercent !== undefined && insight.osatResponses && insight.osatResponses > 0 && (
                     <Badge
                       variant="outline"
