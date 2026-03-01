@@ -5,7 +5,7 @@ import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, 
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
-import { getAllHourlyPosOrderCountRange } from "../xenial-webhook";
+import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange } from "../xenial-webhook";
 
 const router = Router();
 
@@ -97,6 +97,9 @@ router.get("/api/performance-history", async (req, res) => {
     const txnExpandedStart = expandedStartDate.toISOString().split('T')[0];
     const txnExpandedEnd = endDateTs.toISOString().split('T')[0];
     const posOrderCounts = await getAllHourlyPosOrderCountRange(txnExpandedStart, txnExpandedEnd);
+
+    // Fetch POS sales data — overlays 7shifts sales (matches dashboard exactly)
+    const posSalesByKey = await getAllHourlyPosSalesRange(txnExpandedStart, txnExpandedEnd);
 
     // Fetch hourly crew data for experience scores (XP)
     const allCrewData = await db.select().from(hourlyCrew)
@@ -253,9 +256,21 @@ router.get("/api/performance-history", async (req, res) => {
         const restaurantSales = salesByRestaurant.get(restaurant.id) || [];
         const restaurantCrew = crewForDate.filter(c => c.restaurantId === restaurant.id);
 
-        if (restaurantSales.length === 0) continue;
+        // Check if ANY data exists (7shifts or POS) for this restaurant/date
+        const hasPosData = Array.from({ length: 24 }, (_, h) => h).some(h => posSalesByKey.has(`${restaurant.id}-${dateStr}-${h}`));
+        if (restaurantSales.length === 0 && !hasPosData) continue;
 
-        const totalSales = restaurantSales.reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
+        // Total sales: sum POS-overlaid hourly sales (matches dashboard)
+        let totalSales = 0;
+        for (let h = 0; h < 24; h++) {
+          const posKey = `${restaurant.id}-${dateStr}-${h}`;
+          const posSale = posSalesByKey.get(posKey);
+          const dbRecord = salesByKey.get(`${restaurant.id}-${dateStr}-${h}`);
+          const hourSale = posSale !== undefined && posSale > 0
+            ? posSale
+            : (dbRecord ? parseFloat(dbRecord.actualSales || "0") : 0);
+          totalSales += hourSale;
+        }
 
         const gradeDate = new Date(dateStr);
         const openDate = restaurant.openDate ? new Date(restaurant.openDate) : null;
@@ -300,21 +315,40 @@ router.get("/api/performance-history", async (req, res) => {
           avgXp = totalXp / crewWithXp.length;
         }
 
-        // PER-HOUR GRADE CALCULATION — matches leaderboard-card.tsx exactly
-        // Each hour gets a grade → converted to letter → converted to midpoint score → averaged
+        // PER-HOUR GRADE CALCULATION — uses POS sales when available (matches dashboard exactly)
         const hourlyMidpoints: number[] = [];
         const hourlyRawScores: number[] = []; // Raw scores for bonus evaluation
         let dailyTxnTotal = 0;
         let dailyTxnLastWeekTotal = 0;
+
+        // Build set of hours that have data (7shifts OR POS)
+        const hoursWithData = new Set<number>();
         for (const hourSales of restaurantSales) {
-          const todaySales = parseFloat(hourSales.actualSales || "0");
+          hoursWithData.add(hourSales.hour);
+        }
+        // Also check POS data for hours that might not be in 7shifts (e.g. 12am-5am)
+        for (let h = 0; h < 24; h++) {
+          const posKey = `${restaurant.id}-${dateStr}-${h}`;
+          if (posSalesByKey.has(posKey)) hoursWithData.add(h);
+        }
+
+        for (const hour of Array.from(hoursWithData).sort((a, b) => a - b)) {
+          // POS sales take priority over 7shifts (matches dashboard storage.ts)
+          const posKey = `${restaurant.id}-${dateStr}-${hour}`;
+          const posSales = posSalesByKey.get(posKey);
+          const dbSales = salesByKey.get(`${restaurant.id}-${dateStr}-${hour}`);
+          const todaySales = posSales !== undefined && posSales > 0
+            ? posSales
+            : (dbSales ? parseFloat(dbSales.actualSales || "0") : 0);
           if (todaySales <= 0) continue;
 
-          const hour = hourSales.hour;
-
-          const lastWeekKey = `${restaurant.id}-${weekAgoDateStr}-${hour}`;
-          const lastWeekRecord = salesByKey.get(lastWeekKey);
-          const lastWeekSales = lastWeekRecord ? parseFloat(lastWeekRecord.actualSales || "0") : 0;
+          // Last week comparison — POS takes priority
+          const posLwKey = `${restaurant.id}-${weekAgoDateStr}-${hour}`;
+          const posLwSales = posSalesByKey.get(posLwKey);
+          const dbLwRecord = salesByKey.get(`${restaurant.id}-${weekAgoDateStr}-${hour}`);
+          const lastWeekSales = posLwSales !== undefined && posLwSales > 0
+            ? posLwSales
+            : (dbLwRecord ? parseFloat(dbLwRecord.actualSales || "0") : 0);
           const hasComparableSales = lastWeekSales > 0;
           const salesVariancePct = hasComparableSales
             ? ((todaySales - lastWeekSales) / lastWeekSales) * 100
@@ -379,13 +413,16 @@ router.get("/api/performance-history", async (req, res) => {
           ? hourlyRawScores.reduce((a, b) => a + b, 0) / hourlyRawScores.length
           : 0;
 
-        // Calculate daily-level sales variance for display
-        const weekAgoTotalSales = allHourlySales
-          .filter(s => {
-            const sDate = s.salesDate.toISOString().split('T')[0];
-            return sDate === weekAgoDateStr && s.restaurantId === restaurant.id;
-          })
-          .reduce((sum, s) => sum + parseFloat(s.actualSales || "0"), 0);
+        // Calculate daily-level sales variance for display (POS-overlaid, matches dashboard)
+        let weekAgoTotalSales = 0;
+        for (let h = 0; h < 24; h++) {
+          const posLwKey = `${restaurant.id}-${weekAgoDateStr}-${h}`;
+          const posLw = posSalesByKey.get(posLwKey);
+          const dbLw = salesByKey.get(`${restaurant.id}-${weekAgoDateStr}-${h}`);
+          weekAgoTotalSales += posLw !== undefined && posLw > 0
+            ? posLw
+            : (dbLw ? parseFloat(dbLw.actualSales || "0") : 0);
+        }
         const hasComparableSalesDaily = weekAgoTotalSales > 2000 && totalSales > 500;
         let salesVariance = hasComparableSalesDaily ? ((totalSales - weekAgoTotalSales) / weekAgoTotalSales) * 100 : 0;
         if (hasComparableSalesDaily) {

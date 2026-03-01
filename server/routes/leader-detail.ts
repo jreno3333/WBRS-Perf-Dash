@@ -124,6 +124,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
       requiredStaff: number;
       osatPercent?: number;
       osatResponses?: number;
+      transactionCount?: number;
+      lastWeekTransactionCount?: number;
+      transactionVariancePct?: number;
       score: number;
     };
 
@@ -221,6 +224,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
           requiredStaff,
           osatPercent: hourOsatPercent,
           osatResponses: hourOsatResponses,
+          transactionCount: hourTxnCount > 0 ? hourTxnCount : undefined,
+          lastWeekTransactionCount: hourTxnLastWeek > 0 ? hourTxnLastWeek : undefined,
+          transactionVariancePct: txnVariancePct,
           score,
         });
       }
@@ -244,6 +250,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
       actualStaff: number;
       requiredStaff: number;
       osatPercent?: number;
+      transactionCount?: number;
+      lastWeekTransactionCount?: number;
+      transactionVariancePct?: number;
       gradeScore: number;
       gradeLabel: string;
     };
@@ -261,6 +270,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
       avgStaffingDiff: number;
       osatPercent?: number;
       osatResponses?: number;
+      transactionCount?: number;
+      lastWeekTransactionCount?: number;
+      transactionVariancePct?: number;
       avgHourlyVolume: number;
       feedback: DayFeedback;
       hourlyGrades: HourGradeDetail[];
@@ -393,9 +405,19 @@ router.get("/api/people/leader-detail", async (req, res) => {
           actualStaff: Math.round(h.actualStaff * 10) / 10,
           requiredStaff: Math.round(h.requiredStaff * 10) / 10,
           osatPercent: h.osatPercent,
+          transactionCount: h.transactionCount,
+          lastWeekTransactionCount: h.lastWeekTransactionCount,
+          transactionVariancePct: h.transactionVariancePct !== undefined ? Math.round(h.transactionVariancePct * 10) / 10 : undefined,
           gradeScore: Math.round(h.score),
           gradeLabel: getGradeLabel(h.score),
         }));
+
+      // Compute daily transaction totals
+      const dailyTxnTotal = dayData.hours.reduce((s, h) => s + (h.transactionCount || 0), 0);
+      const dailyTxnLwTotal = dayData.hours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
+      const dailyTxnVariancePct = dailyTxnLwTotal > 0
+        ? ((dailyTxnTotal - dailyTxnLwTotal) / dailyTxnLwTotal) * 100
+        : undefined;
 
       dailyDetails.push({
         date: dateKey,
@@ -410,6 +432,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
         avgStaffingDiff: Math.round(avgStaffingDiff * 10) / 10,
         osatPercent,
         osatResponses,
+        transactionCount: dailyTxnTotal > 0 ? dailyTxnTotal : undefined,
+        lastWeekTransactionCount: dailyTxnLwTotal > 0 ? dailyTxnLwTotal : undefined,
+        transactionVariancePct: dailyTxnVariancePct !== undefined ? Math.round(dailyTxnVariancePct * 10) / 10 : undefined,
         avgHourlyVolume: dayData.hours.length > 0 ? Math.round(totalSales / dayData.hours.length) : 0,
         feedback: { wentWell, needsImprovement },
         hourlyGrades,
