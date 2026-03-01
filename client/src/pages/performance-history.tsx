@@ -33,7 +33,7 @@ import {
   GraduationCap,
   Sparkles,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DailyGrade {
   date: string;
@@ -203,32 +203,36 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
 
         if (hasBonuses) {
           return (
-            <Tooltip key={idx}>
-              <TooltipTrigger asChild>
-                <span className="inline-flex cursor-help">
+            <Popover key={idx}>
+              <PopoverTrigger asChild>
+                <span
+                  className="inline-flex cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
                   {gradeCell}
                 </span>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs">
-                <div className="text-xs space-y-1">
-                  <div className="font-semibold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-500" />
-                    Bonus Points Earned
-                  </div>
+              </PopoverTrigger>
+              <PopoverContent side="top" className="w-auto max-w-[280px] p-2 text-xs">
+                <div className="font-medium flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  Bonus Points Earned
+                </div>
+                <div className="space-y-0.5 mt-1">
                   {grade.bonuses!.map((b) => (
                     <div key={b.id} className="flex justify-between gap-4">
-                      <span>{b.label}</span>
+                      <span className="text-muted-foreground">{b.label}</span>
                       <span className="text-yellow-500 font-semibold">+{b.points}</span>
                     </div>
                   ))}
-                  {grade.baseGrade !== undefined && (
-                    <div className="text-muted-foreground border-t pt-1">
-                      Base: {grade.baseGrade.toFixed(0)} → Final: {grade.grade.toFixed(0)}
-                    </div>
-                  )}
                 </div>
-              </TooltipContent>
-            </Tooltip>
+                {grade.baseGrade !== undefined && (
+                  <div className="text-muted-foreground border-t mt-1 pt-1">
+                    Base: {grade.baseGrade.toFixed(0)} → Final: {grade.grade.toFixed(0)}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           );
         }
 
