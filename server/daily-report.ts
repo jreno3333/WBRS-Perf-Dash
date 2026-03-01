@@ -5,7 +5,7 @@ import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
 import { getTotalRequiredStaff } from "./labor-model";
-import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency } from "./lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, computeDailyBonuses } from "./lib/scoring";
 
 
 function getExecutionGrade(
@@ -205,9 +205,31 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       }
 
       const validScores = hourlyGradeScores.filter(s => s > 0);
-      const overallScore = validScores.length > 0
+      const baseScore = validScores.length > 0
         ? validScores.reduce((a, b) => a + b, 0) / validScores.length
         : 0;
+
+      // Compute daily bonus points (same logic as dashboard + trends)
+      const completedHours = hourlyData.filter(h => h.todaySales && h.todaySales > 0);
+      const dailyTotalSales = completedHours.reduce((s, h) => s + h.todaySales, 0);
+      const dailyTotalLWSales = completedHours.reduce((s, h) => s + h.lastWeekSales, 0);
+      const dailySalesVar = dailyTotalLWSales > 0 ? ((dailyTotalSales - dailyTotalLWSales) / dailyTotalLWSales) * 100 : undefined;
+      const dailyTotalTxn = completedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
+      const dailyTotalLWTxn = completedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
+      const dailyTxnVar = dailyTotalLWTxn > 0 ? ((dailyTotalTxn - dailyTotalLWTxn) / dailyTotalLWTxn) * 100 : undefined;
+      const osatHoursForBonus = completedHours.filter(h => (h as any).osatPercent !== undefined && ((h as any).osatResponses ?? 0) > 0);
+      const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + ((h as any).osatResponses ?? 0), 0);
+      const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + ((h as any).osatPercent ?? 0) * ((h as any).osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
+
+      const bonusResult = baseScore > 0 ? computeDailyBonuses({
+        dailyOsatPercent: dailyOsatPct,
+        dailySurveyCount: dailyOsatResponses,
+        dailySalesVariancePct: dailySalesVar,
+        dailyTransactionVariancePct: dailyTxnVar,
+        hourlyScores: validScores,
+      }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
+
+      const overallScore = baseScore > 0 ? Math.min(baseScore + bonusResult.cappedBonus, 100) : 0;
       const gradeLabel = validScores.length > 0 ? scoreToGradeLabel(overallScore) : '-';
 
       const speedData = hourlyData.reduce((acc, h) => {

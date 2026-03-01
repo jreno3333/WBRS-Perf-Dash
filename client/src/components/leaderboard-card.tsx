@@ -13,6 +13,7 @@ import {
   getGradeColor as sharedGetGradeColor,
   gradeToMidpoint,
   formatCurrency,
+  computeDailyBonuses,
 } from "@/lib/grading";
 
 const REVENUE_PORT_CONFIG = {
@@ -457,13 +458,15 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   
   // Calculate overall execution grade from completed hourly grades only (using restaurant's local hour)
   // Only grade hours that have actual sales - no sales = no grade
-  const hourlyGradeScores = activeHours
+  const gradedHours = activeHours
     .filter(hour => hour.hour <= localGradeCutoff) // Only completed hours for this restaurant
-    .filter(hour => hour.todaySales && hour.todaySales > 0) // No sales = no grade
+    .filter(hour => hour.todaySales && hour.todaySales > 0); // No sales = no grade
+
+  const hourlyGradeScores = gradedHours
     .map(hour => {
       const hasComparableSales = hour.lastWeekSales > 0; // Only compare if LW had sales
-      const salesVariancePct = hasComparableSales 
-        ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
+      const salesVariancePct = hasComparableSales
+        ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
         : 0;
       const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
       // Exclude operator from labor hours (not production/non-production)
@@ -477,14 +480,34 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
       const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
       const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
-      return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
+      return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
     }).filter(score => score > 0);
 
-  // Overall grade is the straight average of hourly execution grades
-  // (OSAT is already factored into each hourly grade when available)
+  // Overall grade = average of raw hourly scores + daily bonus points
   let overallScore = 0;
   if (hourlyGradeScores.length > 0) {
-    overallScore = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
+    const baseScore = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
+
+    // Compute daily-level aggregates for bonus evaluation
+    const dailyTotalSales = gradedHours.reduce((s, h) => s + h.todaySales, 0);
+    const dailyTotalLWSales = gradedHours.reduce((s, h) => s + h.lastWeekSales, 0);
+    const dailySalesVar = dailyTotalLWSales > 0 ? ((dailyTotalSales - dailyTotalLWSales) / dailyTotalLWSales) * 100 : undefined;
+    const dailyTotalTxn = gradedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
+    const dailyTotalLWTxn = gradedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
+    const dailyTxnVar = dailyTotalLWTxn > 0 ? ((dailyTotalTxn - dailyTotalLWTxn) / dailyTotalLWTxn) * 100 : undefined;
+    const osatHoursForBonus = gradedHours.filter(h => h.osatPercent !== undefined && (h.osatResponses ?? 0) > 0);
+    const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
+    const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
+
+    const bonusResult = computeDailyBonuses({
+      dailyOsatPercent: dailyOsatPct,
+      dailySurveyCount: dailyOsatResponses,
+      dailySalesVariancePct: dailySalesVar,
+      dailyTransactionVariancePct: dailyTxnVar,
+      hourlyScores: hourlyGradeScores,
+    });
+
+    overallScore = Math.min(baseScore + bonusResult.cappedBonus, 100);
   }
   const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
 
@@ -509,7 +532,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
         const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
-        return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
+        return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
       }).filter(s => s > 0);
 
     if (dpScores.length === 0) return { ...dp, grade: null, score: 0 };

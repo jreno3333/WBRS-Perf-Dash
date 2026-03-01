@@ -5,7 +5,7 @@ import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
 import { getTotalRequiredStaff } from "./labor-model";
-import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, gradeToMidpoint as sharedGradeToMidpoint } from "./lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, gradeToMidpoint as sharedGradeToMidpoint, computeDailyBonuses } from "./lib/scoring";
 
 // ─── Wrappers that delegate to the shared scoring module ─────────────
 function getExecutionGrade(
@@ -181,17 +181,38 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     }
 
     const validScores = hourlyGradeScores.filter(s => s > 0);
-    const overallScore = validScores.length > 0
+    const baseScore = validScores.length > 0
       ? validScores.reduce((a, b) => a + b, 0) / validScores.length
       : 0;
+
+    // Compute daily bonus points (same logic as dashboard + trends)
+    const beDailyTotalSales = completedHours.reduce((s, h) => s + h.todaySales, 0);
+    const beDailyTotalLWSales = completedHours.reduce((s, h) => s + h.lastWeekSales, 0);
+    const dailySalesVar = beDailyTotalLWSales > 0 ? ((beDailyTotalSales - beDailyTotalLWSales) / beDailyTotalLWSales) * 100 : undefined;
+    const beDailyTotalTxn = completedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
+    const beDailyTotalLWTxn = completedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
+    const dailyTxnVar = beDailyTotalLWTxn > 0 ? ((beDailyTotalTxn - beDailyTotalLWTxn) / beDailyTotalLWTxn) * 100 : undefined;
+    const osatHoursForBonus = completedHours.filter(h => (h as any).osatPercent !== undefined && ((h as any).osatResponses ?? 0) > 0);
+    const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + ((h as any).osatResponses ?? 0), 0);
+    const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + ((h as any).osatPercent ?? 0) * ((h as any).osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
+
+    const bonusResult = baseScore > 0 ? computeDailyBonuses({
+      dailyOsatPercent: dailyOsatPct,
+      dailySurveyCount: dailyOsatResponses,
+      dailySalesVariancePct: dailySalesVar,
+      dailyTransactionVariancePct: dailyTxnVar,
+      hourlyScores: validScores,
+    }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
+
+    const overallScore = baseScore > 0 ? Math.min(baseScore + bonusResult.cappedBonus, 100) : 0;
     const gradeLabel = validScores.length > 0 ? scoreToGradeLabel(overallScore) : '-';
 
-    // ─── Daypart grades ──────────────────────────────────────────────────
+    // ─── Daypart grades (use raw scores, not midpoints) ─────────────────
     const daypartGrades: { id: string; label: string; shortLabel: string; grade: string; score: number }[] = [];
     for (const dp of DAYPARTS) {
-      const dpHours = hourlyDetails.filter(h => h.hour >= dp.startHour && h.hour <= dp.endHour && h.grade !== '-');
+      const dpHours = hourlyDetails.filter(h => h.hour >= dp.startHour && h.hour <= dp.endHour && h.score > 0);
       if (dpHours.length > 0) {
-        const scores = dpHours.map(h => gradeToMidpoint(h.grade)).filter(s => s > 0);
+        const scores = dpHours.map(h => h.score).filter(s => s > 0);
         if (scores.length > 0) {
           const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
           daypartGrades.push({ id: dp.id, label: dp.label, shortLabel: dp.shortLabel, grade: scoreToGradeLabel(avg), score: avg });
