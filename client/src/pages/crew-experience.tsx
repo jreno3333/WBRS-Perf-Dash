@@ -81,6 +81,9 @@ interface HourGradeDetail {
   actualStaff: number;
   requiredStaff: number;
   osatPercent?: number;
+  transactionCount?: number;
+  lastWeekTransactionCount?: number;
+  transactionVariancePct?: number;
   gradeScore: number;
   gradeLabel: string;
 }
@@ -98,6 +101,9 @@ interface DailyDetail {
   avgStaffingDiff: number;
   osatPercent?: number;
   osatResponses?: number;
+  transactionCount?: number;
+  lastWeekTransactionCount?: number;
+  transactionVariancePct?: number;
   avgHourlyVolume?: number;
   feedback: DayFeedback;
   hourlyGrades?: HourGradeDetail[];
@@ -858,24 +864,36 @@ export default function CrewExperiencePage() {
                                   </div>
                                 </div>
                               )}
+                              {day.transactionCount !== undefined && day.transactionCount > 0 && (
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Transactions</div>
+                                  <div className={`text-sm font-medium ${day.transactionVariancePct !== undefined ? (day.transactionVariancePct >= -5 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-foreground'}`}>
+                                    {day.transactionCount.toLocaleString()}
+                                    {day.transactionVariancePct !== undefined && (
+                                      <span className="ml-1 text-xs">({day.transactionVariancePct >= 0 ? '+' : ''}{day.transactionVariancePct.toFixed(1)}%)</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             {day.hourlyGrades && day.hourlyGrades.length > 0 && (
                               <div className="p-3 rounded-lg bg-muted/20">
                                 <div className="text-xs font-medium text-muted-foreground mb-2">Hourly Breakdown</div>
                                 <div className="space-y-1">
-                                  <div className="grid grid-cols-[3rem_2rem_4rem_3.5rem_3.5rem_3.5rem] gap-1 text-[10px] text-muted-foreground font-medium pb-1 border-b border-border/50">
+                                  <div className="grid grid-cols-[3rem_2rem_4rem_3.5rem_3rem_3.5rem_3.5rem] gap-1 text-[10px] text-muted-foreground font-medium pb-1 border-b border-border/50">
                                     <span>Hour</span>
                                     <span>Grd</span>
                                     <span className="text-right">Sales</span>
                                     <span className="text-right">Var%</span>
+                                    <span className="text-right">Txn</span>
                                     <span className="text-right">Staff</span>
                                     <span className="text-right">Spd%</span>
                                   </div>
                                   {day.hourlyGrades.map((hg) => {
                                     const hourLabel = hg.hour === 0 ? '12a' : hg.hour < 12 ? `${hg.hour}a` : hg.hour === 12 ? '12p' : `${hg.hour - 12}p`;
                                     return (
-                                      <div key={hg.hour} className="grid grid-cols-[3rem_2rem_4rem_3.5rem_3.5rem_3.5rem] gap-1 text-xs items-center" data-testid={`hourly-grade-${day.date}-${hg.hour}`}>
+                                      <div key={hg.hour} className="grid grid-cols-[3rem_2rem_4rem_3.5rem_3rem_3.5rem_3.5rem] gap-1 text-xs items-center" data-testid={`hourly-grade-${day.date}-${hg.hour}`}>
                                         <span className="text-muted-foreground">{hourLabel}</span>
                                         <Badge className={`text-[10px] px-1 py-0 ${getGradeColor(hg.gradeLabel)} border-0 justify-center`}>
                                           {hg.gradeLabel}
@@ -883,6 +901,9 @@ export default function CrewExperiencePage() {
                                         <span className="text-right font-medium" data-testid={`text-sales-${day.date}-${hg.hour}`}>${hg.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                         <span data-testid={`text-variance-${day.date}-${hg.hour}`} className={`text-right ${hg.hasComparableSales ? (hg.variancePct >= -5 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-muted-foreground'}`}>
                                           {hg.hasComparableSales ? `${hg.variancePct >= 0 ? '+' : ''}${hg.variancePct.toFixed(0)}%` : '--'}
+                                        </span>
+                                        <span data-testid={`text-txn-${day.date}-${hg.hour}`} className={`text-right ${hg.transactionVariancePct !== undefined ? (hg.transactionVariancePct >= -5 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-muted-foreground'}`}>
+                                          {hg.transactionCount !== undefined ? hg.transactionCount : '--'}
                                         </span>
                                         <span data-testid={`text-staff-${day.date}-${hg.hour}`} className={`text-right ${Math.abs(hg.staffingDiff) <= 1 ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                           {hg.actualStaff}/{hg.requiredStaff}
