@@ -172,7 +172,7 @@ router.get("/api/performance-history", async (req, res) => {
         components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
       }
 
-      if (osatPercent !== undefined && osatPercent > 0) {
+      if (osatPercent !== undefined && osatPercent >= 0) {
         let osatScore = 100;
         if (osatPercent < 80) osatScore = 40;
         else if (osatPercent < 85) osatScore = 70;

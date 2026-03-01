@@ -311,7 +311,7 @@ router.get("/api/analytics/consistency", async (req, res) => {
         const speedScore = speedSec > 420 ? 40 : speedSec > 300 ? 70 : 100;
         components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
       }
-      if (osatPercent !== undefined && osatPercent > 0) {
+      if (osatPercent !== undefined && osatPercent >= 0) {
         const osatScore = osatPercent < 80 ? 40 : osatPercent < 85 ? 70 : 100;
         components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
       }
