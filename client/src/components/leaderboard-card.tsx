@@ -365,9 +365,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   const paceVariance = displayLastWeek > 0 
     ? ((restaurant.actualSales / displayLastWeek) - 1) * 100 
     : 0;
-  
-  // Check if restaurant is in first week (no historical data expected)
-  const isFirstWeek = (restaurant.daysOpen !== undefined && restaurant.daysOpen < 7);
+
 
   // Pre-compute values for the sales grid
   const isDayComplete = restaurant.normalizedHour >= 23;
@@ -475,10 +473,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       const staffingDiff = actualStaff - staffing.total;
       // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
       const hasValidStaffing = rawEmployeeCount >= 1;
-      const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+      const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
       return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
     }).filter(score => score > 0);
-  
+
   // Overall grade is the straight average of hourly execution grades
   // (OSAT is already factored into each hourly grade when available)
   let overallScore = 0;
@@ -505,7 +503,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
         const hasValidStaffing = rawEmployeeCount >= 1;
-        const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+        const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
         return gradeInfo.hasGrade ? gradeToScore(gradeInfo.grade) : 0;
       }).filter(s => s > 0);
 
@@ -955,7 +953,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 const staffingDiff = actualStaff - staffing.total;
                 // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
                 const hasValidStaffing = rawEmployeeCount >= 1;
-                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -1020,7 +1018,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 const staffingDiff = actualStaff - staffing.total;
                 // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
                 const hasValidStaffing = rawEmployeeCount >= 1;
-                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, isFirstWeek, hasValidStaffing, hour.osatPercent);
+                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
