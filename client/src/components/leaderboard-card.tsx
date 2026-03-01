@@ -558,7 +558,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
           </div>
 
           {/* Content: stacks vertically on mobile, horizontal on desktop */}
-          <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-start sm:gap-3">
             {/* Name + badges section */}
             <div className="flex-1 min-w-0">
               {/* Store name + status badge */}

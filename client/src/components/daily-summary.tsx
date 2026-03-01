@@ -601,8 +601,8 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
         <CollapsibleTrigger asChild>
           <CardHeader className="cursor-pointer pb-2">
             <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
                   <CardTitle className="text-base">{insight.restaurantName}</CardTitle>
                   <Badge variant="outline" className="text-xs">{insight.state}</Badge>
                   <Badge className={`${insight.gradeColor} bg-transparent border`}>
@@ -669,7 +669,7 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-shrink-0">
                   <span className="text-sm font-medium">{formatCurrency(insight.totalSales)}</span>
                   <span className={`text-sm ${insight.salesVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {insight.salesVariance >= 0 ? "+" : ""}{insight.salesVariance.toFixed(1)}%
