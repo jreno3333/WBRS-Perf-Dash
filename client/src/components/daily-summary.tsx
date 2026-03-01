@@ -232,7 +232,11 @@ function analyzeUnit(
       }
       
       // Calculate hourly grade score using shared scoring module
-      const score = computeExecutionScore(hourVariance, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+      const hasComparableTransactions = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+      const txnVariancePct = hasComparableTransactions
+        ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
+        : undefined;
+      const score = computeExecutionScore(hourVariance, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions);
       if (score > 0) {
         hourlyScores.push(score);
       }
@@ -374,7 +378,11 @@ function analyzeUnit(
         const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
         const hasValidStaffing = rawEmployeeCount >= 1;
-        const score = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+        const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+        const txnVar = hasCompTxn
+          ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
+          : undefined;
+        const score = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
         return score > 0 ? gradeToMidpoint(scoreToGradeLabel(score)) : 0;
       }).filter(s => s > 0);
 
@@ -601,8 +609,8 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
         <CollapsibleTrigger asChild>
           <CardHeader className="cursor-pointer pb-2">
             <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
                   <CardTitle className="text-base">{insight.restaurantName}</CardTitle>
                   <Badge variant="outline" className="text-xs">{insight.state}</Badge>
                   <Badge className={`${insight.gradeColor} bg-transparent border`}>
@@ -669,7 +677,7 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-shrink-0">
                   <span className="text-sm font-medium">{formatCurrency(insight.totalSales)}</span>
                   <span className={`text-sm ${insight.salesVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {insight.salesVariance >= 0 ? "+" : ""}{insight.salesVariance.toFixed(1)}%

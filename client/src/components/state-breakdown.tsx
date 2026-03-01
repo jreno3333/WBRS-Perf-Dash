@@ -53,9 +53,11 @@ function getExecutionGradeScore(
   staffingDiff: number,
   hasComparableSales: boolean = true,
   osatPercent: number | undefined = undefined,
-  hasValidStaffing: boolean = true
+  hasValidStaffing: boolean = true,
+  transactionVariancePct?: number,
+  hasComparableTransactions?: boolean,
 ): number {
-  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent);
+  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
 }
 
 function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>): { grade: string; hoursGraded: number } {
@@ -76,7 +78,9 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
         const actualStaff = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
         const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
-        const score = getExecutionGradeScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing);
+        const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+        const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+        const score = getExecutionGradeScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
         if (score > 0) allScores.push(score);
       }
     }
