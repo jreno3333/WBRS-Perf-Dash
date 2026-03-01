@@ -374,8 +374,9 @@ router.get("/api/performance-history", async (req, res) => {
           ? ((dailyTxnTotal - dailyTxnLastWeekTotal) / dailyTxnLastWeekTotal) * 100
           : undefined;
 
-        const baseGrade = hourlyMidpoints.length > 0
-          ? hourlyMidpoints.reduce((a, b) => a + b, 0) / hourlyMidpoints.length
+        // Use raw hourly scores for base grade (matches leaderboard-card + daily-summary)
+        const baseGrade = hourlyRawScores.length > 0
+          ? hourlyRawScores.reduce((a, b) => a + b, 0) / hourlyRawScores.length
           : 0;
 
         // Calculate daily-level sales variance for display

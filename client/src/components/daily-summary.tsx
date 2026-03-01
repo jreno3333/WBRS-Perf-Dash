@@ -243,11 +243,9 @@ function analyzeUnit(
     }
   }
   
-  const avgGrade = hourlyScores.length > 0
+  const baseScore = hourlyScores.length > 0
     ? hourlyScores.reduce((a, b) => a + b, 0) / hourlyScores.length
     : 0;
-  const gradeLabel = scoreToGradeLabel(avgGrade);
-  const gradeColor = getGradeColor(gradeLabel);
 
   // Compute daily bonuses
   const validHours = hourlyData ? hourlyData.filter(h => h.todaySales > 0) : [];
@@ -268,6 +266,11 @@ function analyzeUnit(
     dailyTransactionVariancePct: dailyTxnVar,
     hourlyScores: hourlyScores,
   });
+
+  // Apply bonus to get final daily grade (base avg + capped bonus, max 100)
+  const avgGrade = baseScore > 0 ? Math.min(baseScore + bonusResult.cappedBonus, 100) : 0;
+  const gradeLabel = scoreToGradeLabel(avgGrade);
+  const gradeColor = getGradeColor(gradeLabel);
 
   // Generate strengths
   if (salesVariance >= 5) {

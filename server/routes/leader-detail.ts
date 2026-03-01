@@ -4,7 +4,7 @@ import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
-import { computeHourlyScore, scoreToGradeLabel, computeDailyScore } from "../lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses } from "../lib/scoring";
 
 const router = Router();
 
@@ -315,7 +315,16 @@ router.get("/api/people/leader-detail", async (req, res) => {
         osatPercent,
         osatResponses,
       });
-      const dailyGradeScore = dailyResult.score;
+
+      // Apply daily bonus points (matches dashboard + trends)
+      const dailyBonusResult = dailyResult.score > 0 ? computeDailyBonuses({
+        dailyOsatPercent: osatPercent,
+        dailySurveyCount: osatResponses,
+        dailySalesVariancePct: hasComparableSales ? dailySalesVariancePct : undefined,
+        dailyTransactionVariancePct: undefined, // txn variance not aggregated at day level here
+        hourlyScores: [dailyResult.score], // day-level aggregate
+      }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
+      const dailyGradeScore = dailyResult.score > 0 ? Math.min(dailyResult.score + dailyBonusResult.cappedBonus, 100) : 0;
       dailyRawScores.set(dateKey, dailyGradeScore);
 
       const wentWell: string[] = [];
