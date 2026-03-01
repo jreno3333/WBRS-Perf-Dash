@@ -33,7 +33,7 @@ import {
   GraduationCap,
   Sparkles,
 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DailyGrade {
   date: string;
@@ -203,29 +203,32 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
 
         if (hasBonuses) {
           return (
-            <Popover key={idx}>
-              <PopoverTrigger asChild>
-                <span className="inline-flex cursor-pointer" onClick={(e) => e.stopPropagation()}>
+            <Tooltip key={idx}>
+              <TooltipTrigger asChild>
+                <span className="inline-flex cursor-help">
                   {gradeCell}
                 </span>
-              </PopoverTrigger>
-              <PopoverContent side="top" className="w-auto max-w-[260px] p-2 text-xs">
-                <div className="font-medium flex items-center gap-1 mb-1">
-                  <Sparkles className="w-3 h-3 text-amber-500" />
-                  +{grade.bonusPoints} Bonus Points
-                </div>
-                <div className="space-y-0.5 text-muted-foreground">
-                  {grade.bonuses!.map((b) => (
-                    <div key={b.id}>+{b.points} {b.label}</div>
-                  ))}
-                </div>
-                {grade.baseGrade !== undefined && (
-                  <div className="mt-1 pt-1 border-t text-muted-foreground">
-                    Base: {grade.baseGrade.toFixed(0)} → Final: {grade.grade.toFixed(0)}
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <div className="text-xs space-y-1">
+                  <div className="font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500" />
+                    Bonus Points Earned
                   </div>
-                )}
-              </PopoverContent>
-            </Popover>
+                  {grade.bonuses!.map((b) => (
+                    <div key={b.id} className="flex justify-between gap-4">
+                      <span>{b.label}</span>
+                      <span className="text-yellow-500 font-semibold">+{b.points}</span>
+                    </div>
+                  ))}
+                  {grade.baseGrade !== undefined && (
+                    <div className="text-muted-foreground border-t pt-1">
+                      Base: {grade.baseGrade.toFixed(0)} → Final: {grade.grade.toFixed(0)}
+                    </div>
+                  )}
+                </div>
+              </TooltipContent>
+            </Tooltip>
           );
         }
 

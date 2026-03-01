@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyScore } from "../lib/scoring";
 
@@ -66,6 +66,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
     // Use POS orders as primary sales source (includes 12am-5am hours)
     // Falls back to 7shifts hourly_sales only if POS data is unavailable
     const posSalesByKey = await getAllHourlyPosSalesRange(detailExtStartStr, endDateStr);
+
+    // Fetch POS order counts for transaction variance scoring
+    const posOrderCounts = await getAllHourlyPosOrderCountRange(detailExtStartStr, endDateStr);
 
     // Also fetch 7shifts hourly_sales as fallback
     const salesData = await db.select().from(hourlySales).where(
@@ -180,9 +183,20 @@ router.get("/api/people/leader-detail", async (req, res) => {
         const hourOsatPercent = osatHour && osatHour.totalResponses > 0 ? Number(osatHour.osatPercent) : undefined;
         const hourOsatResponses = osatHour && osatHour.totalResponses > 0 ? osatHour.totalResponses : undefined;
 
+        // Transaction data for this hour
+        const txnKey = `${crew.restaurantId}-${crew.date}-${crew.hour}`;
+        const txnLastWeekKey = `${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`;
+        const hourTxnCount = posOrderCounts.get(txnKey) || 0;
+        const hourTxnLastWeek = posOrderCounts.get(txnLastWeekKey) || 0;
+        const hasComparableTransactions = hourTxnLastWeek > 0 && hourTxnCount > 0;
+        const txnVariancePct = hasComparableTransactions
+          ? ((hourTxnCount - hourTxnLastWeek) / hourTxnLastWeek) * 100 : undefined;
+
         const hourlyResult = computeHourlyScore({
           salesVariancePct,
           hasComparableSales,
+          transactionVariancePct: txnVariancePct,
+          hasComparableTransactions,
           speedAttainment: hourSpeedAttainment,
           staffingDiff,
           hasValidStaffing: true,
