@@ -3,7 +3,7 @@ import { Link } from "wouter";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
@@ -485,6 +485,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
 
   // Overall grade = average of raw hourly scores + daily bonus points
   let overallScore = 0;
+  let dailyBonusResult: ReturnType<typeof computeDailyBonuses> | null = null;
   if (hourlyGradeScores.length > 0) {
     const baseScore = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
 
@@ -499,7 +500,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
     const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
 
-    const bonusResult = computeDailyBonuses({
+    dailyBonusResult = computeDailyBonuses({
       dailyOsatPercent: dailyOsatPct,
       dailySurveyCount: dailyOsatResponses,
       dailySalesVariancePct: dailySalesVar,
@@ -507,7 +508,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       hourlyScores: hourlyGradeScores,
     });
 
-    overallScore = Math.min(baseScore + bonusResult.cappedBonus, 100);
+    overallScore = Math.min(baseScore + dailyBonusResult.cappedBonus, 100);
   }
   const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
 
@@ -653,6 +654,29 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     }
                   >
                     EXC: {overallGrade.grade}
+                  </BadgeWithTooltip>
+                )}
+                {/* Bonus Points Badge — shows when bonus was earned */}
+                {dailyBonusResult && dailyBonusResult.cappedBonus > 0 && (
+                  <BadgeWithTooltip
+                    className="flex-shrink-0 text-xs px-1.5 gap-0.5 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-0"
+                    tooltipContent={
+                      <div className="space-y-1">
+                        <div className="font-semibold">Bonus Points Earned</div>
+                        {dailyBonusResult.bonuses.map(b => (
+                          <div key={b.id} className="flex justify-between gap-4">
+                            <span>{b.label}</span>
+                            <span className="text-yellow-500 font-semibold">+{b.points}</span>
+                          </div>
+                        ))}
+                        {dailyBonusResult.totalBonus > 8 && (
+                          <div className="text-muted-foreground border-t pt-1 mt-1">Capped at +8 (earned {dailyBonusResult.totalBonus})</div>
+                        )}
+                      </div>
+                    }
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span className="font-semibold">+{dailyBonusResult.cappedBonus}</span>
                   </BadgeWithTooltip>
                 )}
                 {/* Google Reviews Badge */}
