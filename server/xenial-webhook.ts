@@ -425,6 +425,76 @@ export async function getAllHourlyPosSalesRange(
 }
 
 /**
+ * Get hourly POS order counts for a date range.
+ * Returns Map keyed by "restaurantId-date-hour" → order count.
+ * Used by performance-history to compute transaction variance for bonus points.
+ */
+export async function getAllHourlyPosOrderCountRange(
+  startDateStr: string,
+  endDateStr: string
+): Promise<Map<string, number>> {
+  const paddedStart = new Date(startDateStr + 'T00:00:00.000Z');
+  paddedStart.setDate(paddedStart.getDate() - 1);
+  const paddedEnd = new Date(endDateStr + 'T23:59:59.999Z');
+  paddedEnd.setDate(paddedEnd.getDate() + 1);
+
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], {
+        id: restaurant.id,
+        timezone: restaurant.timezone || 'America/Chicago'
+      });
+    }
+  }
+
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+  const timezones = Array.from(timezoneSet);
+
+  const ordersByKey = new Map<string, number>();
+
+  for (const tz of timezones) {
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const dateExpr = sql.raw(`to_char((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}', 'YYYY-MM-DD')`);
+    const posResults = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        localDate: sql<string>`${dateExpr}`,
+        hour: sql<number>`${hourExpr}`,
+        orderCount: sql<number>`count(*)::int`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, paddedStart),
+          lt(posOrders.businessDate, paddedEnd),
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${dateExpr}`, sql`${hourExpr}`);
+
+    for (const row of posResults) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (restaurantInfo) {
+        const key = `${restaurantInfo.id}-${row.localDate}-${row.hour}`;
+        ordersByKey.set(key, row.orderCount || 0);
+      }
+    }
+  }
+
+  return ordersByKey;
+}
+
+/**
  * Get check average data by restaurant and hour for a given date.
  * Returns order count, total sales, and check average per restaurant per hour.
  */

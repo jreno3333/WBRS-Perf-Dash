@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel } from "../lib/scoring";
 
@@ -68,6 +68,9 @@ router.get("/api/leaders", async (req, res) => {
     // Use POS orders as primary sales source (includes 12am-5am hours)
     const posSalesByKey = await getAllHourlyPosSalesRange(extendedStartDateStr, endDateStr);
 
+    // Fetch POS order counts for transaction variance scoring
+    const posOrderCounts = await getAllHourlyPosOrderCountRange(extendedStartDateStr, endDateStr);
+
     // Also fetch 7shifts hourly_sales as fallback
     const salesData = await db.select().from(hourlySales).where(
       and(
@@ -124,6 +127,8 @@ router.get("/api/leaders", async (req, res) => {
         restaurantId: string;
         totalSalesToday: number;
         totalSalesLastWeek: number;
+        txnToday: number;
+        txnLastWeek: number;
         staffingDiffs: number[];
         speedCarCount: number;
         speedCarsUnder6: number;
@@ -164,6 +169,7 @@ router.get("/api/leaders", async (req, res) => {
             dailyAggregates.set(dayKey, {
               restaurantId: crew.restaurantId,
               totalSalesToday: 0, totalSalesLastWeek: 0,
+              txnToday: 0, txnLastWeek: 0,
               staffingDiffs: [], speedCarCount: 0, speedCarsUnder6: 0, osatWeighted: [], hoursCount: 0,
             });
           }
@@ -180,6 +186,12 @@ router.get("/api/leaders", async (req, res) => {
           const posLastWeekSales = posSalesByKey.get(posLastWeekKey);
           const fallbackLastWeekSales = salesByKey.get(posLastWeekKey);
           day.totalSalesLastWeek += posLastWeekSales !== undefined ? posLastWeekSales : (fallbackLastWeekSales ? Number(fallbackLastWeekSales.actualSales) || 0 : 0);
+
+          // Accumulate transaction counts for the day
+          const txnKey = `${crew.restaurantId}-${crew.date}-${crew.hour}`;
+          const txnLastWeekKey = `${crew.restaurantId}-${lastWeekDateStr}-${crew.hour}`;
+          day.txnToday += posOrderCounts.get(txnKey) || 0;
+          day.txnLastWeek += posOrderCounts.get(txnLastWeekKey) || 0;
 
           const actualStaff = Number(labor.employeeCount) || 0;
           const requiredStaff = getTotalRequiredStaff(crew.hour, hourSales);
@@ -211,11 +223,15 @@ router.get("/api/leaders", async (req, res) => {
         const totalOsatResponses = day.osatWeighted.reduce((s, o) => s + o.responses, 0);
         const osatPercent = totalOsatResponses > 0
           ? day.osatWeighted.reduce((s, o) => s + o.percent * o.responses, 0) / totalOsatResponses : undefined;
-        const salesSurge = salesVariancePct >= 20;
+        const hasComparableTransactions = day.txnLastWeek > 0 && day.txnToday > 0;
+        const txnVariancePct = hasComparableTransactions
+          ? ((day.txnToday - day.txnLastWeek) / day.txnLastWeek) * 100 : undefined;
 
         const gradeResult = computeHourlyScore({
           salesVariancePct,
           hasComparableSales,
+          transactionVariancePct: txnVariancePct,
+          hasComparableTransactions,
           speedAttainment: avgSpeed,
           staffingDiff: avgStaffingDiff,
           hasValidStaffing: day.staffingDiffs.length > 0,
