@@ -4,6 +4,7 @@ import { storage } from "../storage";
 import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
+import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint } from "../lib/scoring";
 
 const router = Router();
 
@@ -143,83 +144,6 @@ router.get("/api/performance-history", async (req, res) => {
         restaurantToMarket.set(String(rm.restaurantId), { id: market.id, name: market.name });
       }
     });
-
-    // Per-hour execution grade calculation - EXACTLY matches leaderboard-card.tsx getExecutionGrade
-    const GRADE_WEIGHTS = { sales: 35, speed: 25, osat: 25, staffing: 15 };
-
-    const getHourlyExecutionGrade = (
-      salesVariancePct: number,
-      speedAttainment: number | undefined,
-      staffingDiff: number,
-      hasComparableSales: boolean,
-      isFirstWeek: boolean,
-      hasValidStaffing: boolean,
-      osatPercent: number | undefined
-    ): { score: number; hasGrade: boolean } => {
-      const components: { score: number; weight: number }[] = [];
-
-      if (hasComparableSales) {
-        const salesScore = salesVariancePct >= -5 ? 100 : 50;
-        components.push({ score: salesScore, weight: GRADE_WEIGHTS.sales });
-      } else {
-        components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
-      }
-
-      if (speedAttainment !== undefined && speedAttainment >= 0) {
-        let speedScore = 100;
-        if (speedAttainment < 50) speedScore = 40;
-        else if (speedAttainment < 70) speedScore = 70;
-        components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
-      }
-
-      if (osatPercent !== undefined && osatPercent > 0) {
-        let osatScore = 100;
-        if (osatPercent < 80) osatScore = 40;
-        else if (osatPercent < 85) osatScore = 70;
-        components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
-      }
-
-      if (hasValidStaffing) {
-        let staffingScore = 100;
-        const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-        if (staffingDiff > 1) staffingScore = 60;
-        else if (staffingDiff < -1 && !isSalesSurge) staffingScore = 60;
-        components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
-      }
-
-      if (components.length === 0) return { score: 0, hasGrade: false };
-      const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-      const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
-      return { score: avgScore, hasGrade: true };
-    };
-
-    // Convert numeric score to letter grade then to midpoint score for averaging
-    // Matches leaderboard-card.tsx gradeToScore/scoreToGrade exactly
-    const scoreToGradeLabel = (score: number): string => {
-      if (score >= 97) return 'A+';
-      if (score >= 93) return 'A';
-      if (score >= 90) return 'A-';
-      if (score >= 87) return 'B+';
-      if (score >= 83) return 'B';
-      if (score >= 80) return 'B-';
-      if (score >= 77) return 'C+';
-      if (score >= 73) return 'C';
-      if (score >= 70) return 'C-';
-      if (score >= 67) return 'D+';
-      if (score >= 63) return 'D';
-      if (score >= 60) return 'D-';
-      return 'F';
-    };
-
-    const gradeMidpoints: Record<string, number> = {
-      'A+': 98, 'A': 95, 'A-': 91, 'B+': 88, 'B': 85, 'B-': 81,
-      'C+': 78, 'C': 75, 'C-': 71, 'D+': 68, 'D': 65, 'D-': 61, 'F': 30
-    };
-
-    const gradeToMidpoint = (score: number): number => {
-      const label = scoreToGradeLabel(score);
-      return gradeMidpoints[label] ?? 0;
-    };
 
     const getGradeLabel = scoreToGradeLabel;
 
@@ -404,17 +328,16 @@ router.get("/api/performance-history", async (req, res) => {
           const hourOsatPercent = (hourOsatRecord && hourOsatRecord.totalResponses > 0)
             ? hourOsatRecord.osatPercent : undefined;
 
-          const result = getHourlyExecutionGrade(
+          const result = computeHourlyScore({
             salesVariancePct,
+            hasComparableSales,
             speedAttainment,
             staffingDiff,
-            hasComparableSales,
-            isFirstWeek,
             hasValidStaffing,
-            hourOsatPercent
-          );
+            osatPercent: hourOsatPercent,
+          });
           if (result.hasGrade && result.score > 0) {
-            hourlyMidpoints.push(gradeToMidpoint(result.score));
+            hourlyMidpoints.push(scoringGradeToMidpoint(scoreToGradeLabel(result.score)));
           }
         }
 

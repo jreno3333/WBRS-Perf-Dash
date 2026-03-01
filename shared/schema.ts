@@ -232,6 +232,9 @@ export interface HourlySalesData {
   // OSAT (customer satisfaction) data
   osatPercent?: number; // 5-star satisfaction percentage for this hour
   osatResponses?: number; // Number of survey responses for this hour
+  // Transaction count from POS orders
+  transactionCount?: number; // Number of POS transactions/orders for this hour
+  lastWeekTransactionCount?: number; // Same hour last week transaction count
 }
 
 export interface LeaderboardData {

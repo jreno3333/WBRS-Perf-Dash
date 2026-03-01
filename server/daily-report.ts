@@ -5,13 +5,7 @@ import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
 import { getTotalRequiredStaff } from "./labor-model";
-
-const GRADE_WEIGHTS = {
-  sales: 35,
-  speed: 25,
-  osat: 25,
-  staffing: 15,
-};
+import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency } from "./lib/scoring";
 
 
 function getExecutionGrade(
@@ -23,81 +17,22 @@ function getExecutionGrade(
   hasValidStaffing: boolean,
   osatPercent: number | undefined
 ): { grade: string; score: number; hasGrade: boolean } {
-  const components: { score: number; weight: number }[] = [];
-
-  if (hasComparableSales) {
-    components.push({ score: salesVariancePct >= -5 ? 100 : 50, weight: GRADE_WEIGHTS.sales });
-  } else {
-    components.push({ score: 100, weight: GRADE_WEIGHTS.sales });
-  }
-
-  if (speedAttainment !== undefined && speedAttainment >= 0) {
-    let speedScore = 100;
-    if (speedAttainment < 50) speedScore = 40;
-    else if (speedAttainment < 70) speedScore = 70;
-    components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
-  }
-
-  if (osatPercent !== undefined && osatPercent >= 0) {
-    let osatScore = 100;
-    if (osatPercent < 80) osatScore = 40;
-    else if (osatPercent < 85) osatScore = 70;
-    components.push({ score: osatScore, weight: GRADE_WEIGHTS.osat });
-  }
-
-  if (hasValidStaffing) {
-    let staffingScore = 100;
-    const isSalesSurge = salesVariancePct >= 20 || !hasComparableSales;
-    const isUnderstaffed = staffingDiff < -1;
-    const isOverstaffed = staffingDiff > 1;
-    if (isOverstaffed) staffingScore = 60;
-    else if (isUnderstaffed && !isSalesSurge) staffingScore = 60;
-    components.push({ score: staffingScore, weight: GRADE_WEIGHTS.staffing });
-  }
-
-  if (components.length === 0) return { grade: '-', score: 0, hasGrade: false };
-
-  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
-  const avgScore = components.reduce((sum, c) => sum + (c.score * c.weight), 0) / totalWeight;
-
-  return { grade: scoreToGradeLabel(avgScore), score: avgScore, hasGrade: true };
+  const result = computeHourlyScore({
+    salesVariancePct,
+    hasComparableSales,
+    speedAttainment,
+    staffingDiff,
+    hasValidStaffing,
+    osatPercent,
+  });
+  return { grade: result.grade, score: result.score, hasGrade: result.hasGrade };
 }
 
-function gradeToScore(grade: string): number {
-  const scores: Record<string, number> = {
-    'A+': 98, 'A': 95, 'A-': 91, 'B+': 88, 'B': 85, 'B-': 81,
-    'C+': 78, 'C': 75, 'C-': 71, 'D+': 68, 'D': 65, 'D-': 61, 'F': 30
-  };
-  return scores[grade] ?? 0;
-}
+const scoreToGradeLabel = sharedScoreToGradeLabel;
 
-function scoreToGradeLabel(score: number): string {
-  if (score >= 97) return "A+";
-  if (score >= 93) return "A";
-  if (score >= 90) return "A-";
-  if (score >= 87) return "B+";
-  if (score >= 83) return "B";
-  if (score >= 80) return "B-";
-  if (score >= 77) return "C+";
-  if (score >= 73) return "C";
-  if (score >= 70) return "C-";
-  if (score >= 67) return "D+";
-  if (score >= 63) return "D";
-  if (score >= 60) return "D-";
-  return "F";
-}
+const getGradeColor = getGradeColorHex;
 
-function getGradeColor(grade: string): string {
-  if (grade.startsWith("A")) return "#16a34a";
-  if (grade.startsWith("B")) return "#2563eb";
-  if (grade.startsWith("C")) return "#d97706";
-  if (grade.startsWith("D")) return "#dc2626";
-  return "#dc2626";
-}
-
-function formatCurrency(amount: number): string {
-  return `$${Math.round(amount).toLocaleString('en-US')}`;
-}
+const formatCurrency = sharedFormatCurrency;
 
 interface RestaurantSummary {
   id: string;
@@ -477,6 +412,9 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       </a>
       <p style="font-size: 11px; color: #a1a1aa; margin-top: 12px;">
         All figures reflect full day in Central Time
+      </p>
+      <p style="font-size: 11px; margin-top: 8px;">
+        <a href="${baseUrl}/scoring" style="color: #2563eb; text-decoration: underline;">How is my score calculated?</a>
       </p>
     </div>
   </div>
