@@ -1298,7 +1298,9 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                   const hasManager = positionKeys.some(p => p.includes("manager"));
                   const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
                   const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
-                  const missingLeadership = !hasManager && !hasShiftSupervisor && !hasOperatorScheduled && laborHours > 0;
+                  // Also check leaders array from crew data — it reliably identifies managers/supervisors
+                  const hasLeadersFromCrewData = (hour.leaders || []).length > 0;
+                  const missingLeadership = !hasManager && !hasShiftSupervisor && !hasOperatorScheduled && !hasLeadersFromCrewData && laborHours > 0;
                   
                   const isHovered = hoveredHourIndex === hourIndex;
                   

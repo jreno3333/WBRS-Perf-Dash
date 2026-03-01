@@ -371,7 +371,8 @@ export default function Dashboard() {
         const hasManager = positionKeys.some(p => p.includes("manager"));
         const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
         const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
-        return !hasManager && !hasShiftSupervisor && !hasOperatorScheduled;
+        const hasLeadersFromCrewData = (hour.leaders || []).length > 0;
+        return !hasManager && !hasShiftSupervisor && !hasOperatorScheduled && !hasLeadersFromCrewData;
       });
       if (isMissing) set.add(restaurantId);
     }
