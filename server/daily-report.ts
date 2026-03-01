@@ -38,7 +38,7 @@ function getExecutionGrade(
     components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
 
-  if (osatPercent !== undefined && osatPercent > 0) {
+  if (osatPercent !== undefined && osatPercent >= 0) {
     let osatScore = 100;
     if (osatPercent < 80) osatScore = 40;
     else if (osatPercent < 85) osatScore = 70;
@@ -281,7 +281,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
       const osatData = hourlyData.reduce((acc, h) => {
         const op = (h as any).osatPercent;
-        if (op !== undefined && op > 0) {
+        if (op !== undefined && op >= 0) {
           acc.total += op;
           acc.count++;
         }

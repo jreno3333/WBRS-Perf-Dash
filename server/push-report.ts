@@ -37,7 +37,7 @@ function getExecutionGrade(
     components.push({ score: speedScore, weight: GRADE_WEIGHTS.speed });
   }
 
-  if (osatPercent !== undefined && osatPercent > 0) {
+  if (osatPercent !== undefined && osatPercent >= 0) {
     let osatScore = 100;
     if (osatPercent < 80) osatScore = 40;
     else if (osatPercent < 85) osatScore = 70;
@@ -261,7 +261,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     const osatSummary = hourlyData.reduce((acc, h) => {
       const op = (h as any).osatPercent;
       const or2 = (h as any).osatResponses;
-      if (op !== undefined && op > 0 && or2 > 0) {
+      if (op !== undefined && op >= 0 && or2 > 0) {
         acc.totalWeighted += op * or2;
         acc.totalResponses += or2;
       }
@@ -271,7 +271,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
 
     // Per-hour OSAT detail
     const surveyHours = hourlyDetails
-      .filter(h => h.osatPercent !== undefined && h.osatPercent > 0 && h.osatResponses && h.osatResponses > 0)
+      .filter(h => h.osatPercent !== undefined && h.osatPercent >= 0 && h.osatResponses && h.osatResponses > 0)
       .map(h => ({ hour: h.hour, percent: h.osatPercent!, responses: h.osatResponses!, leaders: h.leaders }));
 
     // ─── OSAT Category Issues (from DB) ──────────────────────────────────
