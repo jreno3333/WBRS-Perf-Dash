@@ -232,7 +232,11 @@ function analyzeUnit(
       }
       
       // Calculate hourly grade score using shared scoring module
-      const score = computeExecutionScore(hourVariance, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+      const hasComparableTransactions = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+      const txnVariancePct = hasComparableTransactions
+        ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
+        : undefined;
+      const score = computeExecutionScore(hourVariance, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions);
       if (score > 0) {
         hourlyScores.push(score);
       }
@@ -374,7 +378,11 @@ function analyzeUnit(
         const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
         const staffingDiff = actualStaff - staffing.total;
         const hasValidStaffing = rawEmployeeCount >= 1;
-        const score = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+        const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+        const txnVar = hasCompTxn
+          ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
+          : undefined;
+        const score = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
         return score > 0 ? gradeToMidpoint(scoreToGradeLabel(score)) : 0;
       }).filter(s => s > 0);
 

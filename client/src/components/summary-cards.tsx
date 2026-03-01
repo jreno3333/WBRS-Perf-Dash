@@ -45,8 +45,10 @@ function getExecutionGrade(
   hasComparableSales: boolean,
   osatPercent: number | undefined,
   hasValidStaffing: boolean,
+  transactionVariancePct?: number,
+  hasComparableTransactions?: boolean,
 ): { grade: string; color: string; score: number; hasGrade: boolean; components: { name: string; score: number; weight: number }[] } {
-  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent);
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
   if (score === 0) {
     return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false, components: [] };
   }
@@ -215,7 +217,9 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
           }
         }
         
-        const gradeInfo = getExecutionGrade(salesVariancePct, speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing);
+        const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+        const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+        const gradeInfo = getExecutionGrade(salesVariancePct, speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
         if (gradeInfo.hasGrade) {
           if (gradeInfo.score > 0) {
             allHourlyScores.push(gradeInfo.score);

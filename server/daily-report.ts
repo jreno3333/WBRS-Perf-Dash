@@ -13,13 +13,16 @@ function getExecutionGrade(
   speedAttainment: number | undefined,
   staffingDiff: number,
   hasComparableSales: boolean,
-  isFirstWeek: boolean,
   hasValidStaffing: boolean,
-  osatPercent: number | undefined
+  osatPercent: number | undefined,
+  transactionVariancePct?: number,
+  hasComparableTransactions?: boolean,
 ): { grade: string; score: number; hasGrade: boolean } {
   const result = computeHourlyScore({
     salesVariancePct,
     hasComparableSales,
+    transactionVariancePct,
+    hasComparableTransactions,
     speedAttainment,
     staffingDiff,
     hasValidStaffing,
@@ -164,7 +167,6 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
       const hourlyData: HourlySalesData[] = hourlyDataByRestaurant[restaurant.restaurantId] || [];
 
-      const isFirstWeek = (restaurant.daysOpen !== undefined && restaurant.daysOpen < 7);
       const hourlyGradeScores: number[] = [];
 
       for (const hour of hourlyData) {
@@ -184,14 +186,17 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         const staffingDiff = actualStaff - requiredStaff;
         const hasValidStaffing = rawEmployeeCount >= 1;
 
+        const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+        const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
         const gradeInfo = getExecutionGrade(
           salesVariancePct,
           (hour as any).speedAttainment,
           staffingDiff,
           hasComparableSales,
-          isFirstWeek,
           hasValidStaffing,
-          (hour as any).osatPercent
+          (hour as any).osatPercent,
+          txnVar,
+          hasCompTxn
         );
 
         if (gradeInfo.hasGrade) {

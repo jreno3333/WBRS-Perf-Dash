@@ -47,7 +47,11 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
       const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
       const staffingDiff = actualStaff - staffing.total;
       const hasValidStaffing = rawEmployeeCount >= 1;
-      const rawScore = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent);
+      const hasComparableTransactions = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+      const transactionVariancePct = hasComparableTransactions
+        ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
+        : undefined;
+      const rawScore = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions);
       return rawScore > 0 ? gradeToMidpoint(scoreToGradeLabel(rawScore)) : 0;
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
