@@ -1,0 +1,1447 @@
+import { Router } from "express";
+import { db, posDb } from "../db";
+import { hourlySales, restaurants, dailyOsat, osatData, posOrders, locationMapping, dailySales, dailyLabor, hourlyLabor, hmeTimerData, dailyWeather, dailyGoogleReviews, hourlyCrew, employees, historicalDailySales, osatCategoryIssues } from "@shared/schema";
+import { sql, and, gte, lte, eq, desc, asc } from "drizzle-orm";
+
+const router = Router();
+
+/**
+ * AI Sales Analysis API
+ * Provides pre-built analytical queries for key business questions:
+ * 1. Hours with sales over $2000
+ * 2. Highest OSAT scores
+ * 3. Dine-in % change by unit
+ * 4. App order % by unit
+ * 5. Outside order taker (OOT/dt3) usage
+ * 6. Top growing products week-over-week (attachment rates)
+ */
+
+// Run all analysis queries for a given date range
+router.get("/api/ai-analysis", async (req, res) => {
+  try {
+    const { date, days = "7" } = req.query;
+    const numDays = Math.min(parseInt(days as string) || 7, 90);
+
+    // Determine date range
+    const endDate = date
+      ? new Date(date as string + "T12:00:00")
+      : new Date();
+    const endDateStr = endDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - numDays + 1);
+    const startDateStr = startDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+    // Previous period for comparison
+    const prevEndDate = new Date(startDate);
+    prevEndDate.setDate(prevEndDate.getDate() - 1);
+    const prevEndDateStr = prevEndDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+    const prevStartDate = new Date(prevEndDate);
+    prevStartDate.setDate(prevStartDate.getDate() - numDays + 1);
+    const prevStartDateStr = prevStartDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+    // Get restaurant list for name mapping
+    const restaurantList = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
+    const restaurantMap = new Map(restaurantList.map((r) => [r.id, r.name]));
+
+    // Run all analysis queries in parallel
+    const [
+      highSalesHours,
+      osatLeaders,
+      destinationData,
+      prevDestinationData,
+      ootData,
+      attachmentTrend,
+    ] = await Promise.all([
+      // 1. Hours with sales over $2000
+      getHighSalesHours(startDateStr, endDateStr, 2000),
+      // 2. Highest OSAT scores
+      getOsatLeaders(startDateStr, endDateStr),
+      // 3 & 4. Destination breakdown (current period)
+      getDestinationBreakdown(startDateStr, endDateStr),
+      // 3 & 4. Destination breakdown (previous period for comparison)
+      getDestinationBreakdown(prevStartDateStr, prevEndDateStr),
+      // 5. Outside order taker usage
+      getOutsideOrderTakerUsage(startDateStr, endDateStr),
+      // 6. Attachment rate trend (week over week from POS items)
+      getAttachmentRateTrend(endDateStr),
+    ]);
+
+    // Process dine-in % change
+    const dineInChange = calculateDestinationChange(destinationData, prevDestinationData, "dine_in", restaurantMap);
+    const appPercentages = calculateDestinationPercentages(destinationData, "app", restaurantMap);
+
+    res.json({
+      dateRange: { start: startDateStr, end: endDateStr, days: numDays },
+      previousPeriod: { start: prevStartDateStr, end: prevEndDateStr },
+      insights: {
+        highSalesHours: formatHighSalesHours(highSalesHours, restaurantMap),
+        osatLeaders: formatOsatLeaders(osatLeaders, restaurantMap),
+        dineInChange,
+        appPercentages,
+        outsideOrderTakers: formatOOTData(ootData, restaurantMap),
+        attachmentTrend,
+      },
+    });
+  } catch (error) {
+    console.error("Error in AI analysis:", error);
+    res.status(500).json({ error: "Failed to run analysis" });
+  }
+});
+
+// ---- Query Functions ----
+
+async function getHighSalesHours(startDate: string, endDate: string, threshold: number) {
+  const startTs = new Date(startDate + "T00:00:00");
+  const endTs = new Date(endDate + "T23:59:59");
+
+  return db
+    .select({
+      restaurantId: hourlySales.restaurantId,
+      salesDate: hourlySales.salesDate,
+      hour: hourlySales.hour,
+      actualSales: hourlySales.actualSales,
+    })
+    .from(hourlySales)
+    .where(
+      and(
+        gte(hourlySales.salesDate, startTs),
+        lte(hourlySales.salesDate, endTs),
+        gte(hourlySales.actualSales, threshold.toString())
+      )
+    )
+    .orderBy(desc(hourlySales.actualSales));
+}
+
+async function getOsatLeaders(startDate: string, endDate: string) {
+  return db
+    .select({
+      restaurantId: dailyOsat.restaurantId,
+      avgOsat: sql<number>`round(avg(${dailyOsat.osatPercent}::numeric), 1)`,
+      totalResponses: sql<number>`sum(${dailyOsat.totalResponses})::int`,
+      totalFiveStar: sql<number>`sum(${dailyOsat.fiveStarCount})::int`,
+      dayCount: sql<number>`count(distinct ${dailyOsat.date})::int`,
+    })
+    .from(dailyOsat)
+    .where(
+      and(
+        gte(dailyOsat.date, startDate),
+        lte(dailyOsat.date, endDate),
+        gte(dailyOsat.totalResponses, 1)
+      )
+    )
+    .groupBy(dailyOsat.restaurantId)
+    .orderBy(desc(sql`avg(${dailyOsat.osatPercent}::numeric)`));
+}
+
+async function getDestinationBreakdown(startDate: string, endDate: string) {
+  const startTs = new Date(startDate + "T00:00:00");
+  const endTs = new Date(endDate + "T23:59:59");
+
+  // Get location mappings for restaurant name resolution
+  const mappings = await db.select().from(locationMapping);
+  const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
+
+  const rows = await posDb
+    .select({
+      storeNumber: posOrders.storeNumber,
+      destination: posOrders.destination,
+      orderCount: sql<number>`count(*)::int`,
+      totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+    })
+    .from(posOrders)
+    .where(
+      and(
+        gte(posOrders.businessDate, startTs),
+        lte(posOrders.businessDate, endTs)
+      )
+    )
+    .groupBy(posOrders.storeNumber, posOrders.destination);
+
+  // Group by restaurant
+  const result = new Map<string, Map<string, { orders: number; sales: number }>>();
+
+  for (const row of rows) {
+    const restaurantId = storeToRestaurant.get(row.storeNumber) || row.storeNumber;
+    if (!result.has(restaurantId)) {
+      result.set(restaurantId, new Map());
+    }
+    const destMap = result.get(restaurantId)!;
+    const dest = normalizeDestination(row.destination);
+    const existing = destMap.get(dest) || { orders: 0, sales: 0 };
+    existing.orders += row.orderCount;
+    existing.sales += Number(row.totalSales);
+    destMap.set(dest, existing);
+  }
+
+  return result;
+}
+
+async function getOutsideOrderTakerUsage(startDate: string, endDate: string) {
+  const startTs = new Date(startDate + "T00:00:00");
+  const endTs = new Date(endDate + "T23:59:59");
+
+  const mappings = await db.select().from(locationMapping);
+  const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
+
+  // dt3 = outside order taker lane
+  const rows = await posDb
+    .select({
+      storeNumber: posOrders.storeNumber,
+      businessDate: sql<string>`${posOrders.businessDate}::date::text`,
+      hour: sql<number>`extract(hour from ${posOrders.orderClosedAt})::int`,
+      orderCount: sql<number>`count(*)::int`,
+    })
+    .from(posOrders)
+    .where(
+      and(
+        gte(posOrders.businessDate, startTs),
+        lte(posOrders.businessDate, endTs),
+        sql`lower(${posOrders.destination}) like '%dt3%'`
+      )
+    )
+    .groupBy(posOrders.storeNumber, sql`${posOrders.businessDate}::date::text`, sql`extract(hour from ${posOrders.orderClosedAt})::int`)
+    .orderBy(desc(sql`count(*)`));
+
+  // Aggregate by restaurant
+  const restaurantOOT = new Map<string, { totalOrders: number; hoursUsed: number; daysUsed: Set<string> }>();
+
+  for (const row of rows) {
+    const restaurantId = storeToRestaurant.get(row.storeNumber) || row.storeNumber;
+    if (!restaurantOOT.has(restaurantId)) {
+      restaurantOOT.set(restaurantId, { totalOrders: 0, hoursUsed: 0, daysUsed: new Set() });
+    }
+    const data = restaurantOOT.get(restaurantId)!;
+    data.totalOrders += row.orderCount;
+    data.hoursUsed += 1;
+    data.daysUsed.add(row.businessDate);
+  }
+
+  return restaurantOOT;
+}
+
+async function getAttachmentRateTrend(endDateStr: string) {
+  // Get the last 2 weeks of POS order items to compare attachment categories
+  const endTs = new Date(endDateStr + "T23:59:59");
+  const startTs = new Date(endTs);
+  startTs.setDate(startTs.getDate() - 13); // 14 days total
+
+  const midTs = new Date(endTs);
+  midTs.setDate(midTs.getDate() - 6); // Split into 2 weeks
+  const midDateStr = midTs.toISOString().split("T")[0];
+
+  // Query raw order items from pos_orders for both weeks
+  // We'll look at item-level data in raw_json if available
+  try {
+    const thisWeekOrders = await posDb
+      .select({
+        orderCount: sql<number>`count(*)::int`,
+        avgTotal: sql<number>`round(avg(${posOrders.orderTotal}::numeric), 2)`,
+        totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, midTs),
+          lte(posOrders.businessDate, endTs)
+        )
+      );
+
+    const lastWeekOrders = await posDb
+      .select({
+        orderCount: sql<number>`count(*)::int`,
+        avgTotal: sql<number>`round(avg(${posOrders.orderTotal}::numeric), 2)`,
+        totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startTs),
+          lte(posOrders.businessDate, midTs)
+        )
+      );
+
+    const thisWeek = thisWeekOrders[0];
+    const lastWeek = lastWeekOrders[0];
+
+    return {
+      thisWeek: {
+        orders: thisWeek?.orderCount || 0,
+        avgCheck: Number(thisWeek?.avgTotal) || 0,
+        totalSales: Number(thisWeek?.totalSales) || 0,
+      },
+      lastWeek: {
+        orders: lastWeek?.orderCount || 0,
+        avgCheck: Number(lastWeek?.avgTotal) || 0,
+        totalSales: Number(lastWeek?.totalSales) || 0,
+      },
+      checkAvgChange: lastWeek?.avgTotal && thisWeek?.avgTotal
+        ? Math.round(((Number(thisWeek.avgTotal) - Number(lastWeek.avgTotal)) / Number(lastWeek.avgTotal)) * 10000) / 100
+        : 0,
+      orderCountChange: lastWeek?.orderCount && thisWeek?.orderCount
+        ? Math.round(((thisWeek.orderCount - lastWeek.orderCount) / lastWeek.orderCount) * 10000) / 100
+        : 0,
+    };
+  } catch {
+    return { thisWeek: { orders: 0, avgCheck: 0, totalSales: 0 }, lastWeek: { orders: 0, avgCheck: 0, totalSales: 0 }, checkAvgChange: 0, orderCountChange: 0 };
+  }
+}
+
+// ---- Helper Functions ----
+
+function normalizeDestination(dest: string | null): string {
+  if (!dest) return "unknown";
+  const d = dest.toLowerCase().trim();
+  if (d === "in" || d.includes("dine")) return "dine_in";
+  if (d === "app" || d.includes("app")) return "app";
+  if (d === "3pd" || d.includes("3pd") || d.includes("doordash") || d.includes("uber")) return "3pd";
+  if (d === "dt1" || d === "dt2") return "drive_thru";
+  if (d === "dt3") return "dt3_outside";
+  return d;
+}
+
+function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
+  // Group by restaurant
+  const byRestaurant = new Map<string, { count: number; totalSales: number; peakSales: number; peakHour: number; peakDate: string }>();
+
+  for (const row of rows) {
+    const name = restaurantMap.get(row.restaurantId) || row.restaurantId;
+    if (!byRestaurant.has(name)) {
+      byRestaurant.set(name, { count: 0, totalSales: 0, peakSales: 0, peakHour: 0, peakDate: "" });
+    }
+    const data = byRestaurant.get(name)!;
+    data.count++;
+    const sales = Number(row.actualSales);
+    data.totalSales += sales;
+    if (sales > data.peakSales) {
+      data.peakSales = sales;
+      data.peakHour = row.hour;
+      data.peakDate = row.salesDate instanceof Date
+        ? row.salesDate.toISOString().split("T")[0]
+        : String(row.salesDate).split("T")[0];
+    }
+  }
+
+  const results = Array.from(byRestaurant.entries())
+    .map(([name, data]) => ({
+      restaurant: name,
+      hoursOver2k: data.count,
+      avgSalesPerHour: Math.round(data.totalSales / data.count),
+      peakSales: Math.round(data.peakSales),
+      peakHour: data.peakHour,
+      peakDate: data.peakDate,
+    }))
+    .sort((a, b) => b.hoursOver2k - a.hoursOver2k);
+
+  return {
+    totalHours: rows.length,
+    byRestaurant: results,
+  };
+}
+
+function formatOsatLeaders(rows: any[], restaurantMap: Map<string, string>) {
+  return rows.map((row, index) => ({
+    rank: index + 1,
+    restaurant: restaurantMap.get(row.restaurantId) || row.restaurantId,
+    restaurantId: row.restaurantId,
+    avgOsat: Number(row.avgOsat),
+    totalResponses: row.totalResponses,
+    totalFiveStar: row.totalFiveStar,
+    daysWithData: row.dayCount,
+  }));
+}
+
+function calculateDestinationChange(
+  currentData: Map<string, Map<string, { orders: number; sales: number }>>,
+  previousData: Map<string, Map<string, { orders: number; sales: number }>>,
+  destType: string,
+  restaurantMap: Map<string, string>
+) {
+  const results: { restaurant: string; currentPct: number; previousPct: number; change: number }[] = [];
+
+  for (const [restaurantId, destMap] of currentData) {
+    const name = restaurantMap.get(restaurantId) || restaurantId;
+    const totalOrders = Array.from(destMap.values()).reduce((sum, d) => sum + d.orders, 0);
+    const destOrders = destMap.get(destType)?.orders || 0;
+    const currentPct = totalOrders > 0 ? Math.round((destOrders / totalOrders) * 10000) / 100 : 0;
+
+    let previousPct = 0;
+    const prevDestMap = previousData.get(restaurantId);
+    if (prevDestMap) {
+      const prevTotal = Array.from(prevDestMap.values()).reduce((sum, d) => sum + d.orders, 0);
+      const prevDest = prevDestMap.get(destType)?.orders || 0;
+      previousPct = prevTotal > 0 ? Math.round((prevDest / prevTotal) * 10000) / 100 : 0;
+    }
+
+    results.push({
+      restaurant: name,
+      currentPct,
+      previousPct,
+      change: Math.round((currentPct - previousPct) * 100) / 100,
+    });
+  }
+
+  return results.sort((a, b) => b.change - a.change);
+}
+
+function calculateDestinationPercentages(
+  data: Map<string, Map<string, { orders: number; sales: number }>>,
+  destType: string,
+  restaurantMap: Map<string, string>
+) {
+  const results: { restaurant: string; percentage: number; orders: number; totalOrders: number }[] = [];
+
+  for (const [restaurantId, destMap] of data) {
+    const name = restaurantMap.get(restaurantId) || restaurantId;
+    const totalOrders = Array.from(destMap.values()).reduce((sum, d) => sum + d.orders, 0);
+    const destOrders = destMap.get(destType)?.orders || 0;
+    const percentage = totalOrders > 0 ? Math.round((destOrders / totalOrders) * 10000) / 100 : 0;
+
+    results.push({
+      restaurant: name,
+      percentage,
+      orders: destOrders,
+      totalOrders,
+    });
+  }
+
+  return results.sort((a, b) => b.percentage - a.percentage);
+}
+
+function formatOOTData(
+  data: Map<string, { totalOrders: number; hoursUsed: number; daysUsed: Set<string> }>,
+  restaurantMap: Map<string, string>
+) {
+  const results: { restaurant: string; totalOrders: number; hoursUsed: number; daysUsed: number; ranOOT: boolean }[] = [];
+
+  // Include all restaurants, marking which ones used OOT
+  for (const [restaurantId, name] of restaurantMap) {
+    const ootData = data.get(restaurantId);
+    results.push({
+      restaurant: name,
+      totalOrders: ootData?.totalOrders || 0,
+      hoursUsed: ootData?.hoursUsed || 0,
+      daysUsed: ootData?.daysUsed?.size || 0,
+      ranOOT: !!ootData && ootData.totalOrders > 0,
+    });
+  }
+
+  return results.sort((a, b) => b.totalOrders - a.totalOrders);
+}
+
+// ======================================================================
+// DYNAMIC QUERY ENGINE - Accepts free-form questions from the frontend
+// ======================================================================
+
+interface QueryTemplate {
+  id: string;
+  keywords: string[];
+  description: string;
+  execute: (params: QueryParams) => Promise<QueryResult>;
+}
+
+interface QueryParams {
+  startDate: string;
+  endDate: string;
+  prevStartDate: string;
+  prevEndDate: string;
+  restaurantMap: Map<string, string>;
+  threshold?: number;
+  restaurantFilter?: string;
+}
+
+interface QueryResult {
+  title: string;
+  summary: string;
+  columns: { key: string; label: string; align?: "left" | "center" | "right" }[];
+  rows: Record<string, any>[];
+  highlight?: { label: string; value: string; detail?: string };
+}
+
+// Extract a dollar amount from a question like "over $3000" or "above 1500"
+function extractThreshold(question: string): number | undefined {
+  const match = question.match(/\$?\s*([\d,]+)/);
+  if (match) return parseFloat(match[1].replace(",", ""));
+  return undefined;
+}
+
+// Extract a restaurant name filter from the question
+function extractRestaurantFilter(question: string, restaurantMap: Map<string, string>): string | undefined {
+  const lowerQ = question.toLowerCase();
+  for (const [id, name] of restaurantMap) {
+    if (lowerQ.includes(name.toLowerCase())) return id;
+  }
+  return undefined;
+}
+
+// Score how well a question matches a template
+function scoreMatch(question: string, template: QueryTemplate): number {
+  const lower = question.toLowerCase();
+  let score = 0;
+  for (const kw of template.keywords) {
+    if (lower.includes(kw.toLowerCase())) {
+      score += kw.length; // longer keyword matches = higher score
+    }
+  }
+  return score;
+}
+
+// Helper to get store-to-restaurant mapping
+async function getStoreMapping() {
+  const mappings = await db.select().from(locationMapping);
+  return new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
+}
+
+// Build the query template library
+function buildTemplates(): QueryTemplate[] {
+  return [
+    // ---- SALES ----
+    {
+      id: "hours_over_threshold",
+      keywords: ["hours", "sales", "over", "above", "exceed", "$2000", "$3000", "$1500", "$1000", "high sales"],
+      description: "Hours of sales over a threshold",
+      execute: async (params) => {
+        const threshold = params.threshold || 2000;
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        const rows = await db
+          .select({
+            restaurantId: hourlySales.restaurantId,
+            salesDate: hourlySales.salesDate,
+            hour: hourlySales.hour,
+            actualSales: hourlySales.actualSales,
+          })
+          .from(hourlySales)
+          .where(and(
+            gte(hourlySales.salesDate, startTs),
+            lte(hourlySales.salesDate, endTs),
+            gte(hourlySales.actualSales, threshold.toString()),
+            ...(params.restaurantFilter ? [eq(hourlySales.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .orderBy(desc(hourlySales.actualSales));
+
+        const byUnit = new Map<string, { count: number; total: number; peak: number }>();
+        for (const r of rows) {
+          const name = params.restaurantMap.get(r.restaurantId) || r.restaurantId;
+          const d = byUnit.get(name) || { count: 0, total: 0, peak: 0 };
+          d.count++;
+          const s = Number(r.actualSales);
+          d.total += s;
+          if (s > d.peak) d.peak = s;
+          byUnit.set(name, d);
+        }
+
+        const formatted = Array.from(byUnit.entries())
+          .map(([name, d]) => ({ unit: name, hours: d.count, avgSales: `$${Math.round(d.total / d.count).toLocaleString()}`, peakHour: `$${Math.round(d.peak).toLocaleString()}` }))
+          .sort((a, b) => b.hours - a.hours);
+
+        return {
+          title: `Hours with Sales Over $${threshold.toLocaleString()}`,
+          summary: `${rows.length} total hours across ${byUnit.size} units exceeded $${threshold.toLocaleString()} in sales.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "hours", label: "Hours", align: "center" },
+            { key: "avgSales", label: "Avg/Hour", align: "right" },
+            { key: "peakHour", label: "Peak Hour", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Top Unit", value: formatted[0].unit, detail: `${formatted[0].hours} hours` } : undefined,
+        };
+      },
+    },
+    {
+      id: "daily_sales_by_unit",
+      keywords: ["daily sales", "total sales", "sales by unit", "sales by restaurant", "sales summary", "revenue"],
+      description: "Daily sales totals by unit",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: dailySales.restaurantId,
+            totalSales: sql<number>`sum(${dailySales.totalSales}::numeric)`,
+            dayCount: sql<number>`count(*)::int`,
+            avgDaily: sql<number>`round(avg(${dailySales.totalSales}::numeric), 0)`,
+          })
+          .from(dailySales)
+          .where(and(
+            gte(dailySales.salesDate, new Date(params.startDate + "T00:00:00")),
+            lte(dailySales.salesDate, new Date(params.endDate + "T23:59:59")),
+            ...(params.restaurantFilter ? [eq(dailySales.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(dailySales.restaurantId)
+          .orderBy(desc(sql`sum(${dailySales.totalSales}::numeric)`));
+
+        const formatted = rows.map((r) => ({
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          totalSales: `$${Math.round(Number(r.totalSales)).toLocaleString()}`,
+          days: r.dayCount,
+          avgDaily: `$${Math.round(Number(r.avgDaily)).toLocaleString()}`,
+        }));
+
+        const grandTotal = rows.reduce((s, r) => s + Number(r.totalSales), 0);
+
+        return {
+          title: "Sales Summary by Unit",
+          summary: `Total sales across all units: $${Math.round(grandTotal).toLocaleString()} over ${params.startDate} to ${params.endDate}.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "totalSales", label: "Total Sales", align: "right" },
+            { key: "days", label: "Days", align: "center" },
+            { key: "avgDaily", label: "Avg/Day", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Top Unit", value: formatted[0].unit, detail: formatted[0].totalSales } : undefined,
+        };
+      },
+    },
+    {
+      id: "top_sales_day",
+      keywords: ["best day", "highest day", "top day", "best sales day", "peak day", "busiest day"],
+      description: "Best sales day by unit",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: dailySales.restaurantId,
+            salesDate: dailySales.salesDate,
+            totalSales: dailySales.totalSales,
+          })
+          .from(dailySales)
+          .where(and(
+            gte(dailySales.salesDate, new Date(params.startDate + "T00:00:00")),
+            lte(dailySales.salesDate, new Date(params.endDate + "T23:59:59")),
+          ))
+          .orderBy(desc(sql`${dailySales.totalSales}::numeric`))
+          .limit(20);
+
+        const formatted = rows.map((r, i) => ({
+          rank: i + 1,
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          date: r.salesDate instanceof Date ? r.salesDate.toISOString().split("T")[0] : String(r.salesDate).split("T")[0],
+          sales: `$${Math.round(Number(r.totalSales)).toLocaleString()}`,
+        }));
+
+        return {
+          title: "Top Sales Days",
+          summary: `Highest single-day sales across all units.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "date", label: "Date", align: "center" },
+            { key: "sales", label: "Sales", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Best Day", value: `${formatted[0].unit} on ${formatted[0].date}`, detail: formatted[0].sales } : undefined,
+        };
+      },
+    },
+    // ---- OSAT ----
+    {
+      id: "osat_scores",
+      keywords: ["osat", "satisfaction", "5 star", "five star", "customer", "survey", "highest osat", "best osat", "lowest osat", "worst osat"],
+      description: "OSAT scores by unit",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: dailyOsat.restaurantId,
+            avgOsat: sql<number>`round(avg(${dailyOsat.osatPercent}::numeric), 1)`,
+            totalResponses: sql<number>`sum(${dailyOsat.totalResponses})::int`,
+            totalFiveStar: sql<number>`sum(${dailyOsat.fiveStarCount})::int`,
+            days: sql<number>`count(distinct ${dailyOsat.date})::int`,
+          })
+          .from(dailyOsat)
+          .where(and(
+            gte(dailyOsat.date, params.startDate),
+            lte(dailyOsat.date, params.endDate),
+            gte(dailyOsat.totalResponses, 1),
+            ...(params.restaurantFilter ? [eq(dailyOsat.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(dailyOsat.restaurantId)
+          .orderBy(desc(sql`avg(${dailyOsat.osatPercent}::numeric)`));
+
+        const formatted = rows.map((r, i) => ({
+          rank: i + 1,
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          osat: `${Number(r.avgOsat)}%`,
+          responses: r.totalResponses,
+          fiveStar: r.totalFiveStar,
+        }));
+
+        return {
+          title: "OSAT Scores by Unit",
+          summary: `Customer satisfaction (5-star %) ranked by unit. ${formatted.length} units with survey data.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "osat", label: "OSAT %", align: "right" },
+            { key: "responses", label: "Responses", align: "right" },
+            { key: "fiveStar", label: "5-Star", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Highest OSAT", value: formatted[0].unit, detail: formatted[0].osat } : undefined,
+        };
+      },
+    },
+    {
+      id: "osat_category_breakdown",
+      keywords: ["osat category", "accuracy", "food quality", "speed of service", "cleanliness", "friendliness", "order accuracy", "osat breakdown", "osat detail"],
+      description: "OSAT category issue breakdown",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: osatCategoryIssues.restaurantId,
+            avgAccuracy: sql<number>`round(avg(${osatCategoryIssues.orderAccuracy}::numeric), 2)`,
+            avgFoodQuality: sql<number>`round(avg(${osatCategoryIssues.foodQuality}::numeric), 2)`,
+            avgSpeed: sql<number>`round(avg(${osatCategoryIssues.speedOfService}::numeric), 2)`,
+            avgCleanliness: sql<number>`round(avg(${osatCategoryIssues.cleanliness}::numeric), 2)`,
+            avgFriendliness: sql<number>`round(avg(${osatCategoryIssues.employeeFriendliness}::numeric), 2)`,
+            cnt: sql<number>`count(*)::int`,
+          })
+          .from(osatCategoryIssues)
+          .where(and(
+            gte(osatCategoryIssues.date, params.startDate),
+            lte(osatCategoryIssues.date, params.endDate),
+            ...(params.restaurantFilter ? [eq(osatCategoryIssues.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(osatCategoryIssues.restaurantId)
+          .orderBy(asc(sql`avg(${osatCategoryIssues.orderAccuracy}::numeric)`));
+
+        const formatted = rows.map((r) => ({
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          accuracy: r.avgAccuracy ? Number(r.avgAccuracy).toFixed(1) : "-",
+          foodQuality: r.avgFoodQuality ? Number(r.avgFoodQuality).toFixed(1) : "-",
+          speed: r.avgSpeed ? Number(r.avgSpeed).toFixed(1) : "-",
+          cleanliness: r.avgCleanliness ? Number(r.avgCleanliness).toFixed(1) : "-",
+          friendliness: r.avgFriendliness ? Number(r.avgFriendliness).toFixed(1) : "-",
+          surveys: r.cnt,
+        }));
+
+        return {
+          title: "OSAT Category Breakdown",
+          summary: `Average category ratings (1-5 scale) across survey responses.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "accuracy", label: "Accuracy", align: "center" },
+            { key: "foodQuality", label: "Food", align: "center" },
+            { key: "speed", label: "Speed", align: "center" },
+            { key: "cleanliness", label: "Clean", align: "center" },
+            { key: "friendliness", label: "Friendly", align: "center" },
+            { key: "surveys", label: "Surveys", align: "right" },
+          ],
+          rows: formatted,
+        };
+      },
+    },
+    // ---- LABOR ----
+    {
+      id: "labor_percent",
+      keywords: ["labor", "labor %", "labor percent", "labor cost", "staffing cost", "payroll"],
+      description: "Labor percentage by unit",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: dailyLabor.restaurantId,
+            avgLabor: sql<number>`round(avg(${dailyLabor.laborPercent}::numeric), 1)`,
+            avgCost: sql<number>`round(avg(${dailyLabor.actualLaborCost}::numeric), 0)`,
+            days: sql<number>`count(*)::int`,
+          })
+          .from(dailyLabor)
+          .where(and(
+            gte(dailyLabor.date, params.startDate),
+            lte(dailyLabor.date, params.endDate),
+            ...(params.restaurantFilter ? [eq(dailyLabor.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(dailyLabor.restaurantId)
+          .orderBy(asc(sql`avg(${dailyLabor.laborPercent}::numeric)`));
+
+        const formatted = rows.map((r, i) => ({
+          rank: i + 1,
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          laborPct: r.avgLabor ? `${Number(r.avgLabor)}%` : "-",
+          avgDailyCost: r.avgCost ? `$${Number(r.avgCost).toLocaleString()}` : "-",
+          days: r.days,
+        }));
+
+        return {
+          title: "Labor % by Unit",
+          summary: `Average labor percentage (lower is better). Target is typically 25%.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "laborPct", label: "Labor %", align: "right" },
+            { key: "avgDailyCost", label: "Avg Daily Cost", align: "right" },
+            { key: "days", label: "Days", align: "center" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Best Labor %", value: formatted[0].unit, detail: formatted[0].laborPct } : undefined,
+        };
+      },
+    },
+    // ---- DRIVE THRU ----
+    {
+      id: "drive_thru_speed",
+      keywords: ["drive thru", "drive-thru", "speed", "service time", "sos", "dt time", "timer", "hme", "car count", "cars"],
+      description: "Drive-thru speed metrics",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: hmeTimerData.restaurantId,
+            avgService: sql<number>`round(avg(${hmeTimerData.avgServiceTime}::numeric), 0)`,
+            avgTotal: sql<number>`round(avg(${hmeTimerData.avgTotalTime}::numeric), 0)`,
+            totalCars: sql<number>`sum(${hmeTimerData.carCount})::int`,
+            carsUnder6: sql<number>`sum(${hmeTimerData.carsUnder6Min})::int`,
+            hours: sql<number>`count(*)::int`,
+          })
+          .from(hmeTimerData)
+          .where(and(
+            gte(hmeTimerData.date, params.startDate),
+            lte(hmeTimerData.date, params.endDate),
+            ...(params.restaurantFilter ? [eq(hmeTimerData.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(hmeTimerData.restaurantId)
+          .orderBy(asc(sql`avg(${hmeTimerData.avgServiceTime}::numeric)`));
+
+        const formatted = rows.map((r, i) => {
+          const totalCars = Number(r.totalCars) || 0;
+          const under6 = Number(r.carsUnder6) || 0;
+          return {
+            rank: i + 1,
+            unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+            avgService: r.avgService ? `${Number(r.avgService)}s` : "-",
+            avgTotal: r.avgTotal ? `${Number(r.avgTotal)}s` : "-",
+            cars: totalCars.toLocaleString(),
+            under6Pct: totalCars > 0 ? `${Math.round((under6 / totalCars) * 100)}%` : "-",
+          };
+        });
+
+        return {
+          title: "Drive-Thru Speed",
+          summary: `Average service time and car counts. Faster is better.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "avgService", label: "Avg Service", align: "right" },
+            { key: "avgTotal", label: "Avg Total", align: "right" },
+            { key: "cars", label: "Cars", align: "right" },
+            { key: "under6Pct", label: "<6min %", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Fastest", value: formatted[0].unit, detail: formatted[0].avgService } : undefined,
+        };
+      },
+    },
+    // ---- DESTINATIONS ----
+    {
+      id: "dine_in_percent",
+      keywords: ["dine in", "dine-in", "dining", "eat in", "lobby"],
+      description: "Dine-in percentage by unit",
+      execute: async (params) => {
+        const storeMap = await getStoreMapping();
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+        const prevStartTs = new Date(params.prevStartDate + "T00:00:00");
+        const prevEndTs = new Date(params.prevEndDate + "T23:59:59");
+
+        const [current, previous] = await Promise.all([
+          posDb.select({
+            storeNumber: posOrders.storeNumber,
+            destination: posOrders.destination,
+            cnt: sql<number>`count(*)::int`,
+          }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination),
+          posDb.select({
+            storeNumber: posOrders.storeNumber,
+            destination: posOrders.destination,
+            cnt: sql<number>`count(*)::int`,
+          }).from(posOrders).where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs))).groupBy(posOrders.storeNumber, posOrders.destination),
+        ]);
+
+        function calcPct(rows: any[]) {
+          const byStore = new Map<string, { dineIn: number; total: number }>();
+          for (const r of rows) {
+            const rid = storeMap.get(r.storeNumber) || r.storeNumber;
+            const d = byStore.get(rid) || { dineIn: 0, total: 0 };
+            d.total += r.cnt;
+            if (normalizeDestination(r.destination) === "dine_in") d.dineIn += r.cnt;
+            byStore.set(rid, d);
+          }
+          return byStore;
+        }
+
+        const curPcts = calcPct(current);
+        const prevPcts = calcPct(previous);
+
+        const formatted: any[] = [];
+        for (const [rid, d] of curPcts) {
+          const name = params.restaurantMap.get(rid) || rid;
+          const curP = d.total > 0 ? Math.round((d.dineIn / d.total) * 10000) / 100 : 0;
+          const prev = prevPcts.get(rid);
+          const prevP = prev && prev.total > 0 ? Math.round((prev.dineIn / prev.total) * 10000) / 100 : 0;
+          formatted.push({ unit: name, current: `${curP}%`, previous: `${prevP}%`, change: `${curP - prevP > 0 ? "+" : ""}${(curP - prevP).toFixed(1)} pp` });
+        }
+        formatted.sort((a, b) => parseFloat(b.change) - parseFloat(a.change));
+
+        return {
+          title: "Dine-In % by Unit",
+          summary: `Dine-in order percentage compared to previous period.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "current", label: "Current %", align: "right" },
+            { key: "previous", label: "Previous %", align: "right" },
+            { key: "change", label: "Change", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Biggest Increase", value: formatted[0].unit, detail: formatted[0].change } : undefined,
+        };
+      },
+    },
+    {
+      id: "app_percent",
+      keywords: ["app", "mobile", "app order", "app %", "app percentage", "online order"],
+      description: "App order percentage by unit",
+      execute: async (params) => {
+        const storeMap = await getStoreMapping();
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        const rows = await posDb.select({
+          storeNumber: posOrders.storeNumber,
+          destination: posOrders.destination,
+          cnt: sql<number>`count(*)::int`,
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination);
+
+        const byStore = new Map<string, { app: number; total: number }>();
+        for (const r of rows) {
+          const rid = storeMap.get(r.storeNumber) || r.storeNumber;
+          const d = byStore.get(rid) || { app: 0, total: 0 };
+          d.total += r.cnt;
+          if (normalizeDestination(r.destination) === "app") d.app += r.cnt;
+          byStore.set(rid, d);
+        }
+
+        const formatted = Array.from(byStore.entries())
+          .map(([rid, d]) => ({
+            unit: params.restaurantMap.get(rid) || rid,
+            appPct: d.total > 0 ? `${(Math.round((d.app / d.total) * 10000) / 100)}%` : "0%",
+            appOrders: d.app.toLocaleString(),
+            totalOrders: d.total.toLocaleString(),
+          }))
+          .sort((a, b) => parseFloat(b.appPct) - parseFloat(a.appPct));
+
+        return {
+          title: "App Order % by Unit",
+          summary: `Percentage of orders placed through the mobile app.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "appPct", label: "App %", align: "right" },
+            { key: "appOrders", label: "App Orders", align: "right" },
+            { key: "totalOrders", label: "Total Orders", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Highest App %", value: formatted[0].unit, detail: formatted[0].appPct } : undefined,
+        };
+      },
+    },
+    {
+      id: "3pd_percent",
+      keywords: ["3pd", "third party", "doordash", "uber eats", "delivery", "3rd party"],
+      description: "3PD (third-party delivery) percentage by unit",
+      execute: async (params) => {
+        const storeMap = await getStoreMapping();
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        const rows = await posDb.select({
+          storeNumber: posOrders.storeNumber,
+          destination: posOrders.destination,
+          cnt: sql<number>`count(*)::int`,
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination);
+
+        const byStore = new Map<string, { thirdParty: number; total: number }>();
+        for (const r of rows) {
+          const rid = storeMap.get(r.storeNumber) || r.storeNumber;
+          const d = byStore.get(rid) || { thirdParty: 0, total: 0 };
+          d.total += r.cnt;
+          if (normalizeDestination(r.destination) === "3pd") d.thirdParty += r.cnt;
+          byStore.set(rid, d);
+        }
+
+        const formatted = Array.from(byStore.entries())
+          .map(([rid, d]) => ({
+            unit: params.restaurantMap.get(rid) || rid,
+            pct: d.total > 0 ? `${(Math.round((d.thirdParty / d.total) * 10000) / 100)}%` : "0%",
+            orders: d.thirdParty.toLocaleString(),
+            total: d.total.toLocaleString(),
+          }))
+          .sort((a, b) => parseFloat(b.pct) - parseFloat(a.pct));
+
+        return {
+          title: "3PD (Delivery) % by Unit",
+          summary: `Third-party delivery orders (DoorDash, Uber Eats, etc.) as a percentage of total.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "pct", label: "3PD %", align: "right" },
+            { key: "orders", label: "3PD Orders", align: "right" },
+            { key: "total", label: "Total Orders", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Highest 3PD %", value: formatted[0].unit, detail: formatted[0].pct } : undefined,
+        };
+      },
+    },
+    {
+      id: "destination_full_breakdown",
+      keywords: ["destination", "channel", "order type", "order breakdown", "where are orders", "order mix", "channel mix"],
+      description: "Full destination breakdown (dine-in, drive-thru, app, 3PD)",
+      execute: async (params) => {
+        const storeMap = await getStoreMapping();
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        const rows = await posDb.select({
+          storeNumber: posOrders.storeNumber,
+          destination: posOrders.destination,
+          cnt: sql<number>`count(*)::int`,
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination);
+
+        const byStore = new Map<string, Record<string, number>>();
+        for (const r of rows) {
+          const rid = storeMap.get(r.storeNumber) || r.storeNumber;
+          const d = byStore.get(rid) || {};
+          const dest = normalizeDestination(r.destination);
+          d[dest] = (d[dest] || 0) + r.cnt;
+          d._total = (d._total || 0) + r.cnt;
+          byStore.set(rid, d);
+        }
+
+        const formatted = Array.from(byStore.entries())
+          .map(([rid, d]) => {
+            const t = d._total || 1;
+            return {
+              unit: params.restaurantMap.get(rid) || rid,
+              driveThru: `${Math.round(((d.drive_thru || 0) / t) * 100)}%`,
+              dineIn: `${Math.round(((d.dine_in || 0) / t) * 100)}%`,
+              app: `${Math.round(((d.app || 0) / t) * 100)}%`,
+              thirdParty: `${Math.round(((d["3pd"] || 0) / t) * 100)}%`,
+              total: t.toLocaleString(),
+            };
+          })
+          .sort((a, b) => parseInt(b.total.replace(/,/g, "")) - parseInt(a.total.replace(/,/g, "")));
+
+        return {
+          title: "Order Channel Mix",
+          summary: `Full breakdown of order destinations across all units.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "driveThru", label: "Drive-Thru", align: "center" },
+            { key: "dineIn", label: "Dine-In", align: "center" },
+            { key: "app", label: "App", align: "center" },
+            { key: "thirdParty", label: "3PD", align: "center" },
+            { key: "total", label: "Orders", align: "right" },
+          ],
+          rows: formatted,
+        };
+      },
+    },
+    // ---- OOT ----
+    {
+      id: "outside_order_taker",
+      keywords: ["outside order", "oot", "dt3", "outside lane", "order taker", "outside dt"],
+      description: "Outside order taker (OOT/dt3) usage",
+      execute: async (params) => {
+        const storeMap = await getStoreMapping();
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        const rows = await posDb.select({
+          storeNumber: posOrders.storeNumber,
+          businessDate: sql<string>`${posOrders.businessDate}::date::text`,
+          cnt: sql<number>`count(*)::int`,
+        }).from(posOrders).where(and(
+          gte(posOrders.businessDate, startTs),
+          lte(posOrders.businessDate, endTs),
+          sql`lower(${posOrders.destination}) like '%dt3%'`
+        )).groupBy(posOrders.storeNumber, sql`${posOrders.businessDate}::date::text`);
+
+        const byStore = new Map<string, { orders: number; days: Set<string> }>();
+        for (const r of rows) {
+          const rid = storeMap.get(r.storeNumber) || r.storeNumber;
+          const d = byStore.get(rid) || { orders: 0, days: new Set() };
+          d.orders += r.cnt;
+          d.days.add(r.businessDate);
+          byStore.set(rid, d);
+        }
+
+        const formatted: any[] = [];
+        for (const [rid, name] of params.restaurantMap) {
+          const d = byStore.get(rid);
+          formatted.push({
+            unit: name,
+            active: d ? "Yes" : "No",
+            orders: d ? d.orders.toLocaleString() : "0",
+            days: d ? d.days.size : 0,
+          });
+        }
+        formatted.sort((a, b) => parseInt(b.orders.replace(/,/g, "")) - parseInt(a.orders.replace(/,/g, "")));
+
+        const activeCount = formatted.filter((r) => r.active === "Yes").length;
+        return {
+          title: "Outside Order Taker Usage",
+          summary: `${activeCount} unit(s) ran outside order takers (DT3) during this period.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "active", label: "OOT Active", align: "center" },
+            { key: "orders", label: "OOT Orders", align: "right" },
+            { key: "days", label: "Days Used", align: "center" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] && formatted[0].active === "Yes" ? { label: "Most OOT Orders", value: formatted[0].unit, detail: `${formatted[0].orders} orders` } : undefined,
+        };
+      },
+    },
+    // ---- WEATHER ----
+    {
+      id: "weather_impact",
+      keywords: ["weather", "temperature", "rain", "snow", "wind", "hot", "cold", "storm"],
+      description: "Weather conditions by unit",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: dailyWeather.restaurantId,
+            avgHigh: sql<number>`round(avg(${dailyWeather.highTemp}::numeric), 0)`,
+            avgLow: sql<number>`round(avg(${dailyWeather.lowTemp}::numeric), 0)`,
+            days: sql<number>`count(*)::int`,
+          })
+          .from(dailyWeather)
+          .where(and(
+            gte(dailyWeather.date, params.startDate),
+            lte(dailyWeather.date, params.endDate),
+            ...(params.restaurantFilter ? [eq(dailyWeather.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(dailyWeather.restaurantId)
+          .orderBy(desc(sql`avg(${dailyWeather.highTemp}::numeric)`));
+
+        const formatted = rows.map((r) => ({
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          avgHigh: r.avgHigh ? `${Number(r.avgHigh)}°F` : "-",
+          avgLow: r.avgLow ? `${Number(r.avgLow)}°F` : "-",
+          days: r.days,
+        }));
+
+        return {
+          title: "Weather by Location",
+          summary: `Average temperature data by unit location.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "avgHigh", label: "Avg High", align: "right" },
+            { key: "avgLow", label: "Avg Low", align: "right" },
+            { key: "days", label: "Days", align: "center" },
+          ],
+          rows: formatted,
+        };
+      },
+    },
+    // ---- GOOGLE REVIEWS ----
+    {
+      id: "google_reviews",
+      keywords: ["google", "review", "rating", "google review", "google rating", "stars"],
+      description: "Google review ratings",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: dailyGoogleReviews.restaurantId,
+            avgRating: sql<number>`round(avg(${dailyGoogleReviews.rating}::numeric), 2)`,
+            latestReviews: sql<number>`max(${dailyGoogleReviews.reviewCount})::int`,
+            days: sql<number>`count(*)::int`,
+          })
+          .from(dailyGoogleReviews)
+          .where(and(
+            gte(dailyGoogleReviews.date, params.startDate),
+            lte(dailyGoogleReviews.date, params.endDate),
+            ...(params.restaurantFilter ? [eq(dailyGoogleReviews.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(dailyGoogleReviews.restaurantId)
+          .orderBy(desc(sql`avg(${dailyGoogleReviews.rating}::numeric)`));
+
+        const formatted = rows.map((r, i) => ({
+          rank: i + 1,
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          rating: r.avgRating ? Number(r.avgRating).toFixed(2) : "-",
+          reviews: r.latestReviews || 0,
+        }));
+
+        return {
+          title: "Google Ratings",
+          summary: `Average Google rating by unit.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "rating", label: "Avg Rating", align: "right" },
+            { key: "reviews", label: "Reviews", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Top Rated", value: formatted[0].unit, detail: `${formatted[0].rating} stars` } : undefined,
+        };
+      },
+    },
+    // ---- CREW / PEOPLE ----
+    {
+      id: "crew_experience",
+      keywords: ["crew", "experience", "tenure", "team", "employee", "staff", "people"],
+      description: "Crew experience scores",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: hourlyCrew.restaurantId,
+            avgScore: sql<number>`round(avg(${hourlyCrew.experienceScore}::numeric), 1)`,
+            avgTenure: sql<number>`round(avg(${hourlyCrew.avgTenureMonths}::numeric), 1)`,
+            avgCount: sql<number>`round(avg(${hourlyCrew.crewCount}::numeric), 1)`,
+          })
+          .from(hourlyCrew)
+          .where(and(
+            gte(hourlyCrew.date, params.startDate),
+            lte(hourlyCrew.date, params.endDate),
+            ...(params.restaurantFilter ? [eq(hourlyCrew.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(hourlyCrew.restaurantId)
+          .orderBy(desc(sql`avg(${hourlyCrew.experienceScore}::numeric)`));
+
+        const formatted = rows.map((r, i) => ({
+          rank: i + 1,
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          expScore: r.avgScore ? Number(r.avgScore).toFixed(1) : "-",
+          avgTenure: r.avgTenure ? `${Number(r.avgTenure).toFixed(1)} mo` : "-",
+          avgCrew: r.avgCount ? Number(r.avgCount).toFixed(1) : "-",
+        }));
+
+        return {
+          title: "Crew Experience",
+          summary: `Average crew experience score and tenure by unit.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "expScore", label: "Exp Score", align: "right" },
+            { key: "avgTenure", label: "Avg Tenure", align: "right" },
+            { key: "avgCrew", label: "Avg Crew", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Most Experienced", value: formatted[0].unit, detail: `Score: ${formatted[0].expScore}` } : undefined,
+        };
+      },
+    },
+    // ---- CHECK AVERAGE ----
+    {
+      id: "check_average",
+      keywords: ["check average", "avg check", "average ticket", "ticket size", "order size", "average order", "check avg"],
+      description: "Average check/ticket size",
+      execute: async (params) => {
+        const storeMap = await getStoreMapping();
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        const rows = await posDb.select({
+          storeNumber: posOrders.storeNumber,
+          avgCheck: sql<number>`round(avg(${posOrders.orderTotal}::numeric), 2)`,
+          orders: sql<number>`count(*)::int`,
+          totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+        }).from(posOrders).where(and(
+          gte(posOrders.businessDate, startTs),
+          lte(posOrders.businessDate, endTs)
+        )).groupBy(posOrders.storeNumber).orderBy(desc(sql`avg(${posOrders.orderTotal}::numeric)`));
+
+        const formatted = rows.map((r, i) => ({
+          rank: i + 1,
+          unit: params.restaurantMap.get(storeMap.get(r.storeNumber) || r.storeNumber) || r.storeNumber,
+          avgCheck: `$${Number(r.avgCheck).toFixed(2)}`,
+          orders: r.orders.toLocaleString(),
+          totalSales: `$${Math.round(Number(r.totalSales)).toLocaleString()}`,
+        }));
+
+        return {
+          title: "Check Average by Unit",
+          summary: `Average order value ranked by unit.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "avgCheck", label: "Avg Check", align: "right" },
+            { key: "orders", label: "Orders", align: "right" },
+            { key: "totalSales", label: "Total Sales", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Highest Avg Check", value: formatted[0].unit, detail: formatted[0].avgCheck } : undefined,
+        };
+      },
+    },
+    // ---- YEAR OVER YEAR ----
+    {
+      id: "yoy_comparison",
+      keywords: ["year over year", "yoy", "vs last year", "compared to last year", "year ago", "same period last year"],
+      description: "Year-over-year sales comparison",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            restaurantId: historicalDailySales.restaurantId,
+            totalSales: sql<number>`sum(${historicalDailySales.netSales}::numeric)`,
+            totalGuests: sql<number>`sum(${historicalDailySales.guestCount})::int`,
+            days: sql<number>`count(*)::int`,
+          })
+          .from(historicalDailySales)
+          .where(and(
+            gte(historicalDailySales.date, params.startDate),
+            lte(historicalDailySales.date, params.endDate),
+          ))
+          .groupBy(historicalDailySales.restaurantId)
+          .orderBy(desc(sql`sum(${historicalDailySales.netSales}::numeric)`));
+
+        const formatted = rows.map((r) => ({
+          unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
+          historicalSales: `$${Math.round(Number(r.totalSales)).toLocaleString()}`,
+          guests: (r.totalGuests || 0).toLocaleString(),
+          days: r.days,
+        }));
+
+        return {
+          title: "Historical Sales (YoY Data)",
+          summary: `Historical sales data available for comparison.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "historicalSales", label: "Net Sales", align: "right" },
+            { key: "guests", label: "Guests", align: "right" },
+            { key: "days", label: "Days", align: "center" },
+          ],
+          rows: formatted,
+        };
+      },
+    },
+    // ---- SALES BY HOUR ----
+    {
+      id: "sales_by_hour",
+      keywords: ["hourly", "by hour", "sales by hour", "peak hour", "busiest hour", "hour breakdown", "hourly breakdown"],
+      description: "Sales breakdown by hour",
+      execute: async (params) => {
+        const rows = await db
+          .select({
+            hour: hourlySales.hour,
+            totalSales: sql<number>`sum(${hourlySales.actualSales}::numeric)`,
+            avgSales: sql<number>`round(avg(${hourlySales.actualSales}::numeric), 0)`,
+            cnt: sql<number>`count(*)::int`,
+          })
+          .from(hourlySales)
+          .where(and(
+            gte(hourlySales.salesDate, new Date(params.startDate + "T00:00:00")),
+            lte(hourlySales.salesDate, new Date(params.endDate + "T23:59:59")),
+            ...(params.restaurantFilter ? [eq(hourlySales.restaurantId, params.restaurantFilter)] : [])
+          ))
+          .groupBy(hourlySales.hour)
+          .orderBy(asc(hourlySales.hour));
+
+        const formatted = rows.map((r) => ({
+          hour: r.hour < 12 ? (r.hour === 0 ? "12 AM" : `${r.hour} AM`) : (r.hour === 12 ? "12 PM" : `${r.hour - 12} PM`),
+          totalSales: `$${Math.round(Number(r.totalSales)).toLocaleString()}`,
+          avgSales: `$${Math.round(Number(r.avgSales)).toLocaleString()}`,
+          dataPoints: r.cnt,
+        }));
+
+        const peakRow = rows.reduce((best, r) => (Number(r.avgSales) > Number(best.avgSales) ? r : best), rows[0]);
+        const peakHour = peakRow ? (peakRow.hour < 12 ? (peakRow.hour === 0 ? "12 AM" : `${peakRow.hour} AM`) : (peakRow.hour === 12 ? "12 PM" : `${peakRow.hour - 12} PM`)) : "-";
+
+        return {
+          title: "Sales by Hour",
+          summary: `Average sales per hour across all units.`,
+          columns: [
+            { key: "hour", label: "Hour", align: "left" },
+            { key: "totalSales", label: "Total Sales", align: "right" },
+            { key: "avgSales", label: "Avg Sales", align: "right" },
+            { key: "dataPoints", label: "Data Points", align: "right" },
+          ],
+          rows: formatted,
+          highlight: peakRow ? { label: "Peak Hour", value: peakHour, detail: `$${Math.round(Number(peakRow.avgSales)).toLocaleString()} avg` } : undefined,
+        };
+      },
+    },
+  ];
+}
+
+// List available query types for the frontend
+router.get("/api/ai-analysis/templates", (_req, res) => {
+  const templates = buildTemplates();
+  res.json(
+    templates.map((t) => ({
+      id: t.id,
+      description: t.description,
+      keywords: t.keywords.slice(0, 5),
+    }))
+  );
+});
+
+// Execute a dynamic query based on a natural language question
+router.post("/api/ai-analysis/query", async (req, res) => {
+  try {
+    const { question, days = 7 } = req.body;
+    if (!question || typeof question !== "string") {
+      return res.status(400).json({ error: "Question is required" });
+    }
+
+    const numDays = Math.min(parseInt(days) || 7, 90);
+
+    // Calculate date ranges
+    const endDate = new Date();
+    const endDateStr = endDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - numDays + 1);
+    const startDateStr = startDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+    const prevEndDate = new Date(startDate);
+    prevEndDate.setDate(prevEndDate.getDate() - 1);
+    const prevEndDateStr = prevEndDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const prevStartDate = new Date(prevEndDate);
+    prevStartDate.setDate(prevStartDate.getDate() - numDays + 1);
+    const prevStartDateStr = prevStartDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+    // Get restaurant map
+    const restaurantList = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
+    const restaurantMap = new Map(restaurantList.map((r) => [r.id, r.name]));
+
+    // Match question to templates
+    const templates = buildTemplates();
+    const scored = templates
+      .map((t) => ({ template: t, score: scoreMatch(question, t) }))
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) {
+      return res.json({
+        matched: false,
+        question,
+        suggestion: "Try asking about: sales, OSAT, labor, drive-thru speed, dine-in %, app orders, outside order takers, Google reviews, crew experience, check average, weather, or hourly breakdown.",
+        availableTopics: templates.map((t) => t.description),
+      });
+    }
+
+    const bestMatch = scored[0].template;
+    const threshold = extractThreshold(question);
+    const restaurantFilter = extractRestaurantFilter(question, restaurantMap);
+
+    const result = await bestMatch.execute({
+      startDate: startDateStr,
+      endDate: endDateStr,
+      prevStartDate: prevStartDateStr,
+      prevEndDate: prevEndDateStr,
+      restaurantMap,
+      threshold,
+      restaurantFilter,
+    });
+
+    res.json({
+      matched: true,
+      question,
+      templateId: bestMatch.id,
+      dateRange: { start: startDateStr, end: endDateStr, days: numDays },
+      result,
+    });
+  } catch (error) {
+    console.error("Error in dynamic query:", error);
+    res.status(500).json({ error: "Query failed. Please try rephrasing your question." });
+  }
+});
+
+export default router;
