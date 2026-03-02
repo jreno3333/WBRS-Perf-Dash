@@ -505,6 +505,16 @@ async function getStoreMapping() {
 // COALESCE expression for destination — falls back to order_source for app/3PD orders
 const destCoalesce = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
 
+// Categories to exclude from product/item-level queries (non-food, modifiers, surcharges)
+const EXCLUDED_CATEGORIES = new Set([
+  "modifiers", "modifier", "surcharges", "surcharge", "non-food items", "non-food",
+  "non food", "non food items", "supplies", "misc", "miscellaneous",
+]);
+
+function isExcludedCategory(category: string): boolean {
+  return EXCLUDED_CATEGORIES.has(category.toLowerCase().trim());
+}
+
 // Build the query template library
 function buildTemplates(): QueryTemplate[] {
   return [
@@ -1432,10 +1442,11 @@ function buildTemplates(): QueryTemplate[] {
             const rawItems = payload?.data?.items;
             if (!Array.isArray(rawItems)) continue;
             for (const item of rawItems) {
-              if (item.item_type === "modifier") continue; // Skip modifiers
+              if (item.item_type === "modifier") continue;
               const name = (item.name || "").trim().toUpperCase();
               if (!name || name.length < 3) continue;
               const category = item.reporting_category?.major_reporting_category?.name || "Other";
+              if (isExcludedCategory(category)) continue;
               const existing = itemCounts.get(name) || { count: 0, category };
               existing.count++;
               itemCounts.set(name, existing);
@@ -1497,6 +1508,8 @@ function buildTemplates(): QueryTemplate[] {
               const seen = new Set<string>();
               for (const item of rawItems) {
                 if (item.item_type === "modifier") continue;
+                const cat = item.reporting_category?.major_reporting_category?.name || "Other";
+                if (isExcludedCategory(cat)) continue;
                 const name = (item.name || "").trim().toUpperCase();
                 if (!name || name.length < 3 || seen.has(name)) continue;
                 seen.add(name);
@@ -1624,6 +1637,7 @@ function buildTemplates(): QueryTemplate[] {
             for (const item of rawItems) {
               if (item.item_type === "modifier") continue;
               const cat = item.reporting_category?.major_reporting_category?.name || "Other";
+              if (isExcludedCategory(cat)) continue;
               categoryCounts.set(cat, (categoryCounts.get(cat) || 0) + 1);
               totalItems++;
             }
