@@ -623,9 +623,16 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                 <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
                   <CardTitle className="text-base">{insight.restaurantName}</CardTitle>
                   <Badge variant="outline" className="text-xs">{insight.state}</Badge>
-                  <Badge className={`${insight.gradeColor} bg-transparent border`}>
-                    {insight.gradeLabel}
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge className={`${insight.gradeColor} bg-transparent border cursor-help`}>
+                        {insight.gradeLabel}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <span className="text-xs">Execution Score: {insight.avgGrade.toFixed(1)}</span>
+                    </TooltipContent>
+                  </Tooltip>
                   {insight.bonusResult && insight.bonusResult.cappedBonus > 0 && (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1203,6 +1210,7 @@ export function DailySummary({
   }, [selectedDate, dateRange]);
   const [activeTab, setActiveTab] = useState("units");
   const [unitSort, setUnitSort] = useState<"grade" | "sales" | "name">("grade");
+  const [aggregateSort, setAggregateSort] = useState<"grade" | "sales">("grade");
 
   // Analyze all units (exclude training units)
   const unitInsights = useMemo(() => {
@@ -1237,7 +1245,20 @@ export function DailySummary({
     const sorted = [...unitInsights];
     switch (unitSort) {
       case "grade":
-        return sorted.sort((a, b) => b.avgGrade - a.avgGrade);
+        return sorted.sort((a, b) => {
+          // Push no-data units (grade 0) to bottom
+          if (a.avgGrade === 0 && b.avgGrade === 0) return a.restaurantName.localeCompare(b.restaurantName);
+          if (a.avgGrade === 0) return 1;
+          if (b.avgGrade === 0) return -1;
+          // Primary: descending by numeric execution score
+          const gradeDiff = b.avgGrade - a.avgGrade;
+          if (gradeDiff !== 0) return gradeDiff;
+          // Tiebreaker: descending by sales
+          const salesDiff = b.totalSales - a.totalSales;
+          if (salesDiff !== 0) return salesDiff;
+          // Final tiebreaker: alphabetical by name
+          return a.restaurantName.localeCompare(b.restaurantName);
+        });
       case "sales":
         return sorted.sort((a, b) => b.totalSales - a.totalSales);
       case "name":
@@ -1255,12 +1276,16 @@ export function DailySummary({
       if (!byState.has(state)) byState.set(state, []);
       byState.get(state)!.push(insight);
     }
-    return Array.from(byState.entries()).map(([state, insights]) => {
+    const summaries = Array.from(byState.entries()).map(([state, insights]) => {
       const stateRestaurantIds = new Set(insights.map(i => i.restaurantId));
       const stateRestaurants = restaurants.filter(r => stateRestaurantIds.has(r.restaurantId));
       return aggregateInsights(insights, state, stateRestaurants);
-    }).sort((a, b) => b.totalSales - a.totalSales);
-  }, [unitInsights, restaurants]);
+    });
+    if (aggregateSort === "grade") {
+      return summaries.sort((a, b) => b.avgGrade - a.avgGrade || b.totalSales - a.totalSales);
+    }
+    return summaries.sort((a, b) => b.totalSales - a.totalSales);
+  }, [unitInsights, restaurants, aggregateSort]);
   
   // Aggregate by market
   const marketSummaries = useMemo(() => {
@@ -1272,13 +1297,17 @@ export function DailySummary({
         byMarket.get(insight.marketId)!.push(insight);
       }
     }
-    return Array.from(byMarket.entries()).map(([marketId, insights]) => {
+    const summaries = Array.from(byMarket.entries()).map(([marketId, insights]) => {
       const market = markets.find(m => m.id === marketId);
       const marketRestaurantIds = new Set(insights.map(i => i.restaurantId));
       const marketRestaurants = restaurants.filter(r => marketRestaurantIds.has(r.restaurantId));
       return aggregateInsights(insights, market?.name || "Unknown Market", marketRestaurants);
-    }).sort((a, b) => b.totalSales - a.totalSales);
-  }, [unitInsights, markets, restaurants]);
+    });
+    if (aggregateSort === "grade") {
+      return summaries.sort((a, b) => b.avgGrade - a.avgGrade || b.totalSales - a.totalSales);
+    }
+    return summaries.sort((a, b) => b.totalSales - a.totalSales);
+  }, [unitInsights, markets, restaurants, aggregateSort]);
   
   // Company-wide summary
   const companySummary = useMemo(() => {
@@ -1355,13 +1384,30 @@ export function DailySummary({
               
               <TabsContent value="markets" className="space-y-3">
                 {marketSummaries.length > 0 ? (
-                  marketSummaries.map(summary => (
-                    <AggregatedSummaryCard 
-                      key={summary.name} 
-                      summary={summary} 
-                      icon={<MapPin className="w-5 h-5 text-indigo-500" />}
-                    />
-                  ))
+                  <>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-muted-foreground">Sort:</span>
+                      {(["grade", "sales"] as const).map(opt => (
+                        <Button
+                          key={opt}
+                          variant={aggregateSort === opt ? "secondary" : "ghost"}
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setAggregateSort(opt)}
+                        >
+                          {opt === "grade" ? "Execution" : "Sales"}
+                        </Button>
+                      ))}
+                    </div>
+                    {marketSummaries.map(summary => (
+                      <AggregatedSummaryCard
+                        key={summary.name}
+                        summary={summary}
+                        icon={<MapPin className="w-5 h-5 text-indigo-500" />}
+                      />
+                    ))}
+                  </>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
                     <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -1369,12 +1415,27 @@ export function DailySummary({
                   </div>
                 )}
               </TabsContent>
-              
+
               <TabsContent value="states" className="space-y-3">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Sort:</span>
+                  {(["grade", "sales"] as const).map(opt => (
+                    <Button
+                      key={opt}
+                      variant={aggregateSort === opt ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setAggregateSort(opt)}
+                    >
+                      {opt === "grade" ? "Execution" : "Sales"}
+                    </Button>
+                  ))}
+                </div>
                 {stateSummaries.map(summary => (
-                  <AggregatedSummaryCard 
-                    key={summary.name} 
-                    summary={summary} 
+                  <AggregatedSummaryCard
+                    key={summary.name}
+                    summary={summary}
                     icon={<Globe className="w-5 h-5 text-blue-500" />}
                   />
                 ))}
