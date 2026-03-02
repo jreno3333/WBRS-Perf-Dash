@@ -91,8 +91,10 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
     // Fetch last year's daily sales from historical_daily_sales for YoY bonus
-    const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1);
-    const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1);
+    // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
+    // Expand range by ±3 days to cover all possible DOW shifts
+    const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1); yoyStart.setDate(yoyStart.getDate() - 3);
+    const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1); yoyEnd.setDate(yoyEnd.getDate() + 3);
     const yoyStartStr = yoyStart.toISOString().split("T")[0];
     const yoyEndStr = yoyEnd.toISOString().split("T")[0];
     const yoySalesData = await db.select().from(historicalDailySales).where(
@@ -341,11 +343,12 @@ router.get("/api/people/leader-detail", async (req, res) => {
         osatResponses,
       });
 
-      // YoY variance from historical_daily_sales
-      const yoyDateForDay = new Date(`${dateKey}T12:00:00Z`);
-      yoyDateForDay.setFullYear(yoyDateForDay.getFullYear() - 1);
-      const yoyKey = `${dayData.restaurantId}-${yoyDateForDay.toISOString().split('T')[0]}`;
-      const lastYearSales = yoySalesMap.get(yoyKey);
+      // YoY variance from historical_daily_sales (DOW-matched)
+      const yoyDt = new Date(`${dateKey}T12:00:00Z`);
+      const yoyMatch = new Date(yoyDt);
+      yoyMatch.setFullYear(yoyMatch.getFullYear() - 1);
+      yoyMatch.setDate(yoyMatch.getDate() + (yoyDt.getDay() - yoyMatch.getDay()));
+      const lastYearSales = yoySalesMap.get(`${dayData.restaurantId}-${yoyMatch.toISOString().split('T')[0]}`);
       const dailyYoySalesVar = lastYearSales && lastYearSales > 0
         ? ((totalSales - lastYearSales) / lastYearSales) * 100
         : undefined;

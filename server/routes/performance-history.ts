@@ -123,11 +123,20 @@ router.get("/api/performance-history", async (req, res) => {
     });
 
     // Fetch last year's daily sales from historical_daily_sales for YoY bonus
-    const yoyDateStrs = dateRange.map(d => {
+    // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
+    const yoyDateMap = new Map<string, string>(); // currentDate -> dowMatchedYoyDate
+    const yoyDateStrs: string[] = [];
+    for (const d of dateRange) {
       const dt = new Date(`${d}T12:00:00Z`);
-      dt.setFullYear(dt.getFullYear() - 1);
-      return dt.toISOString().split('T')[0];
-    });
+      const yoy = new Date(dt);
+      yoy.setFullYear(yoy.getFullYear() - 1);
+      const sameDow = yoy.getDay();
+      const targetDow = dt.getDay();
+      yoy.setDate(yoy.getDate() + (targetDow - sameDow));
+      const yoyStr = yoy.toISOString().split('T')[0];
+      yoyDateMap.set(d, yoyStr);
+      yoyDateStrs.push(yoyStr);
+    }
     const uniqueYoyDates = [...new Set(yoyDateStrs)];
     const yoySalesData = uniqueYoyDates.length > 0
       ? await db.select().from(historicalDailySales).where(
@@ -447,11 +456,9 @@ router.get("/api/performance-history", async (req, res) => {
           salesVariance = Math.max(-200, Math.min(200, salesVariance));
         }
 
-        // YoY variance from historical_daily_sales
-        const yoyDateForThisDay = new Date(`${dateStr}T12:00:00Z`);
-        yoyDateForThisDay.setFullYear(yoyDateForThisDay.getFullYear() - 1);
-        const yoyDateKey = `${restaurant.id}-${yoyDateForThisDay.toISOString().split('T')[0]}`;
-        const lastYearSales = yoySalesMap.get(yoyDateKey);
+        // YoY variance from historical_daily_sales (DOW-matched)
+        const yoyMatchedDate = yoyDateMap.get(dateStr) || '';
+        const lastYearSales = yoySalesMap.get(`${restaurant.id}-${yoyMatchedDate}`);
         const dailyYoySalesVar = lastYearSales && lastYearSales > 0
           ? ((totalSales - lastYearSales) / lastYearSales) * 100
           : undefined;
