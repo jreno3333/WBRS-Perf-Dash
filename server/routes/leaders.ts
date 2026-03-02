@@ -116,6 +116,29 @@ router.get("/api/leaders", async (req, res) => {
     for (const row of yoySalesData) {
       yoySalesMap.set(`${row.restaurantId}-${row.date}`, parseFloat(String(row.netSales)) || 0);
     }
+
+    // POS fallback for YoY data — fill gaps for restaurants without uploaded CSV data
+    // (matches yoy-bulk endpoint which also falls back to hourlySales)
+    const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
+    const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
+    const yoyPosRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      salesDate: sql<string>`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`,
+      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+    })
+      .from(hourlySales)
+      .where(and(gte(hourlySales.salesDate, yoyPosStart), lte(hourlySales.salesDate, yoyPosEnd)))
+      .groupBy(hourlySales.restaurantId, sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`);
+    for (const row of yoyPosRows) {
+      const key = `${row.restaurantId}-${row.salesDate}`;
+      if (!yoySalesMap.has(key)) {
+        const total = parseFloat(row.totalSales || "0");
+        if (total > 0) {
+          yoySalesMap.set(key, total);
+        }
+      }
+    }
+
     // Helper: get DOW-matched year-ago date string
     function getDowMatchedYoyDate(dateStr: string): string {
       const dt = new Date(`${dateStr}T12:00:00Z`);

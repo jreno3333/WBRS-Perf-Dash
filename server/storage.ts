@@ -615,6 +615,26 @@ export class DatabaseStorage {
       lastYearSalesMap.set(row.restaurantId, parseFloat(String(row.netSales)) || 0);
     }
 
+    // POS fallback for YoY data — fill gaps for restaurants without uploaded CSV data
+    // (matches yoy-bulk endpoint which also falls back to hourlySales)
+    const lyStart = new Date(`${lastYearDateStr}T00:00:00.000Z`);
+    const lyEnd = new Date(`${lastYearDateStr}T23:59:59.999Z`);
+    const lyPosRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+    })
+      .from(hourlySales)
+      .where(and(gte(hourlySales.salesDate, lyStart), lte(hourlySales.salesDate, lyEnd)))
+      .groupBy(hourlySales.restaurantId);
+    for (const row of lyPosRows) {
+      if (!lastYearSalesMap.has(row.restaurantId)) {
+        const total = parseFloat(row.totalSales || "0");
+        if (total > 0) {
+          lastYearSalesMap.set(row.restaurantId, total);
+        }
+      }
+    }
+
     const result: Record<string, HourlySalesData[]> = {};
 
     for (const restaurant of restaurantList) {
