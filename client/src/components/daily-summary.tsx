@@ -597,7 +597,7 @@ function aggregateInsights(insights: UnitInsight[], name: string, groupRestauran
   };
 }
 
-function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRestaurant, selectedDate }: { insight: UnitInsight; defaultOpen?: boolean; onExpanded?: () => void; notesByRestaurant?: Record<string, RestaurantNote[]>; selectedDate?: string }) {
+function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRestaurant, selectedDate, rank, sortBy }: { insight: UnitInsight; defaultOpen?: boolean; onExpanded?: () => void; notesByRestaurant?: Record<string, RestaurantNote[]>; selectedDate?: string; rank?: number; sortBy?: "grade" | "sales" | "name" }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -621,12 +621,15 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
             <div className="space-y-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
+                  {rank !== undefined && (
+                    <span className="text-xs font-bold text-muted-foreground tabular-nums w-5 text-right flex-shrink-0">#{rank}</span>
+                  )}
                   <CardTitle className="text-base">{insight.restaurantName}</CardTitle>
                   <Badge variant="outline" className="text-xs">{insight.state}</Badge>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Badge className={`${insight.gradeColor} bg-transparent border cursor-help`}>
-                        {insight.gradeLabel}
+                        {insight.gradeLabel}{insight.avgGrade > 0 && <span className="ml-1 opacity-60 text-[10px]">{insight.avgGrade.toFixed(1)}</span>}
                       </Badge>
                     </TooltipTrigger>
                     <TooltipContent side="top">
@@ -1243,26 +1246,34 @@ export function DailySummary({
   // Sort unit insights based on selected sort
   const sortedUnitInsights = useMemo(() => {
     const sorted = [...unitInsights];
+    // Helper to safely get numeric value (guards against NaN/undefined)
+    const safeNum = (v: number | undefined | null): number => (v != null && !isNaN(v) ? v : 0);
     switch (unitSort) {
       case "grade":
         return sorted.sort((a, b) => {
+          const aGrade = safeNum(a.avgGrade);
+          const bGrade = safeNum(b.avgGrade);
           // Push no-data units (grade 0) to bottom
-          if (a.avgGrade === 0 && b.avgGrade === 0) return a.restaurantName.localeCompare(b.restaurantName);
-          if (a.avgGrade === 0) return 1;
-          if (b.avgGrade === 0) return -1;
+          if (aGrade === 0 && bGrade === 0) return (a.restaurantName || "").localeCompare(b.restaurantName || "");
+          if (aGrade === 0) return 1;
+          if (bGrade === 0) return -1;
           // Primary: descending by numeric execution score
-          const gradeDiff = b.avgGrade - a.avgGrade;
+          const gradeDiff = bGrade - aGrade;
           if (gradeDiff !== 0) return gradeDiff;
           // Tiebreaker: descending by sales
-          const salesDiff = b.totalSales - a.totalSales;
+          const salesDiff = safeNum(b.totalSales) - safeNum(a.totalSales);
           if (salesDiff !== 0) return salesDiff;
           // Final tiebreaker: alphabetical by name
-          return a.restaurantName.localeCompare(b.restaurantName);
+          return (a.restaurantName || "").localeCompare(b.restaurantName || "");
         });
       case "sales":
-        return sorted.sort((a, b) => b.totalSales - a.totalSales);
+        return sorted.sort((a, b) => {
+          const diff = safeNum(b.totalSales) - safeNum(a.totalSales);
+          if (diff !== 0) return diff;
+          return (a.restaurantName || "").localeCompare(b.restaurantName || "");
+        });
       case "name":
-        return sorted.sort((a, b) => a.restaurantName.localeCompare(b.restaurantName));
+        return sorted.sort((a, b) => (a.restaurantName || "").localeCompare(b.restaurantName || ""));
       default:
         return sorted;
     }
@@ -1282,11 +1293,19 @@ export function DailySummary({
       return aggregateInsights(insights, state, stateRestaurants);
     });
     if (aggregateSort === "grade") {
-      return summaries.sort((a, b) => b.avgGrade - a.avgGrade || b.totalSales - a.totalSales);
+      return summaries.sort((a, b) => {
+        const gDiff = (b.avgGrade || 0) - (a.avgGrade || 0);
+        if (gDiff !== 0) return gDiff;
+        return (b.totalSales || 0) - (a.totalSales || 0);
+      });
     }
-    return summaries.sort((a, b) => b.totalSales - a.totalSales);
+    return summaries.sort((a, b) => {
+      const sDiff = (b.totalSales || 0) - (a.totalSales || 0);
+      if (sDiff !== 0) return sDiff;
+      return (b.avgGrade || 0) - (a.avgGrade || 0);
+    });
   }, [unitInsights, restaurants, aggregateSort]);
-  
+
   // Aggregate by market
   const marketSummaries = useMemo(() => {
     if (!markets || markets.length === 0) return [];
@@ -1304,9 +1323,17 @@ export function DailySummary({
       return aggregateInsights(insights, market?.name || "Unknown Market", marketRestaurants);
     });
     if (aggregateSort === "grade") {
-      return summaries.sort((a, b) => b.avgGrade - a.avgGrade || b.totalSales - a.totalSales);
+      return summaries.sort((a, b) => {
+        const gDiff = (b.avgGrade || 0) - (a.avgGrade || 0);
+        if (gDiff !== 0) return gDiff;
+        return (b.totalSales || 0) - (a.totalSales || 0);
+      });
     }
-    return summaries.sort((a, b) => b.totalSales - a.totalSales);
+    return summaries.sort((a, b) => {
+      const sDiff = (b.totalSales || 0) - (a.totalSales || 0);
+      if (sDiff !== 0) return sDiff;
+      return (b.avgGrade || 0) - (a.avgGrade || 0);
+    });
   }, [unitInsights, markets, restaurants, aggregateSort]);
   
   // Company-wide summary
@@ -1362,7 +1389,7 @@ export function DailySummary({
               </TabsList>
               
               <TabsContent value="units" className="space-y-3">
-                <div className="flex items-center gap-1.5 text-xs">
+                <div className="flex items-center gap-1.5 text-xs flex-wrap">
                   <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-muted-foreground">Sort:</span>
                   {(["grade", "sales", "name"] as const).map(opt => (
@@ -1370,15 +1397,19 @@ export function DailySummary({
                       key={opt}
                       variant={unitSort === opt ? "secondary" : "ghost"}
                       size="sm"
-                      className="h-6 px-2 text-xs"
+                      className={`h-6 px-2 text-xs ${unitSort === opt ? "font-semibold" : ""}`}
                       onClick={() => setUnitSort(opt)}
                     >
                       {opt === "grade" ? "Execution" : opt === "sales" ? "Sales" : "Name"}
+                      {unitSort === opt && (
+                        <ChevronDown className="w-3 h-3 ml-0.5" />
+                      )}
                     </Button>
                   ))}
+                  <span className="text-muted-foreground ml-1">({sortedUnitInsights.length} units)</span>
                 </div>
-                {sortedUnitInsights.map(insight => (
-                  <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} notesByRestaurant={notesByRestaurant} selectedDate={selectedDate} />
+                {sortedUnitInsights.map((insight, idx) => (
+                  <UnitSummaryCard key={insight.restaurantId} insight={insight} defaultOpen={expandUnitId === insight.restaurantId} onExpanded={onUnitExpanded} notesByRestaurant={notesByRestaurant} selectedDate={selectedDate} rank={idx + 1} sortBy={unitSort} />
                 ))}
               </TabsContent>
               
