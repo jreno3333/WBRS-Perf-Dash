@@ -18,6 +18,7 @@ const PerformanceHistoryPage = lazy(() => import("@/pages/performance-history"))
 const LeadersPage = lazy(() => import("@/pages/leaders"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const ScoringGuidePage = lazy(() => import("@/pages/scoring-guide"));
+const AiAnalysisPage = lazy(() => import("@/pages/ai-analysis"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -55,6 +56,7 @@ function ProtectedRoutes() {
         <Route path="/history" component={PerformanceHistoryPage} />
         <Route path="/leaders" component={LeadersPage} />
         <Route path="/scoring" component={ScoringGuidePage} />
+        <Route path="/ai-analysis" component={AiAnalysisPage} />
         <Route component={NotFound} />
       </Switch>
     </AuthGuard>
