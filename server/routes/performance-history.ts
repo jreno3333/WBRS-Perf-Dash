@@ -615,14 +615,39 @@ router.get("/api/performance-history", async (req, res) => {
         history.avgXp = xpGrades.reduce((sum, g) => sum + g.avgXp!, 0) / xpGrades.length;
       }
 
-      // Calculate grade improvement (last half vs first half)
+      // Calculate trend days: count consecutive days from the end of the period
+      // where grade is improving (each day >= previous) or declining (each day <= previous).
+      // Returns positive number for consecutive improving days, negative for declining.
+      // This matches the "trend days" metric shown on Dashboard and Daily Reports.
       if (grades.length >= 2) {
-        const midpoint = Math.floor(grades.length / 2);
-        const firstHalf = grades.slice(0, midpoint);
-        const secondHalf = grades.slice(midpoint);
-        const firstAvg = firstHalf.reduce((sum, g) => sum + g.grade, 0) / firstHalf.length;
-        const secondAvg = secondHalf.reduce((sum, g) => sum + g.grade, 0) / secondHalf.length;
-        history.gradeImprovement = secondAvg - firstAvg;
+        // Walk backwards from the most recent day
+        let consecutiveUp = 0;
+        let consecutiveDown = 0;
+
+        for (let i = grades.length - 1; i > 0; i--) {
+          const curr = grades[i].grade;
+          const prev = grades[i - 1].grade;
+          if (curr > prev) {
+            if (consecutiveDown > 0) break; // direction changed
+            consecutiveUp++;
+          } else if (curr < prev) {
+            if (consecutiveUp > 0) break; // direction changed
+            consecutiveDown++;
+          } else {
+            // Equal grades continue the current streak
+            if (consecutiveUp > 0) consecutiveUp++;
+            else if (consecutiveDown > 0) consecutiveDown++;
+            // If no streak started yet, skip (don't start a streak on equal)
+          }
+        }
+
+        if (consecutiveUp > 0) {
+          history.gradeImprovement = consecutiveUp;
+        } else if (consecutiveDown > 0) {
+          history.gradeImprovement = -consecutiveDown;
+        } else {
+          history.gradeImprovement = 0;
+        }
       }
 
       restaurantHistories.push(history);
