@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useRef, useCallback } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { NavBar } from "@/components/nav-bar";
 import { Link } from "wouter";
@@ -26,6 +27,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
+  Search,
+  SendHorizontal,
+  Sparkles,
+  X,
+  MessageSquare,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -176,8 +182,190 @@ function InsightCard({
   );
 }
 
+// ---- Dynamic Query Types ----
+interface QueryColumn {
+  key: string;
+  label: string;
+  align?: "left" | "center" | "right";
+}
+
+interface QueryResultData {
+  title: string;
+  summary: string;
+  columns: QueryColumn[];
+  rows: Record<string, any>[];
+  highlight?: { label: string; value: string; detail?: string };
+}
+
+interface DynamicQueryResponse {
+  matched: boolean;
+  question: string;
+  templateId?: string;
+  dateRange?: { start: string; end: string; days: number };
+  result?: QueryResultData;
+  suggestion?: string;
+  availableTopics?: string[];
+}
+
+const SUGGESTED_QUESTIONS = [
+  "What are the daily sales by unit?",
+  "Which unit has the highest OSAT score?",
+  "Show me labor percent by unit",
+  "What is the drive-thru speed ranking?",
+  "Show check average by unit",
+  "Which units ran outside order takers?",
+  "Show me dine-in percentage by unit",
+  "What is the app order percentage?",
+  "Show sales by hour",
+  "Show me Google ratings",
+  "What is the crew experience by unit?",
+  "Show order channel mix breakdown",
+  "What are the 3PD delivery percentages?",
+  "Which unit has the best sales day?",
+  "Hours over $3000",
+  "Show weather by location",
+];
+
+// Dynamic query result display
+function DynamicQueryResult({ data, onClear }: { data: DynamicQueryResponse; onClear: () => void }) {
+  if (!data.matched) {
+    return (
+      <Card className="border-amber-500/30 bg-amber-500/5">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare className="w-4 h-4 text-amber-500" />
+                <span className="text-sm font-semibold">No exact match found</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">{data.suggestion}</p>
+              {data.availableTopics && (
+                <div className="flex flex-wrap gap-1.5">
+                  {data.availableTopics.map((t, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">{t}</Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button variant="ghost" size="icon" className="shrink-0" onClick={onClear}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const result = data.result!;
+  return (
+    <Card className="border-primary/30 overflow-hidden">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Sparkles className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{result.title}</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {data.dateRange && `${formatDate(data.dateRange.start)} – ${formatDate(data.dateRange.end)} (${data.dateRange.days}d)`}
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={onClear}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-3">
+        <p className="text-sm text-muted-foreground">{result.summary}</p>
+
+        {result.highlight && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">{result.highlight.label}</p>
+                  <p className="font-semibold">{result.highlight.value}</p>
+                </div>
+                {result.highlight.detail && (
+                  <span className="text-lg font-bold text-primary">{result.highlight.detail}</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {result.rows.length > 0 ? (
+          <div className="rounded-lg border overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50">
+                  {result.columns.map((col) => (
+                    <th
+                      key={col.key}
+                      className={`px-3 py-2 font-medium whitespace-nowrap ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"}`}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.rows.map((row, i) => (
+                  <tr key={i} className="border-t hover:bg-muted/30">
+                    {result.columns.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`px-3 py-2 whitespace-nowrap ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"} ${col.key === "unit" || col.key === "restaurant" ? "font-medium" : ""}`}
+                      >
+                        {row[col.key] ?? "-"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">No data found for this query.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AiAnalysisPage() {
   const [days, setDays] = useState("7");
+  const [question, setQuestion] = useState("");
+  const [queryResults, setQueryResults] = useState<DynamicQueryResponse[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const queryMutation = useMutation({
+    mutationFn: async (q: string) => {
+      const res = await fetch("/api/ai-analysis/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, days: parseInt(days) }),
+      });
+      if (!res.ok) throw new Error("Query failed");
+      return res.json() as Promise<DynamicQueryResponse>;
+    },
+    onSuccess: (data) => {
+      setQueryResults((prev) => [data, ...prev]);
+      setQuestion("");
+    },
+  });
+
+  const handleSubmit = useCallback((q?: string) => {
+    const text = (q || question).trim();
+    if (!text || queryMutation.isPending) return;
+    queryMutation.mutate(text);
+  }, [question, queryMutation]);
+
+  const removeResult = useCallback((index: number) => {
+    setQueryResults((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   const { data, isLoading, error } = useQuery<AnalysisData>({
     queryKey: ["/api/ai-analysis", days],
@@ -240,16 +428,86 @@ export default function AiAnalysisPage() {
           </div>
         ) : (
           <>
+            {/* Ask a Question */}
+            <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-primary/10">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary">Ask a Question About Your Data</span>
+                </div>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      ref={inputRef}
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+                      placeholder="e.g. What is the check average by unit? Hours over $3000?"
+                      className="pl-9 pr-4"
+                      disabled={queryMutation.isPending}
+                    />
+                  </div>
+                  <Button
+                    onClick={() => handleSubmit()}
+                    disabled={!question.trim() || queryMutation.isPending}
+                    size="default"
+                  >
+                    {queryMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <SendHorizontal className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {SUGGESTED_QUESTIONS.slice(0, 8).map((sq) => (
+                    <button
+                      key={sq}
+                      onClick={() => { setQuestion(sq); handleSubmit(sq); }}
+                      disabled={queryMutation.isPending}
+                      className="text-xs px-2 py-1 rounded-full border border-border/50 bg-background hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      {sq}
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Dynamic Query Results */}
+            {queryMutation.isPending && (
+              <Card className="border-primary/20">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Analyzing your question...</span>
+                </CardContent>
+              </Card>
+            )}
+            {queryMutation.isError && (
+              <Card className="border-destructive">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 text-destructive" />
+                  <span className="text-sm text-destructive">Query failed. Try rephrasing your question.</span>
+                </CardContent>
+              </Card>
+            )}
+            {queryResults.map((qr, i) => (
+              <DynamicQueryResult key={`${qr.question}-${i}`} data={qr} onClear={() => removeResult(i)} />
+            ))}
+
             {/* Summary Banner */}
-            <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+            <Card className="bg-muted/30 border-muted">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <BarChart3 className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-semibold text-primary">Analysis Period</span>
+                  <span className="text-sm font-semibold text-primary">Default Insights</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({formatDate(data.dateRange.start)} – {formatDate(data.dateRange.end)}, {data.dateRange.days} days)
+                  </span>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {formatDate(data.dateRange.start)} &ndash; {formatDate(data.dateRange.end)} ({data.dateRange.days} days)
-                  {" | "}Compared to: {formatDate(data.previousPeriod.start)} &ndash; {formatDate(data.previousPeriod.end)}
+                <p className="text-xs text-muted-foreground">
+                  Pre-built analysis cards below. Use the search above for custom queries.
                 </p>
               </CardContent>
             </Card>
