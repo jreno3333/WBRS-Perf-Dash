@@ -601,8 +601,12 @@ export class DatabaseStorage {
     const checkAvgLastWeek = await getCheckAverageByRestaurant(lastWeek);
 
     // Fetch last year's daily sales from historical_daily_sales for YoY bonus
+    // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
     const lastYearDate = new Date(selectedDate);
     lastYearDate.setFullYear(lastYearDate.getFullYear() - 1);
+    const sameDow = lastYearDate.getDay();
+    const targetDow = selectedDate.getDay();
+    lastYearDate.setDate(lastYearDate.getDate() + (targetDow - sameDow));
     const lastYearDateStr = lastYearDate.toISOString().split('T')[0];
     const lastYearSalesData = await db.select().from(historicalDailySales)
       .where(eq(historicalDailySales.date, lastYearDateStr));
