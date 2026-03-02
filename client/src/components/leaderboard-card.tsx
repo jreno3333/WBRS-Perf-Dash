@@ -500,11 +500,18 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
     const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
 
+    // YoY variance from historical_daily_sales (daily-level, same value on every hour record)
+    const lastYearDaily = gradedHours[0]?.lastYearDailySales;
+    const dailyYoySalesVar = lastYearDaily && lastYearDaily > 0
+      ? ((dailyTotalSales - lastYearDaily) / lastYearDaily) * 100
+      : undefined;
+
     dailyBonusResult = computeDailyBonuses({
       dailyOsatPercent: dailyOsatPct,
       dailySurveyCount: dailyOsatResponses,
       dailySalesVariancePct: dailySalesVar,
       dailyTransactionVariancePct: dailyTxnVar,
+      dailyYoySalesVariancePct: dailyYoySalesVar,
       hourlyScores: hourlyGradeScores,
     });
 

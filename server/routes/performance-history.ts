@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
-import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather } from "@shared/schema";
+import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather, historicalDailySales } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
@@ -121,6 +121,24 @@ router.get("/api/performance-history", async (req, res) => {
       const key = `${w.restaurantId}-${w.date}`;
       weatherByKey.set(key, w);
     });
+
+    // Fetch last year's daily sales from historical_daily_sales for YoY bonus
+    const yoyDateStrs = dateRange.map(d => {
+      const dt = new Date(`${d}T12:00:00Z`);
+      dt.setFullYear(dt.getFullYear() - 1);
+      return dt.toISOString().split('T')[0];
+    });
+    const uniqueYoyDates = [...new Set(yoyDateStrs)];
+    const yoySalesData = uniqueYoyDates.length > 0
+      ? await db.select().from(historicalDailySales).where(
+          sql`${historicalDailySales.date} IN ${uniqueYoyDates}`
+        )
+      : [];
+    // Map: "restaurantId-yoyDate" -> netSales
+    const yoySalesMap = new Map<string, number>();
+    for (const row of yoySalesData) {
+      yoySalesMap.set(`${row.restaurantId}-${row.date}`, parseFloat(String(row.netSales)) || 0);
+    }
 
     // Get all restaurants and filter out training stores
     const allRestaurants = await storage.getRestaurants();
@@ -429,12 +447,22 @@ router.get("/api/performance-history", async (req, res) => {
           salesVariance = Math.max(-200, Math.min(200, salesVariance));
         }
 
+        // YoY variance from historical_daily_sales
+        const yoyDateForThisDay = new Date(`${dateStr}T12:00:00Z`);
+        yoyDateForThisDay.setFullYear(yoyDateForThisDay.getFullYear() - 1);
+        const yoyDateKey = `${restaurant.id}-${yoyDateForThisDay.toISOString().split('T')[0]}`;
+        const lastYearSales = yoySalesMap.get(yoyDateKey);
+        const dailyYoySalesVar = lastYearSales && lastYearSales > 0
+          ? ((totalSales - lastYearSales) / lastYearSales) * 100
+          : undefined;
+
         // Compute daily bonus points using raw hourly scores + daily-level metrics
         const bonusResult = baseGrade > 0 ? computeDailyBonuses({
           dailyOsatPercent: osatPercent,
           dailySurveyCount: osatResponses,
           dailySalesVariancePct: hasComparableSalesDaily ? salesVariance : undefined,
           dailyTransactionVariancePct: dailyTxnVariance,
+          dailyYoySalesVariancePct: dailyYoySalesVar,
           hourlyScores: hourlyRawScores,
         }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
