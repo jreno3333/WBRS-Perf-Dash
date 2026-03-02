@@ -481,6 +481,12 @@ router.get("/api/performance-history", async (req, res) => {
           salesVariance = Math.max(-200, Math.min(200, salesVariance));
         }
 
+        // Sales variance for bonus evaluation — matches dashboard & daily-summary logic
+        // (simply requires last week sales > 0, NOT the stricter display threshold)
+        const dailySalesVarForBonus = weekAgoTotalSales > 0
+          ? ((totalSales - weekAgoTotalSales) / weekAgoTotalSales) * 100
+          : undefined;
+
         // YoY variance from historical_daily_sales (DOW-matched)
         const yoyMatchedDate = yoyDateMap.get(dateStr) || '';
         const lastYearSales = yoySalesMap.get(`${restaurant.id}-${yoyMatchedDate}`);
@@ -492,7 +498,7 @@ router.get("/api/performance-history", async (req, res) => {
         const bonusResult = baseGrade > 0 ? computeDailyBonuses({
           dailyOsatPercent: osatPercent,
           dailySurveyCount: osatResponses,
-          dailySalesVariancePct: hasComparableSalesDaily ? salesVariance : undefined,
+          dailySalesVariancePct: dailySalesVarForBonus,
           dailyTransactionVariancePct: dailyTxnVariance,
           dailyYoySalesVariancePct: dailyYoySalesVar,
           hourlyScores: hourlyRawScores,
