@@ -25,7 +25,7 @@ router.get("/api/ai-analysis", async (req, res) => {
 
     // Determine date range
     const endDate = date
-      ? new Date(date as string + "T12:00:00")
+      ? new Date(date as string + "T12:00:00Z")
       : new Date();
     const endDateStr = endDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 
@@ -94,8 +94,8 @@ router.get("/api/ai-analysis", async (req, res) => {
 // ---- Query Functions ----
 
 async function getHighSalesHours(startDate: string, endDate: string, threshold: number) {
-  const startTs = new Date(startDate + "T00:00:00");
-  const endTs = new Date(endDate + "T23:59:59");
+  const startTs = new Date(startDate + "T00:00:00Z");
+  const endTs = new Date(endDate + "T23:59:59Z");
 
   return db
     .select({
@@ -137,8 +137,8 @@ async function getOsatLeaders(startDate: string, endDate: string) {
 }
 
 async function getDestinationBreakdown(startDate: string, endDate: string) {
-  const startTs = new Date(startDate + "T00:00:00");
-  const endTs = new Date(endDate + "T23:59:59");
+  const startTs = new Date(startDate + "T00:00:00Z");
+  const endTs = new Date(endDate + "T23:59:59Z");
 
   // Get location mappings for restaurant name resolution
   const mappings = await db.select().from(locationMapping);
@@ -183,8 +183,8 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
 }
 
 async function getOutsideOrderTakerUsage(startDate: string, endDate: string) {
-  const startTs = new Date(startDate + "T00:00:00");
-  const endTs = new Date(endDate + "T23:59:59");
+  const startTs = new Date(startDate + "T00:00:00Z");
+  const endTs = new Date(endDate + "T23:59:59Z");
 
   const mappings = await db.select().from(locationMapping);
   const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
@@ -227,7 +227,7 @@ async function getOutsideOrderTakerUsage(startDate: string, endDate: string) {
 
 async function getAttachmentRateTrend(endDateStr: string) {
   // Get the last 2 weeks of POS order items to compare attachment categories
-  const endTs = new Date(endDateStr + "T23:59:59");
+  const endTs = new Date(endDateStr + "T23:59:59Z");
   const startTs = new Date(endTs);
   startTs.setDate(startTs.getDate() - 13); // 14 days total
 
@@ -328,9 +328,7 @@ function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
     if (sales > data.peakSales) {
       data.peakSales = sales;
       data.peakHour = row.hour;
-      data.peakDate = row.salesDate instanceof Date
-        ? row.salesDate.toISOString().split("T")[0]
-        : String(row.salesDate).split("T")[0];
+      data.peakDate = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
     }
   }
 
@@ -517,8 +515,8 @@ function buildTemplates(): QueryTemplate[] {
       description: "Hours of sales over a threshold",
       execute: async (params) => {
         const threshold = params.threshold || 2000;
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         const rows = await db
           .select({
@@ -570,30 +568,49 @@ function buildTemplates(): QueryTemplate[] {
       keywords: ["daily sales", "total sales", "sales by unit", "sales by restaurant", "sales summary", "revenue"],
       description: "Daily sales totals by unit",
       execute: async (params) => {
-        const rows = await db
+        // Use hourlySales aggregated by restaurant+date to avoid duplicate dailySales rows
+        const salesRows = await db
           .select({
-            restaurantId: dailySales.restaurantId,
-            totalSales: sql<number>`sum(${dailySales.totalSales}::numeric)`,
-            dayCount: sql<number>`count(*)::int`,
-            avgDaily: sql<number>`round(avg(${dailySales.totalSales}::numeric), 0)`,
+            restaurantId: hourlySales.restaurantId,
+            salesDate: hourlySales.salesDate,
+            hour: hourlySales.hour,
+            actualSales: hourlySales.actualSales,
           })
-          .from(dailySales)
+          .from(hourlySales)
           .where(and(
-            gte(dailySales.salesDate, new Date(params.startDate + "T00:00:00")),
-            lte(dailySales.salesDate, new Date(params.endDate + "T23:59:59")),
-            ...(params.restaurantFilter ? [eq(dailySales.restaurantId, params.restaurantFilter)] : [])
-          ))
-          .groupBy(dailySales.restaurantId)
-          .orderBy(desc(sql`sum(${dailySales.totalSales}::numeric)`));
+            gte(hourlySales.salesDate, new Date(params.startDate + "T00:00:00Z")),
+            lte(hourlySales.salesDate, new Date(params.endDate + "T23:59:59Z")),
+            ...(params.restaurantFilter ? [eq(hourlySales.restaurantId, params.restaurantFilter)] : [])
+          ));
+
+        // Aggregate by restaurant → date → sum of hourly sales
+        const byRestaurant = new Map<string, Map<string, number>>();
+        for (const row of salesRows) {
+          const dateStr = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+          if (!byRestaurant.has(row.restaurantId)) byRestaurant.set(row.restaurantId, new Map());
+          const dateMap = byRestaurant.get(row.restaurantId)!;
+          dateMap.set(dateStr, (dateMap.get(dateStr) || 0) + Number(row.actualSales));
+        }
+
+        const rows = Array.from(byRestaurant.entries()).map(([restaurantId, dateMap]) => {
+          const dailyTotals = Array.from(dateMap.values());
+          const totalSales = dailyTotals.reduce((s, v) => s + v, 0);
+          return {
+            restaurantId,
+            totalSales,
+            dayCount: dailyTotals.length,
+            avgDaily: Math.round(totalSales / dailyTotals.length),
+          };
+        }).sort((a, b) => b.totalSales - a.totalSales);
 
         const formatted = rows.map((r) => ({
           unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
-          totalSales: `$${Math.round(Number(r.totalSales)).toLocaleString()}`,
+          totalSales: `$${Math.round(r.totalSales).toLocaleString()}`,
           days: r.dayCount,
-          avgDaily: `$${Math.round(Number(r.avgDaily)).toLocaleString()}`,
+          avgDaily: `$${r.avgDaily.toLocaleString()}`,
         }));
 
-        const grandTotal = rows.reduce((s, r) => s + Number(r.totalSales), 0);
+        const grandTotal = rows.reduce((s, r) => s + r.totalSales, 0);
 
         return {
           title: "Sales Summary by Unit",
@@ -614,25 +631,35 @@ function buildTemplates(): QueryTemplate[] {
       keywords: ["best day", "highest day", "top day", "best sales day", "peak day", "busiest day"],
       description: "Best sales day by unit",
       execute: async (params) => {
-        const rows = await db
+        // Use hourlySales aggregated by restaurant+date to avoid duplicate dailySales rows
+        const salesRows = await db
           .select({
-            restaurantId: dailySales.restaurantId,
-            salesDate: dailySales.salesDate,
-            totalSales: dailySales.totalSales,
+            restaurantId: hourlySales.restaurantId,
+            salesDate: hourlySales.salesDate,
+            actualSales: hourlySales.actualSales,
           })
-          .from(dailySales)
+          .from(hourlySales)
           .where(and(
-            gte(dailySales.salesDate, new Date(params.startDate + "T00:00:00")),
-            lte(dailySales.salesDate, new Date(params.endDate + "T23:59:59")),
-          ))
-          .orderBy(desc(sql`${dailySales.totalSales}::numeric`))
-          .limit(20);
+            gte(hourlySales.salesDate, new Date(params.startDate + "T00:00:00Z")),
+            lte(hourlySales.salesDate, new Date(params.endDate + "T23:59:59Z")),
+          ));
 
-        const formatted = rows.map((r, i) => ({
+        // Aggregate by restaurant+date
+        const byKey = new Map<string, { restaurantId: string; dateStr: string; total: number }>();
+        for (const row of salesRows) {
+          const dateStr = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+          const key = `${row.restaurantId}|${dateStr}`;
+          if (!byKey.has(key)) byKey.set(key, { restaurantId: row.restaurantId, dateStr, total: 0 });
+          byKey.get(key)!.total += Number(row.actualSales);
+        }
+
+        const sorted = Array.from(byKey.values()).sort((a, b) => b.total - a.total).slice(0, 20);
+
+        const formatted = sorted.map((r, i) => ({
           rank: i + 1,
           unit: params.restaurantMap.get(r.restaurantId) || r.restaurantId,
-          date: r.salesDate instanceof Date ? r.salesDate.toISOString().split("T")[0] : String(r.salesDate).split("T")[0],
-          sales: `$${Math.round(Number(r.totalSales)).toLocaleString()}`,
+          date: r.dateStr,
+          sales: `$${Math.round(r.total).toLocaleString()}`,
         }));
 
         return {
@@ -851,10 +878,10 @@ function buildTemplates(): QueryTemplate[] {
       description: "Dine-in percentage by unit",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
-        const prevStartTs = new Date(params.prevStartDate + "T00:00:00");
-        const prevEndTs = new Date(params.prevEndDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
+        const prevStartTs = new Date(params.prevStartDate + "T00:00:00Z");
+        const prevEndTs = new Date(params.prevEndDate + "T23:59:59Z");
 
         const [current, previous] = await Promise.all([
           posDb.select({
@@ -914,8 +941,8 @@ function buildTemplates(): QueryTemplate[] {
       description: "App order percentage by unit",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
@@ -961,8 +988,8 @@ function buildTemplates(): QueryTemplate[] {
       description: "3PD (third-party delivery) percentage by unit",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
@@ -1008,8 +1035,8 @@ function buildTemplates(): QueryTemplate[] {
       description: "Full destination breakdown (dine-in, drive-thru, app, 3PD)",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
@@ -1065,8 +1092,8 @@ function buildTemplates(): QueryTemplate[] {
       description: "Outside order taker (OOT/dt3) usage",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
@@ -1251,8 +1278,8 @@ function buildTemplates(): QueryTemplate[] {
       description: "Average check/ticket size",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
@@ -1343,8 +1370,8 @@ function buildTemplates(): QueryTemplate[] {
           })
           .from(hourlySales)
           .where(and(
-            gte(hourlySales.salesDate, new Date(params.startDate + "T00:00:00")),
-            lte(hourlySales.salesDate, new Date(params.endDate + "T23:59:59")),
+            gte(hourlySales.salesDate, new Date(params.startDate + "T00:00:00Z")),
+            lte(hourlySales.salesDate, new Date(params.endDate + "T23:59:59Z")),
             ...(params.restaurantFilter ? [eq(hourlySales.restaurantId, params.restaurantFilter)] : [])
           ))
           .groupBy(hourlySales.hour)
@@ -1381,8 +1408,8 @@ function buildTemplates(): QueryTemplate[] {
       description: "Top selling products/items from POS data",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         // Parse item names from rawJson across all orders in the period
         const orders = await posDb
@@ -1449,7 +1476,7 @@ function buildTemplates(): QueryTemplate[] {
       keywords: ["mix change", "product change", "item change", "grew", "growth", "trending", "product trend", "item trend", "product mix", "product growth"],
       description: "Product mix % change week over week",
       execute: async (params) => {
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
         const midTs = new Date(endTs);
         midTs.setDate(midTs.getDate() - 6);
         const startTs = new Date(midTs);
@@ -1529,7 +1556,7 @@ function buildTemplates(): QueryTemplate[] {
       description: "Attachment/upsell rates (cheese, bacon, desserts, etc.)",
       execute: async (params) => {
         // Use the last day of the range for the attachment analysis
-        const targetDate = new Date(params.endDate + "T12:00:00");
+        const targetDate = new Date(params.endDate + "T12:00:00Z");
         const rateData = await getAttachmentRatesFromDetail(targetDate);
 
         const formatted: any[] = [];
@@ -1573,8 +1600,8 @@ function buildTemplates(): QueryTemplate[] {
       keywords: ["category", "entree", "side", "drink", "beverage", "breakfast", "product category", "menu category", "category breakdown"],
       description: "Sales by product category (entrees, sides, drinks, etc.)",
       execute: async (params) => {
-        const startTs = new Date(params.startDate + "T00:00:00");
-        const endTs = new Date(params.endDate + "T23:59:59");
+        const startTs = new Date(params.startDate + "T00:00:00Z");
+        const endTs = new Date(params.endDate + "T23:59:59Z");
 
         const orders = await posDb
           .select({ rawJson: posOrders.rawJson })
