@@ -26,6 +26,7 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowUpDown,
   Minus,
   Search,
   SendHorizontal,
@@ -226,8 +227,32 @@ const SUGGESTED_QUESTIONS = [
   "Show sales by hour",
 ];
 
+// Parse a display value to a sortable number (strips $, %, commas, pp, etc.)
+function parseSortValue(val: any): number | string {
+  if (val == null) return "";
+  if (typeof val === "number") return val;
+  const s = String(val).trim();
+  // Try to extract a numeric value from formatted strings like "$1,234", "45.2%", "+3.1 pp", "120s"
+  const numMatch = s.replace(/[,$%sppoFmo]/g, "").trim();
+  const parsed = parseFloat(numMatch);
+  if (!isNaN(parsed)) return parsed;
+  return s.toLowerCase();
+}
+
 // Dynamic query result display
 function DynamicQueryResult({ data, onClear }: { data: DynamicQueryResponse; onClear: () => void }) {
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  };
+
   if (!data.matched) {
     return (
       <Card className="border-amber-500/30 bg-amber-500/5">
@@ -257,6 +282,22 @@ function DynamicQueryResult({ data, onClear }: { data: DynamicQueryResponse; onC
   }
 
   const result = data.result!;
+
+  // Sort rows if a sort key is active
+  const sortedRows = sortKey
+    ? [...result.rows].sort((a, b) => {
+        const aVal = parseSortValue(a[sortKey]);
+        const bVal = parseSortValue(b[sortKey]);
+        let cmp = 0;
+        if (typeof aVal === "number" && typeof bVal === "number") {
+          cmp = aVal - bVal;
+        } else {
+          cmp = String(aVal).localeCompare(String(bVal));
+        }
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : result.rows;
+
   return (
     <Card className="border-primary/30 overflow-hidden">
       <CardHeader className="pb-3">
@@ -296,7 +337,7 @@ function DynamicQueryResult({ data, onClear }: { data: DynamicQueryResponse; onC
           </Card>
         )}
 
-        {result.rows.length > 0 ? (
+        {sortedRows.length > 0 ? (
           <div className="rounded-lg border overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -304,15 +345,23 @@ function DynamicQueryResult({ data, onClear }: { data: DynamicQueryResponse; onC
                   {result.columns.map((col) => (
                     <th
                       key={col.key}
-                      className={`px-3 py-2 font-medium whitespace-nowrap ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"}`}
+                      onClick={() => handleSort(col.key)}
+                      className={`px-3 py-2 font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"}`}
                     >
-                      {col.label}
+                      <span className="inline-flex items-center gap-1">
+                        {col.label}
+                        {sortKey === col.key ? (
+                          sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-30" />
+                        )}
+                      </span>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {result.rows.map((row, i) => (
+                {sortedRows.map((row, i) => (
                   <tr key={i} className="border-t hover:bg-muted/30">
                     {result.columns.map((col) => (
                       <td
