@@ -218,6 +218,7 @@ export interface HourlySalesData {
   hour: number;
   todaySales: number;
   lastWeekSales: number;
+  lastYearDailySales?: number; // Same date last year total daily sales (from historical_daily_sales)
   forecastSales: number;
   projectedLabor: number; // Scheduled labor cost for this hour
   actualLabor: number; // Actual labor cost from punched hours

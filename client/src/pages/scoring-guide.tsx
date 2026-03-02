@@ -206,6 +206,9 @@ export default function ScoringGuidePage() {
             <p className="text-xs text-muted-foreground">
               Perfect OSAT and High-Volume OSAT are mutually exclusive — you earn whichever applies, not both.
             </p>
+            <p className="text-xs text-muted-foreground">
+              <strong>YoY Growth</strong> is available only for units with uploaded historical sales data for the same date last year. Any positive growth above last year earns the bonus.
+            </p>
           </CardContent>
         </Card>
 

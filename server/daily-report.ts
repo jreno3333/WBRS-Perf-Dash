@@ -221,11 +221,18 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + ((h as any).osatResponses ?? 0), 0);
       const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + ((h as any).osatPercent ?? 0) * ((h as any).osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
 
+      // YoY variance from historical_daily_sales (same value on every hour record)
+      const lastYearDaily = completedHours[0]?.lastYearDailySales;
+      const dailyYoySalesVar = lastYearDaily && lastYearDaily > 0
+        ? ((dailyTotalSales - lastYearDaily) / lastYearDaily) * 100
+        : undefined;
+
       const bonusResult = baseScore > 0 ? computeDailyBonuses({
         dailyOsatPercent: dailyOsatPct,
         dailySurveyCount: dailyOsatResponses,
         dailySalesVariancePct: dailySalesVar,
         dailyTransactionVariancePct: dailyTxnVar,
+        dailyYoySalesVariancePct: dailyYoySalesVar,
         hourlyScores: validScores,
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 

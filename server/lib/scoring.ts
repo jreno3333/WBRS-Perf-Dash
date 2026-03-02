@@ -20,7 +20,7 @@ export const GRADE_WEIGHTS = {
   staffing: 10,
 } as const;
 
-export const BONUS_CAP = 8;
+export const BONUS_CAP = 10;
 
 export const BONUS_DEFINITIONS = [
   { id: "perfectOsat", label: "Perfect OSAT", points: 3, description: "100% OSAT with 5+ surveys for the day" },
@@ -29,6 +29,7 @@ export const BONUS_DEFINITIONS = [
   { id: "transactionGrowth", label: "Transaction Growth", points: 2, description: "Transaction count 5%+ above same day last week" },
   { id: "recoveryKicker", label: "Recovery", points: 3, description: "Had 2+ hours graded C or below, but daily avg still B- or better" },
   { id: "consistency", label: "Consistency", points: 2, description: "No hour graded below B for the entire day" },
+  { id: "yoyGrowth", label: "YoY Growth", points: 2, description: "Daily sales above same day last year (any amount)" },
 ] as const;
 
 export type BonusId = typeof BONUS_DEFINITIONS[number]["id"];
@@ -234,6 +235,8 @@ export interface DailyBonusInput {
   dailySalesVariancePct?: number;
   /** Daily transaction variance % vs last week */
   dailyTransactionVariancePct?: number;
+  /** Daily sales variance % vs same day last year (YoY) */
+  dailyYoySalesVariancePct?: number;
   /** Array of hourly grade scores for the day */
   hourlyScores: number[];
 }
@@ -264,6 +267,11 @@ export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
   // Transaction growth: ≥+5% vs last week
   if (input.dailyTransactionVariancePct !== undefined && input.dailyTransactionVariancePct >= 5) {
     bonuses.push({ ...BONUS_DEFINITIONS[3] });
+  }
+
+  // YoY sales growth: above last year by any amount
+  if (input.dailyYoySalesVariancePct !== undefined && input.dailyYoySalesVariancePct > 0) {
+    bonuses.push({ ...BONUS_DEFINITIONS[6] });
   }
 
   // Recovery kicker: ≥2 hours at C or below (< 77), but daily avg ≥ B- (80)

@@ -15,6 +15,7 @@ import {
   hmeTimerData,
   scraperRuns,
   posOrders,
+  historicalDailySales,
 } from "@shared/schema";
 import { db, posDb } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
@@ -599,6 +600,17 @@ export class DatabaseStorage {
     const checkAvgData = await getCheckAverageByRestaurant(selectedDate);
     const checkAvgLastWeek = await getCheckAverageByRestaurant(lastWeek);
 
+    // Fetch last year's daily sales from historical_daily_sales for YoY bonus
+    const lastYearDate = new Date(selectedDate);
+    lastYearDate.setFullYear(lastYearDate.getFullYear() - 1);
+    const lastYearDateStr = lastYearDate.toISOString().split('T')[0];
+    const lastYearSalesData = await db.select().from(historicalDailySales)
+      .where(eq(historicalDailySales.date, lastYearDateStr));
+    const lastYearSalesMap = new Map<string, number>();
+    for (const row of lastYearSalesData) {
+      lastYearSalesMap.set(row.restaurantId, parseFloat(String(row.netSales)) || 0);
+    }
+
     const result: Record<string, HourlySalesData[]> = {};
 
     for (const restaurant of restaurantList) {
@@ -762,6 +774,7 @@ export class DatabaseStorage {
             osatResponses: osatHourData?.totalResponses,
             transactionCount: txnData?.orders,
             lastWeekTransactionCount: txnLastWeek?.orders,
+            lastYearDailySales: lastYearSalesMap.get(restaurant.id),
           });
         }
       }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db";
-import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants } from "@shared/schema";
+import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
@@ -101,6 +101,19 @@ router.get("/api/leaders", async (req, res) => {
 
     const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
     for (const o of hourlyOsatData) osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
+
+    // Fetch last year's daily sales from historical_daily_sales for YoY bonus
+    const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1);
+    const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1);
+    const yoyStartStr = yoyStart.toISOString().split("T")[0];
+    const yoyEndStr = yoyEnd.toISOString().split("T")[0];
+    const yoySalesData = await db.select().from(historicalDailySales).where(
+      and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))
+    );
+    const yoySalesMap = new Map<string, number>();
+    for (const row of yoySalesData) {
+      yoySalesMap.set(`${row.restaurantId}-${row.date}`, parseFloat(String(row.netSales)) || 0);
+    }
 
     interface LeaderSummary {
       employeeId: string;
@@ -211,7 +224,7 @@ router.get("/api/leaders", async (req, res) => {
       }
 
       const dailyGrades: { score: number; hours: number }[] = [];
-      for (const [, day] of Array.from(dailyAggregates)) {
+      for (const [dayDate, day] of Array.from(dailyAggregates)) {
         const hasComparableSales = day.totalSalesLastWeek > 0;
         let salesVariancePct = hasComparableSales
           ? ((day.totalSalesToday - day.totalSalesLastWeek) / day.totalSalesLastWeek) * 100 : 0;
@@ -239,12 +252,22 @@ router.get("/api/leaders", async (req, res) => {
         });
 
         if (gradeResult.hasGrade) {
+          // YoY variance from historical_daily_sales
+          const yoyDateForDay = new Date(`${dayDate}T12:00:00Z`);
+          yoyDateForDay.setFullYear(yoyDateForDay.getFullYear() - 1);
+          const yoyKey = `${day.restaurantId}-${yoyDateForDay.toISOString().split('T')[0]}`;
+          const lastYearSales = yoySalesMap.get(yoyKey);
+          const dailyYoySalesVar = lastYearSales && lastYearSales > 0
+            ? ((day.totalSalesToday - lastYearSales) / lastYearSales) * 100
+            : undefined;
+
           // Apply daily bonus to each day's score (matches dashboard + trends)
           const bonusResult = computeDailyBonuses({
             dailyOsatPercent: osatPercent,
             dailySurveyCount: totalOsatResponses,
             dailySalesVariancePct: hasComparableSales ? salesVariancePct : undefined,
             dailyTransactionVariancePct: txnVariancePct,
+            dailyYoySalesVariancePct: dailyYoySalesVar,
             hourlyScores: [gradeResult.score], // day-level aggregate (recovery/consistency need per-hour data)
           });
           const finalScore = Math.min(gradeResult.score + bonusResult.cappedBonus, 100);
