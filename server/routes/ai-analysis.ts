@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
 import { hourlySales, restaurants, dailyOsat, osatData, posOrders, locationMapping, dailySales, dailyLabor, hourlyLabor, hmeTimerData, dailyWeather, dailyGoogleReviews, hourlyCrew, employees, historicalDailySales, osatCategoryIssues } from "@shared/schema";
-import { sql, and, gte, lte, eq, desc, asc } from "drizzle-orm";
+import { sql, and, gte, lte, lt, eq, desc, asc } from "drizzle-orm";
+import { getAttachmentRatesFromDetail } from "../xenial-webhook";
 
 const router = Router();
 
@@ -143,10 +144,13 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
   const mappings = await db.select().from(locationMapping);
   const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 
+  // Use COALESCE(destination, order_source) to catch app/3PD orders that may only have order_source set
+  const destExpr = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
+
   const rows = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
-      destination: posOrders.destination,
+      destination: sql<string>`${destExpr}`,
       orderCount: sql<number>`count(*)::int`,
       totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
     })
@@ -157,7 +161,7 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
         lte(posOrders.businessDate, endTs)
       )
     )
-    .groupBy(posOrders.storeNumber, posOrders.destination);
+    .groupBy(posOrders.storeNumber, sql`${destExpr}`);
 
   // Group by restaurant
   const result = new Map<string, Map<string, { orders: number; sales: number }>>();
@@ -185,7 +189,7 @@ async function getOutsideOrderTakerUsage(startDate: string, endDate: string) {
   const mappings = await db.select().from(locationMapping);
   const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 
-  // dt3 = outside order taker lane
+  // dt3 = outside order taker lane — check both destination and order_source
   const rows = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
@@ -198,7 +202,7 @@ async function getOutsideOrderTakerUsage(startDate: string, endDate: string) {
       and(
         gte(posOrders.businessDate, startTs),
         lte(posOrders.businessDate, endTs),
-        sql`lower(${posOrders.destination}) like '%dt3%'`
+        sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource})) like '%dt3%'`
       )
     )
     .groupBy(posOrders.storeNumber, sql`${posOrders.businessDate}::date::text`, sql`extract(hour from ${posOrders.orderClosedAt})::int`)
@@ -293,11 +297,18 @@ async function getAttachmentRateTrend(endDateStr: string) {
 function normalizeDestination(dest: string | null): string {
   if (!dest) return "unknown";
   const d = dest.toLowerCase().trim();
-  if (d === "in" || d.includes("dine")) return "dine_in";
-  if (d === "app" || d.includes("app")) return "app";
-  if (d === "3pd" || d.includes("3pd") || d.includes("doordash") || d.includes("uber")) return "3pd";
-  if (d === "dt1" || d === "dt2") return "drive_thru";
+  // Dine-in
+  if (d === "in" || d === "dine-in" || d === "dine_in" || d.includes("dine")) return "dine_in";
+  // App / mobile orders
+  if (d === "app" || d === "mobile" || d === "online") return "app";
+  // Third-party delivery
+  if (d === "3pd" || d.includes("3pd") || d.includes("doordash") || d.includes("uber") || d.includes("grubhub") || d.includes("delivery")) return "3pd";
+  // Drive-thru (standard lanes)
+  if (d === "dt1" || d === "dt2" || d === "drive-thru" || d === "drive_thru") return "drive_thru";
+  // Outside order taker
   if (d === "dt3") return "dt3_outside";
+  // POS fallback (if only order_source came through as "pos")
+  if (d === "pos") return "drive_thru";
   return d;
 }
 
@@ -492,6 +503,9 @@ async function getStoreMapping() {
   const mappings = await db.select().from(locationMapping);
   return new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 }
+
+// COALESCE expression for destination — falls back to order_source for app/3PD orders
+const destCoalesce = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
 
 // Build the query template library
 function buildTemplates(): QueryTemplate[] {
@@ -845,14 +859,14 @@ function buildTemplates(): QueryTemplate[] {
         const [current, previous] = await Promise.all([
           posDb.select({
             storeNumber: posOrders.storeNumber,
-            destination: posOrders.destination,
+            destination: sql<string>`${destCoalesce}`,
             cnt: sql<number>`count(*)::int`,
-          }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination),
+          }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`),
           posDb.select({
             storeNumber: posOrders.storeNumber,
-            destination: posOrders.destination,
+            destination: sql<string>`${destCoalesce}`,
             cnt: sql<number>`count(*)::int`,
-          }).from(posOrders).where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs))).groupBy(posOrders.storeNumber, posOrders.destination),
+          }).from(posOrders).where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`),
         ]);
 
         function calcPct(rows: any[]) {
@@ -905,9 +919,9 @@ function buildTemplates(): QueryTemplate[] {
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: posOrders.destination,
+          destination: sql<string>`${destCoalesce}`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`);
 
         const byStore = new Map<string, { app: number; total: number }>();
         for (const r of rows) {
@@ -952,9 +966,9 @@ function buildTemplates(): QueryTemplate[] {
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: posOrders.destination,
+          destination: sql<string>`${destCoalesce}`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`);
 
         const byStore = new Map<string, { thirdParty: number; total: number }>();
         for (const r of rows) {
@@ -999,9 +1013,9 @@ function buildTemplates(): QueryTemplate[] {
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: posOrders.destination,
+          destination: sql<string>`${destCoalesce}`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, posOrders.destination);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`);
 
         const byStore = new Map<string, Record<string, number>>();
         for (const r of rows) {
@@ -1022,6 +1036,7 @@ function buildTemplates(): QueryTemplate[] {
               dineIn: `${Math.round(((d.dine_in || 0) / t) * 100)}%`,
               app: `${Math.round(((d.app || 0) / t) * 100)}%`,
               thirdParty: `${Math.round(((d["3pd"] || 0) / t) * 100)}%`,
+              oot: `${Math.round(((d.dt3_outside || 0) / t) * 100)}%`,
               total: t.toLocaleString(),
             };
           })
@@ -1036,6 +1051,7 @@ function buildTemplates(): QueryTemplate[] {
             { key: "dineIn", label: "Dine-In", align: "center" },
             { key: "app", label: "App", align: "center" },
             { key: "thirdParty", label: "3PD", align: "center" },
+            { key: "oot", label: "OOT", align: "center" },
             { key: "total", label: "Orders", align: "right" },
           ],
           rows: formatted,
@@ -1059,7 +1075,7 @@ function buildTemplates(): QueryTemplate[] {
         }).from(posOrders).where(and(
           gte(posOrders.businessDate, startTs),
           lte(posOrders.businessDate, endTs),
-          sql`lower(${posOrders.destination}) like '%dt3%'`
+          sql`${destCoalesce} like '%dt3%'`
         )).groupBy(posOrders.storeNumber, sql`${posOrders.businessDate}::date::text`);
 
         const byStore = new Map<string, { orders: number; days: Set<string> }>();
@@ -1355,6 +1371,259 @@ function buildTemplates(): QueryTemplate[] {
           ],
           rows: formatted,
           highlight: peakRow ? { label: "Peak Hour", value: peakHour, detail: `$${Math.round(Number(peakRow.avgSales)).toLocaleString()} avg` } : undefined,
+        };
+      },
+    },
+    // ---- PRODUCT / ITEM LEVEL ----
+    {
+      id: "top_sellers",
+      keywords: ["top seller", "top selling", "best seller", "popular item", "product", "menu item", "most ordered", "top product", "top item"],
+      description: "Top selling products/items from POS data",
+      execute: async (params) => {
+        const storeMap = await getStoreMapping();
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        // Parse item names from rawJson across all orders in the period
+        const orders = await posDb
+          .select({ storeNumber: posOrders.storeNumber, rawJson: posOrders.rawJson })
+          .from(posOrders)
+          .where(and(
+            gte(posOrders.businessDate, startTs),
+            lte(posOrders.businessDate, endTs),
+            sql`${posOrders.rawJson} IS NOT NULL`,
+            ...(params.restaurantFilter ? [
+              sql`${posOrders.storeNumber} IN (SELECT xenial_store_number FROM location_mapping WHERE restaurant_id = ${params.restaurantFilter})`
+            ] : [])
+          ));
+
+        const itemCounts = new Map<string, { count: number; category: string }>();
+        for (const order of orders) {
+          if (!order.rawJson) continue;
+          try {
+            const payload = JSON.parse(order.rawJson);
+            const rawItems = payload?.data?.items;
+            if (!Array.isArray(rawItems)) continue;
+            for (const item of rawItems) {
+              if (item.item_type === "modifier") continue; // Skip modifiers
+              const name = (item.name || "").trim().toUpperCase();
+              if (!name || name.length < 3) continue;
+              const category = item.reporting_category?.major_reporting_category?.name || "Other";
+              const existing = itemCounts.get(name) || { count: 0, category };
+              existing.count++;
+              itemCounts.set(name, existing);
+            }
+          } catch { /* skip bad json */ }
+        }
+
+        const sorted = Array.from(itemCounts.entries())
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 30);
+
+        const totalOrders = orders.length;
+        const formatted = sorted.map(([ name, data ], i) => ({
+          rank: i + 1,
+          item: name,
+          category: data.category,
+          count: data.count.toLocaleString(),
+          pctOfOrders: totalOrders > 0 ? `${Math.round((data.count / totalOrders) * 100)}%` : "-",
+        }));
+
+        return {
+          title: "Top Selling Items",
+          summary: `Most frequently ordered items across ${totalOrders.toLocaleString()} orders.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "item", label: "Item", align: "left" },
+            { key: "category", label: "Category", align: "left" },
+            { key: "count", label: "Times Sold", align: "right" },
+            { key: "pctOfOrders", label: "% of Orders", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Top Seller", value: formatted[0].item, detail: `${formatted[0].count} sold` } : undefined,
+        };
+      },
+    },
+    {
+      id: "product_mix_change",
+      keywords: ["mix change", "product change", "item change", "grew", "growth", "trending", "product trend", "item trend", "product mix", "product growth"],
+      description: "Product mix % change week over week",
+      execute: async (params) => {
+        const endTs = new Date(params.endDate + "T23:59:59");
+        const midTs = new Date(endTs);
+        midTs.setDate(midTs.getDate() - 6);
+        const startTs = new Date(midTs);
+        startTs.setDate(startTs.getDate() - 7);
+
+        async function getItemCounts(from: Date, to: Date) {
+          const orders = await posDb.select({ rawJson: posOrders.rawJson }).from(posOrders)
+            .where(and(gte(posOrders.businessDate, from), lte(posOrders.businessDate, to), sql`${posOrders.rawJson} IS NOT NULL`));
+          const counts = new Map<string, number>();
+          let total = 0;
+          for (const order of orders) {
+            if (!order.rawJson) continue;
+            total++;
+            try {
+              const payload = JSON.parse(order.rawJson);
+              const rawItems = payload?.data?.items;
+              if (!Array.isArray(rawItems)) continue;
+              const seen = new Set<string>();
+              for (const item of rawItems) {
+                if (item.item_type === "modifier") continue;
+                const name = (item.name || "").trim().toUpperCase();
+                if (!name || name.length < 3 || seen.has(name)) continue;
+                seen.add(name);
+                counts.set(name, (counts.get(name) || 0) + 1);
+              }
+            } catch { /* skip */ }
+          }
+          return { counts, total };
+        }
+
+        const [thisWeek, lastWeek] = await Promise.all([
+          getItemCounts(midTs, endTs),
+          getItemCounts(startTs, midTs),
+        ]);
+
+        // Calculate mix % change for items that exist in both weeks
+        const changes: { item: string; thisWeekPct: number; lastWeekPct: number; change: number; thisWeekCount: number }[] = [];
+        for (const [name, count] of thisWeek.counts) {
+          const lastCount = lastWeek.counts.get(name) || 0;
+          if (lastCount < 3 && count < 3) continue; // Skip rare items
+          const thisPct = thisWeek.total > 0 ? (count / thisWeek.total) * 100 : 0;
+          const lastPct = lastWeek.total > 0 ? (lastCount / lastWeek.total) * 100 : 0;
+          changes.push({ item: name, thisWeekPct: thisPct, lastWeekPct: lastPct, change: thisPct - lastPct, thisWeekCount: count });
+        }
+
+        // Sort by biggest positive change first
+        changes.sort((a, b) => b.change - a.change);
+
+        const formatted = changes.slice(0, 25).map((c, i) => ({
+          rank: i + 1,
+          item: c.item,
+          thisWeek: `${c.thisWeekPct.toFixed(1)}%`,
+          lastWeek: `${c.lastWeekPct.toFixed(1)}%`,
+          change: `${c.change > 0 ? "+" : ""}${c.change.toFixed(1)} pp`,
+          count: c.thisWeekCount.toLocaleString(),
+        }));
+
+        return {
+          title: "Product Mix Change (Week over Week)",
+          summary: `Items with the biggest change in order mix % from last week to this week. ${thisWeek.total.toLocaleString()} orders this week vs ${lastWeek.total.toLocaleString()} last week.`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "item", label: "Item", align: "left" },
+            { key: "thisWeek", label: "This Week", align: "right" },
+            { key: "lastWeek", label: "Last Week", align: "right" },
+            { key: "change", label: "Change", align: "right" },
+            { key: "count", label: "Sold", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Biggest Gainer", value: formatted[0].item, detail: formatted[0].change } : undefined,
+        };
+      },
+    },
+    {
+      id: "attachment_rates",
+      keywords: ["attachment", "upsell", "cheese", "bacon", "dessert", "shake", "sauce", "whatasize", "add-on", "addon", "modifier"],
+      description: "Attachment/upsell rates (cheese, bacon, desserts, etc.)",
+      execute: async (params) => {
+        // Use the last day of the range for the attachment analysis
+        const targetDate = new Date(params.endDate + "T12:00:00");
+        const rateData = await getAttachmentRatesFromDetail(targetDate);
+
+        const formatted: any[] = [];
+        rateData.forEach((data, rid) => {
+          const name = params.restaurantMap.get(rid) || data.restaurantName || rid;
+          const cats = data.categories;
+          formatted.push({
+            unit: name,
+            cheese: cats.cheese ? `${cats.cheese.attachRate}%` : "-",
+            bacon: cats.bacon ? `${cats.bacon.attachRate}%` : "-",
+            desserts: cats.desserts ? `${cats.desserts.attachRate}%` : "-",
+            sauces: cats.dipping_sauces ? `${cats.dipping_sauces.attachRate}%` : "-",
+            whatasize: cats.whatasize ? `${cats.whatasize.attachRate}%` : "-",
+            score: data.overallAttachScore,
+            orders: data.totalOrders.toLocaleString(),
+          });
+        });
+
+        formatted.sort((a, b) => b.score - a.score);
+
+        return {
+          title: "Attachment / Upsell Rates",
+          summary: `Percentage of orders containing each add-on category (latest day data). Higher is better.`,
+          columns: [
+            { key: "unit", label: "Unit", align: "left" },
+            { key: "cheese", label: "Cheese", align: "center" },
+            { key: "bacon", label: "Bacon", align: "center" },
+            { key: "desserts", label: "Desserts", align: "center" },
+            { key: "sauces", label: "Sauces", align: "center" },
+            { key: "whatasize", label: "Whatasize", align: "center" },
+            { key: "score", label: "Score", align: "right" },
+            { key: "orders", label: "Orders", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Best Upsell Score", value: formatted[0].unit, detail: `${formatted[0].score}/100` } : undefined,
+        };
+      },
+    },
+    {
+      id: "product_category_sales",
+      keywords: ["category", "entree", "side", "drink", "beverage", "breakfast", "product category", "menu category", "category breakdown"],
+      description: "Sales by product category (entrees, sides, drinks, etc.)",
+      execute: async (params) => {
+        const startTs = new Date(params.startDate + "T00:00:00");
+        const endTs = new Date(params.endDate + "T23:59:59");
+
+        const orders = await posDb
+          .select({ rawJson: posOrders.rawJson })
+          .from(posOrders)
+          .where(and(
+            gte(posOrders.businessDate, startTs),
+            lte(posOrders.businessDate, endTs),
+            sql`${posOrders.rawJson} IS NOT NULL`
+          ));
+
+        const categoryCounts = new Map<string, number>();
+        let totalItems = 0;
+
+        for (const order of orders) {
+          if (!order.rawJson) continue;
+          try {
+            const payload = JSON.parse(order.rawJson);
+            const rawItems = payload?.data?.items;
+            if (!Array.isArray(rawItems)) continue;
+            for (const item of rawItems) {
+              if (item.item_type === "modifier") continue;
+              const cat = item.reporting_category?.major_reporting_category?.name || "Other";
+              categoryCounts.set(cat, (categoryCounts.get(cat) || 0) + 1);
+              totalItems++;
+            }
+          } catch { /* skip */ }
+        }
+
+        const sorted = Array.from(categoryCounts.entries())
+          .sort((a, b) => b[1] - a[1]);
+
+        const formatted = sorted.map(([cat, count], i) => ({
+          rank: i + 1,
+          category: cat,
+          count: count.toLocaleString(),
+          pct: totalItems > 0 ? `${Math.round((count / totalItems) * 100)}%` : "-",
+        }));
+
+        return {
+          title: "Product Category Breakdown",
+          summary: `Item counts by major reporting category across ${orders.length.toLocaleString()} orders (${totalItems.toLocaleString()} total items).`,
+          columns: [
+            { key: "rank", label: "#", align: "center" },
+            { key: "category", label: "Category", align: "left" },
+            { key: "count", label: "Items Sold", align: "right" },
+            { key: "pct", label: "% of Items", align: "right" },
+          ],
+          rows: formatted,
+          highlight: formatted[0] ? { label: "Top Category", value: formatted[0].category, detail: formatted[0].pct } : undefined,
         };
       },
     },

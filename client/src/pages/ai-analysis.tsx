@@ -208,22 +208,22 @@ interface DynamicQueryResponse {
 }
 
 const SUGGESTED_QUESTIONS = [
-  "What are the daily sales by unit?",
+  "What are the top selling items?",
+  "Show product mix change week over week",
+  "What are the attachment/upsell rates?",
+  "Show order channel mix breakdown",
+  "What is the app order percentage?",
+  "What are the 3PD delivery percentages?",
   "Which unit has the highest OSAT score?",
   "Show me labor percent by unit",
   "What is the drive-thru speed ranking?",
   "Show check average by unit",
   "Which units ran outside order takers?",
   "Show me dine-in percentage by unit",
-  "What is the app order percentage?",
-  "Show sales by hour",
-  "Show me Google ratings",
-  "What is the crew experience by unit?",
-  "Show order channel mix breakdown",
-  "What are the 3PD delivery percentages?",
-  "Which unit has the best sales day?",
+  "Show product category breakdown",
+  "What are the daily sales by unit?",
   "Hours over $3000",
-  "Show weather by location",
+  "Show sales by hour",
 ];
 
 // Dynamic query result display
