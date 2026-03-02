@@ -124,8 +124,8 @@ router.get("/api/performance-history", async (req, res) => {
 
     // Fetch last year's daily sales from historical_daily_sales for YoY bonus
     // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
+    // Expand range by ±3 days to cover all possible DOW shifts (matches leaders.ts / leader-detail.ts)
     const yoyDateMap = new Map<string, string>(); // currentDate -> dowMatchedYoyDate
-    const yoyDateStrs: string[] = [];
     for (const d of dateRange) {
       const dt = new Date(`${d}T12:00:00Z`);
       const yoy = new Date(dt);
@@ -133,16 +133,19 @@ router.get("/api/performance-history", async (req, res) => {
       const sameDow = yoy.getDay();
       const targetDow = dt.getDay();
       yoy.setDate(yoy.getDate() + (targetDow - sameDow));
-      const yoyStr = yoy.toISOString().split('T')[0];
-      yoyDateMap.set(d, yoyStr);
-      yoyDateStrs.push(yoyStr);
+      yoyDateMap.set(d, yoy.toISOString().split('T')[0]);
     }
-    const uniqueYoyDates = [...new Set(yoyDateStrs)];
-    const yoySalesData = uniqueYoyDates.length > 0
-      ? await db.select().from(historicalDailySales).where(
-          sql`${historicalDailySales.date} IN ${uniqueYoyDates}`
-        )
-      : [];
+    const yoyRangeStart = new Date(`${dateRange[0]}T12:00:00Z`);
+    yoyRangeStart.setFullYear(yoyRangeStart.getFullYear() - 1);
+    yoyRangeStart.setDate(yoyRangeStart.getDate() - 3);
+    const yoyRangeEnd = new Date(`${dateRange[dateRange.length - 1]}T12:00:00Z`);
+    yoyRangeEnd.setFullYear(yoyRangeEnd.getFullYear() - 1);
+    yoyRangeEnd.setDate(yoyRangeEnd.getDate() + 3);
+    const yoyStartStr = yoyRangeStart.toISOString().split('T')[0];
+    const yoyEndStr = yoyRangeEnd.toISOString().split('T')[0];
+    const yoySalesData = await db.select().from(historicalDailySales).where(
+      and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))
+    );
     // Map: "restaurantId-yoyDate" -> netSales
     const yoySalesMap = new Map<string, number>();
     for (const row of yoySalesData) {
