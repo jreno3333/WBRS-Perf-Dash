@@ -615,7 +615,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
           <span style="width: 32px; font-size: 10px; text-align: right; color: #71717a;">${h.employeeCount > 0 ? h.employeeCount.toFixed(1) : '--'}</span>
           ${h.speedAttainment !== undefined ? `<span style="width: 38px; font-size: 10px; text-align: right; color: ${h.speedAttainment >= 70 ? '#16a34a' : h.speedAttainment >= 50 ? '#d97706' : '#dc2626'};">${Math.round(h.speedAttainment)}%</span>` : '<span style="width: 38px; font-size: 10px; text-align: right; color: #a1a1aa;">--</span>'}
           ${h.osatPercent !== undefined && h.osatPercent >= 0 ? `<span style="width: 38px; font-size: 10px; text-align: right; color: ${h.osatPercent >= 85 ? '#16a34a' : h.osatPercent >= 80 ? '#d97706' : '#dc2626'};">${Math.round(h.osatPercent)}%</span>` : '<span style="width: 38px; font-size: 10px; text-align: right; color: #a1a1aa;">--</span>'}
-          <span style="width: 56px; font-size: 9px; text-align: right; color: #71717a; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">${h.leaders.length > 0 ? h.leaders[0] : '--'}</span>
+          <span style="width: 56px; font-size: 9px; text-align: right; color: #71717a; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">${h.leaders.length > 0 ? h.leaders.join(', ') : '--'}</span>
         </div>
       `).join("")}
 
