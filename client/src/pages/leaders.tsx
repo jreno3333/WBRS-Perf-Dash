@@ -10,20 +10,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Users, AlertCircle, CalendarIcon, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { NavBar } from "@/components/nav-bar";
 import { format } from "date-fns";
-
-function getCentralDate(): Date {
-  const now = new Date();
-  const centralStr = now.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-  const [year, month, day] = centralStr.split("-").map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0);
-}
-
-function getGradeColor(grade: string): string {
-  if (grade.startsWith("A")) return "text-green-500";
-  if (grade.startsWith("B")) return "text-blue-500";
-  if (grade.startsWith("C")) return "text-amber-500";
-  return "text-red-500";
-}
+import { getCentralDate, formatLongDate } from "@/lib/dates";
+import { getGradeColor } from "@/lib/grading";
 
 function getSpeedColor(attainment: number): string {
   if (attainment >= 70) return "text-green-500";
@@ -127,15 +115,6 @@ export default function LeadersPage() {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   const formatPeriodDate = (dateStr: string) => {
     const d = new Date(dateStr + "T12:00:00");
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -160,7 +139,7 @@ export default function LeadersPage() {
                     <PopoverTrigger asChild>
                       <Button variant="ghost" size="sm" className="text-sm text-muted-foreground hover:text-foreground">
                         <CalendarIcon className="w-4 h-4 mr-2" />
-                        {formatDate(selectedDate)}
+                        {formatLongDate(selectedDate)}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">

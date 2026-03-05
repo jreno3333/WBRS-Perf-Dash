@@ -7,6 +7,7 @@ import { Cloud, Sun, CloudRain, CloudSnow, Wind, Thermometer, Droplets, Calendar
 import { NavBar } from "@/components/nav-bar";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/grading";
 import "leaflet/dist/leaflet.css";
 
 interface RestaurantMapData {
@@ -85,15 +86,6 @@ function WeatherIcon({ condition }: { condition: string }) {
     default:
       return <Cloud className={`${iconClass} text-gray-400`} />;
   }
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 function MapBounds({ restaurants }: { restaurants: RestaurantMapData[] }) {

@@ -6,14 +6,15 @@ import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
+import { DAYPARTS, getDaypart } from "@/lib/dayparts";
 import {
   computeExecutionScore,
   scoreToGradeLabel,
-  getGradeColor as sharedGetGradeColor,
+  getGradeColor,
   gradeToMidpoint,
   formatCurrency,
   computeDailyBonuses,
+  getExecutionGrade,
 } from "@/lib/grading";
 
 const REVENUE_PORT_CONFIG = {
@@ -47,24 +48,6 @@ function WeatherIcon({ condition }: { condition: string }) {
   }
 }
 
-// Execution Grade — delegates to shared grading module
-function getExecutionGrade(
-  salesVariancePct: number,
-  speedAttainment: number | undefined,
-  staffingDiff: number,
-  hasComparableSales = true,
-  hasValidStaffing = true,
-  osatPercent: number | undefined = undefined,
-  transactionVariancePct?: number,
-  hasComparableTransactions?: boolean,
-): { grade: string; color: string; score: number; hasGrade: boolean } {
-  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
-  if (score === 0) return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false };
-  const grade = scoreToGradeLabel(score);
-  return { grade, color: sharedGetGradeColor(grade), score, hasGrade: true };
-}
-
-const getGradeColor = sharedGetGradeColor;
 const gradeToScore = gradeToMidpoint;
 
 function scoreToGrade(score: number): { grade: string; color: string } {
@@ -643,7 +626,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                                   <div key={dp.id} className="flex items-center justify-between gap-3">
                                     <span className="text-muted-foreground">{dp.label}</span>
                                     <div className="flex items-center gap-2">
-                                      <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
+                                      <span className={`font-bold ${getGradeColor(dp.grade!)}`}>{dp.grade}</span>
                                       {dpCA !== null && (
                                         <span className="text-teal-500 text-[10px]">${dpCA.toFixed(2)}</span>
                                       )}
@@ -1280,7 +1263,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <div className="text-[8px] leading-tight mt-px flex items-center justify-center gap-0.5">
                       <span className={`font-medium ${dp.color}`}>{dp.shortLabel}</span>
                       {dpGrade?.grade && (
-                        <span className={`font-bold ${dpGetGradeColor(dpGrade.grade)}`}>{dpGrade.grade}</span>
+                        <span className={`font-bold ${getGradeColor(dpGrade.grade)}`}>{dpGrade.grade}</span>
                       )}
                     </div>
                     {dpCheckAvg !== null && (
