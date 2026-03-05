@@ -1,3 +1,4 @@
+import { getBaseUrl } from "../base-url";
 import { Router } from "express";
 import { db } from "../db";
 import { reportShareTokens, restaurants } from "@shared/schema";
@@ -54,11 +55,7 @@ router.post("/api/push-report/share", async (req, res) => {
       .limit(1);
 
     if (existing.length > 0) {
-      const baseUrl = process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.replit.app`
-        : process.env.REPLIT_DEV_DOMAIN
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : "http://localhost:5000";
+      const baseUrl = getBaseUrl();
 
       res.json({
         token: existing[0].token,
@@ -82,11 +79,7 @@ router.post("/api/push-report/share", async (req, res) => {
       expiresAt: null, // No expiration
     }).returning();
 
-    const baseUrl = process.env.REPL_SLUG
-      ? `https://${process.env.REPL_SLUG}.replit.app`
-      : process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : "http://localhost:5000";
+    const baseUrl = getBaseUrl();
 
     res.json({
       token: created.token,
