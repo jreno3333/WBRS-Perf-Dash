@@ -3,7 +3,7 @@ import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency, getGradeColor, getGradeBgColor, getExecutionGrade, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
+import { formatCurrency, scoreToGradeLabel, getGradeColor, getGradeBgColor, getExecutionGrade, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
 import type { WeeklySalesData, CheckAverageData, CheckAvgTrendData } from "@/lib/types";
 
 interface SummaryCardsProps {
