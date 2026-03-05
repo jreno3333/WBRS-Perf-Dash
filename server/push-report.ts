@@ -1,3 +1,4 @@
+import { getBaseUrl } from "./base-url";
 import { db } from "./db";
 import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes, restaurants, osatCategoryIssues } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -363,11 +364,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago"
     }).format(new Date(`${dateStr}T12:00:00`));
 
-    const baseUrl = process.env.REPL_SLUG
-      ? `https://${process.env.REPL_SLUG}.replit.app`
-      : process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : "http://localhost:5000";
+    const baseUrl = getBaseUrl();
 
     // ─── Build the HTML ──────────────────────────────────────────────────
     return `

@@ -79,7 +79,6 @@ function App() {
         <Suspense fallback={<PageLoadingFallback />}>
           <Switch>
             <Route path="/login" component={LoginPage} />
-            <Route path="/scoring" component={ScoringGuidePage} />
             <Route>
               <ProtectedRoutes />
             </Route>
