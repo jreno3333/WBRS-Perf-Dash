@@ -4,29 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS } from "@/lib/grading";
-
-interface WeeklySalesData {
-  currentWeekStart: string;
-  currentWeekEnd: string;
-  priorWeekStart: string;
-  priorWeekEnd: string;
-  daysInCurrentWeek: number;
-  daysInPriorWeek: number;
-  restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
-}
-
-interface CheckAverageData {
-  totalOrders: number;
-  totalSales: number;
-  checkAverage: number;
-  hourly: Record<number, { orders: number; sales: number; avg: number }>;
-}
-
-interface CheckAvgTrendData {
-  daily: { date: string; orders: number; sales: number; avg: number }[];
-  avg7d: number;
-  trend: 'up' | 'down' | 'flat';
-}
+import type { WeeklySalesData, CheckAverageData, CheckAvgTrendData } from "@/lib/types";
 
 interface SummaryCardsProps {
   restaurants: RestaurantSales[];
