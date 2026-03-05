@@ -3,7 +3,7 @@ import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS } from "@/lib/grading";
+import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
 
 interface WeeklySalesData {
   currentWeekStart: string;
@@ -130,6 +130,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   // Calculate overall execution score across all restaurants
   const allHourlyScores: number[] = [];
   const restaurantGrades: Record<string, string> = {}; // Store each restaurant's overall grade
+  const restaurantAdjustedScores: number[] = []; // Per-restaurant scores with daily bonuses (matches email report)
   
   // Track scores by hour for trend calculation
   const scoresByHour: Record<number, number[]> = {};
@@ -160,6 +161,13 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
       const localGradeCutoff = (restaurant as any).localCurrentHour ?? restaurant.normalizedHour;
       
       const restaurantHourlyScores: number[] = [];
+      let restTotalSales = 0;
+      let restTotalLWSales = 0;
+      let restTotalTxn = 0;
+      let restTotalLWTxn = 0;
+      let restOsatWeightedSum = 0;
+      let restOsatResponses = 0;
+      let restLastYearDailySales: number | undefined;
       for (const hour of hours) {
         // Only include completed hours (matching leaderboard card behavior)
         if (hour.hour > localGradeCutoff) continue;
@@ -229,12 +237,45 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
             scoresByHour[hour.hour].push(gradeInfo.score);
           }
         }
+
+        // Accumulate daily metrics for bonus computation
+        restTotalSales += hour.todaySales;
+        restTotalLWSales += hour.lastWeekSales;
+        restTotalTxn += (hour.transactionCount ?? 0);
+        restTotalLWTxn += (hour.lastWeekTransactionCount ?? 0);
+        if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
+          restOsatWeightedSum += hour.osatPercent * hour.osatResponses;
+          restOsatResponses += hour.osatResponses;
+        }
+        if (hour.lastYearDailySales !== undefined && hour.lastYearDailySales > 0) {
+          restLastYearDailySales = hour.lastYearDailySales;
+        }
       }
-      
-      // Calculate this restaurant's overall grade
+
+      // Calculate this restaurant's overall grade (with daily bonuses, matching email report)
       if (restaurantHourlyScores.length > 0) {
-        const avgScore = restaurantHourlyScores.reduce((a, b) => a + b, 0) / restaurantHourlyScores.length;
-        restaurantGrades[restaurantId] = scoreToGradeLabel(avgScore);
+        const baseScore = restaurantHourlyScores.reduce((a, b) => a + b, 0) / restaurantHourlyScores.length;
+
+        // Compute daily bonuses (same methodology as daily-report.ts)
+        const dailySalesVar = restTotalLWSales > 0 ? ((restTotalSales - restTotalLWSales) / restTotalLWSales) * 100 : undefined;
+        const dailyTxnVar = restTotalLWTxn > 0 ? ((restTotalTxn - restTotalLWTxn) / restTotalLWTxn) * 100 : undefined;
+        const dailyOsatPct = restOsatResponses > 0 ? restOsatWeightedSum / restOsatResponses : undefined;
+        const dailyYoyVar = restLastYearDailySales && restLastYearDailySales > 0
+          ? ((restTotalSales - restLastYearDailySales) / restLastYearDailySales) * 100
+          : undefined;
+
+        const bonusResult = computeDailyBonuses({
+          dailyOsatPercent: dailyOsatPct,
+          dailySurveyCount: restOsatResponses,
+          dailySalesVariancePct: dailySalesVar,
+          dailyTransactionVariancePct: dailyTxnVar,
+          dailyYoySalesVariancePct: dailyYoyVar,
+          hourlyScores: restaurantHourlyScores,
+        });
+
+        const adjustedScore = Math.min(baseScore + bonusResult.cappedBonus, 100);
+        restaurantGrades[restaurantId] = scoreToGradeLabel(adjustedScore);
+        restaurantAdjustedScores.push(adjustedScore);
       }
     }
   }
@@ -254,9 +295,10 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   // Count D/F hourly scores (score < 60 = F grade)
   const dfHourCount = allHourlyScores.filter(s => s < 60).length;
 
-  const overallXScore = allHourlyScores.length > 0
-    ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length
-    : 0;
+  // Use per-restaurant bonus-adjusted scores for overall grade (matches email report methodology)
+  const overallXScore = restaurantAdjustedScores.length > 0
+    ? restaurantAdjustedScores.reduce((a, b) => a + b, 0) / restaurantAdjustedScores.length
+    : (allHourlyScores.length > 0 ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length : 0);
   const overallGrade = scoreToGradeLabel(overallXScore);
   const gradeColor = getGradeColor(overallGrade);
 
