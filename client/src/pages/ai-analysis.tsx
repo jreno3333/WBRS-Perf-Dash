@@ -35,7 +35,6 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { formatCurrency } from "@/lib/grading";
 
 interface HighSalesRestaurant {
   restaurant: string;
@@ -101,6 +100,10 @@ function formatHour(hour: number): string {
   if (hour === 0) return "12 AM";
   if (hour === 12) return "12 PM";
   return hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+}
+
+function formatCurrency(val: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(val);
 }
 
 function formatDate(dateStr: string): string {

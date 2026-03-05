@@ -2,9 +2,10 @@ import { APP_VERSION } from "@/lib/version";
 import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertCircle, CalendarDays } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { AlertCircle, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { NavBar } from "@/components/nav-bar";
-import { DateNavigator } from "@/components/date-navigator";
 import { LeaderboardCard } from "@/components/leaderboard-card";
 import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
@@ -17,8 +18,14 @@ import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { computeExecutionScore, scoreToGradeLabel, gradeToMidpoint, formatCurrency } from "@/lib/grading";
-import { getCentralDate } from "@/lib/dates";
-import type { WeeklySalesData, CheckAverageData, CheckAvgTrendData } from "@/lib/types";
+
+// Get current date in Central timezone (business day)
+function getCentralDate(): Date {
+  const now = new Date();
+  const centralStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const [year, month, day] = centralStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
 
 function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }): number {
   if (!hourlyData || hourlyData.length === 0) return -1;
@@ -116,6 +123,12 @@ export default function Dashboard() {
   const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
 
   // Fetch check average data from POS
+  interface CheckAverageData {
+    totalOrders: number;
+    totalSales: number;
+    checkAverage: number;
+    hourly: Record<number, { orders: number; sales: number; avg: number }>;
+  }
   const { data: checkAverageResponse } = useQuery<{ date: string; restaurants: Record<string, CheckAverageData> }>({
     queryKey: ["/api/pos/check-average", dateStr],
     queryFn: async () => {
@@ -129,7 +142,12 @@ export default function Dashboard() {
   const checkAverageByRestaurant = checkAverageResponse?.restaurants;
 
   // Fetch 7-day rolling check average trend
-  const { data: checkAvgTrendResponse } = useQuery<{ date: string; days: number; restaurants: Record<string, CheckAvgTrendData> }>({
+  interface CheckAverageTrendData {
+    daily: { date: string; orders: number; sales: number; avg: number }[];
+    avg7d: number;
+    trend: 'up' | 'down' | 'flat';
+  }
+  const { data: checkAvgTrendResponse } = useQuery<{ date: string; days: number; restaurants: Record<string, CheckAverageTrendData> }>({
     queryKey: ["/api/pos/check-average-trend", dateStr],
     queryFn: async () => {
       const res = await fetch(`/api/pos/check-average-trend?date=${dateStr}&days=7`);
@@ -237,6 +255,15 @@ export default function Dashboard() {
   });
 
   // Fetch weekly sales data (Sat-Fri business week)
+  interface WeeklySalesData {
+    currentWeekStart: string;
+    currentWeekEnd: string;
+    priorWeekStart: string;
+    priorWeekEnd: string;
+    daysInCurrentWeek: number;
+    daysInPriorWeek: number;
+    restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
+  }
   const { data: weeklySalesData } = useQuery<WeeklySalesData>({
     queryKey: ["/api/weekly-sales", dateStr],
     queryFn: async () => {
@@ -304,6 +331,15 @@ export default function Dashboard() {
       return res.json();
     },
   });
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
 
   const goToPreviousDay = () => {
     const prev = new Date(selectedDate);
@@ -478,17 +514,94 @@ export default function Dashboard() {
                   </span>
                 )}
               </h1>
-              <DateNavigator
-                selectedDate={selectedDate}
-                isToday={isToday}
-                onPreviousDay={goToPreviousDay}
-                onNextDay={goToNextDay}
-                onSelectDate={setSelectedDate}
-                onGoToToday={goToToday}
-              />
+              <div className="hidden sm:flex items-center gap-0.5 text-sm">
+                <button
+                  className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={goToPreviousDay}
+                  data-testid="button-prev-day"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="px-2 py-1 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                      data-testid="button-date-picker"
+                    >
+                      {formatDate(selectedDate)}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => date && setSelectedDate(date)}
+                      disabled={(date) => date > new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <button
+                  className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30"
+                  onClick={goToNextDay}
+                  disabled={isToday}
+                  data-testid="button-next-day"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                {!isToday && (
+                  <button
+                    className="ml-1 px-2 py-0.5 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                    onClick={goToToday}
+                    data-testid="button-go-today"
+                  >
+                    Today
+                  </button>
+                )}
+              </div>
             </div>
 
             <NavBar />
+          </div>
+          {/* Mobile date nav */}
+          <div className="sm:hidden flex items-center justify-center gap-1 pb-2 -mt-1">
+            <button
+              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+              onClick={goToPreviousDay}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="px-2 py-1 rounded-md text-sm text-muted-foreground hover:text-foreground">
+                  {formatDate(selectedDate)}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="center">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  disabled={(date) => date > new Date()}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <button
+              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30"
+              onClick={goToNextDay}
+              disabled={isToday}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            {!isToday && (
+              <button
+                className="ml-1 px-2 py-0.5 rounded-md text-xs font-medium text-primary"
+                onClick={goToToday}
+              >
+                Today
+              </button>
+            )}
           </div>
         </div>
       </header>

@@ -8,8 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { NavBar } from "@/components/nav-bar";
 import { Link } from "wouter";
-import { formatShortDate } from "@/lib/dates";
-import { formatCurrency, getGradeColor as sharedGetGradeColor, getGradeBgColor as sharedGetGradeBgColor } from "@/lib/grading";
 import {
   ChevronDown,
   ChevronUp,
@@ -112,8 +110,35 @@ interface PerformanceHistoryData {
   };
 }
 
-const getGradeColor = sharedGetGradeColor;
-const getGradeBgColor = sharedGetGradeBgColor;
+function getGradeColor(label: string): string {
+  if (label.startsWith("A")) return "text-green-600 dark:text-green-400";
+  if (label.startsWith("B")) return "text-blue-600 dark:text-blue-400";
+  if (label.startsWith("C")) return "text-yellow-600 dark:text-yellow-400";
+  if (label.startsWith("D")) return "text-orange-600 dark:text-orange-400";
+  return "text-red-600 dark:text-red-400";
+}
+
+function getGradeBgColor(label: string): string {
+  if (label.startsWith("A")) return "bg-green-100 dark:bg-green-900/30";
+  if (label.startsWith("B")) return "bg-blue-100 dark:bg-blue-900/30";
+  if (label.startsWith("C")) return "bg-yellow-100 dark:bg-yellow-900/30";
+  if (label.startsWith("D")) return "bg-orange-100 dark:bg-orange-900/30";
+  return "bg-red-100 dark:bg-red-900/30";
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr + "T12:00:00Z");
+  return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
 
 function TrendIndicator({ value }: { value: number }) {
   if (value > 0) return <TrendingUp className="w-4 h-4 text-green-600" />;
@@ -138,7 +163,7 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
   return (
     <div className="flex gap-1 flex-wrap">
       {grades.map((grade, idx) => {
-        const formatted = formatShortDate(grade.date);
+        const formatted = formatDate(grade.date);
         const dayName = formatted.split(",")[0];
         const datePart = formatted.split(",")[1]?.trim() || "";
         const hasBonuses = grade.bonuses && grade.bonuses.length > 0;
@@ -613,7 +638,7 @@ export default function PerformanceHistoryPage() {
                   Restaurant Performance ({filteredRestaurants.length})
                 </h2>
                 <div className="text-sm text-muted-foreground">
-                  {data.dateRange.length} days: {formatShortDate(data.dateRange[0])} - {formatShortDate(data.dateRange[data.dateRange.length - 1])}
+                  {data.dateRange.length} days: {formatDate(data.dateRange[0])} - {formatDate(data.dateRange[data.dateRange.length - 1])}
                 </div>
               </div>
 

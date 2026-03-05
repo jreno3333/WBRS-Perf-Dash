@@ -14,8 +14,6 @@ import { Link } from "wouter";
 import { Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, Search, ArrowRight, CheckCircle, AlertTriangle, X, ArrowUpDown } from "lucide-react";
 import { NavBar } from "@/components/nav-bar";
 import { format } from "date-fns";
-import { getCentralDate } from "@/lib/dates";
-import { getGradeBadgeColor } from "@/lib/grading";
 
 interface CrewMember {
   name: string;
@@ -125,6 +123,13 @@ interface LeaderDetailResponse {
 }
 
 
+function getCentralDate(): Date {
+  const now = new Date();
+  const centralStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const [year, month, day] = centralStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
 function getScoreColor(score: number): string {
   if (score >= 85) return "bg-green-500";
   if (score >= 70) return "bg-yellow-500";
@@ -140,6 +145,13 @@ function getCategoryColor(category: string): string {
     case 'veteran': return "bg-blue-500";
     default: return "bg-gray-500";
   }
+}
+
+function getGradeColor(grade: string): string {
+  if (grade.startsWith('A')) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+  if (grade.startsWith('B')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+  if (grade.startsWith('C')) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
 }
 
 function formatSpeed(seconds: number): string {
@@ -468,7 +480,7 @@ export default function CrewExperiencePage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Badge className={`text-xs ${getGradeBadgeColor(leader.grade)} border-0`}>
+                              <Badge className={`text-xs ${getGradeColor(leader.grade)} border-0`}>
                                 {leader.grade}
                               </Badge>
                               {leader.avgTransactionsPerHour !== null && (() => {
@@ -528,7 +540,7 @@ export default function CrewExperiencePage() {
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        <Badge className={`text-xs ${getGradeBadgeColor(leader.grade)} border-0`}>
+                                        <Badge className={`text-xs ${getGradeColor(leader.grade)} border-0`}>
                                           {leader.grade}
                                         </Badge>
                                         {leader.avgTransactionsPerHour !== null && (() => {
@@ -740,7 +752,7 @@ export default function CrewExperiencePage() {
             <div className="mt-6 space-y-6">
               <div className="flex items-center gap-4">
                 <div className="flex flex-col items-center">
-                  <Badge className={`text-lg px-3 py-1 ${getGradeBadgeColor(leaderDetail.leader.gradeLabel)} border-0`}>
+                  <Badge className={`text-lg px-3 py-1 ${getGradeColor(leaderDetail.leader.gradeLabel)} border-0`}>
                     {leaderDetail.leader.gradeLabel}
                   </Badge>
                   <span className="text-xs text-muted-foreground mt-1">Overall</span>
@@ -792,7 +804,7 @@ export default function CrewExperiencePage() {
                           data-testid={`day-detail-${day.date}`}
                         >
                           <div className="flex items-center gap-3">
-                            <Badge className={`text-xs ${getGradeBadgeColor(day.gradeLabel)} border-0 min-w-[2rem] justify-center`}>
+                            <Badge className={`text-xs ${getGradeColor(day.gradeLabel)} border-0 min-w-[2rem] justify-center`}>
                               {day.gradeLabel}
                             </Badge>
                             <div>
@@ -883,7 +895,7 @@ export default function CrewExperiencePage() {
                                     return (
                                       <div key={hg.hour} className="grid grid-cols-[3rem_2rem_4rem_3.5rem_3rem_3.5rem_3.5rem] gap-1 text-xs items-center" data-testid={`hourly-grade-${day.date}-${hg.hour}`}>
                                         <span className="text-muted-foreground">{hourLabel}</span>
-                                        <Badge className={`text-[10px] px-1 py-0 ${getGradeBadgeColor(hg.gradeLabel)} border-0 justify-center`}>
+                                        <Badge className={`text-[10px] px-1 py-0 ${getGradeColor(hg.gradeLabel)} border-0 justify-center`}>
                                           {hg.gradeLabel}
                                         </Badge>
                                         <span className="text-right font-medium" data-testid={`text-sales-${day.date}-${hg.hour}`}>${hg.sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>

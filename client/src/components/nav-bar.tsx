@@ -6,18 +6,17 @@ type NavItem = {
   href: string;
   icon: typeof Trophy;
   label: string;
-  shortLabel: string;
   testId: string;
   external?: boolean;
 };
 
 const navItems: NavItem[] = [
-  { href: "/", icon: Trophy, label: "Rankings", shortLabel: "Rank", testId: "nav-leaderboard" },
-  { href: "/dashboard-view", icon: Grid3X3, label: "Daily AI", shortLabel: "AI", testId: "nav-dashboard-view" },
-  { href: "/history", icon: TrendingUp, label: "Trends", shortLabel: "Trend", testId: "nav-history" },
-  { href: "/crew", icon: Users, label: "People", shortLabel: "Crew", testId: "nav-crew" },
-  { href: "/map", icon: MapPin, label: "Map", shortLabel: "Map", testId: "nav-map" },
-  { href: "https://mwbrealtime.wbrssystem.com", icon: Radio, label: "Real Time", shortLabel: "Live", testId: "nav-realtime", external: true },
+  { href: "/", icon: Trophy, label: "Rankings", testId: "nav-leaderboard" },
+  { href: "/dashboard-view", icon: Grid3X3, label: "Daily AI", testId: "nav-dashboard-view" },
+  { href: "/history", icon: TrendingUp, label: "Trends", testId: "nav-history" },
+  { href: "/crew", icon: Users, label: "People", testId: "nav-crew" },
+  { href: "/map", icon: MapPin, label: "Map", testId: "nav-map" },
+  { href: "https://mwbrealtime.wbrssystem.com", icon: Radio, label: "Real Time", testId: "nav-realtime", external: true },
 ];
 
 export function NavBar() {
@@ -31,7 +30,7 @@ export function NavBar() {
           <button
             data-testid={item.testId}
             className={`
-              flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 lg:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+              flex items-center gap-1.5 px-1.5 lg:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
               ${isActive
                 ? "bg-secondary text-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
@@ -39,7 +38,6 @@ export function NavBar() {
             `}
           >
             <item.icon className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline lg:hidden text-xs">{item.shortLabel}</span>
             <span className="hidden lg:inline">{item.label}</span>
           </button>
         );

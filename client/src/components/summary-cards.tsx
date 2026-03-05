@@ -3,8 +3,30 @@ import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency, scoreToGradeLabel, getGradeColor, getGradeBgColor, getExecutionGrade, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
-import type { WeeklySalesData, CheckAverageData, CheckAvgTrendData } from "@/lib/types";
+import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
+
+interface WeeklySalesData {
+  currentWeekStart: string;
+  currentWeekEnd: string;
+  priorWeekStart: string;
+  priorWeekEnd: string;
+  daysInCurrentWeek: number;
+  daysInPriorWeek: number;
+  restaurants: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }>;
+}
+
+interface CheckAverageData {
+  totalOrders: number;
+  totalSales: number;
+  checkAverage: number;
+  hourly: Record<number, { orders: number; sales: number; avg: number }>;
+}
+
+interface CheckAvgTrendData {
+  daily: { date: string; orders: number; sales: number; avg: number }[];
+  avg7d: number;
+  trend: 'up' | 'down' | 'flat';
+}
 
 interface SummaryCardsProps {
   restaurants: RestaurantSales[];
@@ -16,6 +38,23 @@ interface SummaryCardsProps {
   checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
 }
 
+function getExecutionGrade(
+  salesVariancePct: number,
+  speedAttainment: number | undefined,
+  staffingDiff: number,
+  hasComparableSales: boolean,
+  osatPercent: number | undefined,
+  hasValidStaffing: boolean,
+  transactionVariancePct?: number,
+  hasComparableTransactions?: boolean,
+): { grade: string; color: string; score: number; hasGrade: boolean; components: { name: string; score: number; weight: number }[] } {
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
+  if (score === 0) {
+    return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false, components: [] };
+  }
+  const grade = scoreToGradeLabel(score);
+  return { grade, color: getGradeColor(grade), score, hasGrade: true, components: [] };
+}
 
 export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: SummaryCardsProps) {
   // formatCurrency is imported from @/lib/grading (module-level singleton)
@@ -188,7 +227,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
         
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, speedAtt, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+        const gradeInfo = getExecutionGrade(salesVariancePct, speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
         if (gradeInfo.hasGrade) {
           if (gradeInfo.score > 0) {
             allHourlyScores.push(gradeInfo.score);

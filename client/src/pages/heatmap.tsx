@@ -8,7 +8,6 @@ import { AlertTriangle, ChevronDown, ChevronUp, Grid3X3, CalendarDays } from "lu
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DailySummary } from "@/components/daily-summary";
 import { NavBar } from "@/components/nav-bar";
-import { formatShortDate, getYesterdayStr } from "@/lib/dates";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, RestaurantSales } from "@shared/schema";
 
 interface HeatmapData {
@@ -23,6 +22,11 @@ function formatHour(hour: number): string {
   if (hour === 12) return "12p";
   if (hour < 12) return `${hour}a`;
   return `${hour - 12}p`;
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr + "T12:00:00Z");
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 function getHeatColor(sales: number, maxSales: number): string {
@@ -42,6 +46,14 @@ function getHeatColor(sales: number, maxSales: number): string {
   if (intensity < 0.8) return "bg-green-400 dark:bg-green-500/60";
   if (intensity < 0.9) return "bg-green-500 dark:bg-green-500/70";
   return "bg-green-600 dark:bg-green-600/80";
+}
+
+// Get yesterday in Central timezone (finalized previous-day data)
+function getYesterdayStr(): string {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return yesterday.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 }
 
 export default function HeatmapPage() {
@@ -556,7 +568,7 @@ export default function HeatmapPage() {
                                 </td>
                               )}
                               <td className="p-1 text-muted-foreground whitespace-nowrap">
-                                {formatShortDate(dateStr)}
+                                {formatDate(dateStr)}
                                 {zeroCount > 4 && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -587,7 +599,7 @@ export default function HeatmapPage() {
                                         </TooltipTrigger>
                                         <TooltipContent side="top" className="text-xs">
                                           <div className="font-medium">{restaurant.name}</div>
-                                          <div>{formatShortDate(dateStr)} at {formatHour(hour)}</div>
+                                          <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
                                           <div className="text-muted-foreground">Future hour - not yet available</div>
                                         </TooltipContent>
                                       </Tooltip>
@@ -609,7 +621,7 @@ export default function HeatmapPage() {
                                       </TooltipTrigger>
                                       <TooltipContent side="top" className="text-xs">
                                         <div className="font-medium">{restaurant.name}</div>
-                                        <div>{formatShortDate(dateStr)} at {formatHour(hour)}</div>
+                                        <div>{formatDate(dateStr)} at {formatHour(hour)}</div>
                                         <div className="font-bold text-green-600 dark:text-green-400">${sales.toLocaleString()}</div>
                                       </TooltipContent>
                                     </Tooltip>
