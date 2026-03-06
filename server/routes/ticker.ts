@@ -360,11 +360,14 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
       } else if (best4Week > 0 && sales > best4Week) {
         // Beat their own 4-week same-day-of-week best for this hour
         const pctAbove = Math.round(((sales - best4Week) / best4Week) * 100);
-        const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
-        milestones.push({
-          msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${pctAbove}% above your best ${dayName} at this hour in 4 weeks!`,
-          priority: "high",
-        });
+        if (pctAbove >= 20) {
+          const amountOver = sales - best4Week;
+          const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
+          milestones.push({
+            msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${fmtDollars(amountOver)} more than your best ${dayName} at this hour in 4 weeks (+${pctAbove}%)!`,
+            priority: "high",
+          });
+        }
       }
     }
   }
