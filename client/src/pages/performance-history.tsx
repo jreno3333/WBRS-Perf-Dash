@@ -181,7 +181,20 @@ function WeatherIcon({ condition, className = "w-3 h-3" }: { condition: string; 
   }
 }
 
-function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): string {
+interface LeaderRanking {
+  name: string;
+  position: string;
+  grade: string;
+  avgGradeScore: number;
+  hoursWorked: number;
+  avgHourlySales: number | null;
+  avgSpeed: number | null;
+  osatPercent: number | null;
+  surveyCount: number;
+  companyRankDisplay?: string | null;
+}
+
+function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], leaders: LeaderRanking[] = []): string {
   const grades = restaurant.dailyGrades;
   const startDate = dateRange.length > 0 ? formatDate(dateRange[0]) : "N/A";
   const endDate = dateRange.length > 0 ? formatDate(dateRange[dateRange.length - 1]) : "N/A";
@@ -375,9 +388,46 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   });
   agenda += "\n";
 
-  // Section 3: Leader Shout-Outs
+  // Section 3: Leader Rankings
   agenda += "───────────────────────────────────────────\n";
-  agenda += "3. LEADER SHOUT-OUTS & WINS\n";
+  agenda += "3. LEADER RANKINGS (Same Period)\n";
+  agenda += "───────────────────────────────────────────\n\n";
+
+  if (leaders.length > 0) {
+    agenda += "  ┌────┬─────────────────────────┬───────┬───────┬────────┬──────┬───────┐\n";
+    agenda += "  │ #  │ Name                    │ Grade │ Hrs   │ $/HR   │ SOS  │ OSAT  │\n";
+    agenda += "  ├────┼─────────────────────────┼───────┼───────┼────────┼──────┼───────┤\n";
+    leaders.forEach((l, i) => {
+      const rank = String(i + 1).padStart(2);
+      const name = l.name.length > 23 ? l.name.slice(0, 22) + "…" : l.name.padEnd(23);
+      const grade = l.grade.padEnd(3);
+      const hrs = l.hoursWorked.toFixed(0).padStart(5);
+      const sales = l.avgHourlySales != null ? ("$" + l.avgHourlySales.toFixed(0)).padStart(6) : "   N/A";
+      const speed = l.avgSpeed != null ? (l.avgSpeed.toFixed(0) + "%").padStart(4) : " N/A";
+      const osat = l.osatPercent != null ? (l.osatPercent.toFixed(0) + "%").padStart(4) : " N/A";
+      const coRank = l.companyRankDisplay ? ` (Co #${l.companyRankDisplay})` : "";
+      agenda += `  │ ${rank} │ ${name} │ ${grade}   │ ${hrs} │ ${sales} │ ${speed} │ ${osat}  │${coRank}\n`;
+    });
+    agenda += "  └────┴─────────────────────────┴───────┴───────┴────────┴──────┴───────┘\n\n";
+
+    // Best and worst leaders
+    const sortedLeaders = [...leaders].sort((a, b) => b.avgGradeScore - a.avgGradeScore);
+    if (sortedLeaders.length > 1) {
+      const top = sortedLeaders[0];
+      const bottom = sortedLeaders[sortedLeaders.length - 1];
+      agenda += `  ★ Top Leader:     ${top.name} — ${top.grade} (${top.avgGradeScore.toFixed(0)})\n`;
+      if (bottom.avgGradeScore < 80) {
+        agenda += `  ⚠ Needs Coaching: ${bottom.name} — ${bottom.grade} (${bottom.avgGradeScore.toFixed(0)})\n`;
+      }
+      agenda += "\n";
+    }
+  } else {
+    agenda += "  No leader ranking data available for this period.\n\n";
+  }
+
+  // Section 4: Leader Shout-Outs
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "4. LEADER SHOUT-OUTS & WINS\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (shoutOuts.length > 0) {
     shoutOuts.forEach(s => {
@@ -391,9 +441,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 4: Opportunity Day Parts
+  // Section 5: Opportunity Day Parts
   agenda += "───────────────────────────────────────────\n";
-  agenda += "4. OPPORTUNITY AREAS & WEAK DAYS\n";
+  agenda += "5. OPPORTUNITY AREAS & WEAK DAYS\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (opportunityDays.length > 0) {
     agenda += "  Lowest Performing Days:\n";
@@ -409,9 +459,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 5: Customer Service
+  // Section 6: Customer Service
   agenda += "───────────────────────────────────────────\n";
-  agenda += "5. CUSTOMER SERVICE (OSAT)\n";
+  agenda += "6. CUSTOMER SERVICE (OSAT)\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (avgOsat !== undefined) {
     agenda += `  Average OSAT:    ${avgOsat.toFixed(0)}% (${restaurant.totalOsatResponses} total responses)\n`;
@@ -434,9 +484,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 6: Speed of Service
+  // Section 7: Speed of Service
   agenda += "───────────────────────────────────────────\n";
-  agenda += "6. SPEED OF SERVICE\n";
+  agenda += "7. SPEED OF SERVICE\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (restaurant.avgSpeed !== undefined) {
     agenda += `  Avg Speed Attainment: ${Math.round(restaurant.avgSpeed)}%\n`;
@@ -453,9 +503,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 7: Staffing
+  // Section 8: Staffing
   agenda += "───────────────────────────────────────────\n";
-  agenda += "7. STAFFING & CREW\n";
+  agenda += "8. STAFFING & CREW\n";
   agenda += "───────────────────────────────────────────\n\n";
   agenda += `  Avg Staffing Diff:  ${restaurant.avgStaffingDiff >= 0 ? "+" : ""}${restaurant.avgStaffingDiff.toFixed(1)}\n`;
   if (restaurant.avgXp !== undefined) {
@@ -470,9 +520,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 8: Action Items
+  // Section 9: Action Items
   agenda += "═══════════════════════════════════════════\n";
-  agenda += "8. ACTION ITEMS (Next 7 Days)\n";
+  agenda += "9. ACTION ITEMS (Next 7 Days)\n";
   agenda += "═══════════════════════════════════════════\n\n";
 
   let actionNum = 1;
@@ -566,7 +616,32 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
   onOpenChange: (open: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const agenda = useMemo(() => generateRMMAgenda(restaurant, dateRange), [restaurant, dateRange]);
+
+  // Fetch leader data for this restaurant over the same period
+  const endDate = dateRange.length > 0 ? dateRange[dateRange.length - 1] : undefined;
+  const numDays = dateRange.length || 7;
+  const { data: leaderData } = useQuery({
+    queryKey: ["/api/leaders", endDate, numDays],
+    queryFn: async () => {
+      const params = new URLSearchParams({ days: String(numDays) });
+      if (endDate) params.set("date", endDate);
+      const res = await fetch(`/api/leaders?${params}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  // Extract leaders for this specific restaurant
+  const storeLeaders: LeaderRanking[] = useMemo(() => {
+    if (!leaderData?.storeEntries) return [];
+    const storeEntry = leaderData.storeEntries.find(
+      (s: { restaurantId: string }) => s.restaurantId === restaurant.restaurantId
+    );
+    return storeEntry?.leaders || [];
+  }, [leaderData, restaurant.restaurantId]);
+
+  const agenda = useMemo(() => generateRMMAgenda(restaurant, dateRange, storeLeaders), [restaurant, dateRange, storeLeaders]);
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(agenda);
