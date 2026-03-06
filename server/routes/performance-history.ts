@@ -5,7 +5,7 @@ import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, 
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
-import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
+import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesFromDetailBatch } from "../xenial-webhook";
 
 const router = Router();
 
@@ -60,60 +60,35 @@ router.get("/api/performance-history", async (req, res) => {
       }
     }
 
-    // Fetch all hourly sales data for the date range PLUS 7 days before for variance calculation
-    // hourlySales uses salesDate (timestamp) - we need to filter by date range
+    // Fetch all data in parallel for performance
     const expandedStartDate = new Date(`${dateRange[0]}T00:00:00Z`);
-    expandedStartDate.setDate(expandedStartDate.getDate() - 7); // Go back 7 days for comparison data
+    expandedStartDate.setDate(expandedStartDate.getDate() - 7);
     const startDateTs = expandedStartDate;
     const endDateTs = new Date(`${dateRange[dateRange.length - 1]}T23:59:59Z`);
-    const allHourlySales = await db.select().from(hourlySales)
-      .where(and(
-        gte(hourlySales.salesDate, startDateTs),
-        lte(hourlySales.salesDate, endDateTs)
-      ));
-
-    // Fetch all hourly labor data for the date range
-    const allHourlyLabor = await db.select().from(hourlyLabor)
-      .where(and(
-        gte(hourlyLabor.date, dateRange[0]),
-        lte(hourlyLabor.date, dateRange[dateRange.length - 1])
-      ));
-
-    // Fetch per-hour OSAT data for the date range (matches dashboard per-hour OSAT)
-    const allOsatData = await db.select().from(osatData)
-      .where(and(
-        gte(osatData.date, dateRange[0]),
-        lte(osatData.date, dateRange[dateRange.length - 1])
-      ));
-
-    // Fetch HME timer data for speed
-    const allHmeData = await db.select().from(hmeTimerData)
-      .where(and(
-        gte(hmeTimerData.date, dateRange[0]),
-        lte(hmeTimerData.date, dateRange[dateRange.length - 1])
-      ));
-
-    // Fetch POS order counts for transaction variance (current + comparison week)
     const txnExpandedStart = expandedStartDate.toISOString().split('T')[0];
     const txnExpandedEnd = endDateTs.toISOString().split('T')[0];
-    const posOrderCounts = await getAllHourlyPosOrderCountRange(txnExpandedStart, txnExpandedEnd);
+    const rangeStart = dateRange[0];
+    const rangeEnd = dateRange[dateRange.length - 1];
 
-    // Fetch POS sales data — overlays 7shifts sales (matches dashboard exactly)
-    const posSalesByKey = await getAllHourlyPosSalesRange(txnExpandedStart, txnExpandedEnd);
-
-    // Fetch hourly crew data for experience scores (XP)
-    const allCrewData = await db.select().from(hourlyCrew)
-      .where(and(
-        gte(hourlyCrew.date, dateRange[0]),
-        lte(hourlyCrew.date, dateRange[dateRange.length - 1])
-      ));
-
-    // Fetch daily weather data for the date range
-    const allWeatherData = await db.select().from(dailyWeather)
-      .where(and(
-        gte(dailyWeather.date, dateRange[0]),
-        lte(dailyWeather.date, dateRange[dateRange.length - 1])
-      ));
+    const [
+      allHourlySales,
+      allHourlyLabor,
+      allOsatData,
+      allHmeData,
+      posOrderCounts,
+      posSalesByKey,
+      allCrewData,
+      allWeatherData,
+    ] = await Promise.all([
+      db.select().from(hourlySales).where(and(gte(hourlySales.salesDate, startDateTs), lte(hourlySales.salesDate, endDateTs))),
+      db.select().from(hourlyLabor).where(and(gte(hourlyLabor.date, rangeStart), lte(hourlyLabor.date, rangeEnd))),
+      db.select().from(osatData).where(and(gte(osatData.date, rangeStart), lte(osatData.date, rangeEnd))),
+      db.select().from(hmeTimerData).where(and(gte(hmeTimerData.date, rangeStart), lte(hmeTimerData.date, rangeEnd))),
+      getAllHourlyPosOrderCountRange(txnExpandedStart, txnExpandedEnd),
+      getAllHourlyPosSalesRange(txnExpandedStart, txnExpandedEnd),
+      db.select().from(hourlyCrew).where(and(gte(hourlyCrew.date, rangeStart), lte(hourlyCrew.date, rangeEnd))),
+      db.select().from(dailyWeather).where(and(gte(dailyWeather.date, rangeStart), lte(dailyWeather.date, rangeEnd))),
+    ]);
 
     // Build weather lookup by restaurantId-date
     const weatherByKey = new Map<string, typeof allWeatherData[0]>();
@@ -122,10 +97,8 @@ router.get("/api/performance-history", async (req, res) => {
       weatherByKey.set(key, w);
     });
 
-    // Fetch last year's daily sales from historical_daily_sales for YoY bonus
-    // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
-    // Expand range by ±3 days to cover all possible DOW shifts (matches leaders.ts / leader-detail.ts)
-    const yoyDateMap = new Map<string, string>(); // currentDate -> dowMatchedYoyDate
+    // Compute YoY date mapping
+    const yoyDateMap = new Map<string, string>();
     for (const d of dateRange) {
       const dt = new Date(`${d}T12:00:00Z`);
       const yoy = new Date(dt);
@@ -143,27 +116,25 @@ router.get("/api/performance-history", async (req, res) => {
     yoyRangeEnd.setDate(yoyRangeEnd.getDate() + 3);
     const yoyStartStr = yoyRangeStart.toISOString().split('T')[0];
     const yoyEndStr = yoyRangeEnd.toISOString().split('T')[0];
-    const yoySalesData = await db.select().from(historicalDailySales).where(
-      and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))
-    );
-    // Map: "restaurantId-yoyDate" -> netSales
+    const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
+    const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
+
+    const [yoySalesData, yoyPosRows, allRestaurants, allMarkets, marketAssignments] = await Promise.all([
+      db.select().from(historicalDailySales).where(and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))),
+      db.select({
+        restaurantId: hourlySales.restaurantId,
+        salesDate: sql<string>`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`,
+        totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+      }).from(hourlySales).where(and(gte(hourlySales.salesDate, yoyPosStart), lte(hourlySales.salesDate, yoyPosEnd))).groupBy(hourlySales.restaurantId, sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`),
+      storage.getRestaurants(),
+      db.select().from(markets),
+      db.select().from(restaurantMarkets),
+    ]);
+
     const yoySalesMap = new Map<string, number>();
     for (const row of yoySalesData) {
       yoySalesMap.set(`${row.restaurantId}-${row.date}`, parseFloat(String(row.netSales)) || 0);
     }
-
-    // POS fallback for YoY data — fill gaps for restaurants without uploaded CSV data
-    // (matches yoy-bulk endpoint which also falls back to hourlySales)
-    const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
-    const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
-    const yoyPosRows = await db.select({
-      restaurantId: hourlySales.restaurantId,
-      salesDate: sql<string>`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`,
-      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
-    })
-      .from(hourlySales)
-      .where(and(gte(hourlySales.salesDate, yoyPosStart), lte(hourlySales.salesDate, yoyPosEnd)))
-      .groupBy(hourlySales.restaurantId, sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`);
     for (const row of yoyPosRows) {
       const key = `${row.restaurantId}-${row.salesDate}`;
       if (!yoySalesMap.has(key)) {
@@ -174,10 +145,6 @@ router.get("/api/performance-history", async (req, res) => {
       }
     }
 
-    // Get all restaurants and filter out training stores
-    const allRestaurants = await storage.getRestaurants();
-
-    // Helper function to determine restaurant status based on openDate
     const getRestaurantStatus = (openDate: string | Date | null | undefined): "training" | "new" | "established" => {
       if (!openDate) return "established";
       const today = new Date();
@@ -190,12 +157,7 @@ router.get("/api/performance-history", async (req, res) => {
       return daysOpen < 120 ? "new" : "established";
     };
 
-    // Filter out training stores
     const restaurantList = allRestaurants.filter(r => getRestaurantStatus(r.openDate) !== "training");
-
-    // Get markets
-    const allMarkets = await db.select().from(markets);
-    const marketAssignments = await db.select().from(restaurantMarkets);
 
     // Build market lookup (restaurant.id is string, rm.restaurantId is number, market.id is string)
     const restaurantToMarket = new Map<string, { id: string; name: string }>();
@@ -325,38 +287,31 @@ router.get("/api/performance-history", async (req, res) => {
       osatByKey.set(key, { osatPercent: pct, totalResponses: o.totalResponses });
     });
 
-    // Process each date - using PER-HOUR grade calculation matching dashboard exactly
-    // Pre-fetch attachment rates for each date (for The Closer bonus)
-    // Sequential to avoid exhausting the DB connection pool (each query fetches all POS orders with raw_json)
-    const attachmentByDateRestaurant = new Map<string, number>(); // key: "dateStr-restaurantId" -> categoriesAtTarget
-    for (const d of dateRange) {
-      try {
-        const dParts = d.split('-');
-        const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
-        const attachMap = await getAttachmentRatesFromDetail(dt);
-        for (const [restId, data] of attachMap) {
-          attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
-        }
-      } catch (e) { /* POS data may not be available */ }
+    // Batch-fetch attachment rates for the entire date range in one query
+    let attachmentByDateRestaurant = new Map<string, number>();
+    try {
+      attachmentByDateRestaurant = await getAttachmentRatesFromDetailBatch(dateRange[0], dateRange[dateRange.length - 1]);
+    } catch (e) { /* POS data may not be available */ }
+
+    const salesByDateRestaurant = new Map<string, typeof allHourlySales>();
+    for (const s of allHourlySales) {
+      const salesDateStr = s.salesDate.toISOString().split('T')[0];
+      const key = `${salesDateStr}-${s.restaurantId}`;
+      if (!salesByDateRestaurant.has(key)) salesByDateRestaurant.set(key, []);
+      salesByDateRestaurant.get(key)!.push(s);
+    }
+
+    const crewByDateRestaurant = new Map<string, typeof allCrewData>();
+    for (const c of allCrewData) {
+      const key = `${c.date}-${c.restaurantId}`;
+      if (!crewByDateRestaurant.has(key)) crewByDateRestaurant.set(key, []);
+      crewByDateRestaurant.get(key)!.push(c);
     }
 
     for (const dateStr of dateRange) {
-      const salesForDate = allHourlySales.filter(s => {
-        const salesDateStr = s.salesDate.toISOString().split('T')[0];
-        return salesDateStr === dateStr;
-      });
-      const crewForDate = allCrewData.filter(c => c.date === dateStr);
-
-      const salesByRestaurant = new Map<string, typeof salesForDate>();
-      salesForDate.forEach(s => {
-        const key = s.restaurantId;
-        if (!salesByRestaurant.has(key)) salesByRestaurant.set(key, []);
-        salesByRestaurant.get(key)!.push(s);
-      });
-
       for (const restaurant of restaurantList) {
-        const restaurantSales = salesByRestaurant.get(restaurant.id) || [];
-        const restaurantCrew = crewForDate.filter(c => c.restaurantId === restaurant.id);
+        const restaurantSales = salesByDateRestaurant.get(`${dateStr}-${restaurant.id}`) || [];
+        const restaurantCrew = crewByDateRestaurant.get(`${dateStr}-${restaurant.id}`) || [];
 
         // Check if ANY data exists (7shifts or POS) for this restaurant/date
         const hasPosData = Array.from({ length: 24 }, (_, h) => h).some(h => posSalesByKey.has(`${restaurant.id}-${dateStr}-${h}`));
@@ -386,12 +341,17 @@ router.get("/api/performance-history", async (req, res) => {
 
         // Calculate daily speed attainment from HME data (for display, not grading)
         let avgSpeed: number | undefined;
-        const restaurantHme = allHmeData.filter(h => h.date === dateStr && h.restaurantId === restaurant.id);
-        const hmeWithCars = restaurantHme.filter(h => h.carCount > 0 && h.carsUnder6Min > 0);
-        if (hmeWithCars.length > 0) {
-          const totalCars = hmeWithCars.reduce((sum, h) => sum + h.carCount, 0);
-          const totalUnder6 = hmeWithCars.reduce((sum, h) => sum + h.carsUnder6Min, 0);
-          avgSpeed = totalCars > 0 ? Math.round((totalUnder6 / totalCars) * 100) : undefined;
+        let hmeTotalCars = 0;
+        let hmeTotalUnder6 = 0;
+        for (let h = 0; h < 24; h++) {
+          const hmeRecord = hmeByKey.get(`${restaurant.id}-${dateStr}-${h}`);
+          if (hmeRecord && hmeRecord.carCount > 0 && hmeRecord.carsUnder6Min > 0) {
+            hmeTotalCars += hmeRecord.carCount;
+            hmeTotalUnder6 += hmeRecord.carsUnder6Min;
+          }
+        }
+        if (hmeTotalCars > 0) {
+          avgSpeed = Math.round((hmeTotalUnder6 / hmeTotalCars) * 100);
         }
 
         // OSAT for display - aggregate from per-hour OSAT data (same source as dashboard)

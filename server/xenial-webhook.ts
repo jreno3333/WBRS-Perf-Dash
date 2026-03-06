@@ -1,6 +1,7 @@
 import { db, posDb } from "./db";
 import { posOrders, locationMapping, restaurants } from "@shared/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
+import { countAttachmentCategoriesAtTarget } from "./lib/scoring";
 
 // Ensures the destination column exists before queries/inserts reference it.
 // Only runs the ALTER TABLE once per server lifetime.
@@ -1328,6 +1329,102 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
       categories: catData,
       overallAttachScore: Math.round(totalScore / categories.length),
     });
+  });
+
+  return result;
+}
+
+export async function getAttachmentRatesFromDetailBatch(startDate: string, endDate: string): Promise<Map<string, number>> {
+  const startOfRange = new Date(startDate + 'T00:00:00.000Z');
+  const endOfRange = new Date(endDate + 'T23:59:59.999Z');
+
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; name: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], { id: restaurant.id, name: restaurant.name });
+    }
+  }
+
+  const orders = await posDb
+    .select({
+      storeNumber: posOrders.storeNumber,
+      orderTotal: posOrders.orderTotal,
+      rawJson: posOrders.rawJson,
+      businessDate: posOrders.businessDate,
+    })
+    .from(posOrders)
+    .where(
+      and(
+        gte(posOrders.businessDate, startOfRange),
+        lt(posOrders.businessDate, endOfRange),
+        sql`${posOrders.rawJson} IS NOT NULL`
+      )
+    );
+
+  const categories = Object.keys(ATTACHMENT_CATEGORIES);
+
+  const restaurantDateData = new Map<string, {
+    totalOrders: number;
+    categoryHits: Record<string, number>;
+  }>();
+
+  for (const order of orders) {
+    const restaurantInfo = storeToRestaurant.get(order.storeNumber);
+    if (!restaurantInfo) continue;
+    const dateStr = order.businessDate.toISOString().split('T')[0];
+    const compositeKey = `${dateStr}-${restaurantInfo.id}`;
+
+    if (!restaurantDateData.has(compositeKey)) {
+      restaurantDateData.set(compositeKey, {
+        totalOrders: 0,
+        categoryHits: Object.fromEntries(categories.map(c => [c, 0])),
+      });
+    }
+
+    const entry = restaurantDateData.get(compositeKey)!;
+    entry.totalOrders++;
+
+    const items = extractItemsFromOrder(order.rawJson || '');
+    if (items.length === 0) continue;
+
+    for (const cat of categories) {
+      const catDef = ATTACHMENT_CATEGORIES[cat];
+      if (cat === 'dipping_sauces') {
+        const sauceCount = items.filter(item =>
+          item.itemType !== 'modifier' && classifyItem(item, catDef)
+        ).length;
+        const chickenEntreeCount = items.filter(item => isChickenWithIncludedSauce(item)).length;
+        if (sauceCount > chickenEntreeCount) {
+          entry.categoryHits[cat]++;
+        }
+      } else if (cat === 'whatasize') {
+        const hasUpsizedSide = items.some(item => isUpsizedMealSide(item));
+        if (hasUpsizedSide) {
+          entry.categoryHits[cat]++;
+        }
+      } else {
+        const hasAttachment = items.some(item => classifyItem(item, catDef));
+        if (hasAttachment) {
+          entry.categoryHits[cat]++;
+        }
+      }
+    }
+  }
+
+  const result = new Map<string, number>();
+  restaurantDateData.forEach((entry, compositeKey) => {
+    if (entry.totalOrders === 0) return;
+    const catData: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }> = {};
+    for (const cat of categories) {
+      const hits = entry.categoryHits[cat];
+      const attachRate = Math.round((hits / entry.totalOrders) * 1000) / 10;
+      const benchmark = ATTACHMENT_BENCHMARKS[cat].benchmark;
+      const vsTarget = Math.round((attachRate - benchmark) * 10) / 10;
+      catData[cat] = { attachRate, estimatedUnits: hits, benchmark, vsTarget };
+    }
+    result.set(compositeKey, countAttachmentCategoriesAtTarget(catData));
   });
 
   return result;
