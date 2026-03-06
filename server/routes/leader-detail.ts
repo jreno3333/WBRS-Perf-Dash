@@ -324,10 +324,11 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const dailyRawScores = new Map<string, number>();
 
     // Pre-fetch attachment rates per date for The Closer bonus
+    // Process sequentially to avoid overwhelming the POS database connection pool
     const attachmentByDateRestaurant = new Map<string, number>();
     {
       const uniqueDates = Array.from(new Set(Array.from(dailyMap.keys())));
-      await Promise.all(uniqueDates.map(async (d) => {
+      for (const d of uniqueDates) {
         try {
           const dParts = d.split('-');
           const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
@@ -336,7 +337,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
             attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
           }
         } catch (e) { /* POS data may not be available */ }
-      }));
+      }
     }
 
     const dailyEntries = Array.from(dailyMap.entries());

@@ -327,8 +327,9 @@ router.get("/api/performance-history", async (req, res) => {
 
     // Process each date - using PER-HOUR grade calculation matching dashboard exactly
     // Pre-fetch attachment rates for each date (for The Closer bonus)
+    // Process sequentially to avoid overwhelming the POS database connection pool
     const attachmentByDateRestaurant = new Map<string, number>(); // key: "dateStr-restaurantId" -> categoriesAtTarget
-    await Promise.all(dateRange.map(async (d) => {
+    for (const d of dateRange) {
       try {
         const dParts = d.split('-');
         const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
@@ -337,7 +338,7 @@ router.get("/api/performance-history", async (req, res) => {
           attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
         }
       } catch (e) { /* POS data may not be available */ }
-    }));
+    }
 
     for (const dateStr of dateRange) {
       const salesForDate = allHourlySales.filter(s => {
