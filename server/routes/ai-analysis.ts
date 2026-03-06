@@ -49,14 +49,17 @@ router.get("/api/ai-analysis", async (req, res) => {
     // Run all analysis queries in parallel
     const [
       highSalesHours,
+      highSalesHours1k,
       osatLeaders,
       destinationData,
       prevDestinationData,
       ootData,
       attachmentTrend,
     ] = await Promise.all([
-      // 1. Hours with sales over $2000
+      // 1a. Hours with sales over $2000
       getHighSalesHours(startDateStr, endDateStr, 2000),
+      // 1b. Hours with sales over $1000
+      getHighSalesHours(startDateStr, endDateStr, 1000),
       // 2. Highest OSAT scores
       getOsatLeaders(startDateStr, endDateStr),
       // 3 & 4. Destination breakdown (current period)
@@ -72,15 +75,18 @@ router.get("/api/ai-analysis", async (req, res) => {
     // Process dine-in % change
     const dineInChange = calculateDestinationChange(destinationData, prevDestinationData, "dine_in", restaurantMap);
     const appPercentages = calculateDestinationPercentages(destinationData, "app", restaurantMap);
+    const deliveryPercentages = calculateDeliveryPercentages(destinationData, restaurantMap);
 
     res.json({
       dateRange: { start: startDateStr, end: endDateStr, days: numDays },
       previousPeriod: { start: prevStartDateStr, end: prevEndDateStr },
       insights: {
         highSalesHours: formatHighSalesHours(highSalesHours, restaurantMap),
+        highSalesHours1k: formatHighSalesHours1k(highSalesHours1k, restaurantMap),
         osatLeaders: formatOsatLeaders(osatLeaders, restaurantMap),
         dineInChange,
         appPercentages,
+        deliveryPercentages,
         outsideOrderTakers: formatOOTData(ootData, restaurantMap),
         attachmentTrend,
       },
@@ -144,13 +150,13 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
   const mappings = await db.select().from(locationMapping);
   const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 
-  // Use COALESCE(destination, order_source) to catch app/3PD orders that may only have order_source set
-  const destExpr = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
-
+  // Fetch both destination and order_source separately so we can
+  // use order_source to determine app/3PD/delivery orders correctly
   const rows = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
-      destination: sql<string>`${destExpr}`,
+      destination: sql<string>`LOWER(${posOrders.destination})`,
+      orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
       orderCount: sql<number>`count(*)::int`,
       totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
     })
@@ -161,7 +167,7 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
         lte(posOrders.businessDate, endTs)
       )
     )
-    .groupBy(posOrders.storeNumber, sql`${destExpr}`);
+    .groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
 
   // Group by restaurant
   const result = new Map<string, Map<string, { orders: number; sales: number }>>();
@@ -172,7 +178,7 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
       result.set(restaurantId, new Map());
     }
     const destMap = result.get(restaurantId)!;
-    const dest = normalizeDestination(row.destination);
+    const dest = normalizeDestinationWithSource(row.destination, row.orderSource);
     const existing = destMap.get(dest) || { orders: 0, sales: 0 };
     existing.orders += row.orderCount;
     existing.sales += Number(row.totalSales);
@@ -312,6 +318,34 @@ function normalizeDestination(dest: string | null): string {
   return d;
 }
 
+/**
+ * Normalize destination using both the destination (physical lane) and order_source fields.
+ * order_source determines the channel (app, 3pd, delivery) more accurately than destination alone,
+ * since app/delivery orders picked up via drive-thru still have destination=dt1/dt2.
+ */
+function normalizeDestinationWithSource(dest: string | null, orderSource: string | null): string {
+  const d = (dest || "").toLowerCase().trim();
+  const src = (orderSource || "").toLowerCase().trim();
+
+  // App / mobile orders — check order_source first since app orders can arrive through any lane
+  if (src === "app" || src === "mobile" || src === "online") return "app";
+  // Third-party delivery — check order_source first
+  if (src === "3pd" || src.includes("3pd") || src.includes("doordash") || src.includes("uber") || src.includes("grubhub")) return "3pd";
+  // Delivery orders (non-3PD delivery)
+  if (src === "delivery" || src.includes("delivery")) return "delivery";
+
+  // Fall back to destination field for physical lane info
+  if (d === "in" || d === "dine-in" || d === "dine_in" || d.includes("dine")) return "dine_in";
+  if (d === "dt3") return "dt3_outside";
+  if (d === "dt1" || d === "dt2" || d === "drive-thru" || d === "drive_thru" || d === "pos") return "drive_thru";
+  // Also check destination for app/3pd if order_source was empty
+  if (d === "app" || d === "mobile" || d === "online") return "app";
+  if (d === "3pd" || d.includes("3pd") || d.includes("doordash") || d.includes("uber") || d.includes("grubhub")) return "3pd";
+  if (d === "delivery" || d.includes("delivery")) return "delivery";
+  if (!d && !src) return "unknown";
+  return d || src || "unknown";
+}
+
 function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
   // Group by restaurant
   const byRestaurant = new Map<string, { count: number; totalSales: number; peakSales: number; peakHour: number; peakDate: string }>();
@@ -342,6 +376,43 @@ function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
       peakDate: data.peakDate,
     }))
     .sort((a, b) => b.hoursOver2k - a.hoursOver2k);
+
+  return {
+    totalHours: rows.length,
+    byRestaurant: results,
+  };
+}
+
+function formatHighSalesHours1k(rows: any[], restaurantMap: Map<string, string>) {
+  // Group by restaurant
+  const byRestaurant = new Map<string, { count: number; totalSales: number; peakSales: number; peakHour: number; peakDate: string }>();
+
+  for (const row of rows) {
+    const name = restaurantMap.get(row.restaurantId) || row.restaurantId;
+    if (!byRestaurant.has(name)) {
+      byRestaurant.set(name, { count: 0, totalSales: 0, peakSales: 0, peakHour: 0, peakDate: "" });
+    }
+    const data = byRestaurant.get(name)!;
+    data.count++;
+    const sales = Number(row.actualSales);
+    data.totalSales += sales;
+    if (sales > data.peakSales) {
+      data.peakSales = sales;
+      data.peakHour = row.hour;
+      data.peakDate = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    }
+  }
+
+  const results = Array.from(byRestaurant.entries())
+    .map(([name, data]) => ({
+      restaurant: name,
+      hoursOver1k: data.count,
+      avgSalesPerHour: Math.round(data.totalSales / data.count),
+      peakSales: Math.round(data.peakSales),
+      peakHour: data.peakHour,
+      peakDate: data.peakDate,
+    }))
+    .sort((a, b) => b.hoursOver1k - a.hoursOver1k);
 
   return {
     totalHours: rows.length,
@@ -411,6 +482,30 @@ function calculateDestinationPercentages(
       restaurant: name,
       percentage,
       orders: destOrders,
+      totalOrders,
+    });
+  }
+
+  return results.sort((a, b) => b.percentage - a.percentage);
+}
+
+function calculateDeliveryPercentages(
+  data: Map<string, Map<string, { orders: number; sales: number }>>,
+  restaurantMap: Map<string, string>
+) {
+  const results: { restaurant: string; percentage: number; orders: number; totalOrders: number }[] = [];
+
+  for (const [restaurantId, destMap] of data) {
+    const name = restaurantMap.get(restaurantId) || restaurantId;
+    const totalOrders = Array.from(destMap.values()).reduce((sum, d) => sum + d.orders, 0);
+    // Combine 3pd and delivery orders for total delivery %
+    const deliveryOrders = (destMap.get("3pd")?.orders || 0) + (destMap.get("delivery")?.orders || 0);
+    const percentage = totalOrders > 0 ? Math.round((deliveryOrders / totalOrders) * 10000) / 100 : 0;
+
+    results.push({
+      restaurant: name,
+      percentage,
+      orders: deliveryOrders,
       totalOrders,
     });
   }
@@ -893,17 +988,17 @@ function buildTemplates(): QueryTemplate[] {
         const prevStartTs = new Date(params.prevStartDate + "T00:00:00Z");
         const prevEndTs = new Date(params.prevEndDate + "T23:59:59Z");
 
+        const selectFields = {
+          storeNumber: posOrders.storeNumber,
+          destination: sql<string>`LOWER(${posOrders.destination})`,
+          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
+          cnt: sql<number>`count(*)::int`,
+        };
+        const groupByFields = [posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`];
+
         const [current, previous] = await Promise.all([
-          posDb.select({
-            storeNumber: posOrders.storeNumber,
-            destination: sql<string>`${destCoalesce}`,
-            cnt: sql<number>`count(*)::int`,
-          }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`),
-          posDb.select({
-            storeNumber: posOrders.storeNumber,
-            destination: sql<string>`${destCoalesce}`,
-            cnt: sql<number>`count(*)::int`,
-          }).from(posOrders).where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`),
+          posDb.select(selectFields).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(...groupByFields),
+          posDb.select(selectFields).from(posOrders).where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs))).groupBy(...groupByFields),
         ]);
 
         function calcPct(rows: any[]) {
@@ -912,7 +1007,7 @@ function buildTemplates(): QueryTemplate[] {
             const rid = storeMap.get(r.storeNumber) || r.storeNumber;
             const d = byStore.get(rid) || { dineIn: 0, total: 0 };
             d.total += r.cnt;
-            if (normalizeDestination(r.destination) === "dine_in") d.dineIn += r.cnt;
+            if (normalizeDestinationWithSource(r.destination, r.orderSource) === "dine_in") d.dineIn += r.cnt;
             byStore.set(rid, d);
           }
           return byStore;
@@ -956,16 +1051,17 @@ function buildTemplates(): QueryTemplate[] {
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: sql<string>`${destCoalesce}`,
+          destination: sql<string>`LOWER(${posOrders.destination})`,
+          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
 
         const byStore = new Map<string, { app: number; total: number }>();
         for (const r of rows) {
           const rid = storeMap.get(r.storeNumber) || r.storeNumber;
           const d = byStore.get(rid) || { app: 0, total: 0 };
           d.total += r.cnt;
-          if (normalizeDestination(r.destination) === "app") d.app += r.cnt;
+          if (normalizeDestinationWithSource(r.destination, r.orderSource) === "app") d.app += r.cnt;
           byStore.set(rid, d);
         }
 
@@ -1003,16 +1099,18 @@ function buildTemplates(): QueryTemplate[] {
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: sql<string>`${destCoalesce}`,
+          destination: sql<string>`LOWER(${posOrders.destination})`,
+          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
 
         const byStore = new Map<string, { thirdParty: number; total: number }>();
         for (const r of rows) {
           const rid = storeMap.get(r.storeNumber) || r.storeNumber;
           const d = byStore.get(rid) || { thirdParty: 0, total: 0 };
           d.total += r.cnt;
-          if (normalizeDestination(r.destination) === "3pd") d.thirdParty += r.cnt;
+          const norm = normalizeDestinationWithSource(r.destination, r.orderSource);
+          if (norm === "3pd" || norm === "delivery") d.thirdParty += r.cnt;
           byStore.set(rid, d);
         }
 
@@ -1042,7 +1140,7 @@ function buildTemplates(): QueryTemplate[] {
     {
       id: "destination_full_breakdown",
       keywords: ["destination", "channel", "order type", "order breakdown", "where are orders", "order mix", "channel mix"],
-      description: "Full destination breakdown (dine-in, drive-thru, app, 3PD)",
+      description: "Full destination breakdown (dine-in, drive-thru, app, 3PD, delivery)",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
         const startTs = new Date(params.startDate + "T00:00:00Z");
@@ -1050,15 +1148,16 @@ function buildTemplates(): QueryTemplate[] {
 
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: sql<string>`${destCoalesce}`,
+          destination: sql<string>`LOWER(${posOrders.destination})`,
+          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`${destCoalesce}`);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
 
         const byStore = new Map<string, Record<string, number>>();
         for (const r of rows) {
           const rid = storeMap.get(r.storeNumber) || r.storeNumber;
           const d = byStore.get(rid) || {};
-          const dest = normalizeDestination(r.destination);
+          const dest = normalizeDestinationWithSource(r.destination, r.orderSource);
           d[dest] = (d[dest] || 0) + r.cnt;
           d._total = (d._total || 0) + r.cnt;
           byStore.set(rid, d);
@@ -1073,6 +1172,7 @@ function buildTemplates(): QueryTemplate[] {
               dineIn: `${Math.round(((d.dine_in || 0) / t) * 100)}%`,
               app: `${Math.round(((d.app || 0) / t) * 100)}%`,
               thirdParty: `${Math.round(((d["3pd"] || 0) / t) * 100)}%`,
+              delivery: `${Math.round(((d.delivery || 0) / t) * 100)}%`,
               oot: `${Math.round(((d.dt3_outside || 0) / t) * 100)}%`,
               total: t.toLocaleString(),
             };
@@ -1088,7 +1188,8 @@ function buildTemplates(): QueryTemplate[] {
             { key: "dineIn", label: "Dine-In", align: "center" },
             { key: "app", label: "App", align: "center" },
             { key: "thirdParty", label: "3PD", align: "center" },
-            { key: "oot", label: "OOT", align: "center" },
+            { key: "delivery", label: "Delivery", align: "center" },
+            { key: "oot", label: "Full Lane B", align: "center" },
             { key: "total", label: "Orders", align: "right" },
           ],
           rows: formatted,
@@ -1098,8 +1199,8 @@ function buildTemplates(): QueryTemplate[] {
     // ---- OOT ----
     {
       id: "outside_order_taker",
-      keywords: ["outside order", "oot", "dt3", "outside lane", "order taker", "outside dt"],
-      description: "Outside order taker (OOT/dt3) usage",
+      keywords: ["outside order", "oot", "dt3", "outside lane", "order taker", "outside dt", "full lane b", "lane b"],
+      description: "Full Lane B (outside order taker/dt3) usage",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
         const startTs = new Date(params.startDate + "T00:00:00Z");
@@ -1138,16 +1239,16 @@ function buildTemplates(): QueryTemplate[] {
 
         const activeCount = formatted.filter((r) => r.active === "Yes").length;
         return {
-          title: "Outside Order Taker Usage",
-          summary: `${activeCount} unit(s) ran outside order takers (DT3) during this period.`,
+          title: "Full Lane B Usage",
+          summary: `${activeCount} unit(s) ran Full Lane B (DT3) during this period.`,
           columns: [
             { key: "unit", label: "Unit", align: "left" },
-            { key: "active", label: "OOT Active", align: "center" },
-            { key: "orders", label: "OOT Orders", align: "right" },
+            { key: "active", label: "Active", align: "center" },
+            { key: "orders", label: "Full Lane B Orders", align: "right" },
             { key: "days", label: "Days Used", align: "center" },
           ],
           rows: formatted,
-          highlight: formatted[0] && formatted[0].active === "Yes" ? { label: "Most OOT Orders", value: formatted[0].unit, detail: `${formatted[0].orders} orders` } : undefined,
+          highlight: formatted[0] && formatted[0].active === "Yes" ? { label: "Most Full Lane B Orders", value: formatted[0].unit, detail: `${formatted[0].orders} orders` } : undefined,
         };
       },
     },
