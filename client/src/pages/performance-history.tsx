@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { NavBar } from "@/components/nav-bar";
 import { Link } from "wouter";
 import {
@@ -32,6 +34,10 @@ import {
   CloudDrizzle,
   GraduationCap,
   Sparkles,
+  ClipboardList,
+  Copy,
+  Check,
+  Printer,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -159,6 +165,340 @@ function WeatherIcon({ condition, className = "w-3 h-3" }: { condition: string; 
   }
 }
 
+function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): string {
+  const grades = restaurant.dailyGrades;
+  const startDate = dateRange.length > 0 ? formatDate(dateRange[0]) : "N/A";
+  const endDate = dateRange.length > 0 ? formatDate(dateRange[dateRange.length - 1]) : "N/A";
+
+  // Performance overview
+  const avgGradeNum = restaurant.avgGrade;
+  const avgLabel = restaurant.avgGradeLabel;
+  const totalSales = formatCurrency(restaurant.totalSales);
+  const avgVariance = restaurant.avgSalesVariance;
+
+  // Find best and worst days
+  const sortedByGrade = [...grades].sort((a, b) => b.grade - a.grade);
+  const bestDays = sortedByGrade.filter(d => d.gradeLabel.startsWith("A") || d.gradeLabel.startsWith("B"));
+  const weakDays = sortedByGrade.filter(d => d.gradeLabel.startsWith("D") || d.gradeLabel.startsWith("F"));
+  const cDays = sortedByGrade.filter(d => d.gradeLabel.startsWith("C"));
+
+  // Leader shout-outs: A-grade days and bonus days
+  const shoutOuts: string[] = [];
+  grades.forEach(day => {
+    const dayLabel = formatDate(day.date);
+    if (day.gradeLabel.startsWith("A")) {
+      shoutOuts.push(`${dayLabel}: Achieved ${day.gradeLabel} grade (score: ${day.grade.toFixed(0)})`);
+    }
+    if (day.bonuses && day.bonuses.length > 0) {
+      day.bonuses.forEach(b => {
+        shoutOuts.push(`${dayLabel}: ${b.label} (+${b.points} bonus pts)`);
+      });
+    }
+  });
+
+  // Opportunity days (worst performing)
+  const opportunityDays: string[] = [];
+  [...grades]
+    .sort((a, b) => a.grade - b.grade)
+    .slice(0, 3)
+    .forEach(day => {
+      const dayLabel = formatDate(day.date);
+      const issues: string[] = [];
+      if (day.salesVariance < 0) issues.push(`sales ${day.salesVariance.toFixed(1)}%`);
+      if (day.osatPercent !== undefined && day.osatPercent < 80) issues.push(`OSAT ${day.osatPercent.toFixed(0)}%`);
+      if (day.avgSpeed !== undefined && day.avgSpeed < 50) issues.push(`speed ${Math.round(day.avgSpeed)}%`);
+      if (day.staffingDiff < -2) issues.push(`understaffed by ${Math.abs(day.staffingDiff).toFixed(0)}`);
+      opportunityDays.push(`${dayLabel} (${day.gradeLabel}): ${issues.length > 0 ? issues.join(", ") : "below avg performance"}`);
+    });
+
+  // Customer service analysis
+  const osatDays = grades.filter(d => d.osatPercent !== undefined);
+  const avgOsat = restaurant.avgOsat;
+  const lowOsatDays = osatDays.filter(d => d.osatPercent! < 80);
+  const highOsatDays = osatDays.filter(d => d.osatPercent! >= 90);
+
+  // Speed analysis
+  const speedDays = grades.filter(d => d.avgSpeed !== undefined);
+  const lowSpeedDays = speedDays.filter(d => d.avgSpeed! < 50);
+
+  // Staffing analysis
+  const understaffedDays = grades.filter(d => d.staffingDiff < -2);
+
+  // Build the agenda
+  let agenda = "";
+  agenda += "═══════════════════════════════════════════\n";
+  agenda += "   RESTAURANT MANAGER MEETING (RMM) AGENDA\n";
+  agenda += "═══════════════════════════════════════════\n\n";
+  agenda += `Restaurant: ${restaurant.restaurantName}\n`;
+  agenda += `Location: ${restaurant.state}${restaurant.marketName ? ` — ${restaurant.marketName}` : ""}\n`;
+  agenda += `Review Period: ${startDate} – ${endDate}\n`;
+  agenda += `Generated: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}\n\n`;
+
+  // Section 1: Performance Summary
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "1. PERFORMANCE SUMMARY (Last 7 Days)\n";
+  agenda += "───────────────────────────────────────────\n\n";
+  agenda += `  Overall Grade:        ${avgLabel} (${avgGradeNum.toFixed(1)})\n`;
+  agenda += `  Total Sales:          ${totalSales}\n`;
+  agenda += `  Avg Sales Variance:   ${avgVariance >= 0 ? "+" : ""}${avgVariance.toFixed(1)}%\n`;
+  if (restaurant.avgSpeed !== undefined) {
+    agenda += `  Speed Attainment:     ${Math.round(restaurant.avgSpeed)}%\n`;
+  }
+  if (avgOsat !== undefined) {
+    agenda += `  OSAT:                 ${avgOsat.toFixed(0)}% (${restaurant.totalOsatResponses} responses)\n`;
+  }
+  if (restaurant.avgXp !== undefined) {
+    agenda += `  Crew Avg XP:          ${restaurant.avgXp.toFixed(0)}\n`;
+  }
+  agenda += `  Trend:                ${restaurant.gradeImprovement > 0 ? "↑ Improving" : restaurant.gradeImprovement < 0 ? "↓ Declining" : "→ Stable"} (${restaurant.gradeImprovement > 0 ? "+" : ""}${restaurant.gradeImprovement} days)\n\n`;
+
+  agenda += "  Daily Breakdown:\n";
+  grades.forEach(day => {
+    const dayLabel = formatDate(day.date);
+    const bonus = day.bonusPoints && day.bonusPoints > 0 ? ` ★+${day.bonusPoints}` : "";
+    agenda += `    ${dayLabel.padEnd(18)} ${day.gradeLabel.padEnd(4)} (${day.grade.toFixed(0).padStart(3)})  Sales: ${formatCurrency(day.totalSales).padStart(8)}  Var: ${(day.salesVariance >= 0 ? "+" : "") + day.salesVariance.toFixed(1) + "%"}${bonus}\n`;
+  });
+  agenda += "\n";
+
+  // Section 2: Leader Shout-Outs
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "2. LEADER SHOUT-OUTS & WINS\n";
+  agenda += "───────────────────────────────────────────\n\n";
+  if (shoutOuts.length > 0) {
+    shoutOuts.forEach(s => {
+      agenda += `  ★ ${s}\n`;
+    });
+  } else {
+    agenda += "  No A-grade days or bonuses this period.\n";
+    if (bestDays.length > 0) {
+      agenda += `  Best performance: ${formatDate(bestDays[0].date)} with ${bestDays[0].gradeLabel} (${bestDays[0].grade.toFixed(0)})\n`;
+    }
+  }
+  agenda += "\n";
+
+  // Section 3: Opportunity Day Parts
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "3. OPPORTUNITY AREAS & WEAK DAYS\n";
+  agenda += "───────────────────────────────────────────\n\n";
+  if (opportunityDays.length > 0) {
+    agenda += "  Lowest Performing Days:\n";
+    opportunityDays.forEach(d => {
+      agenda += `  ⚠ ${d}\n`;
+    });
+  }
+  if (weakDays.length > 0) {
+    agenda += `\n  D/F Grade Days: ${weakDays.length} of ${grades.length} days\n`;
+  }
+  if (cDays.length > 0) {
+    agenda += `  C Grade Days:   ${cDays.length} of ${grades.length} days\n`;
+  }
+  agenda += "\n";
+
+  // Section 4: Customer Service
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "4. CUSTOMER SERVICE (OSAT)\n";
+  agenda += "───────────────────────────────────────────\n\n";
+  if (avgOsat !== undefined) {
+    agenda += `  Average OSAT:    ${avgOsat.toFixed(0)}% (${restaurant.totalOsatResponses} total responses)\n`;
+    agenda += `  Target:          85%+\n`;
+    agenda += `  Status:          ${avgOsat >= 85 ? "✓ Meeting target" : avgOsat >= 80 ? "⚠ Close to target — push for improvement" : "✗ Below target — needs immediate focus"}\n\n`;
+    if (highOsatDays.length > 0) {
+      agenda += `  High OSAT Days (90%+): ${highOsatDays.length}\n`;
+      highOsatDays.forEach(d => {
+        agenda += `    ✓ ${formatDate(d.date)}: ${d.osatPercent!.toFixed(0)}% (${d.osatResponses || 0} responses)\n`;
+      });
+    }
+    if (lowOsatDays.length > 0) {
+      agenda += `  Low OSAT Days (<80%): ${lowOsatDays.length}\n`;
+      lowOsatDays.forEach(d => {
+        agenda += `    ✗ ${formatDate(d.date)}: ${d.osatPercent!.toFixed(0)}% (${d.osatResponses || 0} responses)\n`;
+      });
+    }
+  } else {
+    agenda += "  No OSAT data available for this period.\n";
+  }
+  agenda += "\n";
+
+  // Section 5: Speed of Service
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "5. SPEED OF SERVICE\n";
+  agenda += "───────────────────────────────────────────\n\n";
+  if (restaurant.avgSpeed !== undefined) {
+    agenda += `  Avg Speed Attainment: ${Math.round(restaurant.avgSpeed)}%\n`;
+    agenda += `  Target:               70%+\n`;
+    agenda += `  Status:               ${restaurant.avgSpeed >= 70 ? "✓ Meeting target" : restaurant.avgSpeed >= 50 ? "⚠ Needs improvement" : "✗ Critical — below 50%"}\n`;
+    if (lowSpeedDays.length > 0) {
+      agenda += `\n  Low Speed Days (<50%):\n`;
+      lowSpeedDays.forEach(d => {
+        agenda += `    ✗ ${formatDate(d.date)}: ${Math.round(d.avgSpeed!)}%\n`;
+      });
+    }
+  } else {
+    agenda += "  No speed data available for this period.\n";
+  }
+  agenda += "\n";
+
+  // Section 6: Staffing
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "6. STAFFING & CREW\n";
+  agenda += "───────────────────────────────────────────\n\n";
+  agenda += `  Avg Staffing Diff:  ${restaurant.avgStaffingDiff >= 0 ? "+" : ""}${restaurant.avgStaffingDiff.toFixed(1)}\n`;
+  if (restaurant.avgXp !== undefined) {
+    agenda += `  Crew Avg XP:        ${restaurant.avgXp.toFixed(0)} / 100\n`;
+    agenda += `  XP Status:          ${restaurant.avgXp >= 75 ? "✓ Experienced crew" : restaurant.avgXp >= 50 ? "⚠ Moderate experience" : "✗ Inexperienced — consider mentorship"}\n`;
+  }
+  if (understaffedDays.length > 0) {
+    agenda += `\n  Understaffed Days (diff < -2): ${understaffedDays.length}\n`;
+    understaffedDays.forEach(d => {
+      agenda += `    ⚠ ${formatDate(d.date)}: ${d.staffingDiff.toFixed(1)} staff difference\n`;
+    });
+  }
+  agenda += "\n";
+
+  // Section 7: Action Items
+  agenda += "═══════════════════════════════════════════\n";
+  agenda += "7. ACTION ITEMS (Next 7 Days)\n";
+  agenda += "═══════════════════════════════════════════\n\n";
+
+  let actionNum = 1;
+
+  // Grade-based actions
+  if (avgGradeNum < 70) {
+    agenda += `  ${actionNum}. [ ] CRITICAL: Overall grade below C — schedule daily check-ins with management team\n`;
+    actionNum++;
+  } else if (avgGradeNum < 80) {
+    agenda += `  ${actionNum}. [ ] Focus on moving from ${avgLabel} to B-range — identify top 2 areas for quick improvement\n`;
+    actionNum++;
+  }
+
+  // OSAT actions
+  if (avgOsat !== undefined && avgOsat < 85) {
+    agenda += `  ${actionNum}. [ ] Improve OSAT from ${avgOsat.toFixed(0)}% toward 85% target — review customer feedback and coach team on service standards\n`;
+    actionNum++;
+  }
+
+  // Speed actions
+  if (restaurant.avgSpeed !== undefined && restaurant.avgSpeed < 70) {
+    agenda += `  ${actionNum}. [ ] Improve speed attainment from ${Math.round(restaurant.avgSpeed)}% — review drive-thru processes and positioning\n`;
+    actionNum++;
+  }
+
+  // Staffing actions
+  if (understaffedDays.length >= 2) {
+    agenda += `  ${actionNum}. [ ] Address recurring understaffing (${understaffedDays.length} days below target) — review upcoming schedule and adjust\n`;
+    actionNum++;
+  }
+
+  // Sales actions
+  if (avgVariance < -3) {
+    agenda += `  ${actionNum}. [ ] Sales trending ${avgVariance.toFixed(1)}% below last week — implement suggestive selling initiatives\n`;
+    actionNum++;
+  }
+
+  // XP actions
+  if (restaurant.avgXp !== undefined && restaurant.avgXp < 50) {
+    agenda += `  ${actionNum}. [ ] Low crew experience (XP: ${restaurant.avgXp.toFixed(0)}) — assign mentors and prioritize training\n`;
+    actionNum++;
+  }
+
+  // Trend actions
+  if (restaurant.gradeImprovement < -1) {
+    agenda += `  ${actionNum}. [ ] Declining trend (${restaurant.gradeImprovement} days) — identify root causes and develop recovery plan\n`;
+    actionNum++;
+  }
+
+  // Weak day actions
+  if (weakDays.length > 0) {
+    const weakDayNames = weakDays.map(d => {
+      const name = formatDate(d.date).split(",")[0];
+      return name;
+    }).join(", ");
+    agenda += `  ${actionNum}. [ ] Focus on historically weak days (${weakDayNames}) — ensure strongest team members are scheduled\n`;
+    actionNum++;
+  }
+
+  // Always add a follow-up item
+  agenda += `  ${actionNum}. [ ] Review progress at next RMM and update action items\n`;
+  actionNum++;
+
+  // Shout-out continuation
+  if (shoutOuts.length > 0) {
+    agenda += `  ${actionNum}. [ ] Recognize team for ${shoutOuts.length} achievement(s) — share wins in pre-shift meetings\n`;
+  }
+
+  agenda += "\n───────────────────────────────────────────\n";
+  agenda += "  Notes / Additional Discussion:\n\n\n\n";
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "  Next Meeting Date: ___________________\n\n";
+
+  return agenda;
+}
+
+function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
+  restaurant: RestaurantHistory;
+  dateRange: string[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const agenda = useMemo(() => generateRMMAgenda(restaurant, dateRange), [restaurant, dateRange]);
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(agenda);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [agenda]);
+
+  const handlePrint = useCallback(() => {
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>RMM Agenda — ${restaurant.restaurantName}</title>
+            <style>
+              body { font-family: "Courier New", monospace; font-size: 12px; padding: 20px; white-space: pre-wrap; line-height: 1.4; }
+              @media print { body { padding: 0; } }
+            </style>
+          </head>
+          <body>${agenda.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  }, [agenda, restaurant.restaurantName]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 text-primary" />
+            RMM Agenda — {restaurant.restaurantName}
+          </DialogTitle>
+          <DialogDescription>
+            Restaurant Manager Meeting agenda based on the last 7 days of performance data.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex gap-2 mb-2">
+          <Button variant="outline" size="sm" onClick={handleCopy}>
+            {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
+            {copied ? "Copied!" : "Copy"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer className="w-4 h-4 mr-1" />
+            Print
+          </Button>
+        </div>
+        <ScrollArea className="flex-1 min-h-0 border rounded-md">
+          <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap font-mono">{agenda}</pre>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
   return (
     <div className="flex gap-1 flex-wrap">
@@ -242,8 +582,9 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
   );
 }
 
-function RestaurantCard({ restaurant }: { restaurant: RestaurantHistory }) {
+function RestaurantCard({ restaurant, dateRange }: { restaurant: RestaurantHistory; dateRange: string[] }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [rmmOpen, setRmmOpen] = useState(false);
 
   return (
     <Card className="mb-3">
@@ -307,10 +648,28 @@ function RestaurantCard({ restaurant }: { restaurant: RestaurantHistory }) {
         <CollapsibleContent>
           <CardContent className="pt-0">
             <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-medium mb-2">Daily Grade History</h4>
-                <GradeTimeline grades={restaurant.dailyGrades} />
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">Daily Grade History</h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRmmOpen(true);
+                  }}
+                >
+                  <ClipboardList className="w-4 h-4 mr-1.5" />
+                  RMM Agenda
+                </Button>
               </div>
+              <GradeTimeline grades={restaurant.dailyGrades} />
+
+              <RMMAgendaDialog
+                restaurant={restaurant}
+                dateRange={dateRange}
+                open={rmmOpen}
+                onOpenChange={setRmmOpen}
+              />
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="p-3 rounded-lg bg-muted/50">
@@ -651,7 +1010,7 @@ export default function PerformanceHistoryPage() {
               ) : (
                 <div>
                   {filteredRestaurants.map((restaurant) => (
-                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} />
+                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} />
                   ))}
                 </div>
               )}
