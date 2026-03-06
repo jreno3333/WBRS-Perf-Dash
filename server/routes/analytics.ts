@@ -12,8 +12,10 @@ router.get("/api/analytics/anniversaries", async (req, res) => {
     const { days = "30" } = req.query;
     const numDays = Math.min(parseInt(String(days)) || 30, 365);
 
-    const activeEmployees = await db.select().from(employees).where(eq(employees.active, true));
-    const allRestaurants = await db.select().from(restaurants);
+    const [activeEmployees, allRestaurants] = await Promise.all([
+      db.select().from(employees).where(eq(employees.active, true)),
+      db.select().from(restaurants),
+    ]);
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
     const today = new Date();
@@ -126,8 +128,9 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
     lastFriday.setDate(lastFriday.getDate() - 7);
     const lastFridayStr = lastFriday.toISOString().split("T")[0];
 
-    // Get daily sales for both weeks (last Saturday through this Friday)
-    const salesData = await db.select({
+    const partialDay = weekDays.find(wd => wd.isPast && !wd.isComplete);
+
+    const salesDataQuery = db.select({
       restaurantId: hourlySales.restaurantId,
       salesDate: hourlySales.salesDate,
       totalSales: sql<number>`sum(${hourlySales.actualSales}::numeric)`,
@@ -138,43 +141,43 @@ router.get("/api/analytics/weekly-forecast", async (req, res) => {
     )
     .groupBy(hourlySales.restaurantId, hourlySales.salesDate);
 
-    // Organize sales by date
-    const salesByDate = new Map<string, number>();
-    for (const row of salesData) {
-      const dateKey = row.salesDate.toISOString().split("T")[0];
-      salesByDate.set(dateKey, (salesByDate.get(dateKey) || 0) + (Number(row.totalSales) || 0));
-    }
-
-    // For the partial (current) day, get progress-matched last-week sales
-    // so the percentage matches the Summary card's apples-to-apples comparison.
-    // The Summary card compares today's actual (hours completed) vs last week's
-    // same hours only. Without this, we'd compare today vs last week's FULL day.
-    const partialDay = weekDays.find(wd => wd.isPast && !wd.isComplete);
+    let progressMatchedQuery: Promise<{ totalSales: number }[]> | null = null;
     let lastWeekProgressMatched: number | null = null;
+
     if (partialDay) {
-      // Get current hour in Central time
       const centralHourFormatter = new Intl.DateTimeFormat("en-US", {
         timeZone: "America/Chicago",
         hour: "numeric",
         hour12: false,
       });
       const currentCentralHour = parseInt(centralHourFormatter.format(new Date()), 10);
-      // Compare through completed hours (current hour - 1)
       const completedHourCutoff = currentCentralHour - 1;
-
       const lastWeekDate = new Date(partialDay.date + "T12:00:00");
       lastWeekDate.setDate(lastWeekDate.getDate() - 7);
       const lwDateStr = lastWeekDate.toISOString().split("T")[0];
 
-      const progressMatchedRows = await db.select({
+      progressMatchedQuery = db.select({
         totalSales: sql<number>`sum(${hourlySales.actualSales}::numeric)`,
       })
       .from(hourlySales)
       .where(
         sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${lwDateStr} AND ${hourlySales.hour} <= ${completedHourCutoff}`
       );
+    }
 
+    const [salesData, progressMatchedRows] = await Promise.all([
+      salesDataQuery,
+      progressMatchedQuery,
+    ]);
+
+    if (progressMatchedRows) {
       lastWeekProgressMatched = Number(progressMatchedRows[0]?.totalSales) || 0;
+    }
+
+    const salesByDate = new Map<string, number>();
+    for (const row of salesData) {
+      const dateKey = row.salesDate.toISOString().split("T")[0];
+      salesByDate.set(dateKey, (salesByDate.get(dateKey) || 0) + (Number(row.totalSales) || 0));
     }
 
     // Build weekly forecast
@@ -245,22 +248,21 @@ router.get("/api/analytics/consistency", async (req, res) => {
     extendedStart.setDate(extendedStart.getDate() - 7);
     const extStartStr = extendedStart.toISOString().split("T")[0];
 
-    // Fetch all hourly data for the window
-    const allSalesData = await db.select().from(hourlySales).where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${extStartStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${todayStr}`
-    );
-
-    const allLaborData = await db.select().from(hourlyLabor).where(
-      and(sql`${hourlyLabor.date} >= ${startDateStr}`, sql`${hourlyLabor.date} <= ${todayStr}`)
-    );
-
-    const allHmeData = await db.select().from(hmeTimerData).where(
-      and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, todayStr))
-    );
-
-    const allOsatData = await db.select().from(osatDataTable).where(
-      and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, todayStr))
-    );
+    const [allSalesData, allLaborData, allHmeData, allOsatData, allRestaurants] = await Promise.all([
+      db.select().from(hourlySales).where(
+        sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${extStartStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${todayStr}`
+      ),
+      db.select().from(hourlyLabor).where(
+        and(sql`${hourlyLabor.date} >= ${startDateStr}`, sql`${hourlyLabor.date} <= ${todayStr}`)
+      ),
+      db.select().from(hmeTimerData).where(
+        and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, todayStr))
+      ),
+      db.select().from(osatDataTable).where(
+        and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, todayStr))
+      ),
+      db.select().from(restaurants).where(eq(restaurants.isActive, true)),
+    ]);
 
     // Build lookups keyed by restaurantId-date-hour
     const salesByKey = new Map<string, number>();
@@ -351,7 +353,6 @@ router.get("/api/analytics/consistency", async (req, res) => {
       dateRange.push(d.toISOString().split("T")[0]);
     }
 
-    const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
     const restaurantIds = allRestaurants.map(r => r.id);
 
@@ -478,14 +479,15 @@ router.get("/api/analytics/schedule-compliance", async (req, res) => {
     startDate.setDate(startDate.getDate() - (numDays - 1));
     const startDateStr = startDate.toISOString().split("T")[0];
 
-    const laborData = await db.select().from(hourlyLabor).where(
-      and(
-        sql`${hourlyLabor.date} >= ${startDateStr}`,
-        sql`${hourlyLabor.date} <= ${endDateStr}`
-      )
-    );
-
-    const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
+    const [laborData, allRestaurants] = await Promise.all([
+      db.select().from(hourlyLabor).where(
+        and(
+          sql`${hourlyLabor.date} >= ${startDateStr}`,
+          sql`${hourlyLabor.date} <= ${endDateStr}`
+        )
+      ),
+      db.select().from(restaurants).where(eq(restaurants.isActive, true)),
+    ]);
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
     // Aggregate by restaurant — two passes so we can exclude operator-scheduled
@@ -611,46 +613,43 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
     const todayStr = date ? String(date) : centralFormatter.format(new Date());
 
-    // Fetch hourly sales, labor, and HME for today
-    const salesData = await db.select().from(hourlySales).where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${todayStr}`
-    );
-    const laborData = await db.select().from(hourlyLabor).where(
-      eq(hourlyLabor.date, todayStr)
-    );
-    const hmeData = await db.select().from(hmeTimerData).where(
-      eq(hmeTimerData.date, todayStr)
-    );
+    const lwDate = new Date(todayStr + "T12:00:00");
+    lwDate.setDate(lwDate.getDate() - 7);
+    const lwStr = lwDate.toISOString().split("T")[0];
+    const todayStart = new Date(todayStr + "T00:00:00");
+    const todayEnd = new Date(todayStr + "T23:59:59");
 
-    // Build lookups
+    const [salesData, laborData, hmeData, lwSalesData, allRestaurants, allDailySales] = await Promise.all([
+      db.select().from(hourlySales).where(
+        sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${todayStr}`
+      ),
+      db.select().from(hourlyLabor).where(
+        eq(hourlyLabor.date, todayStr)
+      ),
+      db.select().from(hmeTimerData).where(
+        eq(hmeTimerData.date, todayStr)
+      ),
+      db.select().from(hourlySales).where(
+        sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${lwStr}`
+      ),
+      db.select().from(restaurants).where(eq(restaurants.isActive, true)),
+      db.select().from(dailySales).where(
+        and(gte(dailySales.salesDate, todayStart), lte(dailySales.salesDate, todayEnd))
+      ),
+    ]);
+
     const laborByKey = new Map<string, typeof laborData[0]>();
     for (const l of laborData) laborByKey.set(`${l.restaurantId}-${l.hour}`, l);
 
     const hmeByKey = new Map<string, typeof hmeData[0]>();
     for (const h of hmeData) hmeByKey.set(`${h.restaurantId}-${h.hour}`, h);
 
-    // Last week sales for comparison
-    const lwDate = new Date(todayStr + "T12:00:00");
-    lwDate.setDate(lwDate.getDate() - 7);
-    const lwStr = lwDate.toISOString().split("T")[0];
-
-    const lwSalesData = await db.select().from(hourlySales).where(
-      sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${lwStr}`
-    );
     const lwByKey = new Map<string, number>();
     for (const s of lwSalesData) {
       lwByKey.set(`${s.restaurantId}-${s.hour}`, Number(s.actualSales) || 0);
     }
 
-    const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
-
-    // Fetch dailySales for all restaurants — used as denominator for accurate % lost
-    const todayStart = new Date(todayStr + "T00:00:00");
-    const todayEnd = new Date(todayStr + "T23:59:59");
-    const allDailySales = await db.select().from(dailySales).where(
-      and(gte(dailySales.salesDate, todayStart), lte(dailySales.salesDate, todayEnd))
-    );
     const dailySalesByRestaurant = new Map<string, number>();
     for (const d of allDailySales) {
       dailySalesByRestaurant.set(d.restaurantId, (parseFloat(d.totalSales || "0") / 100));
@@ -798,9 +797,10 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
     const startOfDay = new Date(dateStr + "T00:00:00.000Z");
     const endOfDay = new Date(dateStr + "T23:59:59.999Z");
 
-    // Get location mappings and restaurant timezones
-    const mappings = await db.select().from(locationMapping);
-    const allRestaurants = await db.select({ id: restaurants.id, timezone: restaurants.timezone }).from(restaurants);
+    const [mappings, allRestaurants] = await Promise.all([
+      db.select().from(locationMapping),
+      db.select({ id: restaurants.id, timezone: restaurants.timezone }).from(restaurants),
+    ]);
     const restaurantTzMap = new Map<string, string>();
     for (const r of allRestaurants) {
       restaurantTzMap.set(r.id, r.timezone || "America/New_York");
@@ -823,13 +823,11 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
     // Build per-restaurant, per-hour, per-quarter structure
     const restaurantHours = new Map<string, Map<number, { orders: number; sales: number }[]>>();
 
-    // Query each timezone group with its correct local time conversion
     const VALID_TIMEZONES = new Set(["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"]);
-    for (const [tz, storeNumbers] of tzToStores) {
-      // Validate timezone to safely inline it via sql.raw()
+    const tzQueries = Array.from(tzToStores.entries()).map(([tz, storeNumbers]) => {
       const safeTz = VALID_TIMEZONES.has(tz) ? tz : "America/New_York";
       const tzSql = sql.raw(`'${safeTz}'`);
-      const rows = await posDb
+      return posDb
         .select({
           storeNumber: posOrders.storeNumber,
           hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzSql})::int`,
@@ -850,7 +848,11 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
           sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzSql})`,
           sql`floor(extract(minute from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzSql}) / 15)`
         );
+    });
 
+    const tzResults = await Promise.all(tzQueries);
+
+    for (const rows of tzResults) {
       for (const row of rows) {
         const restaurantId = storeToRestaurantId.get(row.storeNumber);
         if (!restaurantId) continue;

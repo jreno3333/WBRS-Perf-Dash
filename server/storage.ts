@@ -25,13 +25,25 @@ import { getCurrentHourInTimezone, getTodayInTimezone, getNormalizedHourCutoff }
 import { deduplicateHourly } from "./utils/db-helpers";
 
 export class DatabaseStorage {
+  private _restaurantCache: { data: Restaurant[]; timestamp: number } | null = null;
+  private _restaurantCacheTTL = 60_000;
 
   async getRestaurants(): Promise<Restaurant[]> {
+    const now = Date.now();
+    if (this._restaurantCache && (now - this._restaurantCache.timestamp) < this._restaurantCacheTTL) {
+      return this._restaurantCache.data;
+    }
     const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
-    return allRestaurants.filter(r =>
+    const filtered = allRestaurants.filter(r =>
       !r.name.toLowerCase().includes('training') &&
       !r.name.toLowerCase().includes('development')
     );
+    this._restaurantCache = { data: filtered, timestamp: now };
+    return filtered;
+  }
+
+  invalidateRestaurantCache() {
+    this._restaurantCache = null;
   }
 
   async getRestaurant(id: string): Promise<Restaurant | undefined> {
@@ -67,24 +79,18 @@ export class DatabaseStorage {
       return { status: "established", daysOpen };
     };
 
-    // OPTIMIZED: Filter at DB level instead of fetching all rows
     const selectedDateStart = new Date(`${selectedDateStr}T00:00:00.000Z`);
     const selectedDateEnd = new Date(`${selectedDateStr}T23:59:59.999Z`);
     const lastWeekStart = new Date(`${lastWeekStr}T00:00:00.000Z`);
     const lastWeekEnd = new Date(`${lastWeekStr}T23:59:59.999Z`);
 
-    // Only fetch hourly sales for the two dates we need
-    const allHourlySales = await db.select().from(hourlySales).where(
-      and(
-        gte(hourlySales.salesDate, lastWeekStart),
-        lte(hourlySales.salesDate, selectedDateEnd)
-      )
-    );
-
-    // Only fetch hourly labor for the selected date
-    const allHourlyLabor = await db.select().from(hourlyLabor).where(
-      eq(hourlyLabor.date, selectedDateStr)
-    );
+    const [allHourlySales, allHourlyLabor, posHourlySales, posLastWeekHourlySales, allDailySales] = await Promise.all([
+      db.select().from(hourlySales).where(and(gte(hourlySales.salesDate, lastWeekStart), lte(hourlySales.salesDate, selectedDateEnd))),
+      db.select().from(hourlyLabor).where(eq(hourlyLabor.date, selectedDateStr)),
+      getAllHourlyPosSales(selectedDate),
+      getAllHourlyPosSales(lastWeek),
+      db.select().from(dailySales).where(and(gte(dailySales.salesDate, lastWeekStart), lte(dailySales.salesDate, lastWeekEnd))),
+    ]);
 
     const laborByKey = new Map<string, HourlyLabor>();
     allHourlyLabor.forEach(l => {
@@ -92,17 +98,6 @@ export class DatabaseStorage {
       const key = `${l.restaurantId}-${dateStr}-${l.hour}`;
       laborByKey.set(key, l);
     });
-
-    const posHourlySales = await getAllHourlyPosSales(selectedDate);
-    const posLastWeekHourlySales = await getAllHourlyPosSales(lastWeek);
-
-    // Only fetch daily sales for last week date
-    const allDailySales = await db.select().from(dailySales).where(
-      and(
-        gte(dailySales.salesDate, lastWeekStart),
-        lte(dailySales.salesDate, lastWeekEnd)
-      )
-    );
     const lastWeekDailySalesMap = new Map<string, number>();
     allDailySales.forEach(d => {
       const saleDate = new Date(d.salesDate).toISOString().split('T')[0];
@@ -121,23 +116,27 @@ export class DatabaseStorage {
       return saleDate === lastWeekStr;
     }));
 
+    const selectedByRestaurant = new Map<string, typeof selectedDateHourly>();
+    for (const s of selectedDateHourly) {
+      if (!selectedByRestaurant.has(s.restaurantId)) selectedByRestaurant.set(s.restaurantId, []);
+      selectedByRestaurant.get(s.restaurantId)!.push(s);
+    }
+    const lastWeekByRestaurant = new Map<string, typeof lastWeekHourly>();
+    for (const s of lastWeekHourly) {
+      if (!lastWeekByRestaurant.has(s.restaurantId)) lastWeekByRestaurant.set(s.restaurantId, []);
+      lastWeekByRestaurant.get(s.restaurantId)!.push(s);
+    }
+
     const restaurantSales: RestaurantSales[] = restaurantList.map(restaurant => {
-      const selectedDateRestaurantHours = selectedDateHourly.filter(
-        s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
-      );
-      const allSelectedDateHours = selectedDateHourly.filter(
-        s => s.restaurantId === restaurant.id
-      );
-      const lastWeekRestaurantHours = lastWeekHourly.filter(
-        s => s.restaurantId === restaurant.id && s.hour <= normalizedHourCutoff
-      );
+      const allSelectedDateHours = selectedByRestaurant.get(restaurant.id) || [];
+      const selectedDateRestaurantHours = allSelectedDateHours.filter(s => s.hour <= normalizedHourCutoff);
+      const allLastWeekHours = lastWeekByRestaurant.get(restaurant.id) || [];
+      const lastWeekRestaurantHours = allLastWeekHours.filter(s => s.hour <= normalizedHourCutoff);
 
       const restaurantCurrentHour = getCurrentHourInTimezone(restaurant.timezone);
       const restaurantCompletedHour = isToday ? restaurantCurrentHour - 1 : 23;
 
-      const lastWeekHoursForComparison = lastWeekHourly.filter(
-        s => s.restaurantId === restaurant.id && s.hour <= restaurantCompletedHour
-      );
+      const lastWeekHoursForComparison = allLastWeekHours.filter(s => s.hour <= restaurantCompletedHour);
 
       const posSalesForRestaurant = posHourlySales.get(restaurant.id);
       const posLastWeekSalesForRestaurant = posLastWeekHourlySales.get(restaurant.id);
@@ -201,9 +200,7 @@ export class DatabaseStorage {
             }
           });
         } else {
-          const lastWeekAllHoursForForecast = lastWeekHourly.filter(
-            s => s.restaurantId === restaurant.id
-          );
+          const lastWeekAllHoursForForecast = allLastWeekHours;
           if (lastWeekAllHoursForForecast.length > 0) {
             for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
               const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
@@ -259,13 +256,10 @@ export class DatabaseStorage {
             }
           });
         } else {
-          const lastWeekAllHours = lastWeekHourly.filter(
-            s => s.restaurantId === restaurant.id
-          );
-          if (lastWeekAllHours.length > 0) {
+          if (allLastWeekHours.length > 0) {
             for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
               const todayHour = allSelectedDateHours.find(s => s.hour === hour);
-              const lastWeekHour = lastWeekAllHours.find(s => s.hour === hour);
+              const lastWeekHour = allLastWeekHours.find(s => s.hour === hour);
               const forecastValue = parseFloat(todayHour?.projectedSales || '0') > 0
                 ? parseFloat(todayHour?.projectedSales || '0')
                 : parseFloat(lastWeekHour?.actualSales || '0');

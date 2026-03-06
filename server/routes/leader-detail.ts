@@ -42,11 +42,67 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const leaderInfo = leader[0];
     const userId = leaderInfo.sevenShiftsUserId;
 
-    const crewData = await db.select().from(hourlyCrew).where(
-      and(gte(hourlyCrew.date, startDateStr), sql`${hourlyCrew.date} <= ${endDateStr}`)
-    );
-    
-    // Debug: Check how many crew records match this leader
+    const detailExtStart = new Date(startDate);
+    detailExtStart.setDate(detailExtStart.getDate() - 7);
+    const detailExtStartStr = detailExtStart.toISOString().split('T')[0];
+
+    const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1); yoyStart.setDate(yoyStart.getDate() - 3);
+    const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1); yoyEnd.setDate(yoyEnd.getDate() + 3);
+    const yoyStartStr = yoyStart.toISOString().split("T")[0];
+    const yoyEndStr = yoyEnd.toISOString().split("T")[0];
+    const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
+    const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
+
+    const [
+      crewData,
+      laborData,
+      posSalesByKey,
+      posOrderCounts,
+      salesData,
+      hmeData,
+      hourlyOsatData,
+      allRestaurants,
+      yoySalesData,
+      yoyPosRows,
+      ootHours,
+    ] = await Promise.all([
+      db.select().from(hourlyCrew).where(
+        and(gte(hourlyCrew.date, startDateStr), sql`${hourlyCrew.date} <= ${endDateStr}`)
+      ),
+      db.select().from(hourlyLabor).where(
+        and(gte(hourlyLabor.date, startDateStr), sql`${hourlyLabor.date} <= ${endDateStr}`)
+      ),
+      getAllHourlyPosSalesRange(detailExtStartStr, endDateStr),
+      getAllHourlyPosOrderCountRange(detailExtStartStr, endDateStr),
+      db.select().from(hourlySales).where(
+        and(
+          gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, detailExtStartStr),
+          sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
+        )
+      ),
+      db.select().from(hmeTimerData).where(
+        and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
+      ),
+      db.select().from(osatDataTable).where(
+        and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
+      ),
+      db.select().from(restaurants),
+      db.select().from(historicalDailySales).where(
+        and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))
+      ),
+      db.select({
+        restaurantId: hourlySales.restaurantId,
+        salesDate: sql<string>`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`,
+        totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+      })
+        .from(hourlySales)
+        .where(and(gte(hourlySales.salesDate, yoyPosStart), lte(hourlySales.salesDate, yoyPosEnd)))
+        .groupBy(hourlySales.restaurantId, sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`),
+      getOotHoursByDateRange(startDateStr, endDateStr),
+    ]);
+
+    const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+
     const leaderCrewRecords = crewData.filter(c => {
       const members = (c.crewMembers as any[]) || [];
       return members.some((m: any) => m.userId === userId);
@@ -54,69 +110,10 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const leaderDates = [...new Set(leaderCrewRecords.map(c => c.date))].sort();
     console.log(`[LEADER-DETAIL] userId=${userId}, crewData total=${crewData.length}, leaderCrewRecords=${leaderCrewRecords.length}, dates=${leaderDates.join(', ')}`);
 
-    const laborData = await db.select().from(hourlyLabor).where(
-      and(gte(hourlyLabor.date, startDateStr), sql`${hourlyLabor.date} <= ${endDateStr}`)
-    );
-
-    // Extend sales range 7 days earlier to look up last week's sales for variance
-    const detailExtStart = new Date(startDate);
-    detailExtStart.setDate(detailExtStart.getDate() - 7);
-    const detailExtStartStr = detailExtStart.toISOString().split('T')[0];
-
-    // Use POS orders as primary sales source (includes 12am-5am hours)
-    // Falls back to 7shifts hourly_sales only if POS data is unavailable
-    const posSalesByKey = await getAllHourlyPosSalesRange(detailExtStartStr, endDateStr);
-
-    // Fetch POS order counts for transaction variance scoring
-    const posOrderCounts = await getAllHourlyPosOrderCountRange(detailExtStartStr, endDateStr);
-
-    // Also fetch 7shifts hourly_sales as fallback
-    const salesData = await db.select().from(hourlySales).where(
-      and(
-        gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, detailExtStartStr),
-        sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
-      )
-    );
-
-    const hmeData = await db.select().from(hmeTimerData).where(
-      and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
-    );
-
-    // Use hourly OSAT data instead of daily aggregates
-    const hourlyOsatData = await db.select().from(osatDataTable).where(
-      and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
-    );
-
-    const allRestaurants = await db.select().from(restaurants);
-    const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
-
-    // Fetch last year's daily sales from historical_daily_sales for YoY bonus
-    // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
-    // Expand range by ±3 days to cover all possible DOW shifts
-    const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1); yoyStart.setDate(yoyStart.getDate() - 3);
-    const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1); yoyEnd.setDate(yoyEnd.getDate() + 3);
-    const yoyStartStr = yoyStart.toISOString().split("T")[0];
-    const yoyEndStr = yoyEnd.toISOString().split("T")[0];
-    const yoySalesData = await db.select().from(historicalDailySales).where(
-      and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))
-    );
     const yoySalesMap = new Map<string, number>();
     for (const row of yoySalesData) {
       yoySalesMap.set(`${row.restaurantId}-${row.date}`, parseFloat(String(row.netSales)) || 0);
     }
-
-    // POS fallback for YoY data — fill gaps for restaurants without uploaded CSV data
-    // (matches yoy-bulk endpoint which also falls back to hourlySales)
-    const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
-    const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
-    const yoyPosRows = await db.select({
-      restaurantId: hourlySales.restaurantId,
-      salesDate: sql<string>`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`,
-      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
-    })
-      .from(hourlySales)
-      .where(and(gte(hourlySales.salesDate, yoyPosStart), lte(hourlySales.salesDate, yoyPosEnd)))
-      .groupBy(hourlySales.restaurantId, sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`);
     for (const row of yoyPosRows) {
       const key = `${row.restaurantId}-${row.salesDate}`;
       if (!yoySalesMap.has(key)) {
@@ -144,9 +141,6 @@ router.get("/api/people/leader-detail", async (req, res) => {
     for (const o of hourlyOsatData) {
       osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
     }
-
-    // OOT (dt3) hours — skip speed measurement for these hours
-    const ootHours = await getOotHoursByDateRange(startDateStr, endDateStr);
 
     type HourDetail = {
       hour: number;

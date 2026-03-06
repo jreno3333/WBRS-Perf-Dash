@@ -49,6 +49,7 @@ router.patch("/api/restaurants/:id", async (req, res) => {
 
     console.log(`[Restaurant Update] Applying updates:`, JSON.stringify(updates));
     await db.update(restaurants).set(updates).where(eq(restaurants.id, id));
+    storage.invalidateRestaurantCache();
 
     const updatedRestaurant = await db.select().from(restaurants).where(eq(restaurants.id, id));
     console.log(`[Restaurant Update] Result:`, JSON.stringify(updatedRestaurant[0]));

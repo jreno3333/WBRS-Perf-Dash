@@ -39,72 +39,66 @@ router.get("/api/leaderboard", async (req, res) => {
 
     const restaurantsWithWeather = [...leaderboard.restaurants];
 
-    if (useHistoricalWeather) {
-      const batchSize = 5;
-      for (let i = 0; i < restaurantsWithWeather.length; i += batchSize) {
-        const batch = restaurantsWithWeather.slice(i, i + batchSize);
-        const weatherResults = await Promise.all(
-          batch.map(async (r) => {
-            const restaurant = restaurantMap.get(r.restaurantId);
-            if (restaurant?.latitude && restaurant?.longitude) {
-              return await fetchHistoricalWeather(
-                parseFloat(String(restaurant.latitude)),
-                parseFloat(String(restaurant.longitude)),
-                targetDateStr
-              );
-            }
-            return null;
-          })
-        );
+    const dateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 
-        for (let j = 0; j < batch.length; j++) {
-          const weather = weatherResults[j];
-          if (weather) {
-            (restaurantsWithWeather[i + j] as any).weather = {
-              temp: weather.avgTemp,
-              highTemp: weather.highTemp,
-              lowTemp: weather.lowTemp,
-              condition: weather.condition,
-              humidity: 0,
-              windSpeed: 0,
-            };
+    const { getGoogleReviewsForAllRestaurants } = await import("../google-places");
+
+    const weatherPromise = Promise.all(
+      restaurantsWithWeather.map(async (r) => {
+        const restaurant = restaurantMap.get(r.restaurantId);
+        if (restaurant?.latitude && restaurant?.longitude) {
+          if (useHistoricalWeather) {
+            return await fetchHistoricalWeather(
+              parseFloat(String(restaurant.latitude)),
+              parseFloat(String(restaurant.longitude)),
+              targetDateStr
+            );
+          } else {
+            return await fetchWeather(
+              parseFloat(String(restaurant.latitude)),
+              parseFloat(String(restaurant.longitude))
+            );
           }
         }
+        return null;
+      })
+    );
 
-        if (i + batchSize < restaurantsWithWeather.length) {
-          await delay(100);
-        }
-      }
-    } else {
-      const batchSize = 5;
-      for (let i = 0; i < restaurantsWithWeather.length; i += batchSize) {
-        const batch = restaurantsWithWeather.slice(i, i + batchSize);
-        const weatherResults = await Promise.all(
-          batch.map(async (r) => {
-            const restaurant = restaurantMap.get(r.restaurantId);
-            if (restaurant?.latitude && restaurant?.longitude) {
-              return await fetchWeather(parseFloat(String(restaurant.latitude)), parseFloat(String(restaurant.longitude)));
-            }
-            return null;
-          })
-        );
-
-        for (let j = 0; j < batch.length; j++) {
-          (restaurantsWithWeather[i + j] as any).weather = weatherResults[j];
-        }
-
-        if (i + batchSize < restaurantsWithWeather.length) {
-          await delay(100);
-        }
-      }
-    }
-
-    const dateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
     console.log('[HME] Fetching drive-thru summary for date:', dateStr);
-    const hmeSummary = await getDailyDriveThruSummary(dateStr);
+    const [weatherSettled, hmeSettled, googleSettled, osatSettled] = await Promise.allSettled([
+      weatherPromise,
+      getDailyDriveThruSummary(dateStr),
+      getGoogleReviewsForAllRestaurants(targetDateStr),
+      getOsatForDate(targetDateStr),
+    ]);
+    const weatherResults = weatherSettled.status === 'fulfilled' ? weatherSettled.value : restaurantsWithWeather.map(() => null);
+    const hmeSummary = hmeSettled.status === 'fulfilled' ? hmeSettled.value : new Map();
+    const googleReviews = googleSettled.status === 'fulfilled' ? googleSettled.value : new Map();
+    const osatDataMap = osatSettled.status === 'fulfilled' ? osatSettled.value : new Map();
+    if (weatherSettled.status === 'rejected') console.error('[Leaderboard] Weather fetch failed:', weatherSettled.reason?.message || weatherSettled.reason);
+    if (hmeSettled.status === 'rejected') console.error('[Leaderboard] HME fetch failed:', hmeSettled.reason?.message || hmeSettled.reason);
+    if (googleSettled.status === 'rejected') console.error('[Leaderboard] Google Reviews fetch failed:', googleSettled.reason?.message || googleSettled.reason);
+    if (osatSettled.status === 'rejected') console.error('[Leaderboard] OSAT fetch failed:', osatSettled.reason?.message || osatSettled.reason);
     console.log('[HME] Got summary for', hmeSummary.size, 'restaurants');
 
-    for (const r of restaurantsWithWeather) {
+    for (let i = 0; i < restaurantsWithWeather.length; i++) {
+      const r = restaurantsWithWeather[i];
+      const weather = weatherResults[i];
+      if (weather) {
+        if (useHistoricalWeather) {
+          (r as any).weather = {
+            temp: (weather as any).avgTemp,
+            highTemp: (weather as any).highTemp,
+            lowTemp: (weather as any).lowTemp,
+            condition: (weather as any).condition,
+            humidity: 0,
+            windSpeed: 0,
+          };
+        } else {
+          (r as any).weather = weather;
+        }
+      }
+
       const hmeData = hmeSummary.get(r.restaurantId);
       if (hmeData) {
         (r as any).driveThru = {
@@ -115,12 +109,7 @@ router.get("/api/leaderboard", async (req, res) => {
           carsUnder6Min: hmeData.carsUnder6Min,
         };
       }
-    }
 
-    const { getGoogleReviewsForAllRestaurants } = await import("../google-places");
-    const googleReviews = await getGoogleReviewsForAllRestaurants(targetDateStr);
-
-    for (const r of restaurantsWithWeather) {
       const reviews = googleReviews.get(r.restaurantId);
       if (reviews) {
         (r as any).googleReviews = {
@@ -129,11 +118,7 @@ router.get("/api/leaderboard", async (req, res) => {
           newReviewsToday: reviews.newReviewsToday,
         };
       }
-    }
 
-    const osatDataMap = await getOsatForDate(targetDateStr);
-
-    for (const r of restaurantsWithWeather) {
       const osat = osatDataMap[r.restaurantId];
       if (osat) {
         (r as any).osat = {

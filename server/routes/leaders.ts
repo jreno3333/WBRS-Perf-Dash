@@ -35,57 +35,59 @@ router.get("/api/leaders", async (req, res) => {
     startDate.setDate(startDate.getDate() - (numDays - 1));
     const startDateStr = startDate.toISOString().split("T")[0];
 
-    const allRestaurants = await db.select().from(restaurants);
-    const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
-
-    const leaderEmployees = await db.select().from(employees).where(
-      and(
-        eq(employees.active, true),
-        sql`(${employees.position} ILIKE '%manager%' OR ${employees.position} ILIKE '%supervisor%' OR ${employees.type} IN ('manager', 'asst_manager'))`,
-        sql`${employees.position} NOT ILIKE '%team member trainer%'`
-      )
-    );
-
-    if (leaderEmployees.length === 0) {
-      return res.json({ top10: [], storeEntries: [], periodStart: startDateStr, periodEnd: endDateStr, totalEligible: 0 });
-    }
-
-    const crewData = await db.select().from(hourlyCrew).where(
-      and(gte(hourlyCrew.date, startDateStr), lte(hourlyCrew.date, endDateStr))
-    );
-
-    const laborData = await db.select().from(hourlyLabor).where(
-      and(
-        sql`${hourlyLabor.date} >= ${startDateStr}`,
-        sql`${hourlyLabor.date} <= ${endDateStr}`
-      )
-    );
-
     const extendedStartDate = new Date(startDate);
     extendedStartDate.setDate(extendedStartDate.getDate() - 7);
     const extendedStartDateStr = extendedStartDate.toISOString().split("T")[0];
 
-    // Use POS orders as primary sales source (includes 12am-5am hours)
-    const posSalesByKey = await getAllHourlyPosSalesRange(extendedStartDateStr, endDateStr);
+    const [
+      allRestaurants,
+      leaderEmployees,
+      crewData,
+      laborData,
+      posSalesByKey,
+      posOrderCounts,
+      salesData,
+      hmeData,
+      hourlyOsatData,
+    ] = await Promise.all([
+      db.select().from(restaurants),
+      db.select().from(employees).where(
+        and(
+          eq(employees.active, true),
+          sql`(${employees.position} ILIKE '%manager%' OR ${employees.position} ILIKE '%supervisor%' OR ${employees.type} IN ('manager', 'asst_manager'))`,
+          sql`${employees.position} NOT ILIKE '%team member trainer%'`
+        )
+      ),
+      db.select().from(hourlyCrew).where(
+        and(gte(hourlyCrew.date, startDateStr), lte(hourlyCrew.date, endDateStr))
+      ),
+      db.select().from(hourlyLabor).where(
+        and(
+          sql`${hourlyLabor.date} >= ${startDateStr}`,
+          sql`${hourlyLabor.date} <= ${endDateStr}`
+        )
+      ),
+      getAllHourlyPosSalesRange(extendedStartDateStr, endDateStr),
+      getAllHourlyPosOrderCountRange(extendedStartDateStr, endDateStr),
+      db.select().from(hourlySales).where(
+        and(
+          gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, extendedStartDateStr),
+          sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
+        )
+      ),
+      db.select().from(hmeTimerData).where(
+        and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
+      ),
+      db.select().from(osatDataTable).where(
+        and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
+      ),
+    ]);
 
-    // Fetch POS order counts for transaction variance scoring
-    const posOrderCounts = await getAllHourlyPosOrderCountRange(extendedStartDateStr, endDateStr);
+    const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
-    // Also fetch 7shifts hourly_sales as fallback
-    const salesData = await db.select().from(hourlySales).where(
-      and(
-        gte(sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`, extendedStartDateStr),
-        sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${endDateStr}`
-      )
-    );
-
-    const hmeData = await db.select().from(hmeTimerData).where(
-      and(gte(hmeTimerData.date, startDateStr), lte(hmeTimerData.date, endDateStr))
-    );
-
-    const hourlyOsatData = await db.select().from(osatDataTable).where(
-      and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
-    );
+    if (leaderEmployees.length === 0) {
+      return res.json({ top10: [], storeEntries: [], periodStart: startDateStr, periodEnd: endDateStr, totalEligible: 0 });
+    }
 
     const laborByKey = new Map<string, typeof laborData[0]>();
     for (const l of laborData) laborByKey.set(`${l.restaurantId}-${l.date}-${l.hour}`, l);
@@ -102,36 +104,33 @@ router.get("/api/leaders", async (req, res) => {
     const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
     for (const o of hourlyOsatData) osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
 
-    // OOT (dt3) hours — skip speed measurement for these hours
-    const ootHours = await getOotHoursByDateRange(startDateStr, endDateStr);
-
-    // Fetch last year's daily sales from historical_daily_sales for YoY bonus
-    // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
-    // Expand range by ±3 days to cover all possible DOW shifts
+    // Fetch OOT hours and YoY data in parallel
     const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1); yoyStart.setDate(yoyStart.getDate() - 3);
     const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1); yoyEnd.setDate(yoyEnd.getDate() + 3);
     const yoyStartStr = yoyStart.toISOString().split("T")[0];
     const yoyEndStr = yoyEnd.toISOString().split("T")[0];
-    const yoySalesData = await db.select().from(historicalDailySales).where(
-      and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))
-    );
+    const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
+    const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
+
+    const [ootHours, yoySalesData, yoyPosRows] = await Promise.all([
+      getOotHoursByDateRange(startDateStr, endDateStr),
+      db.select().from(historicalDailySales).where(
+        and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))
+      ),
+      db.select({
+        restaurantId: hourlySales.restaurantId,
+        salesDate: sql<string>`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`,
+        totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
+      })
+        .from(hourlySales)
+        .where(and(gte(hourlySales.salesDate, yoyPosStart), lte(hourlySales.salesDate, yoyPosEnd)))
+        .groupBy(hourlySales.restaurantId, sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`),
+    ]);
+
     const yoySalesMap = new Map<string, number>();
     for (const row of yoySalesData) {
       yoySalesMap.set(`${row.restaurantId}-${row.date}`, parseFloat(String(row.netSales)) || 0);
     }
-
-    // POS fallback for YoY data — fill gaps for restaurants without uploaded CSV data
-    // (matches yoy-bulk endpoint which also falls back to hourlySales)
-    const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
-    const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
-    const yoyPosRows = await db.select({
-      restaurantId: hourlySales.restaurantId,
-      salesDate: sql<string>`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`,
-      totalSales: sql<string>`SUM(CAST(${hourlySales.actualSales} AS numeric))`,
-    })
-      .from(hourlySales)
-      .where(and(gte(hourlySales.salesDate, yoyPosStart), lte(hourlySales.salesDate, yoyPosEnd)))
-      .groupBy(hourlySales.restaurantId, sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD')`);
     for (const row of yoyPosRows) {
       const key = `${row.restaurantId}-${row.salesDate}`;
       if (!yoySalesMap.has(key)) {
@@ -194,6 +193,22 @@ router.get("/api/leaders", async (req, res) => {
       }
     }
 
+    const crewByUserId = new Map<string, typeof crewData>();
+    for (const crew of crewData) {
+      const members = (crew.crewMembers as any[]) || [];
+      for (const m of members) {
+        if (m.userId != null) {
+          const uid = String(m.userId);
+          const existing = crewByUserId.get(uid);
+          if (existing) {
+            existing.push(crew);
+          } else {
+            crewByUserId.set(uid, [crew]);
+          }
+        }
+      }
+    }
+
     for (const leader of leaderEmployees) {
       const userId = leader.sevenShiftsUserId;
       const dailyAggregates = new Map<string, {
@@ -215,10 +230,8 @@ router.get("/api/leaders", async (req, res) => {
       let allSpeedCarsUnder6 = 0;
       let allOsatWeighted: { percent: number; responses: number }[] = [];
 
-      for (const crew of crewData) {
-        const members = (crew.crewMembers as any[]) || [];
-        const wasWorking = members.some(m => m.userId === userId);
-        if (!wasWorking) continue;
+      const leaderCrewData = crewByUserId.get(String(userId)) || [];
+      for (const crew of leaderCrewData) {
 
         workedAtRestaurants.set(crew.restaurantId, (workedAtRestaurants.get(crew.restaurantId) || 0) + 1);
 

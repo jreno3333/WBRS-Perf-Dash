@@ -3,6 +3,30 @@ import { posOrders, locationMapping, restaurants } from "@shared/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
 import { countAttachmentCategoriesAtTarget } from "./lib/scoring";
 
+let _storeMapCache: { data: Map<string, { id: string; name: string; timezone: string }>; timestamp: number } | null = null;
+const STORE_MAP_TTL = 120_000;
+
+async function getCachedStoreMap(): Promise<Map<string, { id: string; name: string; timezone: string }>> {
+  const now = Date.now();
+  if (_storeMapCache && (now - _storeMapCache.timestamp) < STORE_MAP_TTL) {
+    return _storeMapCache.data;
+  }
+  const allRestaurants = await db.select().from(restaurants);
+  const storeMap = new Map<string, { id: string; name: string; timezone: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeMap.set(match[1], {
+        id: restaurant.id,
+        name: restaurant.name,
+        timezone: restaurant.timezone || 'America/Chicago',
+      });
+    }
+  }
+  _storeMapCache = { data: storeMap, timestamp: now };
+  return storeMap;
+}
+
 // Ensures the destination column exists before queries/inserts reference it.
 // Only runs the ALTER TABLE once per server lifetime.
 let destinationColumnEnsured = false;
@@ -287,22 +311,12 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // Get all restaurants to build store number -> restaurant mapping with timezones
-  const allRestaurants = await db.select().from(restaurants);
-  
-  // Build mapping from store number to restaurant info (ID and timezone)
+  const fullStoreMap = await getCachedStoreMap();
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
-  for (const restaurant of allRestaurants) {
-    const match = restaurant.name.match(/^(\d{4})\s*-/);
-    if (match) {
-      storeToRestaurant.set(match[1], { 
-        id: restaurant.id, 
-        timezone: restaurant.timezone || 'America/Chicago' 
-      });
-    }
-  }
+  fullStoreMap.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, timezone: info.timezone });
+  });
 
-  // Get unique timezones to query separately (can't use restaurant timezone in SQL across DBs)
   const timezoneSet = new Set<string>();
   storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
   const timezones = Array.from(timezoneSet);
@@ -369,17 +383,11 @@ export async function getAllHourlyPosSalesRange(
   const startOfRange = paddedStart;
   const endOfRange = paddedEnd;
 
-  const allRestaurants = await db.select().from(restaurants);
+  const fullStoreMapRange = await getCachedStoreMap();
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
-  for (const restaurant of allRestaurants) {
-    const match = restaurant.name.match(/^(\d{4})\s*-/);
-    if (match) {
-      storeToRestaurant.set(match[1], {
-        id: restaurant.id,
-        timezone: restaurant.timezone || 'America/Chicago'
-      });
-    }
-  }
+  fullStoreMapRange.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, timezone: info.timezone });
+  });
 
   const timezoneSet = new Set<string>();
   storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
@@ -439,17 +447,11 @@ export async function getAllHourlyPosOrderCountRange(
   const paddedEnd = new Date(endDateStr + 'T23:59:59.999Z');
   paddedEnd.setDate(paddedEnd.getDate() + 1);
 
-  const allRestaurants = await db.select().from(restaurants);
+  const fullStoreMapOC = await getCachedStoreMap();
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
-  for (const restaurant of allRestaurants) {
-    const match = restaurant.name.match(/^(\d{4})\s*-/);
-    if (match) {
-      storeToRestaurant.set(match[1], {
-        id: restaurant.id,
-        timezone: restaurant.timezone || 'America/Chicago'
-      });
-    }
-  }
+  fullStoreMapOC.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, timezone: info.timezone });
+  });
 
   const timezoneSet = new Set<string>();
   storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
@@ -1338,14 +1340,11 @@ export async function getAttachmentRatesFromDetailBatch(startDate: string, endDa
   const startOfRange = new Date(startDate + 'T00:00:00.000Z');
   const endOfRange = new Date(endDate + 'T23:59:59.999Z');
 
-  const allRestaurants = await db.select().from(restaurants);
+  const fullStoreMapBatch = await getCachedStoreMap();
   const storeToRestaurant = new Map<string, { id: string; name: string }>();
-  for (const restaurant of allRestaurants) {
-    const match = restaurant.name.match(/^(\d{4})\s*-/);
-    if (match) {
-      storeToRestaurant.set(match[1], { id: restaurant.id, name: restaurant.name });
-    }
-  }
+  fullStoreMapBatch.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, name: info.name });
+  });
 
   const orders = await posDb
     .select({
