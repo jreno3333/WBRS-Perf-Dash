@@ -159,9 +159,18 @@ export default function ScoringGuidePage() {
         <ScoringTable title="Staffing vs. Labor Model" icon={Users} weight={GRADE_WEIGHTS.staffing} rows={staffingTable} />
 
         <Card className="border-none bg-muted/30">
-          <CardContent className="pt-4 text-xs text-muted-foreground">
-            <strong>Note on Speed:</strong> Speed is measured via HME timer attainment (% of cars under 6 minutes).
-            Lane configuration changes can temporarily affect this metric. It carries a reduced weight (15%) to account for these operational exceptions.
+          <CardContent className="pt-4 text-xs text-muted-foreground space-y-2">
+            <p>
+              <strong>Note on Speed:</strong> Speed is measured via HME timer attainment (% of cars under 6 minutes).
+              It carries a reduced weight (15%) to account for operational variability.
+            </p>
+            <p>
+              <strong>OOT / Outside Lane (DT#3) Exception:</strong> When the outside drive-thru lane is active during an hour
+              (detected via DT#3 orders), speed is <strong>automatically excluded</strong> from that hour's grade.
+              Ad-hoc lane configuration changes make HME timing unreliable, so it would be unfair to grade on it.
+              The remaining components (Sales, Transactions, OSAT, Staffing) redistribute proportionally to fill the 100% weight.
+              Speed data still appears in the dashboard for visibility — it just won't count toward your score.
+            </p>
           </CardContent>
         </Card>
 
