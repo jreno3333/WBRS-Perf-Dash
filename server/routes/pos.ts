@@ -355,11 +355,11 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
 
     const benchmarks: Record<string, { min: number; max: number; benchmark: number }> = {
       cheese: { min: 15, max: 45, benchmark: 30 },
-      bacon: { min: 8, max: 35, benchmark: 20 },
-      jalapenos: { min: 5, max: 25, benchmark: 15 },
-      dipping_sauces: { min: 15, max: 50, benchmark: 35 },
+      bacon: { min: 8, max: 35, benchmark: 15 },
+      jalapenos: { min: 5, max: 25, benchmark: 10 },
+      dipping_sauces: { min: 15, max: 50, benchmark: 30 },
       desserts: { min: 8, max: 35, benchmark: 20 },
-      whatasize: { min: 10, max: 45, benchmark: 30 },
+      whatasize: { min: 10, max: 45, benchmark: 15 },
     };
 
     const restaurantResults: Record<string, {
