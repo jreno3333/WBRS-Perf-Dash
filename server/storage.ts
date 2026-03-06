@@ -63,7 +63,7 @@ export class DatabaseStorage {
       if (openDateNorm > today) return { status: "training" };
       const diffTime = today.getTime() - openDateNorm.getTime();
       const daysOpen = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      if (daysOpen < 90) return { status: "new", daysOpen };
+      if (daysOpen < 120) return { status: "new", daysOpen };
       return { status: "established", daysOpen };
     };
 

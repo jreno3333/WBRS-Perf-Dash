@@ -570,7 +570,7 @@ router.get("/api/map-data", async (req, res) => {
           status = "training";
         } else {
           const daysSinceOpen = Math.floor((now.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysSinceOpen <= 90) {
+          if (daysSinceOpen <= 120) {
             status = "new";
           }
         }

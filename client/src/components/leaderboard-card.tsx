@@ -631,7 +631,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 )}
                 {restaurant.status === "new" && (
                   <Badge className="bg-blue-500 hover:bg-blue-600 flex-shrink-0 text-xs text-white" data-testid={`badge-new-unit-${restaurant.restaurantId}`}>
-                    NU {restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w${restaurant.daysOpen % 7}d` : `${restaurant.daysOpen || 0}d`}
+                    NU {restaurant.daysOpen && restaurant.daysOpen >= 7 ? `${Math.floor(restaurant.daysOpen / 7)}w` : `<1w`}
                   </Badge>
                 )}
               </div>

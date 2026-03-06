@@ -87,7 +87,7 @@ function getRestaurantStatus(openDateStr: string | null | undefined): { status: 
   }
   
   const daysOpen = differenceInDays(today, openDate);
-  if (daysOpen < 90) {
+  if (daysOpen < 120) {
     return { status: "new", daysOpen };
   }
   
@@ -237,7 +237,7 @@ export default function SettingsPage() {
                     <CardTitle>Restaurant Open Dates</CardTitle>
                     <CardDescription>
                       Set open dates for each restaurant. Units with future dates are in training mode (excluded from rankings).
-                      Units less than 90 days old show a "NEW UNIT" badge.
+                      Units less than 120 days old show a "NEW UNIT" badge.
                     </CardDescription>
                   </div>
                   <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
@@ -279,7 +279,7 @@ export default function SettingsPage() {
                         <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                           <Badge className="bg-blue-500 hover:bg-blue-600">NEW UNIT</Badge>
                           <span className="text-muted-foreground text-sm font-normal">
-                            ({newUnits.length} units - less than 90 days old)
+                            ({newUnits.length} units - less than 120 days old)
                           </span>
                         </h3>
                         <div className="grid gap-3">
@@ -368,8 +368,8 @@ export default function SettingsPage() {
                     <div>
                       <p className="font-medium">New Units</p>
                       <p className="text-sm text-muted-foreground">
-                        Open date is within the last 90 days. These units are included in rankings with a "NEW UNIT" badge.
-                        The badge is automatically removed after 90 days.
+                        Open date is within the last 120 days. These units are included in rankings with a "NEW UNIT" badge.
+                        The badge is automatically removed after 120 days.
                       </p>
                     </div>
                   </div>
@@ -378,7 +378,7 @@ export default function SettingsPage() {
                     <div>
                       <p className="font-medium">Established Units</p>
                       <p className="text-sm text-muted-foreground">
-                        Open date is more than 90 days ago (or not set). These units are fully included in all rankings and comparisons.
+                        Open date is more than 120 days ago (or not set). These units are fully included in all rankings and comparisons.
                       </p>
                     </div>
                   </div>
