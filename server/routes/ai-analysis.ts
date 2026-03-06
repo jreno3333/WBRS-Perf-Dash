@@ -150,13 +150,14 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
   const mappings = await db.select().from(locationMapping);
   const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 
-  // Fetch both destination and order_source separately so we can
-  // use order_source to determine app/3PD/delivery orders correctly
+  // Use a SQL CASE expression to classify orders correctly:
+  // order_source takes priority for app/3PD, destination for physical lane
+  const chExpr = destChannelExpr();
+
   const rows = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
-      destination: sql<string>`LOWER(${posOrders.destination})`,
-      orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
+      channel: sql<string>`${chExpr}`,
       orderCount: sql<number>`count(*)::int`,
       totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
     })
@@ -167,7 +168,7 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
         lte(posOrders.businessDate, endTs)
       )
     )
-    .groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
+    .groupBy(posOrders.storeNumber, chExpr);
 
   // Group by restaurant
   const result = new Map<string, Map<string, { orders: number; sales: number }>>();
@@ -178,7 +179,7 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
       result.set(restaurantId, new Map());
     }
     const destMap = result.get(restaurantId)!;
-    const dest = normalizeDestinationWithSource(row.destination, row.orderSource);
+    const dest = row.channel || "unknown";
     const existing = destMap.get(dest) || { orders: 0, sales: 0 };
     existing.orders += row.orderCount;
     existing.sales += Number(row.totalSales);
@@ -600,6 +601,22 @@ async function getStoreMapping() {
 // COALESCE expression for destination — falls back to order_source for app/3PD orders
 const destCoalesce = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
 
+// SQL CASE expression to classify order channel using both order_source and destination
+function destChannelExpr() {
+  return sql`CASE
+    WHEN LOWER(${posOrders.orderSource}) IN ('app', 'mobile', 'online') THEN 'app'
+    WHEN LOWER(${posOrders.orderSource}) LIKE '%3pd%' OR LOWER(${posOrders.orderSource}) IN ('doordash', 'ubereats', 'grubhub') THEN '3pd'
+    WHEN LOWER(${posOrders.orderSource}) LIKE '%delivery%' THEN 'delivery'
+    WHEN LOWER(${posOrders.destination}) IN ('in', 'dine-in') OR LOWER(${posOrders.destination}) LIKE '%dine%' THEN 'dine_in'
+    WHEN LOWER(${posOrders.destination}) = 'dt3' THEN 'dt3_outside'
+    WHEN LOWER(${posOrders.destination}) IN ('dt1', 'dt2', 'drive-thru', 'drive_thru') THEN 'drive_thru'
+    WHEN LOWER(${posOrders.destination}) IN ('app', 'mobile', 'online') THEN 'app'
+    WHEN LOWER(${posOrders.destination}) LIKE '%3pd%' OR LOWER(${posOrders.destination}) LIKE '%delivery%' THEN '3pd'
+    WHEN LOWER(${posOrders.orderSource}) = 'pos' THEN 'drive_thru'
+    ELSE COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}), 'unknown')
+  END`;
+}
+
 // Categories to exclude from product/item-level queries (non-food, modifiers, surcharges)
 const EXCLUDED_CATEGORIES = new Set([
   "modifiers", "modifier", "surcharges", "surcharge", "non-food items", "non-food",
@@ -988,17 +1005,19 @@ function buildTemplates(): QueryTemplate[] {
         const prevStartTs = new Date(params.prevStartDate + "T00:00:00Z");
         const prevEndTs = new Date(params.prevEndDate + "T23:59:59Z");
 
-        const selectFields = {
-          storeNumber: posOrders.storeNumber,
-          destination: sql<string>`LOWER(${posOrders.destination})`,
-          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
-          cnt: sql<number>`count(*)::int`,
-        };
-        const groupByFields = [posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`];
+        const chExpr = destChannelExpr();
 
         const [current, previous] = await Promise.all([
-          posDb.select(selectFields).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(...groupByFields),
-          posDb.select(selectFields).from(posOrders).where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs))).groupBy(...groupByFields),
+          posDb.select({
+            storeNumber: posOrders.storeNumber,
+            channel: sql<string>`${chExpr}`,
+            cnt: sql<number>`count(*)::int`,
+          }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, chExpr),
+          posDb.select({
+            storeNumber: posOrders.storeNumber,
+            channel: sql<string>`${chExpr}`,
+            cnt: sql<number>`count(*)::int`,
+          }).from(posOrders).where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs))).groupBy(posOrders.storeNumber, chExpr),
         ]);
 
         function calcPct(rows: any[]) {
@@ -1007,7 +1026,7 @@ function buildTemplates(): QueryTemplate[] {
             const rid = storeMap.get(r.storeNumber) || r.storeNumber;
             const d = byStore.get(rid) || { dineIn: 0, total: 0 };
             d.total += r.cnt;
-            if (normalizeDestinationWithSource(r.destination, r.orderSource) === "dine_in") d.dineIn += r.cnt;
+            if (r.channel === "dine_in") d.dineIn += r.cnt;
             byStore.set(rid, d);
           }
           return byStore;
@@ -1049,19 +1068,19 @@ function buildTemplates(): QueryTemplate[] {
         const startTs = new Date(params.startDate + "T00:00:00Z");
         const endTs = new Date(params.endDate + "T23:59:59Z");
 
+        const chExpr = destChannelExpr();
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: sql<string>`LOWER(${posOrders.destination})`,
-          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
+          channel: sql<string>`${chExpr}`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, chExpr);
 
         const byStore = new Map<string, { app: number; total: number }>();
         for (const r of rows) {
           const rid = storeMap.get(r.storeNumber) || r.storeNumber;
           const d = byStore.get(rid) || { app: 0, total: 0 };
           d.total += r.cnt;
-          if (normalizeDestinationWithSource(r.destination, r.orderSource) === "app") d.app += r.cnt;
+          if (r.channel === "app") d.app += r.cnt;
           byStore.set(rid, d);
         }
 
@@ -1097,20 +1116,19 @@ function buildTemplates(): QueryTemplate[] {
         const startTs = new Date(params.startDate + "T00:00:00Z");
         const endTs = new Date(params.endDate + "T23:59:59Z");
 
+        const chExpr = destChannelExpr();
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: sql<string>`LOWER(${posOrders.destination})`,
-          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
+          channel: sql<string>`${chExpr}`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, chExpr);
 
         const byStore = new Map<string, { thirdParty: number; total: number }>();
         for (const r of rows) {
           const rid = storeMap.get(r.storeNumber) || r.storeNumber;
           const d = byStore.get(rid) || { thirdParty: 0, total: 0 };
           d.total += r.cnt;
-          const norm = normalizeDestinationWithSource(r.destination, r.orderSource);
-          if (norm === "3pd" || norm === "delivery") d.thirdParty += r.cnt;
+          if (r.channel === "3pd" || r.channel === "delivery") d.thirdParty += r.cnt;
           byStore.set(rid, d);
         }
 
@@ -1146,19 +1164,19 @@ function buildTemplates(): QueryTemplate[] {
         const startTs = new Date(params.startDate + "T00:00:00Z");
         const endTs = new Date(params.endDate + "T23:59:59Z");
 
+        const chExpr = destChannelExpr();
         const rows = await posDb.select({
           storeNumber: posOrders.storeNumber,
-          destination: sql<string>`LOWER(${posOrders.destination})`,
-          orderSource: sql<string>`LOWER(${posOrders.orderSource})`,
+          channel: sql<string>`${chExpr}`,
           cnt: sql<number>`count(*)::int`,
-        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, sql`LOWER(${posOrders.destination})`, sql`LOWER(${posOrders.orderSource})`);
+        }).from(posOrders).where(and(gte(posOrders.businessDate, startTs), lte(posOrders.businessDate, endTs))).groupBy(posOrders.storeNumber, chExpr);
 
         const byStore = new Map<string, Record<string, number>>();
         for (const r of rows) {
           const rid = storeMap.get(r.storeNumber) || r.storeNumber;
           const d = byStore.get(rid) || {};
-          const dest = normalizeDestinationWithSource(r.destination, r.orderSource);
-          d[dest] = (d[dest] || 0) + r.cnt;
+          const ch = r.channel || "unknown";
+          d[ch] = (d[ch] || 0) + r.cnt;
           d._total = (d._total || 0) + r.cnt;
           byStore.set(rid, d);
         }
