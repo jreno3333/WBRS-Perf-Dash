@@ -2,9 +2,9 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
-import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses } from "../lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
 
 const router = Router();
 
@@ -323,6 +323,22 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const dailyDetails: DailyDetail[] = [];
     const dailyRawScores = new Map<string, number>();
 
+    // Pre-fetch attachment rates per date for The Closer bonus
+    const attachmentByDateRestaurant = new Map<string, number>();
+    {
+      const uniqueDates = Array.from(new Set(Array.from(dailyMap.keys())));
+      await Promise.all(uniqueDates.map(async (d) => {
+        try {
+          const dParts = d.split('-');
+          const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
+          const attachMap = await getAttachmentRatesFromDetail(dt);
+          for (const [restId, data] of attachMap) {
+            attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
+          }
+        } catch (e) { /* POS data may not be available */ }
+      }));
+    }
+
     const dailyEntries = Array.from(dailyMap.entries());
     for (const [dateKey, dayData] of dailyEntries) {
       if (dayData.hours.length === 0) continue;
@@ -382,12 +398,14 @@ router.get("/api/people/leader-detail", async (req, res) => {
         : undefined;
 
       // Apply daily bonus points (matches dashboard + trends)
+      const attachCatsAtTarget = attachmentByDateRestaurant.get(`${dateKey}-${dayData.restaurantId}`);
       const dailyBonusResult = dailyResult.score > 0 ? computeDailyBonuses({
         dailyOsatPercent: osatPercent,
         dailySurveyCount: osatResponses,
         dailySalesVariancePct: hasComparableSales ? dailySalesVariancePct : undefined,
         dailyTransactionVariancePct: undefined, // txn variance not aggregated at day level here
         dailyYoySalesVariancePct: dailyYoySalesVar,
+        attachmentCategoriesAtTarget: attachCatsAtTarget,
         hourlyScores: [dailyResult.score], // day-level aggregate
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
       const dailyGradeScore = dailyResult.score > 0 ? Math.min(dailyResult.score + dailyBonusResult.cappedBonus, 100) : 0;

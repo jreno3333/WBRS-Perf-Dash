@@ -14,6 +14,7 @@ import {
   gradeToMidpoint,
   formatCurrency,
   computeDailyBonuses,
+  countAttachmentCategoriesAtTarget,
 } from "@/lib/grading";
 
 const REVENUE_PORT_CONFIG = {
@@ -161,6 +162,7 @@ interface LeaderboardCardProps {
   notes?: RestaurantNote[];
   dateStr?: string;
   onNoteAdded?: () => void;
+  attachmentCategories?: Record<string, { attachRate: number }>;
 }
 
 function formatTenure(months: number): string {
@@ -360,7 +362,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
   );
 }
 
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded }: LeaderboardCardProps) {
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   
@@ -527,12 +529,14 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       ? ((dailyTotalSales - yoyPriorSales) / yoyPriorSales) * 100
       : undefined;
 
+    const attachCatsAtTarget = attachmentCategories ? countAttachmentCategoriesAtTarget(attachmentCategories) : undefined;
     dailyBonusResult = computeDailyBonuses({
       dailyOsatPercent: dailyOsatPct,
       dailySurveyCount: dailyOsatResponses,
       dailySalesVariancePct: dailySalesVar,
       dailyTransactionVariancePct: dailyTxnVar,
       dailyYoySalesVariancePct: dailyYoySalesVar,
+      attachmentCategoriesAtTarget: attachCatsAtTarget,
       hourlyScores: hourlyGradeScores,
     });
 

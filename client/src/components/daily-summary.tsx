@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency, GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor, gradeToMidpoint, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
+import { formatCurrency, GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor, gradeToMidpoint, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 import type { DailyBonusResult } from "@/lib/grading";
 import { DAYPARTS } from "@/lib/dayparts";
 import { UnitReportDialog } from "@/components/unit-report-dialog";
@@ -68,6 +68,7 @@ interface DailySummaryProps {
   expandUnitId?: string | null;
   onUnitExpanded?: () => void;
   notesByRestaurant?: Record<string, RestaurantNote[]>;
+  attachmentRatesByRestaurant?: Record<string, { categories: Record<string, { attachRate: number }> }>;
 }
 
 // Tennessee stores are identified by name pattern
@@ -141,7 +142,8 @@ interface UnitInsight {
 
 function analyzeUnit(
   restaurant: LeaderboardData["restaurants"][0],
-  hourlyData: HourlySalesData[] | undefined
+  hourlyData: HourlySalesData[] | undefined,
+  attachmentCategories?: Record<string, { attachRate: number }>,
 ): UnitInsight {
   const strengths: string[] = [];
   const concerns: string[] = [];
@@ -272,12 +274,14 @@ function analyzeUnit(
     ? ((dailyTotalSales - lastYearDaily) / lastYearDaily) * 100
     : undefined;
 
+  const attachCatsAtTarget = attachmentCategories ? countAttachmentCategoriesAtTarget(attachmentCategories) : undefined;
   const bonusResult = computeDailyBonuses({
     dailyOsatPercent: dailyOsatPct,
     dailySurveyCount: dailyOsatResponses,
     dailySalesVariancePct: dailySalesVar,
     dailyTransactionVariancePct: dailyTxnVar,
     dailyYoySalesVariancePct: dailyYoySalesVar,
+    attachmentCategoriesAtTarget: attachCatsAtTarget,
     hourlyScores: hourlyScores,
   });
 
@@ -1153,6 +1157,7 @@ export function DailySummary({
   expandUnitId,
   onUnitExpanded,
   notesByRestaurant,
+  attachmentRatesByRestaurant,
 }: DailySummaryProps) {
   // Fetch category issues for all dates in range
   const datesToFetch = dateRange && dateRange.length > 0 ? dateRange : (selectedDate ? [selectedDate] : []);
@@ -1278,7 +1283,7 @@ export function DailySummary({
   const unitInsights = useMemo(() => {
     const activeRestaurants = restaurants.filter(r => r.status !== "training");
     return activeRestaurants.map(r => {
-      const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId]);
+      const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId], attachmentRatesByRestaurant?.[r.restaurantId]?.categories);
       // Add market info if available
       if (markets) {
         const market = markets.find(m => m.restaurantIds?.includes(r.restaurantId));

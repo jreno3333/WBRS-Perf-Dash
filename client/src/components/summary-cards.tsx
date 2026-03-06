@@ -3,7 +3,7 @@ import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP } from "@/lib/grading";
+import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 
 interface WeeklySalesData {
   currentWeekStart: string;
@@ -36,6 +36,7 @@ interface SummaryCardsProps {
   weeklySalesData?: WeeklySalesData;
   checkAverageByRestaurant?: Record<string, CheckAverageData>;
   checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
+  attachmentRatesByRestaurant?: Record<string, { categories: Record<string, { attachRate: number }> }>;
 }
 
 function getExecutionGrade(
@@ -56,7 +57,7 @@ function getExecutionGrade(
   return { grade, color: getGradeColor(grade), score, hasGrade: true, components: [] };
 }
 
-export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: SummaryCardsProps) {
+export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, attachmentRatesByRestaurant }: SummaryCardsProps) {
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Exclude training units from totals
@@ -264,12 +265,15 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
           ? ((restTotalSales - restLastYearDailySales) / restLastYearDailySales) * 100
           : undefined;
 
+        const attachData = attachmentRatesByRestaurant?.[restaurantId];
+        const attachCatsAtTarget = attachData ? countAttachmentCategoriesAtTarget(attachData.categories) : undefined;
         const bonusResult = computeDailyBonuses({
           dailyOsatPercent: dailyOsatPct,
           dailySurveyCount: restOsatResponses,
           dailySalesVariancePct: dailySalesVar,
           dailyTransactionVariancePct: dailyTxnVar,
           dailyYoySalesVariancePct: dailyYoyVar,
+          attachmentCategoriesAtTarget: attachCatsAtTarget,
           hourlyScores: restaurantHourlyScores,
         });
 

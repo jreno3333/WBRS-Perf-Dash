@@ -561,9 +561,22 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                     </div>
                     {(showAllAttachments ? restaurants : restaurants.slice(0, 5)).map(r => {
                       const displayName = (r.restaurantName || r.id).replace(/^\d+\s*-\s*/, '');
+                      const catsAtTarget = categories.filter(cat => r.categories[cat]?.vsTarget >= 0).length;
                       return (
                         <div key={r.id} className="flex items-center justify-between text-xs">
-                          <span className="truncate mr-2 max-w-[100px]" title={r.restaurantName || r.id}>{displayName}</span>
+                          <span className="truncate mr-2 max-w-[100px]" title={r.restaurantName || r.id}>
+                            {displayName}
+                            {catsAtTarget >= 4 && (
+                              <BadgeWithTooltip
+                                title="The Closer"
+                                detail={`Hit ${catsAtTarget}/6 attachment rate targets today. Earned +${catsAtTarget} bonus points. The Closer badge is awarded when a unit meets or exceeds the target on 4 or more of the 6 upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize) — proving the team is closing the sale on every order.`}
+                              >
+                                <Badge variant="outline" className="text-[8px] ml-1 py-0 px-1 text-amber-600 border-amber-400 cursor-pointer">
+                                  🎯 Closer
+                                </Badge>
+                              </BadgeWithTooltip>
+                            )}
+                          </span>
                           <div className="flex items-center gap-1">
                             {categories.map(cat => {
                               const data = r.categories[cat];

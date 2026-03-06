@@ -3,6 +3,7 @@ import { db, posDb } from "../db";
 import { posOrders, restaurants } from "@shared/schema";
 import { desc, sql, gte, lt, and } from "drizzle-orm";
 import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant, getCheckAverageTrend, getAttachmentRatesFromDetail } from "../xenial-webhook";
+import { ATTACHMENT_BENCHMARKS } from "../lib/scoring";
 
 const router = Router();
 
@@ -354,12 +355,12 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
     };
 
     const benchmarks: Record<string, { min: number; max: number; benchmark: number }> = {
-      cheese: { min: 15, max: 45, benchmark: 30 },
-      bacon: { min: 8, max: 35, benchmark: 20 },
-      jalapenos: { min: 5, max: 25, benchmark: 15 },
-      dipping_sauces: { min: 15, max: 50, benchmark: 35 },
-      desserts: { min: 8, max: 35, benchmark: 20 },
-      whatasize: { min: 10, max: 45, benchmark: 30 },
+      cheese: { min: 15, max: 45, benchmark: ATTACHMENT_BENCHMARKS.cheese },
+      bacon: { min: 8, max: 35, benchmark: ATTACHMENT_BENCHMARKS.bacon },
+      jalapenos: { min: 5, max: 25, benchmark: ATTACHMENT_BENCHMARKS.jalapenos },
+      dipping_sauces: { min: 15, max: 50, benchmark: ATTACHMENT_BENCHMARKS.dipping_sauces },
+      desserts: { min: 8, max: 35, benchmark: ATTACHMENT_BENCHMARKS.desserts },
+      whatasize: { min: 10, max: 45, benchmark: ATTACHMENT_BENCHMARKS.whatasize },
     };
 
     const restaurantResults: Record<string, {

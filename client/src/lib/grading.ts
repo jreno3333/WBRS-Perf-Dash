@@ -9,16 +9,17 @@
 
 export const GRADE_WEIGHTS = { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10 } as const;
 
-export const BONUS_CAP = 10;
+export const BONUS_CAP = 15;
 
 export const BONUS_DEFINITIONS = [
   { id: "perfectOsat", label: "Perfect OSAT", points: 3, description: "100% OSAT with 5+ surveys for the day" },
   { id: "highVolumeOsat", label: "High-Volume OSAT", points: 2, description: "85%+ OSAT with 10+ surveys for the day" },
   { id: "salesGrowth", label: "Sales Growth", points: 2, description: "Daily sales 5%+ above same day last week" },
   { id: "transactionGrowth", label: "Transaction Growth", points: 2, description: "Transaction count 5%+ above same day last week" },
-  { id: "recoveryKicker", label: "Recovery", points: 3, description: "Had 2+ hours graded C or below, but daily avg still B- or better" },
+  { id: "recoveryKicker", label: "Recovery", points: 2, description: "Had 2+ hours graded C or below, but daily avg still B- or better" },
   { id: "consistency", label: "Consistency", points: 2, description: "No hour graded below B for the entire day" },
   { id: "yoyGrowth", label: "YoY Growth", points: 2, description: "Daily sales above same day last year (any amount)" },
+  { id: "theCloser", label: "The Closer", points: 4, description: "Hit 4+ of 6 attachment rate targets for the day (+1 pt per category at target)" },
 ] as const;
 
 export type BonusId = typeof BONUS_DEFINITIONS[number]["id"];
@@ -34,6 +35,32 @@ export interface DailyBonusResult {
   bonuses: BonusResult[];
   totalBonus: number;
   cappedBonus: number;
+}
+
+// ──────────────────────────────────────────
+// Attachment rate benchmarks (for The Closer bonus)
+// ──────────────────────────────────────────
+
+export const ATTACHMENT_BENCHMARKS: Record<string, number> = {
+  cheese: 30,
+  bacon: 15,
+  jalapenos: 10,
+  dipping_sauces: 30,
+  desserts: 20,
+  whatasize: 15,
+};
+
+/** Count how many of the 6 attachment categories are at or above their benchmark */
+export function countAttachmentCategoriesAtTarget(
+  categories: Record<string, { attachRate: number }>,
+): number {
+  let count = 0;
+  for (const [cat, benchmark] of Object.entries(ATTACHMENT_BENCHMARKS)) {
+    if (categories[cat] && categories[cat].attachRate >= benchmark) {
+      count++;
+    }
+  }
+  return count;
 }
 
 // ──────────────────────────────────────────
@@ -228,6 +255,8 @@ export interface DailyBonusInput {
   dailySalesVariancePct?: number;
   dailyTransactionVariancePct?: number;
   dailyYoySalesVariancePct?: number;
+  /** Number of attachment rate categories at or above target (0-6) */
+  attachmentCategoriesAtTarget?: number;
   hourlyScores: number[];
 }
 
@@ -270,6 +299,11 @@ export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
   // Consistency: no hour below B (83)
   if (input.hourlyScores.length >= 4 && input.hourlyScores.every(s => s >= 83)) {
     bonuses.push({ ...BONUS_DEFINITIONS[5] });
+  }
+
+  // The Closer: 1 bonus point per attachment category at target, requires 4+/6
+  if (input.attachmentCategoriesAtTarget !== undefined && input.attachmentCategoriesAtTarget >= 4) {
+    bonuses.push({ ...BONUS_DEFINITIONS[7], points: input.attachmentCategoriesAtTarget });
   }
 
   const totalBonus = bonuses.reduce((sum, b) => sum + b.points, 0);
