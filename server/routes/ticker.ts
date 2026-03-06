@@ -214,6 +214,7 @@ router.get("/api/ticker/milestone-config", async (_req: Request, res: Response) 
             fastestDriveThru: true,
             topCheckAverage: true,
             paceLeader: true,
+            hourlyRateBadge: true,
           },
         },
       });
@@ -625,6 +626,53 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
         msg: `Pace Leader of the Day: ${leader.name} at +${leader.pace.toFixed(1)}% vs last week (${fmtDollars(leader.todaySales)} today, ${fmtDollars(leader.dollarsAhead)} ahead)!`,
         priority: "high",
       });
+    }
+  }
+
+  // ── 6. Hourly Rate Badges ($750+ Contender → $2300+ Legendary) ─────────
+
+  if (types.hourlyRateBadge) {
+    // Check each store's best single-hour sales for today
+    const todayHourlyAllResult = await db.execute(sql`
+      SELECT DISTINCT ON (restaurant_id, hour) restaurant_id, hour, actual_sales
+      FROM hourly_sales
+      WHERE sales_date::date = ${dateStr}::date
+      ORDER BY restaurant_id, hour, scraped_at DESC NULLS LAST
+    `);
+    const todayHourlyAll = (todayHourlyAllResult.rows || []) as { restaurant_id: string; hour: number; actual_sales: string }[];
+
+    // Find each store's peak hour
+    const peakByStore: Record<string, { sales: number; hour: number }> = {};
+    for (const row of todayHourlyAll) {
+      const sales = parseFloat(row.actual_sales);
+      if (!peakByStore[row.restaurant_id] || sales > peakByStore[row.restaurant_id].sales) {
+        peakByStore[row.restaurant_id] = { sales, hour: row.hour };
+      }
+    }
+
+    const RATE_TIERS = [
+      { threshold: 2300, label: "LEGENDARY", emoji: "🏆" },
+      { threshold: 2000, label: "ULTRA", emoji: "💎" },
+      { threshold: 1500, label: "ELITE", emoji: "🔥" },
+      { threshold: 1000, label: "PRO", emoji: "⭐" },
+      { threshold: 750, label: "CONTENDER", emoji: "💪" },
+    ];
+
+    for (const [rid, peak] of Object.entries(peakByStore)) {
+      if (peak.sales < 750) continue;
+      const restaurant = restaurantMap.get(rid);
+      if (!restaurant) continue;
+      const name = restaurant.unitNumber || restaurant.name;
+      const localTime = fmtHourLocal(peak.hour, restaurant.timezone || "America/Chicago");
+
+      // Find the highest tier achieved
+      const tier = RATE_TIERS.find(t => peak.sales >= t.threshold);
+      if (tier) {
+        milestones.push({
+          msg: `${tier.emoji} ${name} earned ${tier.label} status! ${fmtDollars(peak.sales)}/hr at ${localTime}!`,
+          priority: tier.threshold >= 2000 ? "urgent" : tier.threshold >= 1000 ? "high" : "normal",
+        });
+      }
     }
   }
 

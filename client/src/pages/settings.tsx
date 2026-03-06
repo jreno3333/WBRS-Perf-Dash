@@ -3026,6 +3026,7 @@ function MilestoneConfigCard() {
     fastestDriveThru: "Fastest Drive-Thru",
     topCheckAverage: "Top Check Average",
     paceLeader: "Pace Race Leader",
+    hourlyRateBadge: "Hourly Rate Badges ($750+ Contender → $2300+ Legendary)",
   };
 
   return (

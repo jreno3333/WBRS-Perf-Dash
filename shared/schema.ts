@@ -820,12 +820,14 @@ export const milestoneConfig = pgTable("milestone_config", {
     fastestDriveThru: boolean;   // "Fastest drive-thru hour goes to 1679!"
     topCheckAverage: boolean;    // "Highest check average this hour: 1679!"
     paceLeader: boolean;         // "1679 is leading the pace race!"
+    hourlyRateBadge: boolean;    // Badge tiers: $750 Contender, $1000 Pro, $1500 Elite, $2000 Ultra, $2300 Legendary
   }>().notNull().default({
     hourlyRecord: true,
     dailySalesRecord: true,
     fastestDriveThru: true,
     topCheckAverage: true,
     paceLeader: true,
+    hourlyRateBadge: true,
   }),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: text("updated_by"),

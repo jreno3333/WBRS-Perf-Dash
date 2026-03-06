@@ -32,7 +32,11 @@ import {
   CloudFog,
   CloudDrizzle,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Trophy,
+  Flame,
+  Diamond,
+  Zap,
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -128,6 +132,9 @@ interface UnitInsight {
   crewAvgCount?: number;
   daypartGrades?: { id: string; label: string; shortLabel: string; grade: string; score: number; color: string }[];
   bonusResult?: DailyBonusResult;
+  peakHourlySales?: number;
+  peakHour?: number;
+  hourlyRateTier?: { label: string; threshold: number; color: string } | null;
 }
 
 // getGradeLabel / GRADE_WEIGHTS imported from @/lib/grading
@@ -411,6 +418,31 @@ function analyzeUnit(
     }
   }
 
+  // Compute peak hourly sales for rate badge
+  const RATE_TIERS = [
+    { threshold: 2300, label: "LEGENDARY", color: "text-yellow-500 border-yellow-500/30 bg-yellow-500/10" },
+    { threshold: 2000, label: "ULTRA", color: "text-purple-500 border-purple-500/30 bg-purple-500/10" },
+    { threshold: 1500, label: "ELITE", color: "text-orange-500 border-orange-500/30 bg-orange-500/10" },
+    { threshold: 1000, label: "PRO", color: "text-blue-500 border-blue-500/30 bg-blue-500/10" },
+    { threshold: 750, label: "CONTENDER", color: "text-emerald-500 border-emerald-500/30 bg-emerald-500/10" },
+  ];
+  let peakHourlySales = 0;
+  let peakHour = 0;
+  if (hourlyData) {
+    for (const h of hourlyData) {
+      if (h.todaySales > peakHourlySales) {
+        peakHourlySales = h.todaySales;
+        peakHour = h.hour;
+      }
+    }
+  }
+  const rateTier = RATE_TIERS.find(t => peakHourlySales >= t.threshold) || null;
+
+  // Add peak hour achievement to strengths
+  if (rateTier) {
+    strengths.unshift(`${rateTier.label} hour: $${peakHourlySales.toLocaleString(undefined, { maximumFractionDigits: 0 })}/hr at ${formatHour(peakHour)}`);
+  }
+
   return {
     restaurantId: restaurant.restaurantId,
     restaurantName: restaurant.restaurantName,
@@ -436,6 +468,9 @@ function analyzeUnit(
     weather: restaurant.weather,
     daypartGrades: daypartGrades.length > 0 ? daypartGrades : undefined,
     bonusResult,
+    peakHourlySales: peakHourlySales > 0 ? peakHourlySales : undefined,
+    peakHour: peakHourlySales > 0 ? peakHour : undefined,
+    hourlyRateTier: rateTier,
   };
 }
 
@@ -695,6 +730,30 @@ function UnitSummaryCard({ insight, defaultOpen = false, onExpanded, notesByRest
                         <span className="text-[10px] text-muted-foreground ml-0.5">({formatTenure(insight.crewTenureMonths)})</span>
                       )}
                     </Badge>
+                  )}
+                  {insight.hourlyRateTier && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs gap-1 font-bold ${insight.hourlyRateTier.color} ${insight.hourlyRateTier.label === "LEGENDARY" ? "animate-pulse" : ""}`}
+                        >
+                          {insight.hourlyRateTier.label === "LEGENDARY" ? <Trophy className="w-3 h-3" /> :
+                           insight.hourlyRateTier.label === "ULTRA" ? <Diamond className="w-3 h-3" /> :
+                           insight.hourlyRateTier.label === "ELITE" ? <Flame className="w-3 h-3" /> :
+                           insight.hourlyRateTier.label === "PRO" ? <Zap className="w-3 h-3" /> :
+                           <Star className="w-3 h-3" />}
+                          {insight.hourlyRateTier.label}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <div className="text-xs">
+                          <div className="font-bold">{insight.hourlyRateTier.label} Achievement</div>
+                          <div>Peak: ${insight.peakHourlySales?.toLocaleString(undefined, { maximumFractionDigits: 0 })}/hr at {insight.peakHour !== undefined ? formatHour(insight.peakHour) : ''}</div>
+                          <div className="text-muted-foreground mt-1">$750 Contender · $1K Pro · $1.5K Elite · $2K Ultra · $2.3K Legendary</div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
