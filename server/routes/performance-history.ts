@@ -5,7 +5,7 @@ import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, 
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
-import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange } from "../xenial-webhook";
+import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange } from "../xenial-webhook";
 
 const router = Router();
 
@@ -274,6 +274,11 @@ router.get("/api/performance-history", async (req, res) => {
       hmeByKey.set(key, h);
     });
 
+    // OOT (dt3) hours — skip speed measurement for these hours
+    const ootHours = dateRange.length > 0
+      ? await getOotHoursByDateRange(dateRange[0], dateRange[dateRange.length - 1])
+      : new Set<string>();
+
     // Build labor lookup by restaurantId-date-hour
     const laborByKey = new Map<string, typeof allHourlyLabor[0]>();
     allHourlyLabor.forEach(l => {
@@ -433,6 +438,9 @@ router.get("/api/performance-history", async (req, res) => {
             speedAttainment = Math.round((hmeRecord.carsUnder6Min / hmeRecord.carCount) * 100);
           }
 
+          // Skip speed in grading when OOT (dt3) is active — lane config changes make timing unreliable
+          const isOotHour = ootHours.has(`${restaurant.id}-${dateStr}-${hour}`);
+
           // Per-hour OSAT - only include if this specific hour has survey responses
           // This matches the dashboard exactly (dashboard uses per-hour OSAT from osatData table)
           const hourOsatRecord = osatByKey.get(`${restaurant.id}-${dateStr}-${hour}`);
@@ -444,7 +452,7 @@ router.get("/api/performance-history", async (req, res) => {
             hasComparableSales,
             transactionVariancePct: txnVariancePct,
             hasComparableTransactions,
-            speedAttainment,
+            speedAttainment: isOotHour ? undefined : speedAttainment,
             staffingDiff,
             hasValidStaffing,
             osatPercent: hourOsatPercent,

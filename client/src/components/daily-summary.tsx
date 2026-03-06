@@ -207,7 +207,7 @@ function analyzeUnit(
       }
       
       // Speed analysis - uses attainment (% of cars under 6 min)
-      const hourSpeedAtt = (hour as any).speedAttainment;
+      const hourSpeedAtt = hour.speedAttainment;
       const hasValidSpeed = hourSpeedAtt !== undefined && hourSpeedAtt >= 0;
       if (hasValidSpeed && hourSpeedAtt < 50) { // < 50% attainment
         slowSpeedHours++;
@@ -243,7 +243,7 @@ function analyzeUnit(
       const txnVariancePct = hasComparableTransactions
         ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
         : undefined;
-      const score = computeExecutionScore(hourVariance, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions);
+      const score = computeExecutionScore(hourVariance, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions);
       if (score > 0) {
         hourlyScores.push(score);
       }
@@ -294,7 +294,7 @@ function analyzeUnit(
     strengths.push(`${aboveExpectationHours} hours with sales 20%+ above expectations`);
   }
   // Only show good speed if there's drive-thru data AND no slow hours
-  const hasDriveThruData = hourlyData?.some(h => (h as any).speedAttainment !== undefined);
+  const hasDriveThruData = hourlyData?.some(h => h.speedAttainment !== undefined);
   if (slowSpeedHours === 0 && hasDriveThruData) {
     strengths.push("Drive-thru speed attainment above 50% every hour");
   }
@@ -399,7 +399,7 @@ function analyzeUnit(
         const txnVar = hasCompTxn
           ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
           : undefined;
-        const score = computeExecutionScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+        const score = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
         return score > 0 ? gradeToMidpoint(scoreToGradeLabel(score)) : 0;
       }).filter(s => s > 0);
 

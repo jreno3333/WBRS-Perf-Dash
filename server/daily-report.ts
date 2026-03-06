@@ -191,7 +191,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
         const gradeInfo = getExecutionGrade(
           salesVariancePct,
-          (hour as any).speedAttainment,
+          (hour as any).ootActive ? undefined : (hour as any).speedAttainment,
           staffingDiff,
           hasComparableSales,
           hasValidStaffing,

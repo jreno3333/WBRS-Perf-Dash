@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyBonuses } from "../lib/scoring";
 
@@ -101,6 +101,9 @@ router.get("/api/leaders", async (req, res) => {
 
     const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
     for (const o of hourlyOsatData) osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
+
+    // OOT (dt3) hours — skip speed measurement for these hours
+    const ootHours = await getOotHoursByDateRange(startDateStr, endDateStr);
 
     // Fetch last year's daily sales from historical_daily_sales for YoY bonus
     // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
@@ -245,7 +248,9 @@ router.get("/api/leaders", async (req, res) => {
           const requiredStaff = getTotalRequiredStaff(crew.hour, hourSales);
           day.staffingDiffs.push(actualStaff - requiredStaff);
 
-          if (hme && hme.carCount > 0 && (hme.carsUnder6Min || 0) > 0) {
+          // Skip speed accumulation when OOT (dt3) is active — lane config changes make timing unreliable
+          const isOotHour = ootHours.has(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+          if (!isOotHour && hme && hme.carCount > 0 && (hme.carsUnder6Min || 0) > 0) {
             day.speedCarCount += hme.carCount;
             day.speedCarsUnder6 += hme.carsUnder6Min || 0;
             allSpeedCarCount += hme.carCount;

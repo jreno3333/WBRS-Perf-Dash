@@ -26,6 +26,7 @@ export interface HourlyMetrics {
   avgDtTime: number | null; // seconds
   osatPercent: number | null;
   osatResponses: number;
+  ootActive?: boolean; // When true, speed is excluded from grading (lane config change)
 }
 
 export function computeHourlyGradeScore(m: HourlyMetrics): number {
@@ -33,11 +34,13 @@ export function computeHourlyGradeScore(m: HourlyMetrics): number {
   const salesVariancePct = hasComparableSales
     ? ((m.actualSales - m.lastWeekSales) / m.lastWeekSales) * 100 : 0;
 
-  const hasValidAttainment = m.avgDtTime !== null && m.avgDtTime > 0;
-  // Convert DT seconds to attainment % (under 300s = 100%, 300-420 = 70%, >420 = 40%)
+  // Skip speed when OOT (dt3) is active — lane config changes make timing unreliable
   let speedAttainment: number | undefined = undefined;
-  if (hasValidAttainment) {
-    speedAttainment = m.avgDtTime! <= 300 ? 100 : m.avgDtTime! <= 420 ? 65 : 30;
+  if (!m.ootActive) {
+    const hasValidAttainment = m.avgDtTime !== null && m.avgDtTime > 0;
+    if (hasValidAttainment) {
+      speedAttainment = m.avgDtTime! <= 300 ? 100 : m.avgDtTime! <= 420 ? 65 : 30;
+    }
   }
 
   const result = computeHourlyScore({

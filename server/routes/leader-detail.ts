@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses } from "../lib/scoring";
 
@@ -145,6 +145,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
       osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
     }
 
+    // OOT (dt3) hours — skip speed measurement for these hours
+    const ootHours = await getOotHoursByDateRange(startDateStr, endDateStr);
+
     type HourDetail = {
       hour: number;
       restaurantId: string;
@@ -232,12 +235,14 @@ router.get("/api/people/leader-detail", async (req, res) => {
         const txnVariancePct = hasComparableTransactions
           ? ((hourTxnCount - hourTxnLastWeek) / hourTxnLastWeek) * 100 : undefined;
 
+        // Skip speed in grading when OOT (dt3) is active — lane config changes make timing unreliable
+        const isOotHour = ootHours.has(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
         const hourlyResult = computeHourlyScore({
           salesVariancePct,
           hasComparableSales,
           transactionVariancePct: txnVariancePct,
           hasComparableTransactions,
-          speedAttainment: hourSpeedAttainment,
+          speedAttainment: isOotHour ? undefined : hourSpeedAttainment,
           staffingDiff,
           hasValidStaffing: true,
           osatPercent: hourOsatPercent,
@@ -333,7 +338,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
         dailySalesVariancePct = Math.max(-200, Math.min(200, dailySalesVariancePct));
       }
       const avgStaffingDiff = dayData.hours.reduce((s: number, h: HourDetail) => s + h.staffingDiff, 0) / dayData.hours.length;
-      const speedHours = dayData.hours.filter((h: HourDetail) => h.carCount !== undefined && h.carCount! > 0 && h.carsUnder6Min !== undefined && h.carsUnder6Min! > 0);
+      // Exclude OOT hours from speed aggregation — lane config changes make timing unreliable
+      const speedHours = dayData.hours.filter((h: HourDetail) => h.carCount !== undefined && h.carCount! > 0 && h.carsUnder6Min !== undefined && h.carsUnder6Min! > 0 && !ootHours.has(`${h.restaurantId}-${dateKey}-${h.hour}`));
       let avgSpeed: number | undefined = undefined;
       let dailyAvgSpeedSeconds: number | undefined = undefined;
       if (speedHours.length > 0) {
