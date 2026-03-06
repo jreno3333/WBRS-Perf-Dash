@@ -3,7 +3,7 @@ import { Link } from "wouter";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles, Trophy, Flame, Diamond, Zap } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
@@ -24,6 +24,19 @@ const REVENUE_PORT_CONFIG = {
 } as const;
 
 const ALL_REVENUE_PORTS = ["dine_in", "drive_thru", "app", "3pd"] as const;
+
+// Hourly Rate Badge Tiers
+const HOURLY_RATE_TIERS = [
+  { threshold: 2300, label: "LEGENDARY", icon: Trophy, color: "bg-gradient-to-r from-yellow-500/20 to-amber-500/20 text-yellow-500 dark:text-yellow-400 border-yellow-500/30", pulseClass: "animate-pulse" },
+  { threshold: 2000, label: "ULTRA", icon: Diamond, color: "bg-purple-500/15 text-purple-500 dark:text-purple-400 border-purple-500/30", pulseClass: "" },
+  { threshold: 1500, label: "ELITE", icon: Flame, color: "bg-orange-500/15 text-orange-500 dark:text-orange-400 border-orange-500/30", pulseClass: "" },
+  { threshold: 1000, label: "PRO", icon: Zap, color: "bg-blue-500/15 text-blue-500 dark:text-blue-400 border-blue-500/30", pulseClass: "" },
+  { threshold: 750, label: "CONTENDER", icon: Star, color: "bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border-emerald-500/30", pulseClass: "" },
+] as const;
+
+function getHourlyRateTier(peakHourlySales: number) {
+  return HOURLY_RATE_TIERS.find(t => peakHourlySales >= t.threshold) || null;
+}
 
 function WeatherIcon({ condition }: { condition: string }) {
   const iconClass = "w-3.5 h-3.5";
@@ -445,6 +458,13 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   
   const activeHours = allHours;
 
+  // Compute peak hourly sales for rate badge
+  const peakHourData = allHours.reduce<{ sales: number; hour: number }>(
+    (best, h) => (h.todaySales > best.sales ? { sales: h.todaySales, hour: h.hour } : best),
+    { sales: 0, hour: 0 }
+  );
+  const hourlyRateTier = getHourlyRateTier(peakHourData.sales);
+
   // Compute tooltip alignment so edge-of-chart tooltips don't overflow
   const getTooltipAlign = (hourIndex: number) => {
     const total = activeHours.length;
@@ -864,6 +884,29 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     {notes.length}
                   </BadgeWithTooltip>
                 )}
+                {/* Hourly Rate Achievement Badge */}
+                {hourlyRateTier && (() => {
+                  const TierIcon = hourlyRateTier.icon;
+                  const peakHourLabel = peakHourData.hour === 0 ? '12am' : peakHourData.hour === 12 ? '12pm' : peakHourData.hour > 12 ? `${peakHourData.hour - 12}pm` : `${peakHourData.hour}am`;
+                  return (
+                    <BadgeWithTooltip
+                      className={`flex-shrink-0 text-xs px-1.5 gap-1 border ${hourlyRateTier.color} ${hourlyRateTier.pulseClass} font-bold`}
+                      data-testid={`badge-rate-tier-${restaurant.restaurantId}`}
+                      tooltipContent={
+                        <div>
+                          <div className="font-bold text-sm">{hourlyRateTier.label}</div>
+                          <div className="text-muted-foreground">Peak hour: ${peakHourData.sales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/hr at {peakHourLabel}</div>
+                          <div className="text-[10px] text-muted-foreground mt-1 border-t border-border/50 pt-1">
+                            $750 Contender · $1,000 Pro · $1,500 Elite · $2,000 Ultra · $2,300 Legendary
+                          </div>
+                        </div>
+                      }
+                    >
+                      <TierIcon className="w-3 h-3" />
+                      <span>{hourlyRateTier.label}</span>
+                    </BadgeWithTooltip>
+                  );
+                })()}
               </div>
             </div>
 
