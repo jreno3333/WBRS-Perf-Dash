@@ -302,48 +302,61 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
   }
 
   // ── 1. Hourly Sales Record ──────────────────────────────────────────────
+  // Uses CUMULATIVE sales through the hour (not just the single hour's sales)
+  // so the dollar figures match what the dashboard displays.
 
   if (types.hourlyRecord) {
-    // Get today's sales for the last completed hour — use DISTINCT ON to pick
-    // only the most-recently-scraped row per restaurant (avoids stale duplicates
-    // that can exist when there is no unique constraint on the table).
-    const todayHourlyResult = await db.execute(sql`
-      SELECT DISTINCT ON (restaurant_id) restaurant_id, actual_sales
-      FROM hourly_sales
-      WHERE hour = ${prevHour} AND sales_date::date = ${dateStr}::date
-      ORDER BY restaurant_id, scraped_at DESC NULLS LAST
+    // Get cumulative sales through prevHour for each restaurant today.
+    // For each restaurant, sum the latest-scraped actual_sales for hours 0..prevHour.
+    const todayCumResult = await db.execute(sql`
+      SELECT restaurant_id, SUM(actual_sales::numeric) AS cum_sales
+      FROM (
+        SELECT DISTINCT ON (restaurant_id, hour) restaurant_id, actual_sales
+        FROM hourly_sales
+        WHERE hour <= ${prevHour} AND sales_date::date = ${dateStr}::date
+        ORDER BY restaurant_id, hour, scraped_at DESC NULLS LAST
+      ) sub
+      GROUP BY restaurant_id
     `);
-    const todayHourly = (todayHourlyResult.rows || []) as { restaurant_id: string; actual_sales: string }[];
+    const todayCum = (todayCumResult.rows || []) as { restaurant_id: string; cum_sales: string }[];
 
-    for (const hourData of todayHourly) {
-      const restaurant = restaurantMap.get(hourData.restaurant_id);
+    for (const cumData of todayCum) {
+      const restaurant = restaurantMap.get(cumData.restaurant_id);
       if (!restaurant) continue;
-      const sales = parseFloat(hourData.actual_sales);
+      const sales = parseFloat(cumData.cum_sales);
       if (sales <= 0) continue;
       const name = restaurant.unitNumber || restaurant.name;
 
-      // 4-week rolling best for THIS store at THIS hour (latest row per date)
+      // 4-week rolling best cumulative sales through this hour for THIS store
       const historicalResult = await db.execute(sql`
-        SELECT DISTINCT ON (sales_date::date) actual_sales
-        FROM hourly_sales
-        WHERE restaurant_id = ${hourData.restaurant_id}
-          AND hour = ${prevHour}
-          AND sales_date::date = ANY(ARRAY[${sql.join(fourWeekDates.map(d => sql`${d}::date`), sql`, `)}])
-        ORDER BY sales_date::date, scraped_at DESC NULLS LAST
-      `);
-      const historicalForStore = (historicalResult.rows || []) as { actual_sales: string }[];
-
-      const best4Week = Math.max(0, ...historicalForStore.map(h => parseFloat(h.actual_sales)));
-
-      // All-time company record for this hour (any store, any day) — latest row per store/date
-      const companyRecordResult = await db.execute(sql`
-        SELECT MAX(actual_sales::numeric) AS max_sales
+        SELECT sales_date::date AS sd, SUM(actual_sales::numeric) AS cum_sales
         FROM (
-          SELECT DISTINCT ON (restaurant_id, sales_date::date) actual_sales
+          SELECT DISTINCT ON (sales_date::date, hour) sales_date, hour, actual_sales
           FROM hourly_sales
-          WHERE hour = ${prevHour} AND sales_date::date < ${dateStr}::date
-          ORDER BY restaurant_id, sales_date::date, scraped_at DESC NULLS LAST
+          WHERE restaurant_id = ${cumData.restaurant_id}
+            AND hour <= ${prevHour}
+            AND sales_date::date = ANY(ARRAY[${sql.join(fourWeekDates.map(d => sql`${d}::date`), sql`, `)}])
+          ORDER BY sales_date::date, hour, scraped_at DESC NULLS LAST
         ) sub
+        GROUP BY sales_date::date
+      `);
+      const historicalForStore = (historicalResult.rows || []) as { sd: string; cum_sales: string }[];
+
+      const best4Week = Math.max(0, ...historicalForStore.map(h => parseFloat(h.cum_sales)));
+
+      // All-time company record cumulative through this hour (any store, any day)
+      const companyRecordResult = await db.execute(sql`
+        SELECT MAX(cum_sales) AS max_sales
+        FROM (
+          SELECT restaurant_id, sales_date::date AS sd, SUM(actual_sales::numeric) AS cum_sales
+          FROM (
+            SELECT DISTINCT ON (restaurant_id, sales_date::date, hour) restaurant_id, sales_date, hour, actual_sales
+            FROM hourly_sales
+            WHERE hour <= ${prevHour} AND sales_date::date < ${dateStr}::date
+            ORDER BY restaurant_id, sales_date::date, hour, scraped_at DESC NULLS LAST
+          ) sub
+          GROUP BY restaurant_id, sales_date::date
+        ) day_totals
       `);
       const companyRecord = (companyRecordResult.rows?.[0] || {}) as { max_sales: string };
 
@@ -358,13 +371,16 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
           priority: "urgent",
         });
       } else if (best4Week > 0 && sales > best4Week) {
-        // Beat their own 4-week same-day-of-week best for this hour
+        // Beat their own 4-week cumulative best through this hour
         const pctAbove = Math.round(((sales - best4Week) / best4Week) * 100);
-        const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
-        milestones.push({
-          msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${pctAbove}% above your best ${dayName} at this hour in 4 weeks!`,
-          priority: "high",
-        });
+        if (pctAbove >= 20) {
+          const amountOver = sales - best4Week;
+          const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
+          milestones.push({
+            msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${fmtDollars(amountOver)} more than your best ${dayName} at this hour in 4 weeks (+${pctAbove}%)!`,
+            priority: "high",
+          });
+        }
       }
     }
   }
