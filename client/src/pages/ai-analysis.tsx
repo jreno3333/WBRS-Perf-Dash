@@ -15,7 +15,6 @@ import {
   Smartphone,
   Megaphone,
   Truck,
-  TrendingUp,
   TrendingDown,
   AlertCircle,
   Loader2,
@@ -78,19 +77,12 @@ interface AppPercentage {
   totalOrders: number;
 }
 
-interface OOTData {
+interface FullLaneBData {
   restaurant: string;
   totalOrders: number;
   hoursUsed: number;
   daysUsed: number;
-  ranOOT: boolean;
-}
-
-interface AttachmentTrend {
-  thisWeek: { orders: number; avgCheck: number; totalSales: number };
-  lastWeek: { orders: number; avgCheck: number; totalSales: number };
-  checkAvgChange: number;
-  orderCountChange: number;
+  active: boolean;
 }
 
 interface DeliveryPercentage {
@@ -110,8 +102,7 @@ interface AnalysisData {
     dineInChange: DineInChange[];
     appPercentages: AppPercentage[];
     deliveryPercentages: DeliveryPercentage[];
-    outsideOrderTakers: OOTData[];
-    attachmentTrend: AttachmentTrend;
+    fullLaneB: FullLaneBData[];
   };
 }
 
@@ -958,23 +949,23 @@ export default function AiAnalysisPage() {
               </div>
             </InsightCard>
 
-            {/* 5. Full Lane B (Outside Order Takers) */}
+            {/* 5. Full Lane B */}
             <InsightCard
               icon={Megaphone}
               title="Full Lane B"
-              question="Which units ran Full Lane B (outside order takers)?"
+              question="Which units ran Full Lane B?"
               accentColor="text-orange-500"
               bgColor="bg-orange-500/10"
             >
               <div className="space-y-4">
-                {data.insights.outsideOrderTakers.length > 0 ? (
+                {data.insights.fullLaneB.length > 0 ? (
                   <>
                     <div className="flex items-center gap-3 flex-wrap">
                       <Badge variant="secondary" className="text-base px-3 py-1">
-                        {data.insights.outsideOrderTakers.filter((r) => r.ranOOT).length}
+                        {data.insights.fullLaneB.filter((r) => r.active).length}
                       </Badge>
                       <span className="text-sm text-muted-foreground">
-                        units ran Full Lane B (DT3 lane) during this period
+                        units ran Full Lane B during this period
                       </span>
                     </div>
 
@@ -990,11 +981,11 @@ export default function AiAnalysisPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {data.insights.outsideOrderTakers.map((r, i) => (
-                            <tr key={i} className={`border-t hover:bg-muted/30 ${!r.ranOOT ? "opacity-50" : ""}`}>
+                          {data.insights.fullLaneB.map((r, i) => (
+                            <tr key={i} className={`border-t hover:bg-muted/30 ${!r.active ? "opacity-50" : ""}`}>
                               <td className="px-3 py-2 font-medium">{r.restaurant}</td>
                               <td className="px-3 py-2 text-center">
-                                {r.ranOOT ? (
+                                {r.active ? (
                                   <Badge className="bg-orange-500/20 text-orange-600 hover:bg-orange-500/30 border-0">Yes</Badge>
                                 ) : (
                                   <Badge variant="outline" className="text-muted-foreground">No</Badge>
@@ -1021,58 +1012,6 @@ export default function AiAnalysisPage() {
               </div>
             </InsightCard>
 
-            {/* 6. Week-over-Week Sales Trend */}
-            <InsightCard
-              icon={TrendingUp}
-              title="Week-over-Week Trend"
-              question="What are the top selling trends growing week over week?"
-              accentColor="text-emerald-500"
-              bgColor="bg-emerald-500/10"
-            >
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Card>
-                    <CardContent className="p-3">
-                      <p className="text-xs text-muted-foreground mb-1">This Week</p>
-                      <p className="text-xl font-bold">{formatCurrency(data.insights.attachmentTrend.thisWeek.totalSales)}</p>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-xs text-muted-foreground">{data.insights.attachmentTrend.thisWeek.orders.toLocaleString()} orders</span>
-                        <span className="text-xs text-muted-foreground">Avg: {formatCurrency(data.insights.attachmentTrend.thisWeek.avgCheck)}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Last Week</p>
-                      <p className="text-xl font-bold">{formatCurrency(data.insights.attachmentTrend.lastWeek.totalSales)}</p>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-xs text-muted-foreground">{data.insights.attachmentTrend.lastWeek.orders.toLocaleString()} orders</span>
-                        <span className="text-xs text-muted-foreground">Avg: {formatCurrency(data.insights.attachmentTrend.lastWeek.avgCheck)}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Card className="border-muted">
-                    <CardContent className="p-3 text-center">
-                      <p className="text-xs text-muted-foreground mb-1">Check Avg Change</p>
-                      <div className="text-lg">
-                        <ChangeIndicator value={data.insights.attachmentTrend.checkAvgChange} />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-muted">
-                    <CardContent className="p-3 text-center">
-                      <p className="text-xs text-muted-foreground mb-1">Order Count Change</p>
-                      <div className="text-lg">
-                        <ChangeIndicator value={data.insights.attachmentTrend.orderCountChange} />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </InsightCard>
           </>
         )}
       </main>

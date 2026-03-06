@@ -13,7 +13,7 @@ const router = Router();
  * 2. Highest OSAT scores
  * 3. Dine-in % change by unit
  * 4. App order % by unit
- * 5. Outside order taker (OOT/dt3) usage
+ * 5. Full Lane B (dt3) usage
  * 6. Top growing products week-over-week (attachment rates)
  */
 
@@ -54,7 +54,6 @@ router.get("/api/ai-analysis", async (req, res) => {
       destinationData,
       prevDestinationData,
       ootData,
-      attachmentTrend,
     ] = await Promise.all([
       // 1a. Hours with sales over $2000
       getHighSalesHours(startDateStr, endDateStr, 2000),
@@ -66,10 +65,8 @@ router.get("/api/ai-analysis", async (req, res) => {
       getDestinationBreakdown(startDateStr, endDateStr),
       // 3 & 4. Destination breakdown (previous period for comparison)
       getDestinationBreakdown(prevStartDateStr, prevEndDateStr),
-      // 5. Outside order taker usage
-      getOutsideOrderTakerUsage(startDateStr, endDateStr),
-      // 6. Attachment rate trend (week over week from POS items)
-      getAttachmentRateTrend(endDateStr),
+      // 5. Full Lane B usage
+      getFullLaneBUsage(startDateStr, endDateStr),
     ]);
 
     // Process dine-in % change
@@ -87,8 +84,7 @@ router.get("/api/ai-analysis", async (req, res) => {
         dineInChange,
         appPercentages,
         deliveryPercentages,
-        outsideOrderTakers: formatOOTData(ootData, restaurantMap),
-        attachmentTrend,
+        fullLaneB: formatFullLaneBData(ootData, restaurantMap),
       },
     });
   } catch (error) {
@@ -189,14 +185,14 @@ async function getDestinationBreakdown(startDate: string, endDate: string) {
   return result;
 }
 
-async function getOutsideOrderTakerUsage(startDate: string, endDate: string) {
+async function getFullLaneBUsage(startDate: string, endDate: string) {
   const startTs = new Date(startDate + "T00:00:00Z");
   const endTs = new Date(endDate + "T23:59:59Z");
 
   const mappings = await db.select().from(locationMapping);
   const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 
-  // dt3 = outside order taker lane — check both destination and order_source
+  // dt3 = Full Lane B — check both destination and order_source
   const rows = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
@@ -216,136 +212,24 @@ async function getOutsideOrderTakerUsage(startDate: string, endDate: string) {
     .orderBy(desc(sql`count(*)`));
 
   // Aggregate by restaurant
-  const restaurantOOT = new Map<string, { totalOrders: number; hoursUsed: number; daysUsed: Set<string> }>();
+  const restaurantLaneB = new Map<string, { totalOrders: number; hoursUsed: number; daysUsed: Set<string> }>();
 
   for (const row of rows) {
     const restaurantId = storeToRestaurant.get(row.storeNumber) || row.storeNumber;
-    if (!restaurantOOT.has(restaurantId)) {
-      restaurantOOT.set(restaurantId, { totalOrders: 0, hoursUsed: 0, daysUsed: new Set() });
+    if (!restaurantLaneB.has(restaurantId)) {
+      restaurantLaneB.set(restaurantId, { totalOrders: 0, hoursUsed: 0, daysUsed: new Set() });
     }
-    const data = restaurantOOT.get(restaurantId)!;
+    const data = restaurantLaneB.get(restaurantId)!;
     data.totalOrders += row.orderCount;
     data.hoursUsed += 1;
     data.daysUsed.add(row.businessDate);
   }
 
-  return restaurantOOT;
-}
-
-async function getAttachmentRateTrend(endDateStr: string) {
-  // Get the last 2 weeks of POS order items to compare attachment categories
-  const endTs = new Date(endDateStr + "T23:59:59Z");
-  const startTs = new Date(endTs);
-  startTs.setDate(startTs.getDate() - 13); // 14 days total
-
-  const midTs = new Date(endTs);
-  midTs.setDate(midTs.getDate() - 6); // Split into 2 weeks
-  const midDateStr = midTs.toISOString().split("T")[0];
-
-  // Query raw order items from pos_orders for both weeks
-  // We'll look at item-level data in raw_json if available
-  try {
-    const thisWeekOrders = await posDb
-      .select({
-        orderCount: sql<number>`count(*)::int`,
-        avgTotal: sql<number>`round(avg(${posOrders.orderTotal}::numeric), 2)`,
-        totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
-      })
-      .from(posOrders)
-      .where(
-        and(
-          gte(posOrders.businessDate, midTs),
-          lte(posOrders.businessDate, endTs)
-        )
-      );
-
-    const lastWeekOrders = await posDb
-      .select({
-        orderCount: sql<number>`count(*)::int`,
-        avgTotal: sql<number>`round(avg(${posOrders.orderTotal}::numeric), 2)`,
-        totalSales: sql<number>`coalesce(sum(${posOrders.orderTotal}::numeric), 0)`,
-      })
-      .from(posOrders)
-      .where(
-        and(
-          gte(posOrders.businessDate, startTs),
-          lte(posOrders.businessDate, midTs)
-        )
-      );
-
-    const thisWeek = thisWeekOrders[0];
-    const lastWeek = lastWeekOrders[0];
-
-    return {
-      thisWeek: {
-        orders: thisWeek?.orderCount || 0,
-        avgCheck: Number(thisWeek?.avgTotal) || 0,
-        totalSales: Number(thisWeek?.totalSales) || 0,
-      },
-      lastWeek: {
-        orders: lastWeek?.orderCount || 0,
-        avgCheck: Number(lastWeek?.avgTotal) || 0,
-        totalSales: Number(lastWeek?.totalSales) || 0,
-      },
-      checkAvgChange: lastWeek?.avgTotal && thisWeek?.avgTotal
-        ? Math.round(((Number(thisWeek.avgTotal) - Number(lastWeek.avgTotal)) / Number(lastWeek.avgTotal)) * 10000) / 100
-        : 0,
-      orderCountChange: lastWeek?.orderCount && thisWeek?.orderCount
-        ? Math.round(((thisWeek.orderCount - lastWeek.orderCount) / lastWeek.orderCount) * 10000) / 100
-        : 0,
-    };
-  } catch {
-    return { thisWeek: { orders: 0, avgCheck: 0, totalSales: 0 }, lastWeek: { orders: 0, avgCheck: 0, totalSales: 0 }, checkAvgChange: 0, orderCountChange: 0 };
-  }
+  return restaurantLaneB;
 }
 
 // ---- Helper Functions ----
 
-function normalizeDestination(dest: string | null): string {
-  if (!dest) return "unknown";
-  const d = dest.toLowerCase().trim();
-  // Dine-in
-  if (d === "in" || d === "dine-in" || d === "dine_in" || d.includes("dine")) return "dine_in";
-  // App / mobile orders
-  if (d === "app" || d === "mobile" || d === "online") return "app";
-  // Third-party delivery
-  if (d === "3pd" || d.includes("3pd") || d.includes("doordash") || d.includes("uber") || d.includes("grubhub") || d.includes("delivery")) return "3pd";
-  // Drive-thru (standard lanes)
-  if (d === "dt1" || d === "dt2" || d === "drive-thru" || d === "drive_thru") return "drive_thru";
-  // Outside order taker
-  if (d === "dt3") return "dt3_outside";
-  // POS fallback (if only order_source came through as "pos")
-  if (d === "pos") return "drive_thru";
-  return d;
-}
-
-/**
- * Normalize destination using both the destination (physical lane) and order_source fields.
- * order_source determines the channel (app, 3pd, delivery) more accurately than destination alone,
- * since app/delivery orders picked up via drive-thru still have destination=dt1/dt2.
- */
-function normalizeDestinationWithSource(dest: string | null, orderSource: string | null): string {
-  const d = (dest || "").toLowerCase().trim();
-  const src = (orderSource || "").toLowerCase().trim();
-
-  // App / mobile orders — check order_source first since app orders can arrive through any lane
-  if (src === "app" || src === "mobile" || src === "online") return "app";
-  // Third-party delivery — check order_source first
-  if (src === "3pd" || src.includes("3pd") || src.includes("doordash") || src.includes("uber") || src.includes("grubhub")) return "3pd";
-  // Delivery orders (non-3PD delivery)
-  if (src === "delivery" || src.includes("delivery")) return "delivery";
-
-  // Fall back to destination field for physical lane info
-  if (d === "in" || d === "dine-in" || d === "dine_in" || d.includes("dine")) return "dine_in";
-  if (d === "dt3") return "dt3_outside";
-  if (d === "dt1" || d === "dt2" || d === "drive-thru" || d === "drive_thru" || d === "pos") return "drive_thru";
-  // Also check destination for app/3pd if order_source was empty
-  if (d === "app" || d === "mobile" || d === "online") return "app";
-  if (d === "3pd" || d.includes("3pd") || d.includes("doordash") || d.includes("uber") || d.includes("grubhub")) return "3pd";
-  if (d === "delivery" || d.includes("delivery")) return "delivery";
-  if (!d && !src) return "unknown";
-  return d || src || "unknown";
-}
 
 function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
   // Group by restaurant
@@ -514,21 +398,20 @@ function calculateDeliveryPercentages(
   return results.sort((a, b) => b.percentage - a.percentage);
 }
 
-function formatOOTData(
+function formatFullLaneBData(
   data: Map<string, { totalOrders: number; hoursUsed: number; daysUsed: Set<string> }>,
   restaurantMap: Map<string, string>
 ) {
-  const results: { restaurant: string; totalOrders: number; hoursUsed: number; daysUsed: number; ranOOT: boolean }[] = [];
+  const results: { restaurant: string; totalOrders: number; hoursUsed: number; daysUsed: number; active: boolean }[] = [];
 
-  // Include all restaurants, marking which ones used OOT
   for (const [restaurantId, name] of restaurantMap) {
-    const ootData = data.get(restaurantId);
+    const laneBData = data.get(restaurantId);
     results.push({
       restaurant: name,
-      totalOrders: ootData?.totalOrders || 0,
-      hoursUsed: ootData?.hoursUsed || 0,
-      daysUsed: ootData?.daysUsed?.size || 0,
-      ranOOT: !!ootData && ootData.totalOrders > 0,
+      totalOrders: laneBData?.totalOrders || 0,
+      hoursUsed: laneBData?.hoursUsed || 0,
+      daysUsed: laneBData?.daysUsed?.size || 0,
+      active: !!laneBData && laneBData.totalOrders > 0,
     });
   }
 
@@ -611,7 +494,9 @@ function destChannelExpr() {
     WHEN LOWER(${posOrders.destination}) = 'dt3' THEN 'dt3_outside'
     WHEN LOWER(${posOrders.destination}) IN ('dt1', 'dt2', 'drive-thru', 'drive_thru') THEN 'drive_thru'
     WHEN LOWER(${posOrders.destination}) IN ('app', 'mobile', 'online') THEN 'app'
-    WHEN LOWER(${posOrders.destination}) LIKE '%3pd%' OR LOWER(${posOrders.destination}) LIKE '%delivery%' THEN '3pd'
+    WHEN LOWER(${posOrders.destination}) LIKE '%3pd%' THEN '3pd'
+    WHEN LOWER(${posOrders.destination}) LIKE '%delivery%' THEN 'delivery'
+    WHEN LOWER(${posOrders.destination}) IN ('doordash', 'ubereats', 'grubhub') THEN '3pd'
     WHEN LOWER(${posOrders.orderSource}) = 'pos' THEN 'drive_thru'
     ELSE COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}), 'unknown')
   END`;
@@ -1216,9 +1101,9 @@ function buildTemplates(): QueryTemplate[] {
     },
     // ---- OOT ----
     {
-      id: "outside_order_taker",
-      keywords: ["outside order", "oot", "dt3", "outside lane", "order taker", "outside dt", "full lane b", "lane b"],
-      description: "Full Lane B (outside order taker/dt3) usage",
+      id: "full_lane_b",
+      keywords: ["full lane b", "lane b", "dt3", "full lane"],
+      description: "Full Lane B (dt3) usage",
       execute: async (params) => {
         const storeMap = await getStoreMapping();
         const startTs = new Date(params.startDate + "T00:00:00Z");
@@ -1841,7 +1726,7 @@ router.post("/api/ai-analysis/query", async (req, res) => {
       return res.json({
         matched: false,
         question,
-        suggestion: "Try asking about: sales, OSAT, labor, drive-thru speed, dine-in %, app orders, outside order takers, Google reviews, crew experience, check average, weather, or hourly breakdown.",
+        suggestion: "Try asking about: sales, OSAT, labor, drive-thru speed, dine-in %, app orders, Full Lane B, Google reviews, crew experience, check average, weather, or hourly breakdown.",
         availableTopics: templates.map((t) => t.description),
       });
     }

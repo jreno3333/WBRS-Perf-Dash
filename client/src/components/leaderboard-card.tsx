@@ -1036,7 +1036,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 );
               })}
             </div>
-            {/* OOT (Outside Order Taker) row — visible under grades when dt3 >= 1 for any hour */}
+            {/* Full Lane B row — visible under grades when dt3 >= 1 for any hour */}
             {activeHours.some(h => {
               const dest = destinationsByHour?.[h.hour];
               return dest && (dest['dt3'] || 0) >= 1;
@@ -1146,7 +1146,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                             {(hour as any).speedAttainment}%
                           </span>
                         )}
-                        {/* OOT (Outside Order Taker) indicator — dt3 order count */}
+                        {/* Full Lane B indicator — dt3 order count */}
                         {isCompleted && (() => {
                           const destHour = destinationsByHour?.[hour.hour];
                           if (!destHour) return null;
