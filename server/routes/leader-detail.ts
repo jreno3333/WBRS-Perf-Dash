@@ -327,7 +327,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const attachmentByDateRestaurant = new Map<string, number>();
     {
       const uniqueDates = Array.from(new Set(Array.from(dailyMap.keys())));
-      await Promise.all(uniqueDates.map(async (d) => {
+      // Sequential to avoid exhausting the DB connection pool (each query fetches all POS orders with raw_json)
+      for (const d of uniqueDates) {
         try {
           const dParts = d.split('-');
           const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
@@ -336,7 +337,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
             attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
           }
         } catch (e) { /* POS data may not be available */ }
-      }));
+      }
     }
 
     const dailyEntries = Array.from(dailyMap.entries());
