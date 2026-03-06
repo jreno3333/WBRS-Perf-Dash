@@ -236,6 +236,11 @@ export interface HourlySalesData {
   // Transaction count from POS orders
   transactionCount?: number; // Number of POS transactions/orders for this hour
   lastWeekTransactionCount?: number; // Same hour last week transaction count
+  // Speed attainment (% of cars served under 6 min)
+  speedAttainment?: number;
+  // OOT / Full Lane B active — dt3 orders present this hour (ad-hoc lane config change)
+  // When true, speed measurement is excluded from grading because it is unreliable
+  ootActive?: boolean;
 }
 
 export interface LeaderboardData {

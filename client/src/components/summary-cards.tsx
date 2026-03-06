@@ -200,7 +200,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
         }
         
         // Track speed metrics using attainment (% of cars under 6 min)
-        const speedAtt = (hour as any).speedAttainment;
+        const speedAtt = hour.speedAttainment;
         if (speedAtt !== undefined && speedAtt >= 0) {
           totalSpeedHours++;
           if (speedAtt >= 70) {
@@ -211,7 +211,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
             speedRedCount++;
           }
         }
-        
+
         // Track OSAT metrics (only if customer satisfaction data exists)
         if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
           totalOsatHours++;
@@ -224,10 +224,10 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
             osatPoorCount++;
           }
         }
-        
+
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
         if (gradeInfo.hasGrade) {
           if (gradeInfo.score > 0) {
             allHourlyScores.push(gradeInfo.score);

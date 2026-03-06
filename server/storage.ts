@@ -19,7 +19,7 @@ import {
 } from "@shared/schema";
 import { db, posDb } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { getPosSalesByRestaurant, getAllHourlyPosSales, getCheckAverageByRestaurant } from "./xenial-webhook";
+import { getPosSalesByRestaurant, getAllHourlyPosSales, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant } from "./xenial-webhook";
 import { getHourlyOsatForDate } from "./scraper/qualtrics-api";
 import { getCurrentHourInTimezone, getTodayInTimezone, getNormalizedHourCutoff } from "./utils/dates";
 import { deduplicateHourly } from "./utils/db-helpers";
@@ -599,6 +599,7 @@ export class DatabaseStorage {
     const hourlyOsatData = await getHourlyOsatForDate(selectedDateStr);
     const checkAvgData = await getCheckAverageByRestaurant(selectedDate);
     const checkAvgLastWeek = await getCheckAverageByRestaurant(lastWeek);
+    const destinationBreakdown = await getDestinationBreakdownByRestaurant(selectedDate);
 
     // Fetch last year's daily sales from historical_daily_sales for YoY bonus
     // Use DOW-matching: subtract 1 year, then adjust to same day-of-week (matches yoy-bulk endpoint)
@@ -779,6 +780,8 @@ export class DatabaseStorage {
           const leaders = leadersByHour.get(hour);
           const txnData = checkAvgData.get(restaurant.id)?.hourly.get(hour);
           const txnLastWeek = checkAvgLastWeek.get(restaurant.id)?.hourly.get(hour);
+          const destHourData = destinationBreakdown.get(restaurant.id)?.get(hour);
+          const ootActive = (destHourData?.['dt3'] || 0) >= 1;
           hourlyDataForRestaurant.push({
             hour,
             todaySales,
@@ -794,6 +797,7 @@ export class DatabaseStorage {
             avgServiceTime: hmeHourData?.avgServiceTime,
             carCount: hmeHourData?.carCount,
             speedAttainment: hmeHourData && hmeHourData.carCount > 0 && hmeHourData.carsUnder6Min > 0 ? Math.round((hmeHourData.carsUnder6Min / hmeHourData.carCount) * 100) : undefined,
+            ootActive: ootActive || undefined, // only set when true to keep payload small
             osatPercent: osatHourData?.osatPercent,
             osatResponses: osatHourData?.totalResponses,
             transactionCount: txnData?.orders,

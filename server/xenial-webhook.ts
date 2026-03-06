@@ -750,6 +750,69 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
   return result;
 }
 
+/**
+ * Get a Set of "restaurantId-dateStr-hour" keys where OOT (dt3) is active
+ * within a date range. Used by server-side grading routes to exclude speed
+ * from the grade when lane configuration changes make timing unreliable.
+ */
+export async function getOotHoursByDateRange(startDateStr: string, endDateStr: string): Promise<Set<string>> {
+  await ensureDestinationColumn();
+
+  const allRestaurants = await db.select().from(restaurants);
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
+  for (const restaurant of allRestaurants) {
+    const match = restaurant.name.match(/^(\d{4})\s*-/);
+    if (match) {
+      storeToRestaurant.set(match[1], { id: restaurant.id, timezone: restaurant.timezone || 'America/Chicago' });
+    }
+  }
+
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+
+  const result = new Set<string>();
+  const startOfRange = new Date(startDateStr + 'T00:00:00.000Z');
+  const endOfRange = new Date(endDateStr + 'T23:59:59.999Z');
+
+  for (const tz of timezoneSet) {
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const dateExpr = sql.raw(`to_char((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}', 'YYYY-MM-DD')`);
+    const destExpr = sql.raw(`COALESCE(LOWER(destination), LOWER(order_source))`);
+
+    const posResults = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        dateStr: sql<string>`${dateExpr}`,
+        hour: sql<number>`${hourExpr}`,
+        orderCount: sql<number>`count(*)::int`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startOfRange),
+          lt(posOrders.businessDate, endOfRange),
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`,
+          sql`${destExpr} = 'dt3'`
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${dateExpr}`, sql`${hourExpr}`);
+
+    for (const row of posResults) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (!restaurantInfo || row.orderCount < 1) continue;
+      result.add(`${restaurantInfo.id}-${row.dateStr}-${row.hour}`);
+    }
+  }
+
+  return result;
+}
+
 export async function seedLocationMappings(): Promise<number> {
   // Map Xenial store numbers to restaurant name patterns
   // Restaurant names in DB are like "1237 - Athens", so we match by store number prefix

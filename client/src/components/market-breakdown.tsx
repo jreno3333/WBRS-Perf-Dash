@@ -80,7 +80,7 @@ function calculateMarketXScore(restaurantIds: string[], hourlyByRestaurant?: Rec
         const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const score = getExecutionGradeScore(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
+        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
         if (score > 0) allScores.push(score);
       }
     }

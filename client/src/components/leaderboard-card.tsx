@@ -500,7 +500,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       const hasValidStaffing = rawEmployeeCount >= 1;
       const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
       const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-      const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+      const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
       return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
     }).filter(score => score > 0);
 
@@ -560,7 +560,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasValidStaffing = rawEmployeeCount >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
         return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
       }).filter(s => s > 0);
 
@@ -1031,7 +1031,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                   <div className="w-2 h-2 rounded-sm bg-red-500" />
                   Below
                 </span>
-                {activeHours.some(h => (h as any).speedAttainment !== undefined) && (
+                {activeHours.some(h => h.speedAttainment !== undefined) && (
                   <span className="flex items-center gap-1">
                     <div className="w-3 h-0.5 bg-cyan-500" />
                     SOS
@@ -1064,7 +1064,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 const hasValidStaffing = rawEmployeeCount >= 1;
                 const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
                 const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -1131,7 +1131,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 const hasValidStaffing = rawEmployeeCount >= 1;
                 const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
                 const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                const gradeInfo = getExecutionGrade(salesVariancePct, (hour as any).speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
@@ -1186,13 +1186,13 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                           ${hour.todaySales.toLocaleString()}
                         </span>
                         <span className="text-muted-foreground">LW ${hour.lastWeekSales.toLocaleString()}</span>
-                        {isCompleted && (hour as any).speedAttainment !== undefined && (
+                        {isCompleted && hour.speedAttainment !== undefined && (
                           <span className={
-                            (hour as any).speedAttainment < 50 ? "text-red-500" :
-                            (hour as any).speedAttainment < 70 ? "text-yellow-500" :
+                            hour.speedAttainment < 50 ? "text-red-500" :
+                            hour.speedAttainment < 70 ? "text-yellow-500" :
                             "text-green-500"
                           }>
-                            {(hour as any).speedAttainment}%
+                            {hour.speedAttainment}%
                           </span>
                         )}
                         {/* Full Lane B indicator — dt3 order count */}
@@ -1247,7 +1247,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 );
               })}
               {/* SOS Line Overlay - speed attainment */}
-              {activeHours.some(h => (h as any).speedAttainment !== undefined) && (
+              {activeHours.some(h => h.speedAttainment !== undefined) && (
                 <svg 
                   className="absolute inset-0 w-full h-full pointer-events-none" 
                   viewBox="0 0 100 100"
@@ -1262,7 +1262,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     vectorEffect="non-scaling-stroke"
                     points={activeHours
                       .map((hour, idx) => {
-                        const att = (hour as any).speedAttainment;
+                        const att = hour.speedAttainment;
                         if (att === undefined) return null;
                         const x = ((idx + 0.5) / activeHours.length) * 100;
                         // Scale: 0-100% attainment maps to chart height (higher = better = higher on chart)

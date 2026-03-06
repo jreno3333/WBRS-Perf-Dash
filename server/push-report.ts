@@ -151,7 +151,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
       const gradeInfo = getExecutionGrade(
         hourVariance,
-        (hour as any).speedAttainment,
+        (hour as any).ootActive ? undefined : (hour as any).speedAttainment,
         staffingDiff,
         hasComparableSales,
         hasValidStaffing,
