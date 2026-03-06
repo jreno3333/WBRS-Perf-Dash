@@ -181,7 +181,8 @@ router.get("/api/leaders", async (req, res) => {
         dateList.push(cursor.toISOString().split('T')[0]);
         cursor.setDate(cursor.getDate() + 1);
       }
-      await Promise.all(dateList.map(async (d) => {
+      // Sequential to avoid exhausting the DB connection pool (each query fetches all POS orders with raw_json)
+      for (const d of dateList) {
         try {
           const dParts = d.split('-');
           const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
@@ -190,7 +191,7 @@ router.get("/api/leaders", async (req, res) => {
             attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
           }
         } catch (e) { /* POS data may not be available */ }
-      }));
+      }
     }
 
     for (const leader of leaderEmployees) {
