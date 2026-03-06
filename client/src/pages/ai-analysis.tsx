@@ -14,6 +14,7 @@ import {
   UtensilsCrossed,
   Smartphone,
   Megaphone,
+  Truck,
   TrendingUp,
   TrendingDown,
   AlertCircle,
@@ -39,6 +40,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 interface HighSalesRestaurant {
   restaurant: string;
   hoursOver2k: number;
+  avgSalesPerHour: number;
+  peakSales: number;
+  peakHour: number;
+  peakDate: string;
+}
+
+interface HighSalesRestaurant1k {
+  restaurant: string;
+  hoursOver1k: number;
   avgSalesPerHour: number;
   peakSales: number;
   peakHour: number;
@@ -83,14 +93,23 @@ interface AttachmentTrend {
   orderCountChange: number;
 }
 
+interface DeliveryPercentage {
+  restaurant: string;
+  percentage: number;
+  orders: number;
+  totalOrders: number;
+}
+
 interface AnalysisData {
   dateRange: { start: string; end: string; days: number };
   previousPeriod: { start: string; end: string };
   insights: {
     highSalesHours: { totalHours: number; byRestaurant: HighSalesRestaurant[] };
+    highSalesHours1k: { totalHours: number; byRestaurant: HighSalesRestaurant1k[] };
     osatLeaders: OsatLeader[];
     dineInChange: DineInChange[];
     appPercentages: AppPercentage[];
+    deliveryPercentages: DeliveryPercentage[];
     outsideOrderTakers: OOTData[];
     attachmentTrend: AttachmentTrend;
   };
@@ -219,7 +238,7 @@ const SUGGESTED_QUESTIONS = [
   "Show me labor percent by unit",
   "What is the drive-thru speed ranking?",
   "Show check average by unit",
-  "Which units ran outside order takers?",
+  "Which units ran Full Lane B?",
   "Show me dine-in percentage by unit",
   "Show product category breakdown",
   "What are the daily sales by unit?",
@@ -619,6 +638,63 @@ export default function AiAnalysisPage() {
               </div>
             </InsightCard>
 
+            {/* 1b. Hours with Sales Over $1,000 */}
+            <InsightCard
+              icon={DollarSign}
+              title="$1,000/hr Units"
+              question="How many hours of sales did we have over $1,000?"
+              accentColor="text-teal-600"
+              bgColor="bg-teal-500/10"
+            >
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Badge variant="secondary" className="text-lg px-3 py-1">
+                    {data.insights.highSalesHours1k.totalHours}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    total hours across all units exceeded $1,000 in sales
+                  </span>
+                </div>
+
+                {data.insights.highSalesHours1k.byRestaurant.length > 0 ? (
+                  <div className="rounded-lg border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/50">
+                          <th className="text-left px-3 py-2 font-medium">Unit</th>
+                          <th className="text-center px-3 py-2 font-medium">Hours &gt;$1K</th>
+                          <th className="text-right px-3 py-2 font-medium">Avg/Hour</th>
+                          <th className="text-right px-3 py-2 font-medium hidden sm:table-cell">Peak</th>
+                          <th className="text-right px-3 py-2 font-medium hidden md:table-cell">Peak Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.insights.highSalesHours1k.byRestaurant.map((r, i) => (
+                          <tr key={i} className="border-t hover:bg-muted/30">
+                            <td className="px-3 py-2 font-medium">{r.restaurant}</td>
+                            <td className="px-3 py-2 text-center">
+                              <Badge variant="outline">{r.hoursOver1k}</Badge>
+                            </td>
+                            <td className="px-3 py-2 text-right text-teal-600 font-semibold">
+                              {formatCurrency(r.avgSalesPerHour)}
+                            </td>
+                            <td className="px-3 py-2 text-right hidden sm:table-cell font-semibold">
+                              {formatCurrency(r.peakSales)}
+                            </td>
+                            <td className="px-3 py-2 text-right hidden md:table-cell text-muted-foreground">
+                              {formatDate(r.peakDate)} @ {formatHour(r.peakHour)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No hours exceeded $1,000 in sales during this period.</p>
+                )}
+              </div>
+            </InsightCard>
+
             {/* 2. Highest OSAT Score */}
             <InsightCard
               icon={Star}
@@ -818,11 +894,75 @@ export default function AiAnalysisPage() {
               </div>
             </InsightCard>
 
-            {/* 5. Outside Order Takers */}
+            {/* 4b. Delivery Order Percentage */}
+            <InsightCard
+              icon={Truck}
+              title="Delivery Order Percentage"
+              question="What is each unit's delivery order percentage?"
+              accentColor="text-rose-500"
+              bgColor="bg-rose-500/10"
+            >
+              <div className="space-y-4">
+                {data.insights.deliveryPercentages.length > 0 ? (
+                  <>
+                    {/* Top delivery unit highlight */}
+                    {data.insights.deliveryPercentages[0] && (
+                      <Card className="border-rose-500/30 bg-rose-500/5">
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Highest Delivery %</p>
+                              <p className="font-semibold">{data.insights.deliveryPercentages[0].restaurant}</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-2xl font-bold text-rose-500">{data.insights.deliveryPercentages[0].percentage}%</span>
+                              <p className="text-xs text-muted-foreground">
+                                {data.insights.deliveryPercentages[0].orders.toLocaleString()} delivery orders
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <div className="rounded-lg border overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="text-left px-3 py-2 font-medium">Unit</th>
+                            <th className="text-right px-3 py-2 font-medium">Delivery %</th>
+                            <th className="text-right px-3 py-2 font-medium hidden sm:table-cell">Delivery Orders</th>
+                            <th className="text-right px-3 py-2 font-medium hidden sm:table-cell">Total Orders</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.insights.deliveryPercentages.map((r, i) => (
+                            <tr key={i} className="border-t hover:bg-muted/30">
+                              <td className="px-3 py-2 font-medium">{r.restaurant}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-rose-500">{r.percentage}%</td>
+                              <td className="px-3 py-2 text-right hidden sm:table-cell text-muted-foreground">
+                                {r.orders.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2 text-right hidden sm:table-cell text-muted-foreground">
+                                {r.totalOrders.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No delivery order data available for this period.</p>
+                )}
+              </div>
+            </InsightCard>
+
+            {/* 5. Full Lane B (Outside Order Takers) */}
             <InsightCard
               icon={Megaphone}
-              title="Outside Order Takers (OOT)"
-              question="Which units ran outside order takers?"
+              title="Full Lane B"
+              question="Which units ran Full Lane B (outside order takers)?"
               accentColor="text-orange-500"
               bgColor="bg-orange-500/10"
             >
@@ -834,7 +974,7 @@ export default function AiAnalysisPage() {
                         {data.insights.outsideOrderTakers.filter((r) => r.ranOOT).length}
                       </Badge>
                       <span className="text-sm text-muted-foreground">
-                        units ran outside order takers (DT3 lane) during this period
+                        units ran Full Lane B (DT3 lane) during this period
                       </span>
                     </div>
 
@@ -843,8 +983,8 @@ export default function AiAnalysisPage() {
                         <thead>
                           <tr className="bg-muted/50">
                             <th className="text-left px-3 py-2 font-medium">Unit</th>
-                            <th className="text-center px-3 py-2 font-medium">OOT Active</th>
-                            <th className="text-right px-3 py-2 font-medium">OOT Orders</th>
+                            <th className="text-center px-3 py-2 font-medium">Active</th>
+                            <th className="text-right px-3 py-2 font-medium">Full Lane B Orders</th>
                             <th className="text-right px-3 py-2 font-medium hidden sm:table-cell">Hours</th>
                             <th className="text-right px-3 py-2 font-medium hidden md:table-cell">Days</th>
                           </tr>
@@ -876,7 +1016,7 @@ export default function AiAnalysisPage() {
                     </div>
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground italic">No outside order taker data available.</p>
+                  <p className="text-sm text-muted-foreground italic">No Full Lane B data available.</p>
                 )}
               </div>
             </InsightCard>
