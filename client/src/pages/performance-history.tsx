@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { NavBar } from "@/components/nav-bar";
 import { Link } from "wouter";
 import {
@@ -643,6 +643,15 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
 
   const agenda = useMemo(() => generateRMMAgenda(restaurant, dateRange, storeLeaders), [restaurant, dateRange, storeLeaders]);
 
+  const handleCopySelection = useCallback(async () => {
+    const selection = window.getSelection()?.toString();
+    if (selection && selection.trim()) {
+      await navigator.clipboard.writeText(selection);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, []);
+
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(agenda);
     setCopied(true);
@@ -678,22 +687,26 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
             RMM Agenda — {restaurant.restaurantName}
           </DialogTitle>
           <DialogDescription>
-            Restaurant Manager Meeting agenda based on the last 7 days of performance data.
+            Restaurant Manager Meeting agenda based on the last {dateRange.length} days of performance data. Select text to copy specific sections.
           </DialogDescription>
         </DialogHeader>
         <div className="flex gap-2 mb-2">
           <Button variant="outline" size="sm" onClick={handleCopy}>
             {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
-            {copied ? "Copied!" : "Copy"}
+            {copied ? "Copied!" : "Copy All"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleCopySelection}>
+            <Copy className="w-4 h-4 mr-1" />
+            Copy Selection
           </Button>
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <Printer className="w-4 h-4 mr-1" />
             Print
           </Button>
         </div>
-        <ScrollArea className="flex-1 min-h-0 border rounded-md">
-          <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap font-mono">{agenda}</pre>
-        </ScrollArea>
+        <div className="flex-1 min-h-0 overflow-y-auto border rounded-md select-text cursor-text">
+          <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap font-mono select-text">{agenda}</pre>
+        </div>
       </DialogContent>
     </Dialog>
   );
