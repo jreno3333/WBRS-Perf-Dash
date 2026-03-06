@@ -10,7 +10,7 @@ export const restaurants = pgTable("restaurants", {
   timezone: text("timezone").notNull().default("America/New_York"), // Eastern or Central
   isActive: boolean("is_active").notNull().default(true),
   laborTarget: decimal("labor_target", { precision: 5, scale: 2 }).default("25.00"), // Target labor % (default 25%)
-  openDate: date("open_date"), // Date when restaurant opened/will open. Future = training, < 90 days = new unit
+  openDate: date("open_date"), // Date when restaurant opened/will open. Future = training, < 120 days = new unit
   revenuePorts: text("revenue_ports").array(), // Revenue ports: dine_in, drive_thru, app, 3pd
   address: text("address"), // Full street address
   latitude: decimal("latitude", { precision: 10, scale: 7 }), // GPS latitude

@@ -187,7 +187,7 @@ router.get("/api/performance-history", async (req, res) => {
       if (openDateNorm > today) return "training";
       const diffTime = today.getTime() - openDateNorm.getTime();
       const daysOpen = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      return daysOpen < 90 ? "new" : "established";
+      return daysOpen < 120 ? "new" : "established";
     };
 
     // Filter out training stores
