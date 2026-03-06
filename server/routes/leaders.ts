@@ -173,7 +173,6 @@ router.get("/api/leaders", async (req, res) => {
     const leaders: LeaderSummary[] = [];
 
     // Pre-fetch attachment rates for each date (for The Closer bonus)
-    // Use batched concurrency (3 at a time) to balance speed vs DB connection pressure
     const attachmentByDateRestaurant = new Map<string, number>();
     {
       const dateList: string[] = [];
@@ -182,19 +181,16 @@ router.get("/api/leaders", async (req, res) => {
         dateList.push(cursor.toISOString().split('T')[0]);
         cursor.setDate(cursor.getDate() + 1);
       }
-      for (let i = 0; i < dateList.length; i += 3) {
-        const batch = dateList.slice(i, i + 3);
-        await Promise.all(batch.map(async (d) => {
-          try {
-            const dParts = d.split('-');
-            const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
-            const attachMap = await getAttachmentRatesFromDetail(dt);
-            for (const [restId, data] of attachMap) {
-              attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
-            }
-          } catch (e) { /* POS data may not be available */ }
-        }));
-      }
+      await Promise.all(dateList.map(async (d) => {
+        try {
+          const dParts = d.split('-');
+          const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
+          const attachMap = await getAttachmentRatesFromDetail(dt);
+          for (const [restId, data] of attachMap) {
+            attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
+          }
+        } catch (e) { /* POS data may not be available */ }
+      }));
     }
 
     for (const leader of leaderEmployees) {

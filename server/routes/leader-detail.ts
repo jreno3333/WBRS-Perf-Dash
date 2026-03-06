@@ -324,23 +324,19 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const dailyRawScores = new Map<string, number>();
 
     // Pre-fetch attachment rates per date for The Closer bonus
-    // Use batched concurrency (3 at a time) to balance speed vs DB connection pressure
     const attachmentByDateRestaurant = new Map<string, number>();
     {
       const uniqueDates = Array.from(new Set(Array.from(dailyMap.keys())));
-      for (let i = 0; i < uniqueDates.length; i += 3) {
-        const batch = uniqueDates.slice(i, i + 3);
-        await Promise.all(batch.map(async (d) => {
-          try {
-            const dParts = d.split('-');
-            const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
-            const attachMap = await getAttachmentRatesFromDetail(dt);
-            for (const [restId, data] of attachMap) {
-              attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
-            }
-          } catch (e) { /* POS data may not be available */ }
-        }));
-      }
+      await Promise.all(uniqueDates.map(async (d) => {
+        try {
+          const dParts = d.split('-');
+          const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
+          const attachMap = await getAttachmentRatesFromDetail(dt);
+          for (const [restId, data] of attachMap) {
+            attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
+          }
+        } catch (e) { /* POS data may not be available */ }
+      }));
     }
 
     const dailyEntries = Array.from(dailyMap.entries());

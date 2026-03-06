@@ -1,7 +1,6 @@
 import { db, posDb } from "./db";
 import { posOrders, locationMapping, restaurants } from "@shared/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
-import { ATTACHMENT_BENCHMARKS as SHARED_BENCHMARKS } from "./lib/scoring";
 
 // Ensures the destination column exists before queries/inserts reference it.
 // Only runs the ALTER TABLE once per server lifetime.
@@ -1045,12 +1044,12 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
 };
 
 const ATTACHMENT_BENCHMARKS: Record<string, { min: number; max: number; benchmark: number }> = {
-  cheese: { min: 15, max: 45, benchmark: SHARED_BENCHMARKS.cheese },
-  bacon: { min: 8, max: 35, benchmark: SHARED_BENCHMARKS.bacon },
-  jalapenos: { min: 5, max: 25, benchmark: SHARED_BENCHMARKS.jalapenos },
-  dipping_sauces: { min: 15, max: 50, benchmark: SHARED_BENCHMARKS.dipping_sauces },
-  desserts: { min: 8, max: 35, benchmark: SHARED_BENCHMARKS.desserts },
-  whatasize: { min: 10, max: 45, benchmark: SHARED_BENCHMARKS.whatasize },
+  cheese: { min: 15, max: 45, benchmark: 30 },
+  bacon: { min: 8, max: 35, benchmark: 20 },
+  jalapenos: { min: 5, max: 25, benchmark: 15 },
+  dipping_sauces: { min: 15, max: 50, benchmark: 35 },
+  desserts: { min: 8, max: 35, benchmark: 20 },
+  whatasize: { min: 10, max: 45, benchmark: 30 },
 };
 
 const ATTACHMENT_LABELS: Record<string, string> = {

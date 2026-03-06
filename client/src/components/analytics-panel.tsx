@@ -568,8 +568,8 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                             {displayName}
                             {catsAtTarget >= 4 && (
                               <BadgeWithTooltip
-                                tooltipTitle="The Closer"
-                                tooltipDetail={`Hit ${catsAtTarget}/6 attachment rate targets today. Earned +${catsAtTarget} bonus points. The Closer badge is awarded when a unit meets or exceeds the target on 4 or more of the 6 upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize) — proving the team is closing the sale on every order.`}
+                                title="The Closer"
+                                detail={`Hit ${catsAtTarget}/6 attachment rate targets today. Earned +${catsAtTarget} bonus points. The Closer badge is awarded when a unit meets or exceeds the target on 4 or more of the 6 upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize) — proving the team is closing the sale on every order.`}
                               >
                                 <Badge variant="outline" className="text-[8px] ml-1 py-0 px-1 text-amber-600 border-amber-400 cursor-pointer">
                                   🎯 Closer
