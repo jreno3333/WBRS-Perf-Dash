@@ -204,6 +204,20 @@ export default function Dashboard() {
   });
   const destinationsByRestaurant = destinationResponse?.restaurants;
 
+  // Fetch attachment rates for The Closer bonus
+  const { data: attachmentRatesResponse } = useQuery<{
+    restaurants: Record<string, { categories: Record<string, { attachRate: number; vsTarget: number }> }>;
+  }>({
+    queryKey: ["/api/pos/attachment-rates", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/pos/attachment-rates?date=${dateStr}`);
+      if (!res.ok) return { restaurants: {} };
+      return res.json();
+    },
+    refetchInterval,
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+  });
+
   // Fetch markets data
   const { data: markets } = useQuery<MarketWithRestaurants[]>({
     queryKey: ["/api/markets"],
@@ -741,6 +755,7 @@ export default function Dashboard() {
               weeklySalesData={weeklySalesData}
               checkAverageByRestaurant={checkAverageByRestaurant}
               checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
+              attachmentRatesByRestaurant={attachmentRatesResponse?.restaurants}
             />
 
             {/* Quick Poll */}
@@ -844,6 +859,7 @@ export default function Dashboard() {
                       notes={notesByRestaurant[restaurant.restaurantId]}
                       dateStr={dateStr}
                       onNoteAdded={refetchNotes}
+                      attachmentCategories={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.categories}
                     />
                   ))}
                 </div>

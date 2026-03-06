@@ -2,9 +2,9 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
-import { computeHourlyScore, scoreToGradeLabel, computeDailyBonuses } from "../lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
 
 const router = Router();
 
@@ -172,6 +172,27 @@ router.get("/api/leaders", async (req, res) => {
 
     const leaders: LeaderSummary[] = [];
 
+    // Pre-fetch attachment rates for each date (for The Closer bonus)
+    const attachmentByDateRestaurant = new Map<string, number>();
+    {
+      const dateList: string[] = [];
+      const cursor = new Date(startDate);
+      while (cursor <= endDate) {
+        dateList.push(cursor.toISOString().split('T')[0]);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      await Promise.all(dateList.map(async (d) => {
+        try {
+          const dParts = d.split('-');
+          const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
+          const attachMap = await getAttachmentRatesFromDetail(dt);
+          for (const [restId, data] of attachMap) {
+            attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
+          }
+        } catch (e) { /* POS data may not be available */ }
+      }));
+    }
+
     for (const leader of leaderEmployees) {
       const userId = leader.sevenShiftsUserId;
       const dailyAggregates = new Map<string, {
@@ -300,12 +321,14 @@ router.get("/api/leaders", async (req, res) => {
             : undefined;
 
           // Apply daily bonus to each day's score (matches dashboard + trends)
+          const attachCatsAtTarget = attachmentByDateRestaurant.get(`${dayDate}-${day.restaurantId}`);
           const bonusResult = computeDailyBonuses({
             dailyOsatPercent: osatPercent,
             dailySurveyCount: totalOsatResponses,
             dailySalesVariancePct: hasComparableSales ? salesVariancePct : undefined,
             dailyTransactionVariancePct: txnVariancePct,
             dailyYoySalesVariancePct: dailyYoySalesVar,
+            attachmentCategoriesAtTarget: attachCatsAtTarget,
             hourlyScores: [gradeResult.score], // day-level aggregate (recovery/consistency need per-hour data)
           });
           const finalScore = Math.min(gradeResult.score + bonusResult.cappedBonus, 100);

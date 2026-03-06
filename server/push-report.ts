@@ -6,7 +6,8 @@ import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
 import { getTotalRequiredStaff } from "./labor-model";
-import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, gradeToMidpoint as sharedGradeToMidpoint, computeDailyBonuses } from "./lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, gradeToMidpoint as sharedGradeToMidpoint, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "./lib/scoring";
+import { getAttachmentRatesFromDetail } from "./xenial-webhook";
 
 // ─── Wrappers that delegate to the shared scoring module ─────────────
 function getExecutionGrade(
@@ -91,6 +92,14 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
 
     const hourlyData: HourlySalesData[] = hourlyDataByRestaurant[restaurantId] || [];
     const completedHours = hourlyData.filter(h => h.hour <= 23 && h.todaySales > 0);
+
+    // Fetch attachment rates for The Closer bonus
+    let attachCatsAtTarget: number | undefined;
+    try {
+      const attachMap = await getAttachmentRatesFromDetail(targetDate);
+      const attachData = attachMap.get(restaurantId);
+      if (attachData) attachCatsAtTarget = countAttachmentCategoriesAtTarget(attachData.categories);
+    } catch (e) { /* POS data may not be available */ }
 
     const sales = restaurant.actualSales;
     const lastWeekSales = restaurant.actualLastWeekSales;
@@ -209,6 +218,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       dailySalesVariancePct: dailySalesVar,
       dailyTransactionVariancePct: dailyTxnVar,
       dailyYoySalesVariancePct: dailyYoySalesVar,
+      attachmentCategoriesAtTarget: attachCatsAtTarget,
       hourlyScores: validScores,
     }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 

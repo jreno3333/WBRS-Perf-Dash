@@ -4,8 +4,8 @@ import { storage } from "../storage";
 import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather, historicalDailySales } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
-import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
-import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange } from "../xenial-webhook";
+import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
+import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
 
 const router = Router();
 
@@ -326,6 +326,19 @@ router.get("/api/performance-history", async (req, res) => {
     });
 
     // Process each date - using PER-HOUR grade calculation matching dashboard exactly
+    // Pre-fetch attachment rates for each date (for The Closer bonus)
+    const attachmentByDateRestaurant = new Map<string, number>(); // key: "dateStr-restaurantId" -> categoriesAtTarget
+    await Promise.all(dateRange.map(async (d) => {
+      try {
+        const dParts = d.split('-');
+        const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
+        const attachMap = await getAttachmentRatesFromDetail(dt);
+        for (const [restId, data] of attachMap) {
+          attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
+        }
+      } catch (e) { /* POS data may not be available */ }
+    }));
+
     for (const dateStr of dateRange) {
       const salesForDate = allHourlySales.filter(s => {
         const salesDateStr = s.salesDate.toISOString().split('T')[0];
@@ -549,12 +562,15 @@ router.get("/api/performance-history", async (req, res) => {
           : undefined;
 
         // Compute daily bonus points using raw hourly scores + daily-level metrics
+        const attachCatsKey = `${dateStr}-${restaurant.id}`;
+        const attachCatsAtTarget = attachmentByDateRestaurant.get(attachCatsKey);
         const bonusResult = baseGrade > 0 ? computeDailyBonuses({
           dailyOsatPercent: osatPercent,
           dailySurveyCount: osatResponses,
           dailySalesVariancePct: dailySalesVarForBonus,
           dailyTransactionVariancePct: dailyTxnVariance,
           dailyYoySalesVariancePct: dailyYoySalesVar,
+          attachmentCategoriesAtTarget: attachCatsAtTarget,
           hourlyScores: hourlyRawScores,
         }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 

@@ -6,7 +6,8 @@ import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
 import { getTotalRequiredStaff } from "./labor-model";
-import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, computeDailyBonuses } from "./lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "./lib/scoring";
+import { getAttachmentRatesFromDetail } from "./xenial-webhook";
 
 
 function getExecutionGrade(
@@ -152,6 +153,12 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
     const activeRestaurants = leaderboard.restaurants.filter(r => r.status !== 'training');
     if (activeRestaurants.length === 0) return null;
 
+    // Fetch attachment rates for The Closer bonus
+    let attachmentByRestaurant: Map<string, { categories: Record<string, { attachRate: number }> }> = new Map();
+    try {
+      attachmentByRestaurant = await getAttachmentRatesFromDetail(targetDate);
+    } catch (e) { /* POS data may not be available */ }
+
     const summaries: RestaurantSummary[] = [];
     let totalSales = 0;
     let totalLastWeek = 0;
@@ -228,12 +235,17 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         ? ((dailyTotalSales - lastYearDaily) / lastYearDaily) * 100
         : undefined;
 
+      // Attachment categories at target for The Closer bonus
+      const attachData = attachmentByRestaurant.get(restaurant.restaurantId);
+      const attachCatsAtTarget = attachData ? countAttachmentCategoriesAtTarget(attachData.categories) : undefined;
+
       const bonusResult = baseScore > 0 ? computeDailyBonuses({
         dailyOsatPercent: dailyOsatPct,
         dailySurveyCount: dailyOsatResponses,
         dailySalesVariancePct: dailySalesVar,
         dailyTransactionVariancePct: dailyTxnVar,
         dailyYoySalesVariancePct: dailyYoySalesVar,
+        attachmentCategoriesAtTarget: attachCatsAtTarget,
         hourlyScores: validScores,
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
