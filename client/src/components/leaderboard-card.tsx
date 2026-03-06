@@ -1483,25 +1483,6 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                               </div>
                             );
                           })()}
-                          {/* 15-min quarter labor breakdown */}
-                          {(() => {
-                            const qb = hour.quarterBreakdown;
-                            if (!qb || (qb.q0 === 0 && qb.q1 === 0 && qb.q2 === 0 && qb.q3 === 0)) return null;
-                            const h12 = hour.hour === 0 ? 12 : hour.hour > 12 ? hour.hour - 12 : hour.hour;
-                            const ampm = hour.hour < 12 ? 'am' : 'pm';
-                            return (
-                              <div className="flex gap-2 text-[10px] text-muted-foreground border-t border-border/50 pt-0.5">
-                                {[qb.q0, qb.q1, qb.q2, qb.q3].map((qVal, qi) => {
-                                  const min = qi * 15;
-                                  return (
-                                    <span key={qi} className={qVal > 0 ? "text-foreground" : ""}>
-                                      {h12}:{min.toString().padStart(2, '0')}{ampm} <span className="font-medium">{qVal.toFixed(1)}h</span>
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()}
                         </div>
                       </div>
                     </div>
