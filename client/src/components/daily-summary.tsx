@@ -37,6 +37,7 @@ import {
   Flame,
   Diamond,
   Zap,
+  Star,
 } from "lucide-react";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
