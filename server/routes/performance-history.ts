@@ -208,7 +208,36 @@ router.get("/api/performance-history", async (req, res) => {
 
     const getGradeLabel = scoreToGradeLabel;
 
+    // Daypart definitions (mirrors client/src/lib/dayparts.ts)
+    const DAYPARTS = [
+      { id: 'earlybird', label: 'Earlybird', shortLabel: 'EB', startHour: 0, endHour: 5 },
+      { id: 'breakfast', label: 'Breakfast', shortLabel: 'BRK', startHour: 6, endHour: 10 },
+      { id: 'lunch', label: 'Lunch', shortLabel: 'LCH', startHour: 11, endHour: 14 },
+      { id: 'snack', label: 'Snack', shortLabel: 'SNK', startHour: 15, endHour: 16 },
+      { id: 'evening', label: 'Evening', shortLabel: 'EVE', startHour: 17, endHour: 19 },
+      { id: 'evening_snack', label: 'Evening Snack', shortLabel: 'ES', startHour: 20, endHour: 23 },
+    ];
+
+    function getDaypartForHour(hour: number) {
+      return DAYPARTS.find(dp => hour >= dp.startHour && hour <= dp.endHour);
+    }
+
     // Process data by date and restaurant
+    type DaypartGrade = {
+      id: string;
+      label: string;
+      shortLabel: string;
+      score: number;
+      gradeLabel: string;
+      sales: number;
+      salesVariance: number;
+      osatPercent?: number;
+      osatResponses: number;
+      speedAttainment?: number;
+      staffingDiff: number;
+      hoursWithData: number;
+    };
+
     type DailyGrade = {
       date: string;
       grade: number;
@@ -226,6 +255,7 @@ router.get("/api/performance-history", async (req, res) => {
       weather?: { highTemp: number; lowTemp: number; condition: string } | null;
       bonuses?: { id: string; label: string; points: number }[];
       bonusPoints?: number;
+      daypartGrades?: DaypartGrade[];
     };
 
     type RestaurantHistory = {
@@ -378,6 +408,9 @@ router.get("/api/performance-history", async (req, res) => {
         let dailyTxnTotal = 0;
         let dailyTxnLastWeekTotal = 0;
 
+        // Track per-hour details for daypart aggregation
+        const hourlyDetails: { hour: number; score: number; sales: number; lastWeekSales: number; osatPct?: number; osatResp: number; speed?: number; staffDiff: number; hasStaffing: boolean }[] = [];
+
         // Build set of hours that have data (7shifts OR POS)
         const hoursWithData = new Set<number>();
         for (const hourSales of restaurantSales) {
@@ -460,6 +493,18 @@ router.get("/api/performance-history", async (req, res) => {
           if (result.hasGrade && result.score > 0) {
             hourlyRawScores.push(result.score);
             hourlyMidpoints.push(scoringGradeToMidpoint(scoreToGradeLabel(result.score)));
+            // Track for daypart aggregation
+            hourlyDetails.push({
+              hour,
+              score: result.score,
+              sales: todaySales,
+              lastWeekSales,
+              osatPct: hourOsatPercent,
+              osatResp: hourOsatRecord?.totalResponses || 0,
+              speed: isOotHour ? undefined : speedAttainment,
+              staffDiff: staffingDiff,
+              hasStaffing: hasValidStaffing,
+            });
           }
         }
 
@@ -564,6 +609,45 @@ router.get("/api/performance-history", async (req, res) => {
           ? { highTemp: parseFloat(String(weatherRecord.highTemp)), lowTemp: parseFloat(String(weatherRecord.lowTemp ?? "0")), condition: weatherRecord.condition }
           : null;
 
+        // Compute daypart grades from hourly details
+        const daypartGrades: DaypartGrade[] = [];
+        for (const dp of DAYPARTS) {
+          const dpHours = hourlyDetails.filter(h => h.hour >= dp.startHour && h.hour <= dp.endHour);
+          if (dpHours.length === 0) continue;
+          const dpScore = dpHours.reduce((s, h) => s + h.score, 0) / dpHours.length;
+          const dpSales = dpHours.reduce((s, h) => s + h.sales, 0);
+          const dpLastWeekSales = dpHours.reduce((s, h) => s + h.lastWeekSales, 0);
+          const dpSalesVar = dpLastWeekSales > 0 ? ((dpSales - dpLastWeekSales) / dpLastWeekSales) * 100 : 0;
+          const dpOsatHours = dpHours.filter(h => h.osatPct !== undefined && h.osatResp > 0);
+          const dpOsatResp = dpOsatHours.reduce((s, h) => s + h.osatResp, 0);
+          const dpOsatPct = dpOsatResp > 0
+            ? dpOsatHours.reduce((s, h) => s + (h.osatPct! / 100) * h.osatResp, 0) / dpOsatResp * 100
+            : undefined;
+          const dpSpeedHours = dpHours.filter(h => h.speed !== undefined);
+          const dpSpeed = dpSpeedHours.length > 0
+            ? dpSpeedHours.reduce((s, h) => s + h.speed!, 0) / dpSpeedHours.length
+            : undefined;
+          const dpStaffHours = dpHours.filter(h => h.hasStaffing);
+          const dpStaffDiff = dpStaffHours.length > 0
+            ? dpStaffHours.reduce((s, h) => s + h.staffDiff, 0) / dpStaffHours.length
+            : 0;
+
+          daypartGrades.push({
+            id: dp.id,
+            label: dp.label,
+            shortLabel: dp.shortLabel,
+            score: Math.round(dpScore * 10) / 10,
+            gradeLabel: scoreToGradeLabel(dpScore),
+            sales: dpSales,
+            salesVariance: Math.round(dpSalesVar * 10) / 10,
+            osatPercent: dpOsatPct !== undefined ? Math.round(dpOsatPct * 10) / 10 : undefined,
+            osatResponses: dpOsatResp,
+            speedAttainment: dpSpeed !== undefined ? Math.round(dpSpeed) : undefined,
+            staffingDiff: Math.round(dpStaffDiff * 10) / 10,
+            hoursWithData: dpHours.length,
+          });
+        }
+
         historyByRestaurant.get(restaurant.id)!.dailyGrades.push({
           date: dateStr,
           grade,
@@ -583,6 +667,7 @@ router.get("/api/performance-history", async (req, res) => {
             ? bonusResult.bonuses.map(b => ({ id: b.id, label: b.label, points: b.points }))
             : undefined,
           bonusPoints: bonusResult.cappedBonus > 0 ? bonusResult.cappedBonus : undefined,
+          daypartGrades: daypartGrades.length > 0 ? daypartGrades : undefined,
         });
       }
     }
