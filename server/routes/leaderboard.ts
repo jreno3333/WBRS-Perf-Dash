@@ -777,6 +777,27 @@ router.get("/api/weekly-sales", async (req, res) => {
       return total;
     }
 
+    // Fetch WTD labor costs from 7shifts punches (actualLabor in hourly_labor)
+    const laborRows = await db.select({
+      restaurantId: hourlyLabor.restaurantId,
+      date: hourlyLabor.date,
+      actualLabor: hourlyLabor.actualLabor,
+    }).from(hourlyLabor).where(
+      and(
+        gte(hourlyLabor.date, currentWeekStartStr),
+        lte(hourlyLabor.date, todayStr)
+      )
+    );
+
+    // Aggregate labor cost by restaurant and date
+    const laborByRestaurantDate: Record<string, Record<string, number>> = {};
+    for (const row of laborRows) {
+      const dateKey = row.date.split('T')[0];
+      if (!laborByRestaurantDate[row.restaurantId]) laborByRestaurantDate[row.restaurantId] = {};
+      if (!laborByRestaurantDate[row.restaurantId][dateKey]) laborByRestaurantDate[row.restaurantId][dateKey] = 0;
+      laborByRestaurantDate[row.restaurantId][dateKey] += parseFloat(row.actualLabor as string || '0');
+    }
+
     // Build weekly totals per restaurant with hour-level precision + EOW forecast
     const allRestaurants = await storage.getRestaurants();
     // Use per-restaurant local hour cutoffs to match the DAY calculation in storage.ts
@@ -784,7 +805,7 @@ router.get("/api/weekly-sales", async (req, res) => {
     // Previously we used a single company-wide minimum (getNormalizedHourCutoff) which
     // under-counted restaurants in later timezones, causing WTD != DAY on first day of week.
     const isLiveToday = todayStr === realTodayStr;
-    const weeklyData: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number }> = {};
+    const weeklyData: Record<string, { currentWeek: number; priorWeek: number; eowForecast: number; priorWeekFull: number; daysInCurrentWeek: number; wtdLaborCost: number }> = {};
 
     for (const r of allRestaurants) {
       // Per-restaurant hour cutoff matching the DAY (actualSales) calculation
@@ -862,12 +883,19 @@ router.get("/api/weekly-sales", async (req, res) => {
 
       const eowForecast = eowActual + forecastRemaining;
 
+      // WTD labor cost from 7shifts punches
+      let wtdLaborCost = 0;
+      for (const d of currentWeekDates) {
+        wtdLaborCost += laborByRestaurantDate[r.id]?.[d] || 0;
+      }
+
       weeklyData[r.id] = {
         currentWeek: Math.round(currentWeekTotal),
         priorWeek: Math.round(priorWeekTotal),
         eowForecast: Math.round(eowForecast),
         priorWeekFull: Math.round(fullPriorWeek),
         daysInCurrentWeek: currentWeekDates.length,
+        wtdLaborCost: Math.round(wtdLaborCost * 100) / 100,
       };
     }
 

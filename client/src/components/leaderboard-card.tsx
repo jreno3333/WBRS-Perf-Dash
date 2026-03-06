@@ -97,6 +97,7 @@ interface WeeklyRestaurantData {
   eowForecast: number;
   priorWeekFull: number;
   daysInCurrentWeek: number;
+  wtdLaborCost?: number;
 }
 
 interface CheckAverageData {
@@ -1499,36 +1500,65 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                   const laborHrs = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
                   const sales = hour.todaySales || 0;
                   const hasData = laborHrs > 0 || sales > 0 || operatorHrs > 0;
-                  
+
                   if (hasData) {
                     const staffingDetails = getStaffingBreakdown(hour.hour, sales);
                     acc.totalDeployed += laborHrs;
                     acc.totalTarget += staffingDetails.total;
                     acc.hoursWithData++;
                   }
+                  acc.totalLaborDollars += (hour.actualLabor || 0);
                   return acc;
-                }, { totalDeployed: 0, totalTarget: 0, hoursWithData: 0 });
-                
+                }, { totalDeployed: 0, totalTarget: 0, hoursWithData: 0, totalLaborDollars: 0 });
+
                 const staffingDiff = totals.totalDeployed - totals.totalTarget;
                 const isOverstaffed = staffingDiff > 0;
                 const isUnderstaffed = staffingDiff < 0;
-                
+
                 if (totals.hoursWithData === 0) return null;
-                
+
+                // Day labor cost % = actual labor dollars / actual sales
+                const dayLaborPct = restaurant.actualSales > 0
+                  ? (totals.totalLaborDollars / restaurant.actualSales) * 100
+                  : 0;
+                // WTD labor cost % = wtd labor dollars / wtd sales
+                const wtdLaborPct = weeklyData && weeklyData.currentWeek > 0 && weeklyData.wtdLaborCost
+                  ? (weeklyData.wtdLaborCost / weeklyData.currentWeek) * 100
+                  : 0;
+                const laborTarget = restaurant.laborTarget || 25;
+
                 return (
                   <div className="mt-2 flex justify-between items-center text-xs">
                     <span className="text-muted-foreground">
                       Day Total: {totals.totalDeployed.toFixed(1)} labor hrs / {totals.totalTarget} target
                     </span>
-                    <span className={`font-medium ${
-                      isOverstaffed ? "text-red-500" : 
-                      isUnderstaffed ? "text-yellow-500" : 
-                      "text-green-500"
-                    }`} data-testid={`staffing-total-${restaurant.restaurantId}`}>
-                      {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` : 
-                       isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` : 
-                       "Right-sized"}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      {totals.totalLaborDollars > 0 && (
+                        <span className="text-muted-foreground">
+                          LC%{' '}
+                          <span className={`font-medium ${dayLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
+                            Day {dayLaborPct.toFixed(1)}%
+                          </span>
+                          {wtdLaborPct > 0 && (
+                            <>
+                              {' '}
+                              <span className={`font-medium ${wtdLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
+                                WTD {wtdLaborPct.toFixed(1)}%
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      )}
+                      <span className={`font-medium ${
+                        isOverstaffed ? "text-red-500" :
+                        isUnderstaffed ? "text-yellow-500" :
+                        "text-green-500"
+                      }`} data-testid={`staffing-total-${restaurant.restaurantId}`}>
+                        {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` :
+                         isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` :
+                         "Right-sized"}
+                      </span>
+                    </div>
                   </div>
                 );
               })()}
