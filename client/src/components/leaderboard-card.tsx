@@ -630,23 +630,29 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                             <div className="font-medium mb-1">Daypart Grades</div>
                             <div className="flex flex-col gap-0.5">
                               {daypartGrades.map(dp => {
-                                // Compute daypart check average for tooltip
-                                let dpCA: number | null = null;
-                                if (checkAverage?.hourly) {
-                                  let dpOrders = 0, dpSales = 0;
+                                // Compute daypart sales and variance for tooltip
+                                let dpSales = 0, dpLWSales = 0;
+                                if (hourlyData) {
                                   for (let h = dp.startHour; h <= dp.endHour; h++) {
-                                    const hCA = checkAverage.hourly[h];
-                                    if (hCA) { dpOrders += hCA.orders; dpSales += hCA.sales; }
+                                    const hd = hourlyData.find(x => x.hour === h);
+                                    if (hd) { dpSales += hd.todaySales || 0; dpLWSales += hd.lastWeekSales || 0; }
                                   }
-                                  if (dpOrders > 0) dpCA = dpSales / dpOrders;
                                 }
+                                const dpVar = dpLWSales > 0 ? ((dpSales - dpLWSales) / dpLWSales) * 100 : 0;
                                 return (
                                   <div key={dp.id} className="flex items-center justify-between gap-3">
                                     <span className="text-muted-foreground">{dp.label}</span>
                                     <div className="flex items-center gap-2">
                                       <span className={`font-bold ${dpGetGradeColor(dp.grade!)}`}>{dp.grade}</span>
-                                      {dpCA !== null && (
-                                        <span className="text-teal-500 text-[10px]">${dpCA.toFixed(2)}</span>
+                                      {dpSales > 0 && (
+                                        <span className="text-[10px]">
+                                          ${Math.round(dpSales).toLocaleString()}
+                                          {dpLWSales > 0 && (
+                                            <span className={`ml-1 ${dpVar >= 0 ? "text-green-500" : "text-red-500"}`}>
+                                              {dpVar >= 0 ? "+" : ""}{Math.round(dpVar)}%
+                                            </span>
+                                          )}
+                                        </span>
                                       )}
                                     </div>
                                   </div>
@@ -1255,26 +1261,27 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
               })()}</span>
             </div>
-            {/* Daypart brackets with grades + check average */}
+            {/* Daypart brackets with grades + sales & variance */}
             <div className="flex mt-0.5">
               {DAYPARTS.map(dp => {
                 const spanHours = dp.endHour - dp.startHour + 1;
                 const widthPercent = (spanHours / 24) * 100;
                 const dpGrade = daypartGrades.find(dg => dg.id === dp.id);
-                // Calculate daypart check average from hourly data
-                let dpCheckAvg: number | null = null;
-                if (checkAverage?.hourly) {
-                  let dpOrders = 0;
-                  let dpSales = 0;
+                // Calculate daypart sales and last week variance from hourly data
+                let dpSales = 0;
+                let dpLastWeekSales = 0;
+                if (hourlyData) {
                   for (let h = dp.startHour; h <= dp.endHour; h++) {
-                    const hourCA = checkAverage.hourly[h];
-                    if (hourCA) {
-                      dpOrders += hourCA.orders;
-                      dpSales += hourCA.sales;
+                    const hourData = hourlyData.find(hd => hd.hour === h);
+                    if (hourData) {
+                      dpSales += hourData.todaySales || 0;
+                      dpLastWeekSales += hourData.lastWeekSales || 0;
                     }
                   }
-                  if (dpOrders > 0) dpCheckAvg = dpSales / dpOrders;
                 }
+                const dpVariance = dpLastWeekSales > 0
+                  ? ((dpSales - dpLastWeekSales) / dpLastWeekSales) * 100
+                  : 0;
                 return (
                   <div key={dp.id} style={{ width: `${widthPercent}%` }} className="text-center px-px">
                     <div className={`h-1 rounded-sm ${dp.bgColor}`} style={{ opacity: dpGrade?.grade ? 1 : 0.3 }} />
@@ -1284,9 +1291,14 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         <span className={`font-bold ${dpGetGradeColor(dpGrade.grade)}`}>{dpGrade.grade}</span>
                       )}
                     </div>
-                    {dpCheckAvg !== null && (
-                      <div className="text-[7px] leading-none text-teal-600 dark:text-teal-400 font-medium">
-                        ${dpCheckAvg.toFixed(0)}
+                    {dpSales > 0 && (
+                      <div className="text-[7px] leading-none font-medium">
+                        <span className="text-muted-foreground">${Math.round(dpSales).toLocaleString()}</span>
+                        {dpLastWeekSales > 0 && (
+                          <span className={`ml-0.5 ${dpVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
+                            {dpVariance >= 0 ? "+" : ""}{Math.round(dpVariance)}%
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
