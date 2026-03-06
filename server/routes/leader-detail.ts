@@ -2,9 +2,9 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange, getAttachmentRatesFromDetailBatch } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
-import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
+import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses } from "../lib/scoring";
 
 const router = Router();
 
@@ -45,8 +45,6 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const detailExtStart = new Date(startDate);
     detailExtStart.setDate(detailExtStart.getDate() - 7);
     const detailExtStartStr = detailExtStart.toISOString().split('T')[0];
-
-    const attachmentPromise = getAttachmentRatesFromDetailBatch(startDateStr, endDateStr).catch(() => new Map<string, number>());
 
     const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1); yoyStart.setDate(yoyStart.getDate() - 3);
     const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1); yoyEnd.setDate(yoyEnd.getDate() + 3);
@@ -319,7 +317,6 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const dailyDetails: DailyDetail[] = [];
     const dailyRawScores = new Map<string, number>();
 
-    const attachmentByDateRestaurant = await attachmentPromise;
 
     const dailyEntries = Array.from(dailyMap.entries());
     for (const [dateKey, dayData] of dailyEntries) {
@@ -380,15 +377,14 @@ router.get("/api/people/leader-detail", async (req, res) => {
         : undefined;
 
       // Apply daily bonus points (matches dashboard + trends)
-      const attachCatsAtTarget = attachmentByDateRestaurant.get(`${dateKey}-${dayData.restaurantId}`);
       const dailyBonusResult = dailyResult.score > 0 ? computeDailyBonuses({
         dailyOsatPercent: osatPercent,
         dailySurveyCount: osatResponses,
         dailySalesVariancePct: hasComparableSales ? dailySalesVariancePct : undefined,
-        dailyTransactionVariancePct: undefined, // txn variance not aggregated at day level here
+        dailyTransactionVariancePct: undefined,
         dailyYoySalesVariancePct: dailyYoySalesVar,
-        attachmentCategoriesAtTarget: attachCatsAtTarget,
-        hourlyScores: [dailyResult.score], // day-level aggregate
+        attachmentCategoriesAtTarget: undefined,
+        hourlyScores: [dailyResult.score],
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
       const dailyGradeScore = dailyResult.score > 0 ? Math.min(dailyResult.score + dailyBonusResult.cappedBonus, 100) : 0;
       dailyRawScores.set(dateKey, dailyGradeScore);

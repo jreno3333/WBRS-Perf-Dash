@@ -4,8 +4,8 @@ import { storage } from "../storage";
 import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather, historicalDailySales } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
-import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
-import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesFromDetailBatch } from "../xenial-webhook";
+import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
+import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange } from "../xenial-webhook";
 
 const router = Router();
 
@@ -69,8 +69,6 @@ router.get("/api/performance-history", async (req, res) => {
     const txnExpandedEnd = endDateTs.toISOString().split('T')[0];
     const rangeStart = dateRange[0];
     const rangeEnd = dateRange[dateRange.length - 1];
-
-    const attachmentPromise = getAttachmentRatesFromDetailBatch(dateRange[0], dateRange[dateRange.length - 1]).catch(() => new Map<string, number>());
 
     const [
       allHourlySales,
@@ -289,7 +287,6 @@ router.get("/api/performance-history", async (req, res) => {
       osatByKey.set(key, { osatPercent: pct, totalResponses: o.totalResponses });
     });
 
-    const attachmentByDateRestaurant = await attachmentPromise;
 
     const salesByDateRestaurant = new Map<string, typeof allHourlySales>();
     for (const s of allHourlySales) {
@@ -521,15 +518,13 @@ router.get("/api/performance-history", async (req, res) => {
           : undefined;
 
         // Compute daily bonus points using raw hourly scores + daily-level metrics
-        const attachCatsKey = `${dateStr}-${restaurant.id}`;
-        const attachCatsAtTarget = attachmentByDateRestaurant.get(attachCatsKey);
         const bonusResult = baseGrade > 0 ? computeDailyBonuses({
           dailyOsatPercent: osatPercent,
           dailySurveyCount: osatResponses,
           dailySalesVariancePct: dailySalesVarForBonus,
           dailyTransactionVariancePct: dailyTxnVariance,
           dailyYoySalesVariancePct: dailyYoySalesVar,
-          attachmentCategoriesAtTarget: attachCatsAtTarget,
+          attachmentCategoriesAtTarget: undefined,
           hourlyScores: hourlyRawScores,
         }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
