@@ -41,6 +41,21 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
+interface DaypartGrade {
+  id: string;
+  label: string;
+  shortLabel: string;
+  score: number;
+  gradeLabel: string;
+  sales: number;
+  salesVariance: number;
+  osatPercent?: number;
+  osatResponses: number;
+  speedAttainment?: number;
+  staffingDiff: number;
+  hoursWithData: number;
+}
+
 interface DailyGrade {
   date: string;
   grade: number;
@@ -57,6 +72,7 @@ interface DailyGrade {
   weather?: { highTemp: number; lowTemp: number; condition: string } | null;
   bonuses?: { id: string; label: string; points: number }[];
   bonusPoints?: number;
+  daypartGrades?: DaypartGrade[];
 }
 
 interface RestaurantHistory {
@@ -260,9 +276,108 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   });
   agenda += "\n";
 
-  // Section 2: Leader Shout-Outs
+  // Section 2: Daypart Performance Breakdown
   agenda += "───────────────────────────────────────────\n";
-  agenda += "2. LEADER SHOUT-OUTS & WINS\n";
+  agenda += "2. DAYPART PERFORMANCE BREAKDOWN\n";
+  agenda += "───────────────────────────────────────────\n\n";
+
+  // Aggregate daypart data across all days in the period
+  const daypartIds = ['earlybird', 'breakfast', 'lunch', 'snack', 'evening', 'evening_snack'];
+  const daypartLabels: Record<string, string> = {
+    earlybird: 'Earlybird (12a-6a)', breakfast: 'Breakfast (6a-11a)',
+    lunch: 'Lunch (11a-3p)', snack: 'Snack (3p-5p)',
+    evening: 'Evening (5p-8p)', evening_snack: 'Eve Snack (8p-12a)',
+  };
+
+  // Collect all daypart grades across all days
+  const daypartAgg: Record<string, { scores: number[]; sales: number; lastWeekSales: number; osatPcts: { pct: number; resp: number }[]; speeds: number[]; staffDiffs: number[]; dayDetails: { date: string; grade: string; score: number; sales: number }[] }> = {};
+  daypartIds.forEach(id => {
+    daypartAgg[id] = { scores: [], sales: 0, lastWeekSales: 0, osatPcts: [], speeds: [], staffDiffs: [], dayDetails: [] };
+  });
+
+  grades.forEach(day => {
+    if (!day.daypartGrades) return;
+    day.daypartGrades.forEach(dp => {
+      const agg = daypartAgg[dp.id];
+      if (!agg) return;
+      agg.scores.push(dp.score);
+      agg.sales += dp.sales;
+      if (dp.osatPercent !== undefined) agg.osatPcts.push({ pct: dp.osatPercent, resp: dp.osatResponses });
+      if (dp.speedAttainment !== undefined) agg.speeds.push(dp.speedAttainment);
+      agg.staffDiffs.push(dp.staffingDiff);
+      agg.dayDetails.push({ date: day.date, grade: dp.gradeLabel, score: dp.score, sales: dp.sales });
+    });
+  });
+
+  // Helper to get grade label from score
+  const scoreToGrade = (s: number) => {
+    if (s >= 97) return 'A+'; if (s >= 93) return 'A'; if (s >= 90) return 'A-';
+    if (s >= 87) return 'B+'; if (s >= 83) return 'B'; if (s >= 80) return 'B-';
+    if (s >= 77) return 'C+'; if (s >= 73) return 'C'; if (s >= 70) return 'C-';
+    if (s >= 67) return 'D+'; if (s >= 63) return 'D'; if (s >= 60) return 'D-';
+    return 'F';
+  };
+
+  // Summary table
+  agenda += "  Daypart Summary (Period Avg):\n";
+  agenda += "  ┌─────────────────────┬───────┬──────────┬──────────┬───────┐\n";
+  agenda += "  │ Daypart             │ Grade │ Sales    │ Variance │ OSAT  │\n";
+  agenda += "  ├─────────────────────┼───────┼──────────┼──────────┼───────┤\n";
+
+  const activeDayparts: { id: string; label: string; avgScore: number; avgGrade: string }[] = [];
+  daypartIds.forEach(id => {
+    const agg = daypartAgg[id];
+    if (agg.scores.length === 0) return;
+    const avgScore = agg.scores.reduce((a, b) => a + b, 0) / agg.scores.length;
+    const avgGrade = scoreToGrade(avgScore);
+    const totalSalesDP = agg.sales;
+    const avgSalesVar = agg.dayDetails.length > 0 ? agg.scores.length : 0; // just for display
+    // Compute actual sales variance from daypart aggregates across days
+    let dpSalesVarDisplay = 0;
+    const daysWithVar = grades.filter(g => g.daypartGrades?.some(dp => dp.id === id));
+    const dpVars = daysWithVar.map(g => g.daypartGrades!.find(dp => dp.id === id)!.salesVariance).filter(v => v !== 0);
+    if (dpVars.length > 0) dpSalesVarDisplay = dpVars.reduce((a, b) => a + b, 0) / dpVars.length;
+
+    const totalOsatResp = agg.osatPcts.reduce((s, o) => s + o.resp, 0);
+    const avgOsat = totalOsatResp > 0
+      ? agg.osatPcts.reduce((s, o) => s + (o.pct / 100) * o.resp, 0) / totalOsatResp * 100
+      : undefined;
+
+    const label = daypartLabels[id] || id;
+    const gradeStr = avgGrade.padEnd(3);
+    const salesStr = formatCurrency(totalSalesDP).padStart(8);
+    const varStr = ((dpSalesVarDisplay >= 0 ? "+" : "") + dpSalesVarDisplay.toFixed(1) + "%").padStart(8);
+    const osatStr = avgOsat !== undefined ? (avgOsat.toFixed(0) + "%").padStart(5) : "  N/A";
+
+    agenda += `  │ ${label.padEnd(19)} │ ${gradeStr}   │ ${salesStr} │ ${varStr} │ ${osatStr} │\n`;
+    activeDayparts.push({ id, label, avgScore, avgGrade });
+  });
+  agenda += "  └─────────────────────┴───────┴──────────┴──────────┴───────┘\n\n";
+
+  // Identify strongest and weakest dayparts
+  if (activeDayparts.length > 1) {
+    const sorted = [...activeDayparts].sort((a, b) => b.avgScore - a.avgScore);
+    const strongest = sorted[0];
+    const weakest = sorted[sorted.length - 1];
+    agenda += `  ★ Strongest Daypart:  ${strongest.label} (${strongest.avgGrade})\n`;
+    agenda += `  ⚠ Weakest Daypart:   ${weakest.label} (${weakest.avgGrade})\n\n`;
+  }
+
+  // Per-daypart daily breakdown (useful for shift leaders)
+  agenda += "  Daily Daypart Detail:\n";
+  activeDayparts.forEach(dp => {
+    const agg = daypartAgg[dp.id];
+    agenda += `\n    ${dp.label}:\n`;
+    agg.dayDetails.forEach(d => {
+      const dayLabel = formatDate(d.date);
+      agenda += `      ${dayLabel.padEnd(18)} ${d.grade.padEnd(4)} (${d.score.toFixed(0).padStart(3)})  Sales: ${formatCurrency(d.sales).padStart(7)}\n`;
+    });
+  });
+  agenda += "\n";
+
+  // Section 3: Leader Shout-Outs
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "3. LEADER SHOUT-OUTS & WINS\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (shoutOuts.length > 0) {
     shoutOuts.forEach(s => {
@@ -276,9 +391,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 3: Opportunity Day Parts
+  // Section 4: Opportunity Day Parts
   agenda += "───────────────────────────────────────────\n";
-  agenda += "3. OPPORTUNITY AREAS & WEAK DAYS\n";
+  agenda += "4. OPPORTUNITY AREAS & WEAK DAYS\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (opportunityDays.length > 0) {
     agenda += "  Lowest Performing Days:\n";
@@ -294,9 +409,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 4: Customer Service
+  // Section 5: Customer Service
   agenda += "───────────────────────────────────────────\n";
-  agenda += "4. CUSTOMER SERVICE (OSAT)\n";
+  agenda += "5. CUSTOMER SERVICE (OSAT)\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (avgOsat !== undefined) {
     agenda += `  Average OSAT:    ${avgOsat.toFixed(0)}% (${restaurant.totalOsatResponses} total responses)\n`;
@@ -319,9 +434,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 5: Speed of Service
+  // Section 6: Speed of Service
   agenda += "───────────────────────────────────────────\n";
-  agenda += "5. SPEED OF SERVICE\n";
+  agenda += "6. SPEED OF SERVICE\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (restaurant.avgSpeed !== undefined) {
     agenda += `  Avg Speed Attainment: ${Math.round(restaurant.avgSpeed)}%\n`;
@@ -338,9 +453,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 6: Staffing
+  // Section 7: Staffing
   agenda += "───────────────────────────────────────────\n";
-  agenda += "6. STAFFING & CREW\n";
+  agenda += "7. STAFFING & CREW\n";
   agenda += "───────────────────────────────────────────\n\n";
   agenda += `  Avg Staffing Diff:  ${restaurant.avgStaffingDiff >= 0 ? "+" : ""}${restaurant.avgStaffingDiff.toFixed(1)}\n`;
   if (restaurant.avgXp !== undefined) {
@@ -355,9 +470,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
   }
   agenda += "\n";
 
-  // Section 7: Action Items
+  // Section 8: Action Items
   agenda += "═══════════════════════════════════════════\n";
-  agenda += "7. ACTION ITEMS (Next 7 Days)\n";
+  agenda += "8. ACTION ITEMS (Next 7 Days)\n";
   agenda += "═══════════════════════════════════════════\n\n";
 
   let actionNum = 1;
@@ -415,6 +530,16 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[]): 
     }).join(", ");
     agenda += `  ${actionNum}. [ ] Focus on historically weak days (${weakDayNames}) — ensure strongest team members are scheduled\n`;
     actionNum++;
+  }
+
+  // Weakest daypart action
+  if (activeDayparts.length > 1) {
+    const sortedDp = [...activeDayparts].sort((a, b) => a.avgScore - b.avgScore);
+    const weakestDp = sortedDp[0];
+    if (weakestDp.avgScore < 80) {
+      agenda += `  ${actionNum}. [ ] Improve weakest daypart: ${weakestDp.label} (${weakestDp.avgGrade}) — review shift coverage, prep, and positioning for this daypart\n`;
+      actionNum++;
+    }
   }
 
   // Always add a follow-up item
