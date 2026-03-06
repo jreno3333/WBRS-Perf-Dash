@@ -1336,53 +1336,47 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
   return result;
 }
 
-export async function getAttachmentRatesFromDetailBatch(startDate: string, endDate: string): Promise<Map<string, number>> {
-  const startOfRange = new Date(startDate + 'T00:00:00.000Z');
-  const endOfRange = new Date(endDate + 'T23:59:59.999Z');
+const _attachmentDayCache = new Map<string, Map<string, number>>();
 
-  const fullStoreMapBatch = await getCachedStoreMap();
-  const storeToRestaurant = new Map<string, { id: string; name: string }>();
-  fullStoreMapBatch.forEach((info, storeNum) => {
-    storeToRestaurant.set(storeNum, { id: info.id, name: info.name });
-  });
+async function getAttachmentForSingleDay(dateStr: string, storeToRestaurant: Map<string, { id: string; name: string }>): Promise<Map<string, number>> {
+  if (_attachmentDayCache.has(dateStr)) {
+    return _attachmentDayCache.get(dateStr)!;
+  }
+
+  const dayStart = new Date(dateStr + 'T00:00:00.000Z');
+  const dayEnd = new Date(dateStr + 'T23:59:59.999Z');
 
   const orders = await posDb
     .select({
       storeNumber: posOrders.storeNumber,
       orderTotal: posOrders.orderTotal,
       rawJson: posOrders.rawJson,
-      businessDate: posOrders.businessDate,
     })
     .from(posOrders)
     .where(
       and(
-        gte(posOrders.businessDate, startOfRange),
-        lt(posOrders.businessDate, endOfRange),
+        gte(posOrders.businessDate, dayStart),
+        lt(posOrders.businessDate, dayEnd),
         sql`${posOrders.rawJson} IS NOT NULL`
       )
     );
 
   const categories = Object.keys(ATTACHMENT_CATEGORIES);
-
-  const restaurantDateData = new Map<string, {
-    totalOrders: number;
-    categoryHits: Record<string, number>;
-  }>();
+  const restaurantData = new Map<string, { totalOrders: number; categoryHits: Record<string, number> }>();
 
   for (const order of orders) {
     const restaurantInfo = storeToRestaurant.get(order.storeNumber);
     if (!restaurantInfo) continue;
-    const dateStr = order.businessDate.toISOString().split('T')[0];
     const compositeKey = `${dateStr}-${restaurantInfo.id}`;
 
-    if (!restaurantDateData.has(compositeKey)) {
-      restaurantDateData.set(compositeKey, {
+    if (!restaurantData.has(compositeKey)) {
+      restaurantData.set(compositeKey, {
         totalOrders: 0,
         categoryHits: Object.fromEntries(categories.map(c => [c, 0])),
       });
     }
 
-    const entry = restaurantDateData.get(compositeKey)!;
+    const entry = restaurantData.get(compositeKey)!;
     entry.totalOrders++;
 
     const items = extractItemsFromOrder(order.rawJson || '');
@@ -1412,8 +1406,8 @@ export async function getAttachmentRatesFromDetailBatch(startDate: string, endDa
     }
   }
 
-  const result = new Map<string, number>();
-  restaurantDateData.forEach((entry, compositeKey) => {
+  const dayResult = new Map<string, number>();
+  restaurantData.forEach((entry, compositeKey) => {
     if (entry.totalOrders === 0) return;
     const catData: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }> = {};
     for (const cat of categories) {
@@ -1423,8 +1417,37 @@ export async function getAttachmentRatesFromDetailBatch(startDate: string, endDa
       const vsTarget = Math.round((attachRate - benchmark) * 10) / 10;
       catData[cat] = { attachRate, estimatedUnits: hits, benchmark, vsTarget };
     }
-    result.set(compositeKey, countAttachmentCategoriesAtTarget(catData));
+    dayResult.set(compositeKey, countAttachmentCategoriesAtTarget(catData));
   });
+
+  _attachmentDayCache.set(dateStr, dayResult);
+  return dayResult;
+}
+
+export async function getAttachmentRatesFromDetailBatch(startDate: string, endDate: string): Promise<Map<string, number>> {
+  const fullStoreMapBatch = await getCachedStoreMap();
+  const storeToRestaurant = new Map<string, { id: string; name: string }>();
+  fullStoreMapBatch.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, name: info.name });
+  });
+
+  const dates: string[] = [];
+  const current = new Date(startDate + 'T12:00:00Z');
+  const end = new Date(endDate + 'T12:00:00Z');
+  while (current <= end) {
+    dates.push(current.toISOString().split('T')[0]);
+    current.setDate(current.getDate() + 1);
+  }
+
+  const CONCURRENCY = 3;
+  const result = new Map<string, number>();
+  for (let i = 0; i < dates.length; i += CONCURRENCY) {
+    const batch = dates.slice(i, i + CONCURRENCY);
+    const dayResults = await Promise.all(batch.map(d => getAttachmentForSingleDay(d, storeToRestaurant)));
+    for (const dayMap of dayResults) {
+      dayMap.forEach((val, key) => result.set(key, val));
+    }
+  }
 
   return result;
 }

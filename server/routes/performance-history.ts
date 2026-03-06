@@ -70,6 +70,8 @@ router.get("/api/performance-history", async (req, res) => {
     const rangeStart = dateRange[0];
     const rangeEnd = dateRange[dateRange.length - 1];
 
+    const attachmentPromise = getAttachmentRatesFromDetailBatch(dateRange[0], dateRange[dateRange.length - 1]).catch(() => new Map<string, number>());
+
     const [
       allHourlySales,
       allHourlyLabor,
@@ -287,11 +289,7 @@ router.get("/api/performance-history", async (req, res) => {
       osatByKey.set(key, { osatPercent: pct, totalResponses: o.totalResponses });
     });
 
-    // Batch-fetch attachment rates for the entire date range in one query
-    let attachmentByDateRestaurant = new Map<string, number>();
-    try {
-      attachmentByDateRestaurant = await getAttachmentRatesFromDetailBatch(dateRange[0], dateRange[dateRange.length - 1]);
-    } catch (e) { /* POS data may not be available */ }
+    const attachmentByDateRestaurant = await attachmentPromise;
 
     const salesByDateRestaurant = new Map<string, typeof allHourlySales>();
     for (const s of allHourlySales) {

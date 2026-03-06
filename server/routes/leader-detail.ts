@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
+import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange, getAttachmentRatesFromDetailBatch } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
 
@@ -45,6 +45,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const detailExtStart = new Date(startDate);
     detailExtStart.setDate(detailExtStart.getDate() - 7);
     const detailExtStartStr = detailExtStart.toISOString().split('T')[0];
+
+    const attachmentPromise = getAttachmentRatesFromDetailBatch(startDateStr, endDateStr).catch(() => new Map<string, number>());
 
     const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1); yoyStart.setDate(yoyStart.getDate() - 3);
     const yoyEnd = new Date(endDate); yoyEnd.setFullYear(yoyEnd.getFullYear() - 1); yoyEnd.setDate(yoyEnd.getDate() + 3);
@@ -317,22 +319,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const dailyDetails: DailyDetail[] = [];
     const dailyRawScores = new Map<string, number>();
 
-    // Pre-fetch attachment rates per date for The Closer bonus
-    const attachmentByDateRestaurant = new Map<string, number>();
-    {
-      const uniqueDates = Array.from(new Set(Array.from(dailyMap.keys())));
-      // Sequential to avoid exhausting the DB connection pool (each query fetches all POS orders with raw_json)
-      for (const d of uniqueDates) {
-        try {
-          const dParts = d.split('-');
-          const dt = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]), 12, 0, 0);
-          const attachMap = await getAttachmentRatesFromDetail(dt);
-          for (const [restId, data] of attachMap) {
-            attachmentByDateRestaurant.set(`${d}-${restId}`, countAttachmentCategoriesAtTarget(data.categories));
-          }
-        } catch (e) { /* POS data may not be available */ }
-      }
-    }
+    const attachmentByDateRestaurant = await attachmentPromise;
 
     const dailyEntries = Array.from(dailyMap.entries());
     for (const [dateKey, dayData] of dailyEntries) {
