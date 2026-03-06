@@ -73,6 +73,7 @@ interface DailyGrade {
   bonuses?: { id: string; label: string; points: number }[];
   bonusPoints?: number;
   daypartGrades?: DaypartGrade[];
+  bLaneHours?: number;
 }
 
 interface RestaurantHistory {
@@ -194,7 +195,32 @@ interface LeaderRanking {
   companyRankDisplay?: string | null;
 }
 
-function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], leaders: LeaderRanking[] = []): string {
+interface AttachmentData {
+  restaurantName: string;
+  totalOrders: number;
+  checkAverage: number;
+  categories: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }>;
+  overallAttachScore: number;
+}
+
+interface AnniversaryData {
+  employeeId: string;
+  name: string;
+  position: string;
+  restaurantId: string | null;
+  restaurantName: string;
+  hireDate: string;
+  anniversaryDate: string;
+  yearsCompleted: number;
+  daysUntil: number;
+}
+
+interface AgendaExtras {
+  attachment?: AttachmentData | null;
+  anniversaries?: AnniversaryData[];
+}
+
+function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], leaders: LeaderRanking[] = [], extras: AgendaExtras = {}): string {
   const grades = restaurant.dailyGrades;
   const startDate = dateRange.length > 0 ? formatDate(dateRange[0]) : "N/A";
   const endDate = dateRange.length > 0 ? formatDate(dateRange[dateRange.length - 1]) : "N/A";
@@ -253,6 +279,35 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   // Staffing analysis
   const understaffedDays = grades.filter(d => d.staffingDiff < -2);
 
+  // Compute sales badge from peak hourly rate across dayparts
+  const RATE_TIERS = [
+    { threshold: 2300, label: "LEGENDARY", emoji: "🏆" },
+    { threshold: 2000, label: "ULTRA", emoji: "💎" },
+    { threshold: 1500, label: "ELITE", emoji: "🔥" },
+    { threshold: 1000, label: "PRO", emoji: "⭐" },
+    { threshold: 750, label: "CONTENDER", emoji: "💪" },
+  ];
+
+  // Estimate peak hourly rate from daypart data or daily totals
+  let peakHourlySales = 0;
+  let peakDaypartLabel = "";
+  let peakDay = "";
+  grades.forEach(day => {
+    if (day.daypartGrades) {
+      day.daypartGrades.forEach(dp => {
+        if (dp.hoursWithData > 0) {
+          const hourlyRate = dp.sales / dp.hoursWithData;
+          if (hourlyRate > peakHourlySales) {
+            peakHourlySales = hourlyRate;
+            peakDaypartLabel = dp.label;
+            peakDay = day.date;
+          }
+        }
+      });
+    }
+  });
+  const salesBadge = RATE_TIERS.find(t => peakHourlySales >= t.threshold);
+
   // Build the agenda
   let agenda = "";
   agenda += "═══════════════════════════════════════════\n";
@@ -261,7 +316,11 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   agenda += `Restaurant: ${restaurant.restaurantName}\n`;
   agenda += `Location: ${restaurant.state}${restaurant.marketName ? ` — ${restaurant.marketName}` : ""}\n`;
   agenda += `Review Period: ${startDate} – ${endDate}\n`;
-  agenda += `Generated: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}\n\n`;
+  agenda += `Generated: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}\n`;
+  if (salesBadge) {
+    agenda += `Sales Badge: ${salesBadge.emoji} ${salesBadge.label} (${formatCurrency(peakHourlySales)}/hr peak — ${peakDaypartLabel}, ${formatDate(peakDay)})\n`;
+  }
+  agenda += "\n";
 
   // Section 1: Performance Summary
   agenda += "───────────────────────────────────────────\n";
@@ -279,7 +338,11 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   if (restaurant.avgXp !== undefined) {
     agenda += `  Crew Avg XP:          ${restaurant.avgXp.toFixed(0)}\n`;
   }
-  agenda += `  Trend:                ${restaurant.gradeImprovement > 0 ? "↑ Improving" : restaurant.gradeImprovement < 0 ? "↓ Declining" : "→ Stable"} (${restaurant.gradeImprovement > 0 ? "+" : ""}${restaurant.gradeImprovement} days)\n\n`;
+  agenda += `  Trend:                ${restaurant.gradeImprovement > 0 ? "↑ Improving" : restaurant.gradeImprovement < 0 ? "↓ Declining" : "→ Stable"} (${restaurant.gradeImprovement > 0 ? "+" : ""}${restaurant.gradeImprovement} days)\n`;
+  if (salesBadge) {
+    agenda += `  Sales Badge:          ${salesBadge.emoji} ${salesBadge.label}\n`;
+  }
+  agenda += "\n";
 
   agenda += "  Daily Breakdown:\n";
   grades.forEach(day => {
@@ -484,9 +547,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   }
   agenda += "\n";
 
-  // Section 7: Speed of Service
+  // Section 7: Speed of Service & B-Lane
   agenda += "───────────────────────────────────────────\n";
-  agenda += "7. SPEED OF SERVICE\n";
+  agenda += "7. SPEED OF SERVICE & B-LANE\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (restaurant.avgSpeed !== undefined) {
     agenda += `  Avg Speed Attainment: ${Math.round(restaurant.avgSpeed)}%\n`;
@@ -500,6 +563,18 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
     }
   } else {
     agenda += "  No speed data available for this period.\n";
+  }
+
+  // B-Lane (OOT/dt3) hours
+  const bLaneDays = grades.filter(d => d.bLaneHours && d.bLaneHours > 0);
+  const totalBLaneHours = bLaneDays.reduce((sum, d) => sum + (d.bLaneHours || 0), 0);
+  if (totalBLaneHours > 0) {
+    agenda += `\n  B-Lane (Outside Lane) Activity:\n`;
+    agenda += `  Total B-Lane Hours:   ${totalBLaneHours} hrs across ${bLaneDays.length} day(s)\n`;
+    bLaneDays.forEach(d => {
+      agenda += `    ${formatDate(d.date).padEnd(18)} ${d.bLaneHours} hr(s) with B-lane active\n`;
+    });
+    agenda += "  Note: Speed grading is excluded during B-lane hours\n";
   }
   agenda += "\n";
 
@@ -520,9 +595,80 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   }
   agenda += "\n";
 
-  // Section 9: Action Items
+  // Section 9: Attachment Rate / Upsell Metrics
+  const { attachment, anniversaries } = extras;
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "9. ATTACHMENT RATE & UPSELL METRICS\n";
+  agenda += "───────────────────────────────────────────\n\n";
+
+  if (attachment && attachment.totalOrders > 0) {
+    agenda += `  Total Orders Analyzed:  ${attachment.totalOrders.toLocaleString()}\n`;
+    agenda += `  Check Average:          ${formatCurrency(attachment.checkAverage)}\n`;
+    agenda += `  Overall Attach Score:   ${attachment.overallAttachScore.toFixed(0)}%\n\n`;
+
+    const categoryLabels: Record<string, string> = {
+      cheese: 'Cheese', bacon: 'Bacon', jalapenos: 'Jalapeños',
+      dipping_sauces: 'Dipping Sauces', desserts: 'Desserts', whatasize: 'Whatasize',
+    };
+    const benchmarks: Record<string, number> = {
+      cheese: 30, bacon: 20, jalapenos: 15, dipping_sauces: 35, desserts: 20, whatasize: 30,
+    };
+
+    agenda += "  ┌──────────────────┬──────────┬──────────┬──────────┐\n";
+    agenda += "  │ Category         │ Actual   │ Target   │ vs Tgt   │\n";
+    agenda += "  ├──────────────────┼──────────┼──────────┼──────────┤\n";
+    for (const [key, cat] of Object.entries(attachment.categories)) {
+      const label = (categoryLabels[key] || key).padEnd(16);
+      const actual = (cat.attachRate.toFixed(1) + "%").padStart(7);
+      const target = (benchmarks[key] !== undefined ? benchmarks[key] + "%" : "N/A").padStart(7);
+      const vs = cat.vsTarget >= 0 ? ("+" + cat.vsTarget.toFixed(1) + "%").padStart(8) : (cat.vsTarget.toFixed(1) + "%").padStart(8);
+      agenda += `  │ ${label} │ ${actual}  │ ${target}  │ ${vs} │\n`;
+    }
+    agenda += "  └──────────────────┴──────────┴──────────┴──────────┘\n\n";
+
+    // Highlight categories below target
+    const belowTarget = Object.entries(attachment.categories).filter(([, cat]) => cat.vsTarget < -5);
+    if (belowTarget.length > 0) {
+      agenda += "  ⚠ Below Target:\n";
+      belowTarget.forEach(([key, cat]) => {
+        agenda += `    • ${categoryLabels[key] || key}: ${cat.attachRate.toFixed(1)}% (${cat.vsTarget.toFixed(1)}% vs target)\n`;
+      });
+      agenda += "\n";
+    }
+    const aboveTarget = Object.entries(attachment.categories).filter(([, cat]) => cat.vsTarget > 5);
+    if (aboveTarget.length > 0) {
+      agenda += "  ★ Above Target:\n";
+      aboveTarget.forEach(([key, cat]) => {
+        agenda += `    • ${categoryLabels[key] || key}: ${cat.attachRate.toFixed(1)}% (+${cat.vsTarget.toFixed(1)}% vs target)\n`;
+      });
+      agenda += "\n";
+    }
+  } else {
+    agenda += "  No attachment rate data available (requires POS integration).\n\n";
+  }
+
+  // Section 10: Upcoming Team Anniversaries
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "10. UPCOMING TEAM ANNIVERSARIES (Next 7 Days)\n";
+  agenda += "───────────────────────────────────────────\n\n";
+
+  if (anniversaries && anniversaries.length > 0) {
+    anniversaries.forEach(a => {
+      const annivDate = new Date(a.anniversaryDate + "T12:00:00Z");
+      const dateLabel = annivDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      const yearsLabel = a.yearsCompleted === 1 ? "1 year" : `${a.yearsCompleted} years`;
+      const daysLabel = a.daysUntil === 0 ? "TODAY" : a.daysUntil === 1 ? "Tomorrow" : `in ${a.daysUntil} days`;
+      agenda += `  🎂 ${a.name} (${a.position}) — ${yearsLabel} on ${dateLabel} (${daysLabel})\n`;
+    });
+    agenda += "\n  → Consider recognition: card, announcement, or small celebration\n";
+  } else {
+    agenda += "  No upcoming team anniversaries in the next 7 days.\n";
+  }
+  agenda += "\n";
+
+  // Section 11: Action Items
   agenda += "═══════════════════════════════════════════\n";
-  agenda += "9. ACTION ITEMS (Next 7 Days)\n";
+  agenda += "11. ACTION ITEMS (Next 7 Days)\n";
   agenda += "═══════════════════════════════════════════\n\n";
 
   let actionNum = 1;
@@ -592,6 +738,26 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
     }
   }
 
+  // Attachment rate actions
+  if (attachment && attachment.totalOrders > 0) {
+    const belowTargetCats = Object.entries(attachment.categories).filter(([, cat]) => cat.vsTarget < -5);
+    if (belowTargetCats.length > 0) {
+      const catNames = belowTargetCats.map(([key]) => {
+        const labels: Record<string, string> = { cheese: 'Cheese', bacon: 'Bacon', jalapenos: 'Jalapeños', dipping_sauces: 'Dipping Sauces', desserts: 'Desserts', whatasize: 'Whatasize' };
+        return labels[key] || key;
+      }).join(", ");
+      agenda += `  ${actionNum}. [ ] Improve upsell/attachment for: ${catNames} — coach suggestive selling during pre-shift\n`;
+      actionNum++;
+    }
+  }
+
+  // Anniversary recognition
+  if (anniversaries && anniversaries.length > 0) {
+    const names = anniversaries.map(a => a.name).join(", ");
+    agenda += `  ${actionNum}. [ ] Celebrate upcoming anniversary(s): ${names}\n`;
+    actionNum++;
+  }
+
   // Always add a follow-up item
   agenda += `  ${actionNum}. [ ] Review progress at next RMM and update action items\n`;
   actionNum++;
@@ -632,6 +798,30 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
     enabled: open,
   });
 
+  // Fetch attachment rates for the most recent day in range
+  const { data: attachmentData } = useQuery({
+    queryKey: ["/api/pos/attachment-rates", endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (endDate) params.set("date", endDate);
+      const res = await fetch(`/api/pos/attachment-rates?${params}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  // Fetch upcoming employee anniversaries (next 7 days)
+  const { data: anniversaryData } = useQuery({
+    queryKey: ["/api/analytics/anniversaries", 7],
+    queryFn: async () => {
+      const res = await fetch("/api/analytics/anniversaries?days=7");
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: open,
+  });
+
   // Extract leaders for this specific restaurant
   const storeLeaders: LeaderRanking[] = useMemo(() => {
     if (!leaderData?.storeEntries) return [];
@@ -641,7 +831,24 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
     return storeEntry?.leaders || [];
   }, [leaderData, restaurant.restaurantId]);
 
-  const agenda = useMemo(() => generateRMMAgenda(restaurant, dateRange, storeLeaders), [restaurant, dateRange, storeLeaders]);
+  // Extract attachment rates for this restaurant
+  const storeAttachment = useMemo(() => {
+    if (!attachmentData?.restaurants) return null;
+    return attachmentData.restaurants[restaurant.restaurantId] || null;
+  }, [attachmentData, restaurant.restaurantId]);
+
+  // Extract anniversaries for this restaurant
+  const storeAnniversaries = useMemo(() => {
+    if (!anniversaryData?.anniversaries) return [];
+    return anniversaryData.anniversaries.filter(
+      (a: { restaurantId: string | null }) => a.restaurantId === restaurant.restaurantId
+    );
+  }, [anniversaryData, restaurant.restaurantId]);
+
+  const agenda = useMemo(() => generateRMMAgenda(restaurant, dateRange, storeLeaders, {
+    attachment: storeAttachment,
+    anniversaries: storeAnniversaries,
+  }), [restaurant, dateRange, storeLeaders, storeAttachment, storeAnniversaries]);
 
   const handleCopySelection = useCallback(async () => {
     const selection = window.getSelection()?.toString();

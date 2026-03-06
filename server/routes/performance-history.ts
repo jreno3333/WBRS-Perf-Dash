@@ -256,6 +256,7 @@ router.get("/api/performance-history", async (req, res) => {
       bonuses?: { id: string; label: string; points: number }[];
       bonusPoints?: number;
       daypartGrades?: DaypartGrade[];
+      bLaneHours?: number; // Number of hours with B-lane (dt3/OOT) active
     };
 
     type RestaurantHistory = {
@@ -668,6 +669,13 @@ router.get("/api/performance-history", async (req, res) => {
             : undefined,
           bonusPoints: bonusResult.cappedBonus > 0 ? bonusResult.cappedBonus : undefined,
           daypartGrades: daypartGrades.length > 0 ? daypartGrades : undefined,
+          bLaneHours: (() => {
+            let count = 0;
+            for (let h = 0; h < 24; h++) {
+              if (ootHours.has(`${restaurant.id}-${dateStr}-${h}`)) count++;
+            }
+            return count > 0 ? count : undefined;
+          })(),
         });
       }
     }
