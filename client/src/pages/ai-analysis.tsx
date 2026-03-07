@@ -1043,117 +1043,130 @@ export default function AiAnalysisPage() {
             </InsightCard>
 
             {/* 6. Operator Schedule */}
-            {operatorSchedule && operatorSchedule.restaurants.length > 0 && (
-              <InsightCard
-                icon={UserCheck}
-                title="Operator Schedule"
-                question="When is the operator scheduled at each unit this week?"
-                defaultOpen={true}
-                accentColor="text-emerald-600"
-                bgColor="bg-emerald-500/10"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <Badge variant="secondary" className="text-base px-3 py-1">
-                      {operatorSchedule.restaurants.reduce((sum, r) => sum + r.scheduledDays, 0)}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      total unit-days with operator coverage across {operatorSchedule.restaurants.length} units
-                    </span>
+            <InsightCard
+              icon={UserCheck}
+              title="Operator Schedule"
+              question="When is the operator scheduled at each unit this week?"
+              defaultOpen={true}
+              accentColor="text-emerald-600"
+              bgColor="bg-emerald-500/10"
+            >
+              <div className="space-y-4">
+                {!operatorSchedule ? (
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Loading operator schedule...</span>
                   </div>
+                ) : operatorSchedule.restaurants.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">
+                    No operator schedule data found for this week ({operatorSchedule.weekStart} – {operatorSchedule.weekEnd}).
+                    Operator hours appear once 7shifts data syncs for each day.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Badge variant="secondary" className="text-base px-3 py-1">
+                        {operatorSchedule.restaurants.reduce((sum, r) => sum + r.scheduledDays, 0)}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        total unit-days with operator coverage across {operatorSchedule.restaurants.length} units
+                        <span className="ml-1 text-xs">({formatDate(operatorSchedule.weekStart)} – {formatDate(operatorSchedule.weekEnd)})</span>
+                      </span>
+                    </div>
 
-                  <div className="rounded-lg border overflow-hidden overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-muted/50">
-                          <th className="text-left px-3 py-2 font-medium sticky left-0 bg-muted/50">Unit</th>
-                          {operatorSchedule.dayLabels.map(d => (
-                            <th
-                              key={d.date}
-                              className={`text-center px-3 py-2 font-medium whitespace-nowrap ${d.isToday ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
-                            >
-                              <div>{d.dayName}</div>
-                              <div className="text-[10px] font-normal text-muted-foreground">{d.date.slice(5).replace('-', '/')}</div>
-                            </th>
-                          ))}
-                          <th className="text-center px-3 py-2 font-medium">Days</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {operatorSchedule.restaurants.map(r => (
-                          <tr key={r.restaurantId} className="border-t hover:bg-muted/30">
-                            <td className="px-3 py-2 font-medium whitespace-nowrap sticky left-0 bg-background">
-                              {r.restaurantName.replace(/^\d+\s*-\s*/, '')}
-                            </td>
-                            {r.days.map(d => {
-                              const dayLabel = operatorSchedule.dayLabels.find(dl => dl.date === d.date);
-                              const isTodayCol = dayLabel?.isToday;
-                              if (d.hours.length === 0) {
+                    <div className="rounded-lg border overflow-hidden overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="text-left px-3 py-2 font-medium sticky left-0 bg-muted/50">Unit</th>
+                            {operatorSchedule.dayLabels.map(d => (
+                              <th
+                                key={d.date}
+                                className={`text-center px-3 py-2 font-medium whitespace-nowrap ${d.isToday ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
+                              >
+                                <div>{d.dayName}</div>
+                                <div className="text-[10px] font-normal text-muted-foreground">{d.date.slice(5).replace('-', '/')}</div>
+                              </th>
+                            ))}
+                            <th className="text-center px-3 py-2 font-medium">Days</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {operatorSchedule.restaurants.map(r => (
+                            <tr key={r.restaurantId} className="border-t hover:bg-muted/30">
+                              <td className="px-3 py-2 font-medium whitespace-nowrap sticky left-0 bg-background">
+                                {r.restaurantName.replace(/^\d+\s*-\s*/, '')}
+                              </td>
+                              {r.days.map(d => {
+                                const dayLabel = operatorSchedule.dayLabels.find(dl => dl.date === d.date);
+                                const isTodayCol = dayLabel?.isToday;
+                                if (d.hours.length === 0) {
+                                  return (
+                                    <td
+                                      key={d.date}
+                                      className={`px-3 py-2 text-center text-muted-foreground ${isTodayCol ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
+                                    >
+                                      —
+                                    </td>
+                                  );
+                                }
+                                const fmtHour = (h: number) => {
+                                  if (h === 0) return '12a';
+                                  if (h < 12) return `${h}a`;
+                                  if (h === 12) return '12p';
+                                  return `${h - 12}p`;
+                                };
                                 return (
                                   <td
                                     key={d.date}
-                                    className={`px-3 py-2 text-center text-muted-foreground ${isTodayCol ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
+                                    className={`px-3 py-2 text-center ${isTodayCol ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
+                                    title={`${d.hours.length}h: ${d.hours.map(fmtHour).join(', ')}`}
                                   >
-                                    —
+                                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                      {fmtHour(d.startHour!)}-{fmtHour(d.endHour! + 1)}
+                                    </span>
                                   </td>
                                 );
-                              }
-                              const fmtHour = (h: number) => {
-                                if (h === 0) return '12a';
-                                if (h < 12) return `${h}a`;
-                                if (h === 12) return '12p';
-                                return `${h - 12}p`;
-                              };
-                              return (
-                                <td
-                                  key={d.date}
-                                  className={`px-3 py-2 text-center ${isTodayCol ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
-                                  title={`${d.hours.length}h: ${d.hours.map(fmtHour).join(', ')}`}
-                                >
-                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                    {fmtHour(d.startHour!)}-{fmtHour(d.endHour! + 1)}
-                                  </span>
-                                </td>
-                              );
-                            })}
-                            <td className={`px-3 py-2 text-center font-bold ${
-                              r.scheduledDays >= 7 ? 'text-emerald-600' :
-                              r.scheduledDays >= 5 ? 'text-amber-600' :
-                              'text-red-500'
-                            }`}>
-                              {r.scheduledDays}/7
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                              })}
+                              <td className={`px-3 py-2 text-center font-bold ${
+                                r.scheduledDays >= 7 ? 'text-emerald-600' :
+                                r.scheduledDays >= 5 ? 'text-amber-600' :
+                                'text-red-500'
+                              }`}>
+                                {r.scheduledDays}/7
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                  {(() => {
-                    const gapUnits = operatorSchedule.restaurants.filter(r => r.scheduledDays < 7);
-                    if (gapUnits.length === 0) return null;
-                    return (
-                      <Card className="border-amber-500/30 bg-amber-500/5">
-                        <CardContent className="p-3">
-                          <p className="text-xs font-semibold text-amber-600 mb-1">Coverage Gaps</p>
-                          <div className="space-y-1">
-                            {gapUnits.map(r => {
-                              const missingDays = r.days.filter(d => d.hours.length === 0).map(d => d.dayName);
-                              return (
-                                <p key={r.restaurantId} className="text-sm">
-                                  <span className="font-medium">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
-                                  <span className="text-muted-foreground"> — no coverage: {missingDays.join(', ')}</span>
-                                </p>
-                              );
-                            })}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })()}
-                </div>
-              </InsightCard>
-            )}
+                    {(() => {
+                      const gapUnits = operatorSchedule.restaurants.filter(r => r.scheduledDays < 7);
+                      if (gapUnits.length === 0) return null;
+                      return (
+                        <Card className="border-amber-500/30 bg-amber-500/5">
+                          <CardContent className="p-3">
+                            <p className="text-xs font-semibold text-amber-600 mb-1">Coverage Gaps</p>
+                            <div className="space-y-1">
+                              {gapUnits.map(r => {
+                                const missingDays = r.days.filter(d => d.hours.length === 0).map(d => d.dayName);
+                                return (
+                                  <p key={r.restaurantId} className="text-sm">
+                                    <span className="font-medium">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
+                                    <span className="text-muted-foreground"> — no coverage: {missingDays.join(', ')}</span>
+                                  </p>
+                                );
+                              })}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+            </InsightCard>
 
           </>
         )}

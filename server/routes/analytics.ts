@@ -932,19 +932,26 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
   }
 });
 
-// ─── Operator Schedule (Upcoming Week) ────────────────────────────────────
-// Shows which hours the operator is scheduled at each unit for the next 7 days
+// ─── Operator Schedule (Week View) ────────────────────────────────────────
+// Shows which hours the operator is scheduled at each unit for the current
+// Sat-Fri business week. Uses synced hourly labor data which includes
+// _operatorScheduled flags from 7shifts scheduled shifts.
 router.get("/api/analytics/operator-schedule", async (req, res) => {
   try {
     const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
     const todayStr = centralFormatter.format(new Date());
     const today = new Date(todayStr + "T12:00:00");
 
-    // Build 7-day window starting from today
+    // Use Sat-Fri business week (matching weekly forecast)
+    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const daysSinceSaturday = (dayOfWeek + 1) % 7;
+    const saturday = new Date(today);
+    saturday.setDate(today.getDate() - daysSinceSaturday);
+
     const days: string[] = [];
     for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
+      const d = new Date(saturday);
+      d.setDate(saturday.getDate() + i);
       days.push(d.toISOString().split("T")[0]);
     }
     const startDateStr = days[0];
