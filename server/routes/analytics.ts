@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, posDb } from "../db";
+import { db, posDb, pool } from "../db";
 import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, dailySales, locationMapping } from "@shared/schema";
 import { eq, and, gte, lte, lt, sql } from "drizzle-orm";
 
@@ -957,8 +957,6 @@ router.get("/api/analytics/operator-schedule", async (req, res) => {
     const startDateStr = days[0];
     const endDateStr = days[6];
 
-    // First fetch active restaurants, then query hourly_labor filtered by those IDs
-    // This lets PostgreSQL use the composite index (restaurantId, date, hour)
     const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
     const activeIds = allRestaurants.map(r => r.id);
 
@@ -966,19 +964,26 @@ router.get("/api/analytics/operator-schedule", async (req, res) => {
       return res.json({ weekStart: startDateStr, weekEnd: endDateStr, dayLabels: [], restaurants: [] });
     }
 
-    // Query with restaurant IDs to leverage composite index, plus JSONB containment
-    const operatorRows = await db.select({
-      restaurantId: hourlyLabor.restaurantId,
-      date: hourlyLabor.date,
-      hour: hourlyLabor.hour,
-    }).from(hourlyLabor).where(
-      and(
-        sql`${hourlyLabor.restaurantId} IN (${sql.join(activeIds.map(id => sql`${id}`), sql`, `)})`,
-        sql`${hourlyLabor.date} >= ${startDateStr}`,
-        sql`${hourlyLabor.date} <= ${endDateStr}`,
-        sql`${hourlyLabor.positionBreakdown} @> '{"_operatorScheduled": 1}'::jsonb`
-      )
-    );
+    // Use raw SQL with statement timeout to avoid hanging
+    // Query each restaurant individually using the composite index (restaurantId, date, hour)
+    const operatorRows: { restaurantId: string; date: string; hour: number }[] = [];
+    const client = await pool.connect();
+    try {
+      await client.query('SET statement_timeout = 10000'); // 10s timeout
+      for (const rid of activeIds) {
+        const result = await client.query(
+          `SELECT restaurant_id, date, hour FROM hourly_labor
+           WHERE restaurant_id = $1 AND date >= $2 AND date <= $3
+             AND position_breakdown @> '{"_operatorScheduled": 1}'::jsonb`,
+          [rid, startDateStr, endDateStr]
+        );
+        for (const row of result.rows) {
+          operatorRows.push({ restaurantId: row.restaurant_id, date: row.date, hour: row.hour });
+        }
+      }
+    } finally {
+      client.release();
+    }
 
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
