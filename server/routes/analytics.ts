@@ -932,4 +932,116 @@ router.get("/api/analytics/demand-curves", async (req, res) => {
   }
 });
 
+// ─── Operator Schedule (Upcoming Week) ────────────────────────────────────
+// Shows which hours the operator is scheduled at each unit for the next 7 days
+router.get("/api/analytics/operator-schedule", async (req, res) => {
+  try {
+    const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
+    const todayStr = centralFormatter.format(new Date());
+    const today = new Date(todayStr + "T12:00:00");
+
+    // Build 7-day window starting from today
+    const days: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      days.push(d.toISOString().split("T")[0]);
+    }
+    const startDateStr = days[0];
+    const endDateStr = days[6];
+
+    const [laborData, allRestaurants] = await Promise.all([
+      db.select().from(hourlyLabor).where(
+        and(
+          sql`${hourlyLabor.date} >= ${startDateStr}`,
+          sql`${hourlyLabor.date} <= ${endDateStr}`
+        )
+      ),
+      db.select().from(restaurants).where(eq(restaurants.isActive, true)),
+    ]);
+
+    const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+
+    // Build operator schedule by restaurant and date
+    const scheduleMap = new Map<string, Map<string, number[]>>();
+
+    for (const row of laborData) {
+      const positions = row.positionBreakdown as Record<string, number> | null;
+      if (!positions?.['_operatorScheduled']) continue;
+
+      const rid = row.restaurantId;
+      if (!restaurantNameMap.has(rid)) continue;
+
+      if (!scheduleMap.has(rid)) scheduleMap.set(rid, new Map());
+      const dateMap = scheduleMap.get(rid)!;
+      if (!dateMap.has(row.date)) dateMap.set(row.date, []);
+      dateMap.get(row.date)!.push(row.hour);
+    }
+
+    // Format response
+    interface OperatorDay {
+      date: string;
+      dayName: string;
+      hours: number[];
+      startHour: number | null;
+      endHour: number | null;
+    }
+
+    interface OperatorRestaurant {
+      restaurantId: string;
+      restaurantName: string;
+      scheduledDays: number;
+      totalHours: number;
+      days: OperatorDay[];
+    }
+
+    const results: OperatorRestaurant[] = [];
+
+    for (const [rid, dateMap] of scheduleMap) {
+      const name = restaurantNameMap.get(rid);
+      if (!name) continue;
+
+      const dayResults: OperatorDay[] = days.map(dateStr => {
+        const hours = dateMap.get(dateStr) || [];
+        hours.sort((a, b) => a - b);
+        return {
+          date: dateStr,
+          dayName: new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" }),
+          hours,
+          startHour: hours.length > 0 ? hours[0] : null,
+          endHour: hours.length > 0 ? hours[hours.length - 1] : null,
+        };
+      });
+
+      const scheduledDays = dayResults.filter(d => d.hours.length > 0).length;
+      const totalHours = dayResults.reduce((sum, d) => sum + d.hours.length, 0);
+
+      results.push({
+        restaurantId: rid,
+        restaurantName: name,
+        scheduledDays,
+        totalHours,
+        days: dayResults,
+      });
+    }
+
+    // Sort: units with fewer scheduled days first (so you can see gaps)
+    results.sort((a, b) => a.scheduledDays - b.scheduledDays || a.restaurantName.localeCompare(b.restaurantName));
+
+    res.json({
+      weekStart: startDateStr,
+      weekEnd: endDateStr,
+      dayLabels: days.map(d => ({
+        date: d,
+        dayName: new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" }),
+        isToday: d === todayStr,
+      })),
+      restaurants: results,
+    });
+  } catch (error) {
+    console.error("Error fetching operator schedule:", error);
+    res.status(500).json({ error: "Failed to fetch operator schedule" });
+  }
+});
+
 export default router;

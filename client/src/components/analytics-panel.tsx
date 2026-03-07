@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, BarChart3, Users, AlertTriangle, Clock, Activity, ShoppingBag } from "lucide-react";
+import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, BarChart3, Users, AlertTriangle, Clock, Activity, ShoppingBag, UserCheck } from "lucide-react";
 import { useState } from "react";
 import { formatCurrency } from "@/lib/grading";
 
@@ -112,6 +112,25 @@ function getComplianceColor(pct: number): string {
   return "text-red-600 dark:text-red-400";
 }
 
+interface OperatorScheduleData {
+  weekStart: string;
+  weekEnd: string;
+  dayLabels: { date: string; dayName: string; isToday: boolean }[];
+  restaurants: {
+    restaurantId: string;
+    restaurantName: string;
+    scheduledDays: number;
+    totalHours: number;
+    days: {
+      date: string;
+      dayName: string;
+      hours: number[];
+      startHour: number | null;
+      endHour: number | null;
+    }[];
+  }[];
+}
+
 interface AttachmentRateData {
   date: string;
   source?: "pos_detail" | "modeled";
@@ -132,6 +151,7 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
   const [showAllCompliance, setShowAllCompliance] = useState(false);
   const [showAllSuppressed, setShowAllSuppressed] = useState(false);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
+  const [showAllOperatorSchedule, setShowAllOperatorSchedule] = useState(false);
 
   // Badge data loads eagerly (shown in collapsed header)
   const { data: anniversaries } = useQuery<{ count: number; anniversaries: AnniversaryData[] }>({
@@ -184,6 +204,18 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
     },
     enabled: expanded,
     staleTime: isToday ? 5 * 60 * 1000 : Infinity,
+  });
+
+  // Operator schedule for upcoming week
+  const { data: operatorSchedule } = useQuery<OperatorScheduleData>({
+    queryKey: ["/api/analytics/operator-schedule"],
+    queryFn: async () => {
+      const res = await fetch("/api/analytics/operator-schedule");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: expanded,
+    staleTime: 10 * 60 * 1000,
   });
 
   // Attachment rates (add-on upsell analysis)
@@ -449,6 +481,79 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                 </div>
               )}
             </div>
+
+            {/* Operator Schedule (Upcoming Week) */}
+            {operatorSchedule && operatorSchedule.restaurants.length > 0 && (
+              <div>
+                <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                  <UserCheck className="w-3 h-3" /> OPERATOR SCHEDULE (UPCOMING WEEK)
+                </h4>
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  Shows when the operator is scheduled at each unit for the next 7 days. Hours shown in local time. Units with gaps appear first.
+                </p>
+                <div className="space-y-1">
+                  {/* Day header row */}
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
+                    <span className="w-[100px]">Unit</span>
+                    <div className="flex items-center gap-0.5 flex-1 justify-end">
+                      {operatorSchedule.dayLabels.map(d => (
+                        <span
+                          key={d.date}
+                          className={`w-[72px] text-center ${d.isToday ? 'font-bold text-foreground' : ''}`}
+                        >
+                          {d.dayName} {d.date.slice(5).replace('-', '/')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {(showAllOperatorSchedule ? operatorSchedule.restaurants : operatorSchedule.restaurants.slice(0, 5)).map(r => (
+                    <div key={r.restaurantId} className="flex items-center justify-between text-xs">
+                      <span className="truncate w-[100px] mr-1" title={r.restaurantName}>
+                        {r.restaurantName.replace(/^\d+\s*-\s*/, '')}
+                      </span>
+                      <div className="flex items-center gap-0.5 flex-1 justify-end">
+                        {r.days.map(d => {
+                          const isToday = operatorSchedule.dayLabels.find(dl => dl.date === d.date)?.isToday;
+                          if (d.hours.length === 0) {
+                            return (
+                              <span
+                                key={d.date}
+                                className={`w-[72px] text-center text-[10px] text-muted-foreground ${isToday ? 'bg-muted/50 rounded' : ''}`}
+                              >
+                                —
+                              </span>
+                            );
+                          }
+                          const formatHour = (h: number) => {
+                            if (h === 0) return '12a';
+                            if (h < 12) return `${h}a`;
+                            if (h === 12) return '12p';
+                            return `${h - 12}p`;
+                          };
+                          return (
+                            <span
+                              key={d.date}
+                              className={`w-[72px] text-center text-[10px] font-medium text-green-600 dark:text-green-400 ${isToday ? 'bg-green-50 dark:bg-green-900/20 rounded' : ''}`}
+                              title={`${d.hours.length}h: ${d.hours.map(formatHour).join(', ')}`}
+                            >
+                              {formatHour(d.startHour!)}-{formatHour(d.endHour! + 1)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  {operatorSchedule.restaurants.length > 5 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowAllOperatorSchedule(!showAllOperatorSchedule); }}
+                      className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-1"
+                    >
+                      {showAllOperatorSchedule ? 'Show less' : `Show all ${operatorSchedule.restaurants.length} units`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Suppressed Sales */}
             {hasSuppressed && (
