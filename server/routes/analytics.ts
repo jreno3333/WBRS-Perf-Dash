@@ -957,11 +957,18 @@ router.get("/api/analytics/operator-schedule", async (req, res) => {
     const startDateStr = days[0];
     const endDateStr = days[6];
 
-    const [laborData, allRestaurants] = await Promise.all([
-      db.select().from(hourlyLabor).where(
+    // Only fetch rows where operator is scheduled (JSONB filter) to avoid
+    // pulling the entire hourly_labor table for the week
+    const [operatorRows, allRestaurants] = await Promise.all([
+      db.select({
+        restaurantId: hourlyLabor.restaurantId,
+        date: hourlyLabor.date,
+        hour: hourlyLabor.hour,
+      }).from(hourlyLabor).where(
         and(
           sql`${hourlyLabor.date} >= ${startDateStr}`,
-          sql`${hourlyLabor.date} <= ${endDateStr}`
+          sql`${hourlyLabor.date} <= ${endDateStr}`,
+          sql`(${hourlyLabor.positionBreakdown}->>'_operatorScheduled')::int = 1`
         )
       ),
       db.select().from(restaurants).where(eq(restaurants.isActive, true)),
@@ -972,10 +979,7 @@ router.get("/api/analytics/operator-schedule", async (req, res) => {
     // Build operator schedule by restaurant and date
     const scheduleMap = new Map<string, Map<string, number[]>>();
 
-    for (const row of laborData) {
-      const positions = row.positionBreakdown as Record<string, number> | null;
-      if (!positions?.['_operatorScheduled']) continue;
-
+    for (const row of operatorRows) {
       const rid = row.restaurantId;
       if (!restaurantNameMap.has(rid)) continue;
 
