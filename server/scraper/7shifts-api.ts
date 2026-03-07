@@ -473,20 +473,68 @@ export class SevenShiftsAPI {
     return users;
   }
 
+  // Get user IDs of all users who have the "Operator" role assigned at a location.
+  // This uses the 7shifts role_assignments concept: a user can have the Operator role
+  // assigned even if their individual shifts are under a different role (e.g., Manager).
+  async getOperatorUserIds(locationId: number): Promise<Set<number>> {
+    const roleMap = await this.getRoles(locationId);
+    const operatorRoleIds: number[] = [];
+    for (const [roleId, roleName] of roleMap) {
+      if (roleName.toLowerCase().includes('operator')) {
+        operatorRoleIds.push(roleId);
+      }
+    }
+
+    if (operatorRoleIds.length === 0) {
+      return new Set();
+    }
+
+    // Fetch users filtered by each operator role ID
+    const operatorUserIds = new Set<number>();
+    for (const roleId of operatorRoleIds) {
+      try {
+        let cursor: string | null = null;
+        do {
+          let url = `/v2/company/${this.companyId}/users?location_id=${locationId}&role_id=${roleId}&limit=100`;
+          if (cursor) {
+            url += `&cursor=${cursor}`;
+          }
+          const response = await this.request<UsersResponse>(url);
+          for (const item of (response.data || [])) {
+            const user = (item as any).user || item;
+            if (user?.id && user.active !== false) {
+              operatorUserIds.add(user.id);
+            }
+          }
+          cursor = response.meta?.cursor?.next || null;
+        } while (cursor);
+      } catch (error) {
+        console.error(`[7shifts] Error fetching operator users for role ${roleId}:`, error);
+      }
+    }
+
+    console.log(`[7shifts] Found ${operatorUserIds.size} operator users at location ${locationId}`);
+    return operatorUserIds;
+  }
+
   // Check if an operator is scheduled for a specific hour
-  // Operators don't punch in, so we check the schedule instead
-  hasOperatorScheduledForHour(shifts: ScheduledShift[], roleMap: Map<number, string>, hour: number, timezone: string, date: string): boolean {
+  // Checks both: (1) shifts explicitly under an "Operator" role, and
+  // (2) any shift belonging to a user who has the Operator role assigned
+  hasOperatorScheduledForHour(shifts: ScheduledShift[], roleMap: Map<number, string>, hour: number, timezone: string, date: string, operatorUserIds?: Set<number>): boolean {
     for (const shift of shifts) {
       const roleName = roleMap.get(shift.role_id)?.toLowerCase() || '';
-      if (roleName.includes('operator')) {
+      const isOperatorRole = roleName.includes('operator');
+      const isOperatorUser = operatorUserIds?.has(shift.user_id) ?? false;
+
+      if (isOperatorRole || isOperatorUser) {
         // Check if this shift covers the given hour
         const shiftStart = new Date(shift.start);
         const shiftEnd = new Date(shift.end);
-        
+
         // Convert hour to the same timezone for comparison
         const hourStart = fromZonedTime(`${date}T${hour.toString().padStart(2, '0')}:00:00`, timezone);
         const hourEnd = fromZonedTime(`${date}T${hour.toString().padStart(2, '0')}:59:59`, timezone);
-        
+
         // Check if shift overlaps with this hour
         if (shiftStart <= hourEnd && shiftEnd >= hourStart) {
           return true;
@@ -998,6 +1046,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
       const timePunches = await api.getTimePunches(location.id, dateStr, locationTimezone);
       const roleMap = await api.getRoles(location.id);
       const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
+      const operatorUserIds = await api.getOperatorUserIds(location.id);
       const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
       
       // Query POS sales from pos_orders table — POS is the sole source of sales data.
@@ -1052,7 +1101,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               roundedPositions[pos] = Math.round(hrs * 100) / 100;
             }
             
-            const hasOperator = api.hasOperatorScheduledForHour(scheduledShifts, roleMap, hour, locationTimezone, dateStr);
+            const hasOperator = api.hasOperatorScheduledForHour(scheduledShifts, roleMap, hour, locationTimezone, dateStr, operatorUserIds);
             if (hasOperator) {
               roundedPositions['_operatorScheduled'] = 1;
             }
@@ -1244,7 +1293,8 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
       const timePunches = await api.getTimePunches(location.id, dateStr, locationTimezone);
       const roleMap = await api.getRoles(location.id);
       const scheduledShifts = await api.getScheduledShifts(location.id, dateStr);
-      
+      const operatorUserIds = await api.getOperatorUserIds(location.id);
+
       // Get labor hours with position breakdown from 7shifts
       const laborByHour = api.getLaborHoursWithPositions(timePunches, dateStr, locationTimezone, roleMap);
       
@@ -1297,7 +1347,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
             }
             
             // Check if operator is scheduled
-            const hasOperator = api.hasOperatorScheduledForHour(scheduledShifts, roleMap, hour, locationTimezone, dateStr);
+            const hasOperator = api.hasOperatorScheduledForHour(scheduledShifts, roleMap, hour, locationTimezone, dateStr, operatorUserIds);
             if (hasOperator) {
               roundedPositions['_operatorScheduled'] = 1;
             }
