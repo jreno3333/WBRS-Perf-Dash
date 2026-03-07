@@ -957,22 +957,28 @@ router.get("/api/analytics/operator-schedule", async (req, res) => {
     const startDateStr = days[0];
     const endDateStr = days[6];
 
-    // Only fetch rows where operator is scheduled (JSONB filter) to avoid
-    // pulling the entire hourly_labor table for the week
-    const [operatorRows, allRestaurants] = await Promise.all([
-      db.select({
-        restaurantId: hourlyLabor.restaurantId,
-        date: hourlyLabor.date,
-        hour: hourlyLabor.hour,
-      }).from(hourlyLabor).where(
-        and(
-          sql`${hourlyLabor.date} >= ${startDateStr}`,
-          sql`${hourlyLabor.date} <= ${endDateStr}`,
-          sql`(${hourlyLabor.positionBreakdown}->>'_operatorScheduled')::int = 1`
-        )
-      ),
-      db.select().from(restaurants).where(eq(restaurants.isActive, true)),
-    ]);
+    // First fetch active restaurants, then query hourly_labor filtered by those IDs
+    // This lets PostgreSQL use the composite index (restaurantId, date, hour)
+    const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
+    const activeIds = allRestaurants.map(r => r.id);
+
+    if (activeIds.length === 0) {
+      return res.json({ weekStart: startDateStr, weekEnd: endDateStr, dayLabels: [], restaurants: [] });
+    }
+
+    // Query with restaurant IDs to leverage composite index, plus JSONB containment
+    const operatorRows = await db.select({
+      restaurantId: hourlyLabor.restaurantId,
+      date: hourlyLabor.date,
+      hour: hourlyLabor.hour,
+    }).from(hourlyLabor).where(
+      and(
+        sql`${hourlyLabor.restaurantId} IN (${sql.join(activeIds.map(id => sql`${id}`), sql`, `)})`,
+        sql`${hourlyLabor.date} >= ${startDateStr}`,
+        sql`${hourlyLabor.date} <= ${endDateStr}`,
+        sql`${hourlyLabor.positionBreakdown} @> '{"_operatorScheduled": 1}'::jsonb`
+      )
+    );
 
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
