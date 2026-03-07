@@ -33,6 +33,7 @@ import {
   Sparkles,
   X,
   MessageSquare,
+  UserCheck,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -83,6 +84,25 @@ interface FullLaneBData {
   hoursUsed: number;
   daysUsed: number;
   active: boolean;
+}
+
+interface OperatorScheduleData {
+  weekStart: string;
+  weekEnd: string;
+  dayLabels: { date: string; dayName: string; isToday: boolean }[];
+  restaurants: {
+    restaurantId: string;
+    restaurantName: string;
+    scheduledDays: number;
+    totalHours: number;
+    days: {
+      date: string;
+      dayName: string;
+      hours: number[];
+      startHour: number | null;
+      endHour: number | null;
+    }[];
+  }[];
 }
 
 interface DeliveryPercentage {
@@ -434,6 +454,16 @@ export default function AiAnalysisPage() {
       return res.json();
     },
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: operatorSchedule } = useQuery<OperatorScheduleData>({
+    queryKey: ["/api/analytics/operator-schedule"],
+    queryFn: async () => {
+      const res = await fetch("/api/analytics/operator-schedule");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    staleTime: 10 * 60 * 1000,
   });
 
   return (
@@ -1011,6 +1041,119 @@ export default function AiAnalysisPage() {
                 )}
               </div>
             </InsightCard>
+
+            {/* 6. Operator Schedule */}
+            {operatorSchedule && operatorSchedule.restaurants.length > 0 && (
+              <InsightCard
+                icon={UserCheck}
+                title="Operator Schedule"
+                question="When is the operator scheduled at each unit this week?"
+                defaultOpen={true}
+                accentColor="text-emerald-600"
+                bgColor="bg-emerald-500/10"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Badge variant="secondary" className="text-base px-3 py-1">
+                      {operatorSchedule.restaurants.reduce((sum, r) => sum + r.scheduledDays, 0)}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      total unit-days with operator coverage across {operatorSchedule.restaurants.length} units
+                    </span>
+                  </div>
+
+                  <div className="rounded-lg border overflow-hidden overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/50">
+                          <th className="text-left px-3 py-2 font-medium sticky left-0 bg-muted/50">Unit</th>
+                          {operatorSchedule.dayLabels.map(d => (
+                            <th
+                              key={d.date}
+                              className={`text-center px-3 py-2 font-medium whitespace-nowrap ${d.isToday ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
+                            >
+                              <div>{d.dayName}</div>
+                              <div className="text-[10px] font-normal text-muted-foreground">{d.date.slice(5).replace('-', '/')}</div>
+                            </th>
+                          ))}
+                          <th className="text-center px-3 py-2 font-medium">Days</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {operatorSchedule.restaurants.map(r => (
+                          <tr key={r.restaurantId} className="border-t hover:bg-muted/30">
+                            <td className="px-3 py-2 font-medium whitespace-nowrap sticky left-0 bg-background">
+                              {r.restaurantName.replace(/^\d+\s*-\s*/, '')}
+                            </td>
+                            {r.days.map(d => {
+                              const dayLabel = operatorSchedule.dayLabels.find(dl => dl.date === d.date);
+                              const isTodayCol = dayLabel?.isToday;
+                              if (d.hours.length === 0) {
+                                return (
+                                  <td
+                                    key={d.date}
+                                    className={`px-3 py-2 text-center text-muted-foreground ${isTodayCol ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
+                                  >
+                                    —
+                                  </td>
+                                );
+                              }
+                              const fmtHour = (h: number) => {
+                                if (h === 0) return '12a';
+                                if (h < 12) return `${h}a`;
+                                if (h === 12) return '12p';
+                                return `${h - 12}p`;
+                              };
+                              return (
+                                <td
+                                  key={d.date}
+                                  className={`px-3 py-2 text-center ${isTodayCol ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
+                                  title={`${d.hours.length}h: ${d.hours.map(fmtHour).join(', ')}`}
+                                >
+                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                    {fmtHour(d.startHour!)}-{fmtHour(d.endHour! + 1)}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                            <td className={`px-3 py-2 text-center font-bold ${
+                              r.scheduledDays >= 7 ? 'text-emerald-600' :
+                              r.scheduledDays >= 5 ? 'text-amber-600' :
+                              'text-red-500'
+                            }`}>
+                              {r.scheduledDays}/7
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {(() => {
+                    const gapUnits = operatorSchedule.restaurants.filter(r => r.scheduledDays < 7);
+                    if (gapUnits.length === 0) return null;
+                    return (
+                      <Card className="border-amber-500/30 bg-amber-500/5">
+                        <CardContent className="p-3">
+                          <p className="text-xs font-semibold text-amber-600 mb-1">Coverage Gaps</p>
+                          <div className="space-y-1">
+                            {gapUnits.map(r => {
+                              const missingDays = r.days.filter(d => d.hours.length === 0).map(d => d.dayName);
+                              return (
+                                <p key={r.restaurantId} className="text-sm">
+                                  <span className="font-medium">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
+                                  <span className="text-muted-foreground"> — no coverage: {missingDays.join(', ')}</span>
+                                </p>
+                              );
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </div>
+              </InsightCard>
+            )}
 
           </>
         )}
