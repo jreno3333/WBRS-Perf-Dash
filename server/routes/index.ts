@@ -26,8 +26,9 @@ import aiAnalysisRouter from "./ai-analysis";
 import gradingConfigRouter from "./grading-config";
 
 import { db } from "../db";
-import { users } from "@shared/schema";
+import { users, gradingConfig as gradingConfigTable, DEFAULT_GRADING_CONFIG, type GradingConfigData } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { invalidateGradingCache } from "./grading-config";
 
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session?.userId) {
@@ -90,6 +91,36 @@ export async function registerRoutes(
   app.use(pushReportRouter);
   app.use(aiAnalysisRouter);
   app.use(gradingConfigRouter);
+
+  // Grading config save — registered directly on app to avoid Router matching issues
+  app.post("/api/grading-config", async (req: Request, res: Response) => {
+    console.log("[grading-config] POST handler reached (direct registration)");
+    try {
+      const config = req.body as GradingConfigData;
+      const { weights } = config;
+      if (!weights || !config.salesTiers || !config.osatTiers || !config.speedTiers || !config.transactionTiers) {
+        return res.status(400).json({ message: "Missing required configuration fields" });
+      }
+      const totalWeight = weights.sales + weights.transactions + weights.osat + weights.speed + weights.staffing;
+      if (totalWeight !== 100) {
+        return res.status(400).json({ message: `Weights must sum to 100 (currently ${totalWeight})` });
+      }
+      if (config.staffingTolerance === undefined || config.staffingTolerance < 0) {
+        return res.status(400).json({ message: "Staffing tolerance must be >= 0" });
+      }
+      await db.delete(gradingConfigTable);
+      const [row] = await db.insert(gradingConfigTable).values({
+        config,
+        updatedBy: (req.session as any)?.userId || "unknown",
+      }).returning();
+      console.log("[grading-config] Saved successfully, id:", row.id);
+      invalidateGradingCache();
+      return res.json(row.config);
+    } catch (error) {
+      console.error("[grading-config] POST error:", error);
+      return res.status(500).json({ message: "Failed to save grading configuration" });
+    }
+  });
 
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {
