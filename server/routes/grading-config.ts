@@ -19,44 +19,6 @@ router.get("/api/grading-config", async (_req, res) => {
   }
 });
 
-/** POST /api/grading-config — update the grading configuration */
-router.post("/api/grading-config", async (req, res) => {
-  console.log("[grading-config] POST handler reached");
-  try {
-    const config = req.body as GradingConfigData;
-
-    // Basic validation
-    const { weights } = config;
-    if (!weights || !config.salesTiers || !config.osatTiers || !config.speedTiers || !config.transactionTiers) {
-      console.log("[grading-config] Validation failed: missing fields");
-      return res.status(400).json({ message: "Missing required configuration fields" });
-    }
-
-    const totalWeight = weights.sales + weights.transactions + weights.osat + weights.speed + weights.staffing;
-    if (totalWeight !== 100) {
-      return res.status(400).json({ message: `Weights must sum to 100 (currently ${totalWeight})` });
-    }
-
-    if (config.staffingTolerance === undefined || config.staffingTolerance < 0) {
-      return res.status(400).json({ message: "Staffing tolerance must be >= 0" });
-    }
-
-    // Upsert: delete all old rows, insert new one
-    await db.delete(gradingConfig);
-    const [row] = await db.insert(gradingConfig).values({
-      config,
-      updatedBy: (req.session as any)?.userId || "unknown",
-    }).returning();
-
-    console.log("[grading-config] Saved successfully, id:", row.id);
-    invalidateCache();
-    return res.json(row.config);
-  } catch (error) {
-    console.error("[grading-config] POST error:", error);
-    return res.status(500).json({ message: "Failed to save grading configuration" });
-  }
-});
-
 export default router;
 
 // ── Cached config loader (5-minute TTL) ──
@@ -64,7 +26,7 @@ let _cachedConfig: GradingConfigData | null = null;
 let _cacheExpiry = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-function invalidateCache() {
+export function invalidateGradingCache() {
   _cachedConfig = null;
   _cacheExpiry = 0;
 }
