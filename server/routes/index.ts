@@ -92,6 +92,11 @@ export async function registerRoutes(
   app.use(aiAnalysisRouter);
   app.use(gradingConfigRouter);
 
+  // Diagnostic: verify server has latest code
+  app.get("/api/grading-config/ping", (_req: Request, res: Response) => {
+    res.json({ ok: true, version: "v3-direct-post", timestamp: new Date().toISOString() });
+  });
+
   // Grading config save — registered directly on app to avoid Router matching issues
   app.post("/api/grading-config/save", async (req: Request, res: Response) => {
     console.log("[grading-config] POST handler reached (direct registration)");
