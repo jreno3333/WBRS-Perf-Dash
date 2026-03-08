@@ -19,14 +19,16 @@ router.get("/api/grading-config", async (_req, res) => {
   }
 });
 
-/** PUT /api/grading-config — update the grading configuration */
-router.put("/api/grading-config", async (req, res) => {
+/** POST /api/grading-config — update the grading configuration */
+router.post("/api/grading-config", async (req, res) => {
+  console.log("[grading-config] POST handler reached");
   try {
     const config = req.body as GradingConfigData;
 
     // Basic validation
     const { weights } = config;
     if (!weights || !config.salesTiers || !config.osatTiers || !config.speedTiers || !config.transactionTiers) {
+      console.log("[grading-config] Validation failed: missing fields");
       return res.status(400).json({ message: "Missing required configuration fields" });
     }
 
@@ -46,10 +48,11 @@ router.put("/api/grading-config", async (req, res) => {
       updatedBy: (req.session as any)?.userId || "unknown",
     }).returning();
 
+    console.log("[grading-config] Saved successfully, id:", row.id);
     invalidateCache();
     return res.json(row.config);
   } catch (error) {
-    console.error("[grading-config] PUT error:", error);
+    console.error("[grading-config] POST error:", error);
     return res.status(500).json({ message: "Failed to save grading configuration" });
   }
 });
