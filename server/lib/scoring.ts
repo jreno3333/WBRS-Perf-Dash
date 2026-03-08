@@ -5,11 +5,14 @@
  * Used by: grading.ts (client), daily-report, push-report, leader-detail,
  *          performance-history, arena-engine, leaderboard, leaders routes.
  *
- * WEIGHTS: Sales 30%, Transactions 15%, OSAT 30%, Speed 15%, Staffing 10%
+ * WEIGHTS: Configurable via grading_config table (defaults below).
  */
 
+import type { GradingConfigData, ScoringTier } from "@shared/schema";
+import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
+
 // ──────────────────────────────────────────
-// Weights & Constants
+// Weights & Constants (defaults — overridden by DB config)
 // ──────────────────────────────────────────
 
 export const GRADE_WEIGHTS = {
@@ -136,47 +139,42 @@ export function getGradeBadgeColorTw(grade: string): string {
 // Graduated component scoring
 // ──────────────────────────────────────────
 
+/** Generic tier scorer: tiers must be sorted descending by threshold. Falls back to fallbackScore. */
+function scoreTiers(value: number, tiers: ScoringTier[], fallbackScore: number): number {
+  for (const tier of tiers) {
+    if (value >= tier.threshold) return tier.points;
+  }
+  return fallbackScore;
+}
+
 /** Sales variance % → 0-100 score (graduated) */
-export function scoreSalesVariance(variancePct: number): number {
-  if (variancePct >= 10) return 100;
-  if (variancePct >= 5) return 95;
-  if (variancePct >= 0) return 90;
-  if (variancePct >= -5) return 80;
-  if (variancePct >= -10) return 60;
-  return 40;
+export function scoreSalesVariance(variancePct: number, tiers?: ScoringTier[]): number {
+  return scoreTiers(variancePct, tiers || DEFAULT_GRADING_CONFIG.salesTiers, 40);
 }
 
 /** Transaction variance % → 0-100 score (graduated, same curve as sales) */
-export function scoreTransactionVariance(variancePct: number): number {
-  if (variancePct >= 10) return 100;
-  if (variancePct >= 5) return 95;
-  if (variancePct >= 0) return 90;
-  if (variancePct >= -5) return 80;
-  if (variancePct >= -10) return 60;
-  return 40;
+export function scoreTransactionVariance(variancePct: number, tiers?: ScoringTier[]): number {
+  return scoreTiers(variancePct, tiers || DEFAULT_GRADING_CONFIG.transactionTiers, 40);
 }
 
 /** OSAT % → 0-100 score (graduated) */
-export function scoreOsat(osatPct: number): number {
-  if (osatPct >= 90) return 100;
-  if (osatPct >= 85) return 90;
-  if (osatPct >= 80) return 70;
-  if (osatPct >= 75) return 50;
-  return 40;
+export function scoreOsat(osatPct: number, tiers?: ScoringTier[]): number {
+  return scoreTiers(osatPct, tiers || DEFAULT_GRADING_CONFIG.osatTiers, 40);
 }
 
-/** Speed attainment % → 0-100 score (unchanged buckets) */
-export function scoreSpeed(attainmentPct: number): number {
-  if (attainmentPct >= 70) return 100;
-  if (attainmentPct >= 50) return 70;
-  return 40;
+/** Speed attainment % → 0-100 score */
+export function scoreSpeed(attainmentPct: number, tiers?: ScoringTier[]): number {
+  return scoreTiers(attainmentPct, tiers || DEFAULT_GRADING_CONFIG.speedTiers, 40);
 }
 
-/** Staffing diff → 0-100 score (unchanged) */
-export function scoreStaffing(staffingDiff: number, isSalesSurge: boolean): number {
-  if (staffingDiff > 1) return 60; // overstaffed
-  if (staffingDiff < -1 && !isSalesSurge) return 60; // understaffed (no surge excuse)
-  return 100;
+/** Staffing diff → 0-100 score */
+export function scoreStaffing(staffingDiff: number, isSalesSurge: boolean, tolerance?: number, inScore?: number, outScore?: number): number {
+  const tol = tolerance ?? DEFAULT_GRADING_CONFIG.staffingTolerance;
+  const good = inScore ?? DEFAULT_GRADING_CONFIG.staffingInToleranceScore;
+  const bad = outScore ?? DEFAULT_GRADING_CONFIG.staffingOutToleranceScore;
+  if (staffingDiff > tol) return bad; // overstaffed
+  if (staffingDiff < -tol && !isSalesSurge) return bad; // understaffed (no surge excuse)
+  return good;
 }
 
 // ──────────────────────────────────────────
@@ -207,35 +205,37 @@ export interface HourlyScoreResult {
   components: { name: string; score: number; weight: number }[];
 }
 
-export function computeHourlyScore(input: HourlyScoreInput): HourlyScoreResult {
+export function computeHourlyScore(input: HourlyScoreInput, cfg?: GradingConfigData): HourlyScoreResult {
+  const c = cfg || DEFAULT_GRADING_CONFIG;
+  const w = c.weights;
   const components: { name: string; score: number; weight: number }[] = [];
 
-  // Sales (30%)
+  // Sales
   if (input.hasComparableSales) {
-    components.push({ name: "sales", score: scoreSalesVariance(input.salesVariancePct), weight: GRADE_WEIGHTS.sales });
+    components.push({ name: "sales", score: scoreSalesVariance(input.salesVariancePct, c.salesTiers), weight: w.sales });
   } else {
-    components.push({ name: "sales", score: 90, weight: GRADE_WEIGHTS.sales }); // benefit of the doubt
+    components.push({ name: "sales", score: 90, weight: w.sales }); // benefit of the doubt
   }
 
-  // Transactions (15%)
+  // Transactions
   if (input.hasComparableTransactions && input.transactionVariancePct !== undefined) {
-    components.push({ name: "transactions", score: scoreTransactionVariance(input.transactionVariancePct), weight: GRADE_WEIGHTS.transactions });
+    components.push({ name: "transactions", score: scoreTransactionVariance(input.transactionVariancePct, c.transactionTiers), weight: w.transactions });
   }
 
-  // OSAT (30%)
+  // OSAT
   if (input.osatPercent !== undefined && input.osatPercent > 0 && (input.osatResponses === undefined || input.osatResponses > 0)) {
-    components.push({ name: "osat", score: scoreOsat(input.osatPercent), weight: GRADE_WEIGHTS.osat });
+    components.push({ name: "osat", score: scoreOsat(input.osatPercent, c.osatTiers), weight: w.osat });
   }
 
-  // Speed (15%)
+  // Speed
   if (input.speedAttainment !== undefined && input.speedAttainment >= 0) {
-    components.push({ name: "speed", score: scoreSpeed(input.speedAttainment), weight: GRADE_WEIGHTS.speed });
+    components.push({ name: "speed", score: scoreSpeed(input.speedAttainment, c.speedTiers), weight: w.speed });
   }
 
-  // Staffing (10%)
+  // Staffing
   if (input.hasValidStaffing) {
     const isSurge = input.salesVariancePct >= 20 || !input.hasComparableSales;
-    components.push({ name: "staffing", score: scoreStaffing(input.staffingDiff, isSurge), weight: GRADE_WEIGHTS.staffing });
+    components.push({ name: "staffing", score: scoreStaffing(input.staffingDiff, isSurge, c.staffingTolerance, c.staffingInToleranceScore, c.staffingOutToleranceScore), weight: w.staffing });
   }
 
   if (components.length === 0) {

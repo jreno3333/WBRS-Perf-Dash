@@ -5,6 +5,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
+import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
 
@@ -16,6 +17,7 @@ const MIN_HOURS_TOP10 = 20;
 router.get("/api/leaders", async (req, res) => {
   try {
     const { date, days = "7", position: positionFilter } = req.query;
+    const gradingCfg = await getActiveGradingConfig();
 
     const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
     const now = new Date();
@@ -324,7 +326,7 @@ router.get("/api/leaders", async (req, res) => {
           staffingDiff: avgStaffingDiff,
           hasValidStaffing: day.staffingDiffs.length > 0,
           osatPercent,
-        });
+        }, gradingCfg);
 
         if (gradeResult.hasGrade) {
           // YoY variance from historical_daily_sales (DOW-matched)

@@ -97,8 +97,14 @@ export async function ensureFeatureTables() {
         voter_id TEXT NOT NULL,
         voted_at TIMESTAMP DEFAULT now()
       );
+      CREATE TABLE IF NOT EXISTS grading_config (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        config JSONB NOT NULL,
+        updated_at TIMESTAMP DEFAULT now(),
+        updated_by TEXT
+      );
     `);
-    console.log("[db] Feature tables (ticker, polls, milestones) ready");
+    console.log("[db] Feature tables (ticker, polls, milestones, grading_config) ready");
   } catch (error) {
     console.error("[db] Failed to ensure feature tables:", error);
   }

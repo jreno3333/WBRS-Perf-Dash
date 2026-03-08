@@ -5,6 +5,7 @@
  */
 
 import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel } from "./lib/scoring";
+import type { GradingConfigData } from "@shared/schema";
 
 // ─── GRADE COMPUTATION (extracted from leaders.ts) ───
 
@@ -29,7 +30,7 @@ export interface HourlyMetrics {
   ootActive?: boolean; // When true, speed is excluded from grading (lane config change)
 }
 
-export function computeHourlyGradeScore(m: HourlyMetrics): number {
+export function computeHourlyGradeScore(m: HourlyMetrics, gradingCfg?: GradingConfigData): number {
   const hasComparableSales = m.lastWeekSales > 0;
   const salesVariancePct = hasComparableSales
     ? ((m.actualSales - m.lastWeekSales) / m.lastWeekSales) * 100 : 0;
@@ -51,7 +52,7 @@ export function computeHourlyGradeScore(m: HourlyMetrics): number {
     hasValidStaffing: true,
     osatPercent: m.osatPercent !== null && m.osatResponses > 0 ? m.osatPercent : undefined,
     osatResponses: m.osatResponses,
-  });
+  }, gradingCfg);
 
   return result.score;
 }

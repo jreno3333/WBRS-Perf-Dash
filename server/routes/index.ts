@@ -23,6 +23,7 @@ import tickerRouter from "./ticker";
 import pollsRouter from "./polls";
 import pushReportRouter, { registerPublicShareRoute } from "./push-report";
 import aiAnalysisRouter from "./ai-analysis";
+import gradingConfigRouter from "./grading-config";
 
 import { db } from "../db";
 import { users } from "@shared/schema";
@@ -88,6 +89,7 @@ export async function registerRoutes(
   app.use(pollsRouter);
   app.use(pushReportRouter);
   app.use(aiAnalysisRouter);
+  app.use(gradingConfigRouter);
 
   // Version/diagnostics endpoint to verify production deployment
   app.get("/api/version", (req, res) => {

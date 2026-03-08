@@ -8,6 +8,8 @@ import type { HourlySalesData } from "@shared/schema";
 import { getTotalRequiredStaff } from "./labor-model";
 import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGradeColorHex, formatCurrency as sharedFormatCurrency, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "./lib/scoring";
 import { getAttachmentRatesFromDetail } from "./xenial-webhook";
+import type { GradingConfigData } from "@shared/schema";
+import { getActiveGradingConfig } from "./routes/grading-config";
 
 
 function getExecutionGrade(
@@ -19,6 +21,7 @@ function getExecutionGrade(
   osatPercent: number | undefined,
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
+  gradingCfg?: GradingConfigData,
 ): { grade: string; score: number; hasGrade: boolean } {
   const result = computeHourlyScore({
     salesVariancePct,
@@ -29,7 +32,7 @@ function getExecutionGrade(
     staffingDiff,
     hasValidStaffing,
     osatPercent,
-  });
+  }, gradingCfg);
   return { grade: result.grade, score: result.score, hasGrade: result.hasGrade };
 }
 
@@ -145,6 +148,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
     const parts = dateStr.split('-');
     const targetDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
 
+    const gradingCfg = await getActiveGradingConfig();
     const leaderboard = await storage.getLeaderboard(targetDate);
     const hourlyDataByRestaurant = await storage.getHourlyDataByRestaurant(targetDate);
 
@@ -204,7 +208,8 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
           hasValidStaffing,
           (hour as any).osatPercent,
           txnVar,
-          hasCompTxn
+          hasCompTxn,
+          gradingCfg
         );
 
         if (gradeInfo.hasGrade) {

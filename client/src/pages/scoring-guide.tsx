@@ -1,9 +1,12 @@
+import { useQuery } from "@tanstack/react-query";
 import { NavBar } from "@/components/nav-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { GRADE_WEIGHTS, BONUS_DEFINITIONS, BONUS_CAP, scoreToGradeLabel, getGradeColor } from "@/lib/grading";
+import { BONUS_DEFINITIONS, BONUS_CAP, scoreToGradeLabel, getGradeColor } from "@/lib/grading";
 import { BookOpen, Star, TrendingUp, Users, Timer, Award, Sparkles, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
+import type { GradingConfigData, ScoringTier } from "@shared/schema";
+import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
 
 const gradeScale = [
   { label: "A+", min: 97, max: 100, color: "bg-green-500" },
@@ -21,33 +24,67 @@ const gradeScale = [
   { label: "F",  min: 0,  max: 59,  color: "bg-red-500" },
 ];
 
-const salesTable = [
-  { range: "+10% or more", score: 100, color: "text-green-500" },
-  { range: "+5% to +10%", score: 95, color: "text-green-500" },
-  { range: "0% to +5%", score: 90, color: "text-green-500" },
-  { range: "-5% to 0%", score: 80, color: "text-blue-500" },
-  { range: "-10% to -5%", score: 60, color: "text-orange-500" },
-  { range: "Below -10%", score: 40, color: "text-red-500" },
-];
+function getScoreColor(score: number): string {
+  if (score >= 90) return "text-green-500";
+  if (score >= 70) return "text-green-500";
+  if (score >= 50) return "text-yellow-500";
+  return "text-red-500";
+}
 
-const osatTable = [
-  { range: "90% or higher", score: 100, color: "text-green-500" },
-  { range: "85% to 89%", score: 90, color: "text-green-500" },
-  { range: "80% to 84%", score: 70, color: "text-yellow-500" },
-  { range: "75% to 79%", score: 50, color: "text-orange-500" },
-  { range: "Below 75%", score: 40, color: "text-red-500" },
-];
+/** Build display rows from tiers + fallback for the scoring tables */
+function buildVarianceTierRows(tiers: ScoringTier[], fallbackScore: number): { range: string; score: number; color: string }[] {
+  const rows: { range: string; score: number; color: string }[] = [];
+  for (let i = 0; i < tiers.length; i++) {
+    const tier = tiers[i];
+    const prevThreshold = i === 0 ? undefined : tiers[i - 1].threshold;
+    let range: string;
+    if (i === 0) {
+      range = `${tier.threshold >= 0 ? "+" : ""}${tier.threshold}% or more`;
+    } else {
+      range = `${tier.threshold >= 0 ? "+" : ""}${tier.threshold}% to ${prevThreshold! >= 0 ? "+" : ""}${prevThreshold}%`;
+    }
+    rows.push({ range, score: tier.points, color: tier.points >= 90 ? "text-green-500" : tier.points >= 70 ? "text-yellow-500" : tier.points >= 50 ? "text-orange-500" : "text-red-500" });
+  }
+  const lowestThreshold = tiers.length > 0 ? tiers[tiers.length - 1].threshold : 0;
+  rows.push({ range: `Below ${lowestThreshold >= 0 ? "+" : ""}${lowestThreshold}%`, score: fallbackScore, color: "text-red-500" });
+  return rows;
+}
 
-const speedTable = [
-  { range: "70%+ attainment", score: 100, color: "text-green-500" },
-  { range: "50% to 70%", score: 70, color: "text-yellow-500" },
-  { range: "Below 50%", score: 40, color: "text-red-500" },
-];
+function buildPercentTierRows(tiers: ScoringTier[], fallbackScore: number): { range: string; score: number; color: string }[] {
+  const rows: { range: string; score: number; color: string }[] = [];
+  for (let i = 0; i < tiers.length; i++) {
+    const tier = tiers[i];
+    const prevThreshold = i === 0 ? undefined : tiers[i - 1].threshold;
+    let range: string;
+    if (i === 0) {
+      range = `${tier.threshold}% or higher`;
+    } else {
+      range = `${tier.threshold}% to ${prevThreshold! - 1}%`;
+    }
+    rows.push({ range, score: tier.points, color: tier.points >= 90 ? "text-green-500" : tier.points >= 70 ? "text-yellow-500" : tier.points >= 50 ? "text-orange-500" : "text-red-500" });
+  }
+  const lowestThreshold = tiers.length > 0 ? tiers[tiers.length - 1].threshold : 0;
+  rows.push({ range: `Below ${lowestThreshold}%`, score: fallbackScore, color: "text-red-500" });
+  return rows;
+}
 
-const staffingTable = [
-  { range: "Within +/-1 of target", score: 100, color: "text-green-500" },
-  { range: "More than 1 over/under", score: 60, color: "text-orange-500" },
-];
+function buildSpeedTierRows(tiers: ScoringTier[], fallbackScore: number): { range: string; score: number; color: string }[] {
+  const rows: { range: string; score: number; color: string }[] = [];
+  for (let i = 0; i < tiers.length; i++) {
+    const tier = tiers[i];
+    const prevThreshold = i === 0 ? undefined : tiers[i - 1].threshold;
+    let range: string;
+    if (i === 0) {
+      range = `${tier.threshold}%+ attainment`;
+    } else {
+      range = `${tier.threshold}% to ${prevThreshold}%`;
+    }
+    rows.push({ range, score: tier.points, color: tier.points >= 90 ? "text-green-500" : tier.points >= 70 ? "text-yellow-500" : "text-red-500" });
+  }
+  const lowestThreshold = tiers.length > 0 ? tiers[tiers.length - 1].threshold : 0;
+  rows.push({ range: `Below ${lowestThreshold}%`, score: fallbackScore, color: "text-red-500" });
+  return rows;
+}
 
 function ScoringTable({ title, icon: Icon, weight, rows }: {
   title: string;
@@ -89,16 +126,36 @@ function ScoringTable({ title, icon: Icon, weight, rows }: {
 }
 
 export default function ScoringGuidePage() {
-  // Example calculation
+  const { data: config } = useQuery<GradingConfigData>({
+    queryKey: ["/api/grading-config"],
+  });
+
+  const cfg = config || DEFAULT_GRADING_CONFIG;
+  const w = cfg.weights;
+
+  // Build dynamic scoring tables from config
+  const salesTable = buildVarianceTierRows(cfg.salesTiers, 40);
+  const txnTable = buildVarianceTierRows(cfg.transactionTiers, 40);
+  const osatTable = buildPercentTierRows(cfg.osatTiers, 40);
+  const speedTable = buildSpeedTierRows(cfg.speedTiers, 40);
+  const staffingTable = [
+    { range: `Within +/-${cfg.staffingTolerance} of target`, score: cfg.staffingInToleranceScore, color: "text-green-500" },
+    { range: `More than ${cfg.staffingTolerance} over/under`, score: cfg.staffingOutToleranceScore, color: "text-orange-500" },
+  ];
+
+  // Example calculation using dynamic weights
   const exSales = 90; // 0-5% above LW
   const exTxn = 95; // 5-10% above LW
   const exOsat = 100; // 90%+
   const exSpeed = 70; // 50-70%
-  const exStaffing = 100; // within 1
-  const exBase = (exSales * GRADE_WEIGHTS.sales + exTxn * GRADE_WEIGHTS.transactions + exOsat * GRADE_WEIGHTS.osat + exSpeed * GRADE_WEIGHTS.speed + exStaffing * GRADE_WEIGHTS.staffing) / 100;
+  const exStaffing = cfg.staffingInToleranceScore; // within tolerance
+  const exBase = (exSales * w.sales + exTxn * w.transactions + exOsat * w.osat + exSpeed * w.speed + exStaffing * w.staffing) / 100;
   const exBonus = 4; // sales growth + consistency
   const exFinal = Math.min(exBase + exBonus, 100);
   const exGrade = scoreToGradeLabel(exFinal);
+
+  const guestFacingPct = w.sales + w.transactions + w.osat;
+  const operationalPct = w.speed + w.staffing;
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -129,11 +186,11 @@ export default function ScoringGuidePage() {
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {[
-                { name: "Sales", weight: GRADE_WEIGHTS.sales, icon: "💰" },
-                { name: "Transactions", weight: GRADE_WEIGHTS.transactions, icon: "🧾" },
-                { name: "OSAT", weight: GRADE_WEIGHTS.osat, icon: "⭐" },
-                { name: "Speed", weight: GRADE_WEIGHTS.speed, icon: "⏱️" },
-                { name: "Staffing", weight: GRADE_WEIGHTS.staffing, icon: "👥" },
+                { name: "Sales", weight: w.sales, icon: "💰" },
+                { name: "Transactions", weight: w.transactions, icon: "🧾" },
+                { name: "OSAT", weight: w.osat, icon: "⭐" },
+                { name: "Speed", weight: w.speed, icon: "⏱️" },
+                { name: "Staffing", weight: w.staffing, icon: "👥" },
               ].map(c => (
                 <div key={c.name} className="text-center p-3 rounded-lg border">
                   <div className="text-lg">{c.icon}</div>
@@ -143,32 +200,32 @@ export default function ScoringGuidePage() {
               ))}
             </div>
             <p className="text-muted-foreground text-xs">
-              Guest-facing metrics (Sales + Transactions + OSAT) = <strong>75%</strong> of your score.
-              Operational metrics (Speed + Staffing) = <strong>25%</strong>.
+              Guest-facing metrics (Sales + Transactions + OSAT) = <strong>{guestFacingPct}%</strong> of your score.
+              Operational metrics (Speed + Staffing) = <strong>{operationalPct}%</strong>.
             </p>
           </CardContent>
         </Card>
 
         {/* Component Scoring Tables */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ScoringTable title="Sales vs. Last Week" icon={TrendingUp} weight={GRADE_WEIGHTS.sales} rows={salesTable} />
-          <ScoringTable title="Transactions vs. Last Week" icon={TrendingUp} weight={GRADE_WEIGHTS.transactions} rows={salesTable} />
-          <ScoringTable title="OSAT (Guest Satisfaction)" icon={Star} weight={GRADE_WEIGHTS.osat} rows={osatTable} />
-          <ScoringTable title="Drive-Thru Speed" icon={Timer} weight={GRADE_WEIGHTS.speed} rows={speedTable} />
+          <ScoringTable title="Sales vs. Last Week" icon={TrendingUp} weight={w.sales} rows={salesTable} />
+          <ScoringTable title="Transactions vs. Last Week" icon={TrendingUp} weight={w.transactions} rows={txnTable} />
+          <ScoringTable title="OSAT (Guest Satisfaction)" icon={Star} weight={w.osat} rows={osatTable} />
+          <ScoringTable title="Drive-Thru Speed" icon={Timer} weight={w.speed} rows={speedTable} />
         </div>
-        <ScoringTable title="Staffing vs. Labor Model" icon={Users} weight={GRADE_WEIGHTS.staffing} rows={staffingTable} />
+        <ScoringTable title="Staffing vs. Labor Model" icon={Users} weight={w.staffing} rows={staffingTable} />
 
         <Card className="border-none bg-muted/30">
           <CardContent className="pt-4 text-xs text-muted-foreground space-y-2">
             <p>
               <strong>Note on Speed:</strong> Speed is measured via HME timer attainment (% of cars under 6 minutes).
-              It carries a reduced weight (15%) to account for operational variability.
+              It carries a {w.speed}% weight to account for operational variability.
             </p>
             <p>
               <strong>OOT / Outside Lane (DT#3) Exception:</strong> When the outside drive-thru lane is active during an hour
               (detected via DT#3 orders), speed is <strong>automatically excluded</strong> from that hour's grade.
               Ad-hoc lane configuration changes make HME timing unreliable, so it would be unfair to grade on it.
-              The remaining components (Sales, Transactions, OSAT, Staffing) redistribute proportionally to fill the 100% weight.
+              The remaining components redistribute proportionally to fill the 100% weight.
               Speed data still appears in the dashboard for visibility — it just won't count toward your score.
             </p>
           </CardContent>
@@ -265,33 +322,33 @@ export default function ScoringGuidePage() {
               <tbody>
                 <tr className="border-b border-border/50">
                   <td className="py-1">Sales (+3%)</td>
-                  <td className="py-1 text-center">{GRADE_WEIGHTS.sales}%</td>
+                  <td className="py-1 text-center">{w.sales}%</td>
                   <td className="py-1 text-center">{exSales}</td>
-                  <td className="py-1 text-right">{(exSales * GRADE_WEIGHTS.sales / 100).toFixed(1)}</td>
+                  <td className="py-1 text-right">{(exSales * w.sales / 100).toFixed(1)}</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-1">Transactions (+7%)</td>
-                  <td className="py-1 text-center">{GRADE_WEIGHTS.transactions}%</td>
+                  <td className="py-1 text-center">{w.transactions}%</td>
                   <td className="py-1 text-center">{exTxn}</td>
-                  <td className="py-1 text-right">{(exTxn * GRADE_WEIGHTS.transactions / 100).toFixed(1)}</td>
+                  <td className="py-1 text-right">{(exTxn * w.transactions / 100).toFixed(1)}</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-1">OSAT (92%)</td>
-                  <td className="py-1 text-center">{GRADE_WEIGHTS.osat}%</td>
+                  <td className="py-1 text-center">{w.osat}%</td>
                   <td className="py-1 text-center">{exOsat}</td>
-                  <td className="py-1 text-right">{(exOsat * GRADE_WEIGHTS.osat / 100).toFixed(1)}</td>
+                  <td className="py-1 text-right">{(exOsat * w.osat / 100).toFixed(1)}</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-1">Speed (55%)</td>
-                  <td className="py-1 text-center">{GRADE_WEIGHTS.speed}%</td>
+                  <td className="py-1 text-center">{w.speed}%</td>
                   <td className="py-1 text-center">{exSpeed}</td>
-                  <td className="py-1 text-right">{(exSpeed * GRADE_WEIGHTS.speed / 100).toFixed(1)}</td>
+                  <td className="py-1 text-right">{(exSpeed * w.speed / 100).toFixed(1)}</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-1">Staffing (on target)</td>
-                  <td className="py-1 text-center">{GRADE_WEIGHTS.staffing}%</td>
+                  <td className="py-1 text-center">{w.staffing}%</td>
                   <td className="py-1 text-center">{exStaffing}</td>
-                  <td className="py-1 text-right">{(exStaffing * GRADE_WEIGHTS.staffing / 100).toFixed(1)}</td>
+                  <td className="py-1 text-right">{(exStaffing * w.staffing / 100).toFixed(1)}</td>
                 </tr>
               </tbody>
               <tfoot>
