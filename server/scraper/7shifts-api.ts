@@ -237,24 +237,14 @@ export class SevenShiftsAPI {
 
     try {
       // Calculate proper UTC range based on location's timezone
-      // For Eastern stores (UTC-5), midnight local = 5am UTC
-      // For Central stores (UTC-6), midnight local = 6am UTC
-      const [year, month, day] = date.split('-').map(Number);
-      
-      // Determine UTC offset based on timezone
-      // In winter: EST is UTC-5, CST is UTC-6
-      // We use a simple offset check (more robust would use a library like date-fns-tz)
-      const isEastern = timezone?.includes('New_York') || timezone?.includes('Eastern');
-      const utcOffset = isEastern ? 5 : 6; // Hours to add to local midnight to get UTC
-      
-      // Calculate start of target day in UTC (midnight local time converted to UTC)
-      // Then go back 4 hours to catch overnight shifts
-      const startOfDayUTC = new Date(Date.UTC(year, month - 1, day, utcOffset, 0, 0));
+      // Convert local midnight and end-of-day to UTC using the location's timezone
+      // fromZonedTime handles DST automatically
+      const tz = timezone || 'America/Chicago';
+      const startOfDayUTC = fromZonedTime(`${date}T00:00:00`, tz);
+      const endOfDayUTC = fromZonedTime(`${date}T23:59:59`, tz);
+
+      // Expand window by 4 hours on each side to catch overnight/late shifts
       const startDate = new Date(startOfDayUTC.getTime() - 4 * 60 * 60 * 1000);
-      
-      // Calculate end of target day in UTC (11:59:59pm local time converted to UTC)
-      // Then add 4 hours to catch late punches
-      const endOfDayUTC = new Date(Date.UTC(year, month - 1, day, utcOffset + 23, 59, 59));
       const endDate = new Date(endOfDayUTC.getTime() + 4 * 60 * 60 * 1000);
       
       const startDateStr = startDate.toISOString().replace('.000Z', '');
@@ -1736,24 +1726,9 @@ export async function resyncLaborForRestaurant(
     // Calculate date range for time punches
     const locationTimezone = location.timezone || "America/Chicago";
     
-    // Parse the date string and create start/end timestamps
-    const [year, month, day] = dateStr.split('-').map(Number);
-    
-    // Get UTC offset for the location timezone
-    const testDate = new Date(`${dateStr}T12:00:00`);
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: locationTimezone,
-      hour: 'numeric',
-      hourCycle: 'h23',
-    });
-    
-    // Use a fixed offset approach for timezone handling
-    const isEastern = locationTimezone.includes('New_York');
-    const utcOffset = isEastern ? 5 : 6; // EST is UTC-5, CST is UTC-6 (simplified)
-    
-    // Start of day in local timezone, converted to UTC
-    const startOfDayLocal = new Date(Date.UTC(year, month - 1, day, utcOffset, 0, 0));
-    const endOfDayLocal = new Date(Date.UTC(year, month - 1, day + 1, utcOffset - 1, 59, 59));
+    // Convert local day boundaries to UTC using fromZonedTime (handles DST automatically)
+    const startOfDayLocal = fromZonedTime(`${dateStr}T00:00:00`, locationTimezone);
+    const endOfDayLocal = fromZonedTime(`${dateStr}T23:59:59`, locationTimezone);
     
     // Expand the window to capture overnight shifts
     const punchStart = new Date(startOfDayLocal.getTime() - 4 * 60 * 60 * 1000); // 4 hours before
@@ -1793,10 +1768,10 @@ export async function resyncLaborForRestaurant(
         clockOutLocal,
       });
       
-      // Calculate which hours this punch covers
+      // Calculate which hours this punch covers using DST-aware boundaries
       for (let h = 0; h < 24; h++) {
-        const hourStartUTC = new Date(Date.UTC(year, month - 1, day, utcOffset + h, 0, 0));
-        const hourEndUTC = new Date(Date.UTC(year, month - 1, day, utcOffset + h + 1, 0, 0));
+        const hourStartUTC = fromZonedTime(`${dateStr}T${String(h).padStart(2, '0')}:00:00`, locationTimezone);
+        const hourEndUTC = new Date(hourStartUTC.getTime() + 60 * 60 * 1000);
         
         const effectiveClockOut = clockOut || new Date(); // Use current time if still working
         
