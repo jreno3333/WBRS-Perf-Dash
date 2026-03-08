@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { computeExecutionScore, scoreToGradeLabel, gradeToMidpoint, formatCurrency } from "@/lib/grading";
+import { useGradingConfig } from "@/hooks/use-grading-config";
 
 // Get current date in Central timezone (business day)
 function getCentralDate(): Date {
@@ -27,7 +28,7 @@ function getCentralDate(): Date {
   return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }): number {
+function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }, cfg?: import("@shared/schema").GradingConfigData): number {
   if (!hourlyData || hourlyData.length === 0) return -1;
 
   const cutoff = localCutoff ?? 23;
@@ -51,7 +52,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
       const transactionVariancePct = hasComparableTransactions
         ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
         : undefined;
-      const rawScore = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions);
+      const rawScore = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
       return rawScore > 0 ? gradeToMidpoint(scoreToGradeLabel(rawScore)) : 0;
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
@@ -61,6 +62,7 @@ export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "check_avg">("sales");
+  const gradingCfg = useGradingConfig();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
@@ -412,10 +414,10 @@ export default function Dashboard() {
     if (!leaderboardData?.restaurants || !hourlyByRestaurant) return map;
     for (const r of leaderboardData.restaurants) {
       const localCutoff = (r as any).localCurrentHour ?? r.normalizedHour;
-      map.set(r.restaurantId, calculateXScore(hourlyByRestaurant[r.restaurantId], localCutoff, r));
+      map.set(r.restaurantId, calculateXScore(hourlyByRestaurant[r.restaurantId], localCutoff, r, gradingCfg));
     }
     return map;
-  }, [leaderboardData?.restaurants, hourlyByRestaurant]);
+  }, [leaderboardData?.restaurants, hourlyByRestaurant, gradingCfg]);
 
   // Memoize filtered + sorted restaurants to avoid re-computing the full
   // filter/sort pipeline on every render (e.g. when unrelated state changes).

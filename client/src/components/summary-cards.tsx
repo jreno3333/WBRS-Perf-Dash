@@ -4,6 +4,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
+import { useGradingConfig } from "@/hooks/use-grading-config";
+import type { GradingConfigData } from "@shared/schema";
 
 interface WeeklySalesData {
   currentWeekStart: string;
@@ -48,8 +50,9 @@ function getExecutionGrade(
   hasValidStaffing: boolean,
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
+  cfg?: GradingConfigData,
 ): { grade: string; color: string; score: number; hasGrade: boolean; components: { name: string; score: number; weight: number }[] } {
-  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
   if (score === 0) {
     return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false, components: [] };
   }
@@ -58,6 +61,7 @@ function getExecutionGrade(
 }
 
 export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, attachmentRatesByRestaurant }: SummaryCardsProps) {
+  const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Exclude training units from totals
@@ -228,7 +232,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
 
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, gradingCfg);
         if (gradeInfo.hasGrade) {
           if (gradeInfo.score > 0) {
             allHourlyScores.push(gradeInfo.score);

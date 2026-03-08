@@ -43,6 +43,7 @@ import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@s
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor, gradeToMidpoint, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 import type { DailyBonusResult } from "@/lib/grading";
+import { useGradingConfig } from "@/hooks/use-grading-config";
 import { DAYPARTS } from "@/lib/dayparts";
 import { UnitReportDialog } from "@/components/unit-report-dialog";
 
@@ -246,7 +247,7 @@ function analyzeUnit(
       const txnVariancePct = hasComparableTransactions
         ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
         : undefined;
-      const score = computeExecutionScore(hourVariance, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions);
+      const score = computeExecutionScore(hourVariance, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions, gradingCfg);
       if (score > 0) {
         hourlyScores.push(score);
       }
@@ -404,7 +405,7 @@ function analyzeUnit(
         const txnVar = hasCompTxn
           ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
           : undefined;
-        const score = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+        const score = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
         return score > 0 ? gradeToMidpoint(scoreToGradeLabel(score)) : 0;
       }).filter(s => s > 0);
 
@@ -1161,8 +1162,9 @@ export function DailySummary({
   attachmentRatesByRestaurant,
 }: DailySummaryProps) {
   // Fetch category issues for all dates in range
+  const gradingCfg = useGradingConfig();
   const datesToFetch = dateRange && dateRange.length > 0 ? dateRange : (selectedDate ? [selectedDate] : []);
-  
+
   type CategoryIssueRow = {
     restaurantId: string;
     date: string;

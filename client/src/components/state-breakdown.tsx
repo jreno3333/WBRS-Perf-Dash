@@ -6,6 +6,8 @@ import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, Chevr
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
+import { useGradingConfig } from "@/hooks/use-grading-config";
+import type { GradingConfigData } from "@shared/schema";
 
 interface CrewSummary {
   avgScore: number;
@@ -56,11 +58,12 @@ function getExecutionGradeScore(
   hasValidStaffing: boolean = true,
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
+  cfg?: GradingConfigData,
 ): number {
-  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
+  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
 }
 
-function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>): { grade: string; hoursGraded: number } {
+function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData): { grade: string; hoursGraded: number } {
   const allScores: number[] = [];
   if (hourlyByRestaurant) {
     for (const restaurantId of restaurantIds) {
@@ -80,7 +83,7 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
         const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
+        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg);
         if (score > 0) allScores.push(score);
       }
     }
@@ -237,6 +240,7 @@ function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttain
 }
 
 export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: StateBreakdownProps) {
+  const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   // Exclude training units from state breakdowns
@@ -266,11 +270,13 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
   // Calculate X-Scores for each state
   const alabamaXScore = calculateStateXScore(
     alabamaRestaurants.map(r => r.restaurantId),
-    hourlyByRestaurant
+    hourlyByRestaurant,
+    gradingCfg
   );
   const tennesseeXScore = calculateStateXScore(
     tennesseeRestaurants.map(r => r.restaurantId),
-    hourlyByRestaurant
+    hourlyByRestaurant,
+    gradingCfg
   );
   
   // Calculate crew scores for each state
