@@ -39,7 +39,7 @@ import {
   Zap,
   Star,
 } from "lucide-react";
-import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
+import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, GradingConfigData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor, gradeToMidpoint, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 import type { DailyBonusResult } from "@/lib/grading";
@@ -146,6 +146,7 @@ function analyzeUnit(
   restaurant: LeaderboardData["restaurants"][0],
   hourlyData: HourlySalesData[] | undefined,
   attachmentCategories?: Record<string, { attachRate: number }>,
+  gradingCfg?: GradingConfigData,
 ): UnitInsight {
   const strengths: string[] = [];
   const concerns: string[] = [];
@@ -1286,7 +1287,7 @@ export function DailySummary({
   const unitInsights = useMemo(() => {
     const activeRestaurants = restaurants.filter(r => r.status !== "training");
     return activeRestaurants.map(r => {
-      const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId], attachmentRatesByRestaurant?.[r.restaurantId]?.categories);
+      const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId], attachmentRatesByRestaurant?.[r.restaurantId]?.categories, gradingCfg);
       // Add market info if available
       if (markets) {
         const market = markets.find(m => m.restaurantIds?.includes(r.restaurantId));
@@ -1308,7 +1309,7 @@ export function DailySummary({
       }
       return insight;
     });
-  }, [restaurants, hourlyByRestaurant, markets, categoryIssuesByRestaurant, crewSummary]);
+  }, [restaurants, hourlyByRestaurant, markets, categoryIssuesByRestaurant, crewSummary, gradingCfg, attachmentRatesByRestaurant]);
   
   // Sort unit insights based on selected sort
   const sortedUnitInsights = useMemo(() => {
