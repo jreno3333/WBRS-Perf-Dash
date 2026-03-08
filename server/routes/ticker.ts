@@ -394,6 +394,7 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
       SELECT DISTINCT ON (restaurant_id, hour) restaurant_id, hour, actual_sales
       FROM hourly_sales
       WHERE sales_date::date = ${dateStr}::date
+        AND hour <= ${prevHour}
       ORDER BY restaurant_id, hour, scraped_at DESC NULLS LAST
     `);
     const todayAll = (todayAllResult.rows || []) as { restaurant_id: string; hour: number; actual_sales: string }[];
