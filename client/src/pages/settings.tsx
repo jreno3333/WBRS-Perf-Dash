@@ -3412,7 +3412,7 @@ function GradingConfigCard() {
 
   const saveMutation = useMutation({
     mutationFn: async (cfg: GradingConfigData) => {
-      const res = await apiRequest("POST", "/api/grading-config", cfg);
+      const res = await apiRequest("POST", "/api/grading-config/save", cfg);
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
         throw new Error("Save failed — server returned an unexpected response");
