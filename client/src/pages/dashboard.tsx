@@ -17,7 +17,7 @@ import { PollCard } from "@/components/poll-card";
 import { format } from "date-fns";
 import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
-import { computeExecutionScore, scoreToGradeLabel, gradeToMidpoint, formatCurrency } from "@/lib/grading";
+import { computeExecutionScore, formatCurrency } from "@/lib/grading";
 import { useGradingConfig } from "@/hooks/use-grading-config";
 
 // Get current date in Central timezone (business day)
@@ -53,7 +53,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
         ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
         : undefined;
       const rawScore = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
-      return rawScore > 0 ? gradeToMidpoint(scoreToGradeLabel(rawScore)) : 0;
+      return rawScore > 0 ? rawScore : 0;
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
 }

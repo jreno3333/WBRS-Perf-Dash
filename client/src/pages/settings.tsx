@@ -3369,13 +3369,6 @@ function TierEditor({ label, tiers, onChange }: {
             </Button>
           </div>
         ))}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground w-16">Below</span>
-          <span className="text-xs text-muted-foreground w-20 text-center">all</span>
-          <span className="text-xs text-muted-foreground">→</span>
-          <span className="w-20 h-8 text-sm flex items-center justify-center text-muted-foreground">40</span>
-          <span className="text-xs text-muted-foreground">pts</span>
-        </div>
         <Button
           variant="outline"
           size="sm"
