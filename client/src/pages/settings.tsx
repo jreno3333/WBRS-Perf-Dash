@@ -3417,8 +3417,13 @@ function GradingConfigCard() {
       return apiRequest("PUT", "/api/grading-config", cfg);
     },
     onSuccess: () => {
+      // Invalidate grading config (scoring guide page, client components)
       queryClient.invalidateQueries({ queryKey: ["/api/grading-config"] });
-      toast({ title: "Grading config saved", description: "Scoring weights and thresholds updated." });
+      // Invalidate server-computed grading data so dashboard/leaderboard refetch with new config
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/performance-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leaders"] });
+      toast({ title: "Grading config saved", description: "Scoring weights and thresholds updated. Dashboard will refresh with new settings." });
       setLocalConfig(null);
     },
     onError: (err: Error) => {

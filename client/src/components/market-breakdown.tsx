@@ -5,6 +5,8 @@ import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, Chevr
 import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
+import { useGradingConfig } from "@/hooks/use-grading-config";
+import type { GradingConfigData } from "@shared/schema";
 
 interface CrewSummary {
   avgScore: number;
@@ -56,11 +58,12 @@ function getExecutionGradeScore(
   hasValidStaffing: boolean = true,
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
+  cfg?: GradingConfigData,
 ): number {
-  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
+  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
 }
 
-function calculateMarketXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>): { grade: string; hoursGraded: number } {
+function calculateMarketXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData): { grade: string; hoursGraded: number } {
   const allScores: number[] = [];
   if (hourlyByRestaurant) {
     for (const restaurantId of restaurantIds) {
@@ -80,7 +83,7 @@ function calculateMarketXScore(restaurantIds: string[], hourlyByRestaurant?: Rec
         const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn);
+        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg);
         if (score > 0) allScores.push(score);
       }
     }
@@ -228,6 +231,7 @@ function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAtta
 }
 
 export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: MarketBreakdownProps) {
+  const gradingCfg = useGradingConfig();
   const activeRestaurants = restaurants.filter(r => r.status !== "training");
 
   const marketStats = markets.map(market => {
@@ -239,7 +243,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
     const aheadCount = marketRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
     const variance = lastWeekSales > 0 ? ((todaySales / lastWeekSales) - 1) * 100 : 0;
     
-    const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant);
+    const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant, gradingCfg);
     const crewScore = calculateMarketCrewScore(marketRestaurantIds, crewSummary);
     const osat = calculateMarketOsat(marketRestaurants);
     const speed = calculateMarketSpeed(marketRestaurants);

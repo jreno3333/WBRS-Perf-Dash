@@ -16,6 +16,8 @@ import {
   computeDailyBonuses,
   countAttachmentCategoriesAtTarget,
 } from "@/lib/grading";
+import { useGradingConfig } from "@/hooks/use-grading-config";
+import type { GradingConfigData } from "@shared/schema";
 
 const REVENUE_PORT_CONFIG = {
   dine_in: { label: "Dine In", icon: Utensils, color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", disabledColor: "bg-gray-100 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500", description: "Indoor dining available", disabledDesc: "No indoor dining" },
@@ -71,8 +73,9 @@ function getExecutionGrade(
   osatPercent: number | undefined = undefined,
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
+  cfg?: GradingConfigData,
 ): { grade: string; color: string; score: number; hasGrade: boolean } {
-  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions);
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
   if (score === 0) return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false };
   const grade = scoreToGradeLabel(score);
   return { grade, color: sharedGetGradeColor(grade), score, hasGrade: true };
@@ -365,7 +368,8 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
 export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
-  
+  const gradingCfg = useGradingConfig();
+
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
   const formatPercentage = (value: number) => {
@@ -502,7 +506,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       const hasValidStaffing = rawEmployeeCount >= 1;
       const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
       const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-      const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+      const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
       return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
     }).filter(score => score > 0);
 
@@ -564,7 +568,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasValidStaffing = rawEmployeeCount >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
         return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
       }).filter(s => s > 0);
 
@@ -1068,7 +1072,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 const hasValidStaffing = rawEmployeeCount >= 1;
                 const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
                 const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
 
                 // No sales = no grade displayed
                 const hasSales = hour.todaySales && hour.todaySales > 0;
@@ -1135,7 +1139,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 const hasValidStaffing = rawEmployeeCount >= 1;
                 const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
                 const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn);
+                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
                 const isHovered = hoveredHourIndex === hourIndex;
                 
                 return (
