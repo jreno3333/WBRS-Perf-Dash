@@ -93,7 +93,7 @@ export async function registerRoutes(
   app.use(gradingConfigRouter);
 
   // Grading config save — registered directly on app to avoid Router matching issues
-  app.post("/api/grading-config", async (req: Request, res: Response) => {
+  app.post("/api/grading-config/save", async (req: Request, res: Response) => {
     console.log("[grading-config] POST handler reached (direct registration)");
     try {
       const config = req.body as GradingConfigData;
