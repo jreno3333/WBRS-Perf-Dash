@@ -3322,11 +3322,10 @@ interface ManagedUser {
 
 // ─── Grading Configuration Card ─────────────────────────────────────────────
 
-function TierEditor({ label, tiers, fallbackScore, onChange }: {
+function TierEditor({ label, tiers, onChange }: {
   label: string;
   tiers: ScoringTier[];
-  fallbackScore: number;
-  onChange: (tiers: ScoringTier[], fallback: number) => void;
+  onChange: (tiers: ScoringTier[]) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -3342,7 +3341,7 @@ function TierEditor({ label, tiers, fallbackScore, onChange }: {
               onChange={(e) => {
                 const updated = [...tiers];
                 updated[i] = { ...tier, threshold: Number(e.target.value) };
-                onChange(updated, fallbackScore);
+                onChange(updated);
               }}
             />
             <span className="text-xs text-muted-foreground">→</span>
@@ -3353,7 +3352,7 @@ function TierEditor({ label, tiers, fallbackScore, onChange }: {
               onChange={(e) => {
                 const updated = [...tiers];
                 updated[i] = { ...tier, points: Number(e.target.value) };
-                onChange(updated, fallbackScore);
+                onChange(updated);
               }}
             />
             <span className="text-xs text-muted-foreground">pts</span>
@@ -3363,7 +3362,7 @@ function TierEditor({ label, tiers, fallbackScore, onChange }: {
               className="h-8 w-8 p-0"
               onClick={() => {
                 const updated = tiers.filter((_, idx) => idx !== i);
-                onChange(updated, fallbackScore);
+                onChange(updated);
               }}
             >
               <Trash2 className="h-3 w-3" />
@@ -3374,12 +3373,7 @@ function TierEditor({ label, tiers, fallbackScore, onChange }: {
           <span className="text-xs text-muted-foreground w-16">Below</span>
           <span className="text-xs text-muted-foreground w-20 text-center">all</span>
           <span className="text-xs text-muted-foreground">→</span>
-          <Input
-            type="number"
-            className="w-20 h-8 text-sm"
-            value={fallbackScore}
-            onChange={(e) => onChange(tiers, Number(e.target.value))}
-          />
+          <span className="w-20 h-8 text-sm flex items-center justify-center text-muted-foreground">40</span>
           <span className="text-xs text-muted-foreground">pts</span>
         </div>
         <Button
@@ -3388,7 +3382,7 @@ function TierEditor({ label, tiers, fallbackScore, onChange }: {
           className="h-7 text-xs"
           onClick={() => {
             const lowestThreshold = tiers.length > 0 ? tiers[tiers.length - 1].threshold - 10 : 0;
-            onChange([...tiers, { threshold: lowestThreshold, points: 50 }], fallbackScore);
+            onChange([...tiers, { threshold: lowestThreshold, points: 50 }]);
           }}
         >
           <Plus className="h-3 w-3 mr-1" /> Add Tier
@@ -3400,23 +3394,31 @@ function TierEditor({ label, tiers, fallbackScore, onChange }: {
 
 function GradingConfigCard() {
   const { toast } = useToast();
-  const [localConfig, setLocalConfig] = useState<GradingConfigData | null>(null);
-  const [fallbackScores, setFallbackScores] = useState<Record<string, number>>({
-    sales: 40, transactions: 40, osat: 40, speed: 40,
-  });
+  const [localConfig, setLocalConfig] = useState<GradingConfigData>(DEFAULT_GRADING_CONFIG);
+  const [isDirty, setIsDirty] = useState(false);
 
-  const { data: config, isLoading } = useQuery<GradingConfigData>({
+  const { data: serverConfig } = useQuery<GradingConfigData>({
     queryKey: ["/api/grading-config"],
   });
 
-  // Initialize local state from fetched config
-  const activeConfig = localConfig || config || DEFAULT_GRADING_CONFIG;
+  // Sync local state from server when server data arrives (and no unsaved edits)
+  const activeConfig = isDirty ? localConfig : (serverConfig || localConfig);
+
+  const updateConfig = (patch: Partial<GradingConfigData>) => {
+    const updated = { ...activeConfig, ...patch };
+    setLocalConfig(updated);
+    setIsDirty(true);
+  };
 
   const saveMutation = useMutation({
     mutationFn: async (cfg: GradingConfigData) => {
-      return apiRequest("PUT", "/api/grading-config", cfg);
+      const res = await apiRequest("PUT", "/api/grading-config", cfg);
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (savedConfig: GradingConfigData) => {
+      // Update local state to the saved config
+      setLocalConfig(savedConfig);
+      setIsDirty(false);
       // Invalidate grading config (scoring guide page, client components)
       queryClient.invalidateQueries({ queryKey: ["/api/grading-config"] });
       // Invalidate server-computed grading data so dashboard/leaderboard refetch with new config
@@ -3424,16 +3426,14 @@ function GradingConfigCard() {
       queryClient.invalidateQueries({ queryKey: ["/api/performance-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leaders"] });
       toast({ title: "Grading config saved", description: "Scoring weights and thresholds updated. Dashboard will refresh with new settings." });
-      setLocalConfig(null);
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error saving config", description: err.message, variant: "destructive" });
     },
   });
 
   const handleWeightChange = (metric: keyof GradingConfigData["weights"], value: number) => {
-    const updated = { ...activeConfig, weights: { ...activeConfig.weights, [metric]: value } };
-    setLocalConfig(updated);
+    updateConfig({ weights: { ...activeConfig.weights, [metric]: value } });
   };
 
   const totalWeight = activeConfig.weights.sales + activeConfig.weights.transactions +
@@ -3450,7 +3450,7 @@ function GradingConfigCard() {
 
   const handleReset = () => {
     setLocalConfig(DEFAULT_GRADING_CONFIG);
-    setFallbackScores({ sales: 40, transactions: 40, osat: 40, speed: 40 });
+    setIsDirty(true);
   };
 
   return (
@@ -3495,38 +3495,22 @@ function GradingConfigCard() {
             <TierEditor
               label="Sales vs. Last Week (%)"
               tiers={activeConfig.salesTiers}
-              fallbackScore={fallbackScores.sales}
-              onChange={(tiers, fb) => {
-                setLocalConfig({ ...activeConfig, salesTiers: tiers });
-                setFallbackScores(prev => ({ ...prev, sales: fb }));
-              }}
+              onChange={(tiers) => updateConfig({ salesTiers: tiers })}
             />
             <TierEditor
               label="Transactions vs. Last Week (%)"
               tiers={activeConfig.transactionTiers}
-              fallbackScore={fallbackScores.transactions}
-              onChange={(tiers, fb) => {
-                setLocalConfig({ ...activeConfig, transactionTiers: tiers });
-                setFallbackScores(prev => ({ ...prev, transactions: fb }));
-              }}
+              onChange={(tiers) => updateConfig({ transactionTiers: tiers })}
             />
             <TierEditor
               label="OSAT (Guest Satisfaction %)"
               tiers={activeConfig.osatTiers}
-              fallbackScore={fallbackScores.osat}
-              onChange={(tiers, fb) => {
-                setLocalConfig({ ...activeConfig, osatTiers: tiers });
-                setFallbackScores(prev => ({ ...prev, osat: fb }));
-              }}
+              onChange={(tiers) => updateConfig({ osatTiers: tiers })}
             />
             <TierEditor
               label="Drive-Thru Speed (% attainment)"
               tiers={activeConfig.speedTiers}
-              fallbackScore={fallbackScores.speed}
-              onChange={(tiers, fb) => {
-                setLocalConfig({ ...activeConfig, speedTiers: tiers });
-                setFallbackScores(prev => ({ ...prev, speed: fb }));
-              }}
+              onChange={(tiers) => updateConfig({ speedTiers: tiers })}
             />
           </div>
         </div>
@@ -3543,7 +3527,7 @@ function GradingConfigCard() {
                 step={0.5}
                 className="h-8 text-sm"
                 value={activeConfig.staffingTolerance}
-                onChange={(e) => setLocalConfig({ ...activeConfig, staffingTolerance: Number(e.target.value) })}
+                onChange={(e) => updateConfig({ staffingTolerance: Number(e.target.value) })}
               />
               <p className="text-xs text-muted-foreground">Within ± this many of target = in tolerance</p>
             </div>
@@ -3555,7 +3539,7 @@ function GradingConfigCard() {
                 max={100}
                 className="h-8 text-sm"
                 value={activeConfig.staffingInToleranceScore}
-                onChange={(e) => setLocalConfig({ ...activeConfig, staffingInToleranceScore: Number(e.target.value) })}
+                onChange={(e) => updateConfig({ staffingInToleranceScore: Number(e.target.value) })}
               />
             </div>
             <div className="space-y-1">
@@ -3566,7 +3550,7 @@ function GradingConfigCard() {
                 max={100}
                 className="h-8 text-sm"
                 value={activeConfig.staffingOutToleranceScore}
-                onChange={(e) => setLocalConfig({ ...activeConfig, staffingOutToleranceScore: Number(e.target.value) })}
+                onChange={(e) => updateConfig({ staffingOutToleranceScore: Number(e.target.value) })}
               />
             </div>
           </div>
@@ -3581,7 +3565,7 @@ function GradingConfigCard() {
           <Button variant="outline" size="sm" onClick={handleReset}>
             Reset to Defaults
           </Button>
-          {localConfig && (
+          {isDirty && (
             <Badge variant="secondary" className="text-xs">Unsaved changes</Badge>
           )}
         </div>
