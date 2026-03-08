@@ -3412,8 +3412,8 @@ function GradingConfigCard() {
 
   const saveMutation = useMutation({
     mutationFn: async (cfg: GradingConfigData) => {
-      const res = await apiRequest("PUT", "/api/grading-config", cfg);
-      return res.json();
+      await apiRequest("PUT", "/api/grading-config", cfg);
+      return cfg;
     },
     onSuccess: (savedConfig: GradingConfigData) => {
       // Update local state to the saved config
