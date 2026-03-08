@@ -405,7 +405,7 @@ router.get("/api/analytics/consistency", async (req, res) => {
         restaurantId: rid,
         restaurantName: name,
         avgGrade: Math.round(avg * 10) / 10,
-        avgGradeLabel: scoreToGradeLabel(avg),
+        avgGradeLabel: scoreToLabel(avg),
         gradeStdDev: Math.round(stdDev * 10) / 10,
         consistencyScore,
         dfCount,
