@@ -6,6 +6,7 @@ import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
 import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange } from "../xenial-webhook";
+import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
 
@@ -13,6 +14,7 @@ const router = Router();
 router.get("/api/performance-history", async (req, res) => {
   try {
     const { days = "7", startDate, endDate } = req.query;
+    const gradingCfg = await getActiveGradingConfig();
 
     // Calculate date range based on available data
     // Exclude the current day (Central Time) since partial-day data creates misleading variance
@@ -459,7 +461,7 @@ router.get("/api/performance-history", async (req, res) => {
             staffingDiff,
             hasValidStaffing,
             osatPercent: hourOsatPercent,
-          });
+          }, gradingCfg);
           if (result.hasGrade && result.score > 0) {
             hourlyRawScores.push(result.score);
             hourlyMidpoints.push(scoringGradeToMidpoint(scoreToGradeLabel(result.score)));

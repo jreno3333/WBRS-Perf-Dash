@@ -5,6 +5,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses } from "../lib/scoring";
+import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
 
@@ -15,6 +16,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
     if (!employeeId) {
       return res.status(400).json({ error: "employeeId is required" });
     }
+
+    const gradingCfg = await getActiveGradingConfig();
 
     // Exclude current day (Central Time) - partial day data creates misleading variance
     const now = new Date();
@@ -241,7 +244,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
           hasValidStaffing: true,
           osatPercent: hourOsatPercent,
           osatResponses: hourOsatResponses,
-        });
+        }, gradingCfg);
         const score = hourlyResult.score;
 
         dayData.hours.push({
@@ -364,7 +367,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
         hasValidStaffing: true,
         osatPercent,
         osatResponses,
-      });
+      }, gradingCfg);
 
       // YoY variance from historical_daily_sales (DOW-matched)
       const yoyDt = new Date(`${dateKey}T12:00:00Z`);

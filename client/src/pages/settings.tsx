@@ -11,14 +11,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp, Users, Shield, ShieldOff, Megaphone, BarChart3, Zap, Vote } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp, Users, Shield, ShieldOff, Megaphone, BarChart3, Zap, Vote, Award } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { NavBar } from "@/components/nav-bar";
 import { format, differenceInDays, isFuture, parseISO, formatDistanceToNow } from "date-fns";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Restaurant, MarketWithRestaurants, TickerMessage, PollWithResults } from "@shared/schema";
+import type { Restaurant, MarketWithRestaurants, TickerMessage, PollWithResults, GradingConfigData, ScoringTier } from "@shared/schema";
+import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
 
 const REVENUE_PORTS = [
   { id: "dine_in", label: "Dine In", icon: Utensils, color: "bg-emerald-500" },
@@ -416,6 +417,8 @@ export default function SettingsPage() {
           <MilestoneConfigCard />
 
           <PollManagementCard />
+
+          <GradingConfigCard />
 
           <UserManagementCard />
         </div>
@@ -3315,6 +3318,271 @@ interface ManagedUser {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string | null;
+}
+
+// ─── Grading Configuration Card ─────────────────────────────────────────────
+
+function TierEditor({ label, tiers, fallbackScore, onChange }: {
+  label: string;
+  tiers: ScoringTier[];
+  fallbackScore: number;
+  onChange: (tiers: ScoringTier[], fallback: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">{label}</Label>
+      <div className="space-y-1">
+        {tiers.map((tier, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-16">≥</span>
+            <Input
+              type="number"
+              className="w-20 h-8 text-sm"
+              value={tier.threshold}
+              onChange={(e) => {
+                const updated = [...tiers];
+                updated[i] = { ...tier, threshold: Number(e.target.value) };
+                onChange(updated, fallbackScore);
+              }}
+            />
+            <span className="text-xs text-muted-foreground">→</span>
+            <Input
+              type="number"
+              className="w-20 h-8 text-sm"
+              value={tier.points}
+              onChange={(e) => {
+                const updated = [...tiers];
+                updated[i] = { ...tier, points: Number(e.target.value) };
+                onChange(updated, fallbackScore);
+              }}
+            />
+            <span className="text-xs text-muted-foreground">pts</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => {
+                const updated = tiers.filter((_, idx) => idx !== i);
+                onChange(updated, fallbackScore);
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground w-16">Below</span>
+          <span className="text-xs text-muted-foreground w-20 text-center">all</span>
+          <span className="text-xs text-muted-foreground">→</span>
+          <Input
+            type="number"
+            className="w-20 h-8 text-sm"
+            value={fallbackScore}
+            onChange={(e) => onChange(tiers, Number(e.target.value))}
+          />
+          <span className="text-xs text-muted-foreground">pts</span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => {
+            const lowestThreshold = tiers.length > 0 ? tiers[tiers.length - 1].threshold - 10 : 0;
+            onChange([...tiers, { threshold: lowestThreshold, points: 50 }], fallbackScore);
+          }}
+        >
+          <Plus className="h-3 w-3 mr-1" /> Add Tier
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function GradingConfigCard() {
+  const { toast } = useToast();
+  const [localConfig, setLocalConfig] = useState<GradingConfigData | null>(null);
+  const [fallbackScores, setFallbackScores] = useState<Record<string, number>>({
+    sales: 40, transactions: 40, osat: 40, speed: 40,
+  });
+
+  const { data: config, isLoading } = useQuery<GradingConfigData>({
+    queryKey: ["/api/grading-config"],
+  });
+
+  // Initialize local state from fetched config
+  const activeConfig = localConfig || config || DEFAULT_GRADING_CONFIG;
+
+  const saveMutation = useMutation({
+    mutationFn: async (cfg: GradingConfigData) => {
+      return apiRequest("PUT", "/api/grading-config", cfg);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/grading-config"] });
+      toast({ title: "Grading config saved", description: "Scoring weights and thresholds updated." });
+      setLocalConfig(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleWeightChange = (metric: keyof GradingConfigData["weights"], value: number) => {
+    const updated = { ...activeConfig, weights: { ...activeConfig.weights, [metric]: value } };
+    setLocalConfig(updated);
+  };
+
+  const totalWeight = activeConfig.weights.sales + activeConfig.weights.transactions +
+    activeConfig.weights.osat + activeConfig.weights.speed + activeConfig.weights.staffing;
+  const isValid = totalWeight === 100;
+
+  const handleSave = () => {
+    if (!isValid) {
+      toast({ title: "Invalid weights", description: `Weights must sum to 100 (currently ${totalWeight})`, variant: "destructive" });
+      return;
+    }
+    saveMutation.mutate(activeConfig);
+  };
+
+  const handleReset = () => {
+    setLocalConfig(DEFAULT_GRADING_CONFIG);
+    setFallbackScores({ sales: 40, transactions: 40, osat: 40, speed: 40 });
+  };
+
+  return (
+    <CollapsibleCard
+      title="Grading Configuration"
+      description="Configure execution score weights, point thresholds, and staffing tolerances."
+      icon={<Award className="h-5 w-5 text-amber-500" />}
+    >
+      <div className="space-y-6">
+        {/* Metric Weights */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            Component Weights
+            <Badge variant={isValid ? "default" : "destructive"} className="text-xs">
+              {totalWeight}%{isValid ? " ✓" : " — must be 100%"}
+            </Badge>
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {(["sales", "transactions", "osat", "speed", "staffing"] as const).map((metric) => (
+              <div key={metric} className="space-y-1">
+                <Label className="text-xs capitalize">{metric === "osat" ? "OSAT" : metric}</Label>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="h-8 text-sm"
+                    value={activeConfig.weights[metric]}
+                    onChange={(e) => handleWeightChange(metric, Number(e.target.value))}
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Point Thresholds */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3">Point Thresholds</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TierEditor
+              label="Sales vs. Last Week (%)"
+              tiers={activeConfig.salesTiers}
+              fallbackScore={fallbackScores.sales}
+              onChange={(tiers, fb) => {
+                setLocalConfig({ ...activeConfig, salesTiers: tiers });
+                setFallbackScores(prev => ({ ...prev, sales: fb }));
+              }}
+            />
+            <TierEditor
+              label="Transactions vs. Last Week (%)"
+              tiers={activeConfig.transactionTiers}
+              fallbackScore={fallbackScores.transactions}
+              onChange={(tiers, fb) => {
+                setLocalConfig({ ...activeConfig, transactionTiers: tiers });
+                setFallbackScores(prev => ({ ...prev, transactions: fb }));
+              }}
+            />
+            <TierEditor
+              label="OSAT (Guest Satisfaction %)"
+              tiers={activeConfig.osatTiers}
+              fallbackScore={fallbackScores.osat}
+              onChange={(tiers, fb) => {
+                setLocalConfig({ ...activeConfig, osatTiers: tiers });
+                setFallbackScores(prev => ({ ...prev, osat: fb }));
+              }}
+            />
+            <TierEditor
+              label="Drive-Thru Speed (% attainment)"
+              tiers={activeConfig.speedTiers}
+              fallbackScore={fallbackScores.speed}
+              onChange={(tiers, fb) => {
+                setLocalConfig({ ...activeConfig, speedTiers: tiers });
+                setFallbackScores(prev => ({ ...prev, speed: fb }));
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Staffing Tolerance */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3">Staffing vs. Labor Model</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Tolerance (±)</Label>
+              <Input
+                type="number"
+                min={0}
+                step={0.5}
+                className="h-8 text-sm"
+                value={activeConfig.staffingTolerance}
+                onChange={(e) => setLocalConfig({ ...activeConfig, staffingTolerance: Number(e.target.value) })}
+              />
+              <p className="text-xs text-muted-foreground">Within ± this many of target = in tolerance</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">In-Tolerance Score</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                className="h-8 text-sm"
+                value={activeConfig.staffingInToleranceScore}
+                onChange={(e) => setLocalConfig({ ...activeConfig, staffingInToleranceScore: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Out-of-Tolerance Score</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                className="h-8 text-sm"
+                value={activeConfig.staffingOutToleranceScore}
+                onChange={(e) => setLocalConfig({ ...activeConfig, staffingOutToleranceScore: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-3 pt-2 border-t">
+          <Button onClick={handleSave} disabled={saveMutation.isPending || !isValid} size="sm">
+            <Save className="h-4 w-4 mr-1" />
+            {saveMutation.isPending ? "Saving..." : "Save Configuration"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleReset}>
+            Reset to Defaults
+          </Button>
+          {localConfig && (
+            <Badge variant="secondary" className="text-xs">Unsaved changes</Badge>
+          )}
+        </div>
+      </div>
+    </CollapsibleCard>
+  );
 }
 
 function UserManagementCard() {
