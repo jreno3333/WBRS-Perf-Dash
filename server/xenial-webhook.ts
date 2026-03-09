@@ -27,18 +27,6 @@ async function getCachedStoreMap(): Promise<Map<string, { id: string; name: stri
   return storeMap;
 }
 
-// Ensures the destination column exists before queries/inserts reference it.
-// Only runs the ALTER TABLE once per server lifetime.
-let destinationColumnEnsured = false;
-async function ensureDestinationColumn() {
-  if (destinationColumnEnsured) return;
-  try {
-    await posDb.execute(sql`ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS destination TEXT`);
-    destinationColumnEnsured = true;
-  } catch (e) {
-    console.error("[Xenial] Failed to ensure destination column:", e);
-  }
-}
 
 interface XenialOrderData {
   _id: string;
@@ -121,12 +109,7 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
       return { success: false, error: "Invalid closed date format" };
     }
 
-    // Determine order source from destination or use POS as default
-    const orderSource = data.order_source || data.destination?.short_name || data.destination?.name || "POS";
-    // Store raw destination separately for destination-specific tracking (e.g. dt3 = outside lane)
-    const destination = data.destination?.short_name || data.destination?.name || null;
-
-    await ensureDestinationColumn();
+    const orderSource = data.destination?.short_name || data.destination?.name || data.order_source || "POS";
 
     await posDb.insert(posOrders).values({
       xenialOrderId: orderId,
@@ -135,7 +118,6 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
       businessDate: businessDate,
       orderClosedAt: orderClosedAt,
       orderSource: orderSource,
-      destination: destination,
       rawJson: JSON.stringify(payload),
     }).onConflictDoUpdate({
       target: posOrders.xenialOrderId,
@@ -143,7 +125,6 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
         orderTotal: orderTotal.toFixed(2),
         orderClosedAt: orderClosedAt,
         orderSource: orderSource,
-        destination: destination,
         rawJson: JSON.stringify(payload),
       },
     });
@@ -686,9 +667,6 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // Ensure destination column exists before querying it
-  await ensureDestinationColumn();
-
   const allRestaurants = await db.select().from(restaurants);
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
   for (const restaurant of allRestaurants) {
@@ -712,8 +690,7 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
     if (storesInTz.length === 0) continue;
 
     const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
-    // Use raw SQL column names — COALESCE handles NULL destination for older rows
-    const destExpr = sql.raw(`COALESCE(LOWER(destination), LOWER(order_source))`);
+    const destExpr = sql`LOWER(${posOrders.orderSource})`;
 
     const posResults = await posDb
       .select({
@@ -759,8 +736,6 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
  * from the grade when lane configuration changes make timing unreliable.
  */
 export async function getOotHoursByDateRange(startDateStr: string, endDateStr: string): Promise<Set<string>> {
-  await ensureDestinationColumn();
-
   const allRestaurants = await db.select().from(restaurants);
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
   for (const restaurant of allRestaurants) {
@@ -786,8 +761,6 @@ export async function getOotHoursByDateRange(startDateStr: string, endDateStr: s
 
     const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
     const dateExpr = sql.raw(`to_char((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}', 'YYYY-MM-DD')`);
-    const destExpr = sql.raw(`COALESCE(LOWER(destination), LOWER(order_source))`);
-
     const posResults = await posDb
       .select({
         storeNumber: posOrders.storeNumber,
@@ -801,7 +774,7 @@ export async function getOotHoursByDateRange(startDateStr: string, endDateStr: s
           gte(posOrders.businessDate, startOfRange),
           lt(posOrders.businessDate, endOfRange),
           sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`,
-          sql`${destExpr} = 'dt3'`
+          sql`LOWER(${posOrders.orderSource}) = 'dt3'`
         )
       )
       .groupBy(posOrders.storeNumber, sql`${dateExpr}`, sql`${hourExpr}`);
@@ -1453,29 +1426,28 @@ export async function getAttachmentRatesFromDetailBatch(startDate: string, endDa
 }
 
 /**
- * One-time backfill: populate the `destination` column from rawJson for existing records.
- * Safe to call multiple times — only updates rows where destination IS NULL.
+ * One-time backfill: populate order_source from rawJson destination for existing records.
+ * Safe to call multiple times — only updates rows where order_source IS NULL.
  */
 export async function backfillDestinations(): Promise<number> {
   try {
-    // First ensure the column exists (idempotent)
-    await posDb.execute(sql`ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS destination TEXT`);
-
-    // Backfill from stored rawJson payload
     const result = await posDb.execute(sql`
       UPDATE pos_orders
-      SET destination = raw_json::jsonb -> 'data' -> 'destination' ->> 'short_name'
-      WHERE destination IS NULL
+      SET order_source = COALESCE(
+        raw_json::jsonb -> 'data' -> 'destination' ->> 'short_name',
+        raw_json::jsonb -> 'data' ->> 'order_source',
+        'POS'
+      )
+      WHERE order_source IS NULL
         AND raw_json IS NOT NULL
-        AND raw_json::jsonb -> 'data' -> 'destination' ->> 'short_name' IS NOT NULL
     `);
     const count = (result as any).rowCount || 0;
     if (count > 0) {
-      console.log(`[Xenial] Backfilled destination for ${count} existing POS orders`);
+      console.log(`[Xenial] Backfilled order_source for ${count} existing POS orders`);
     }
     return count;
   } catch (error) {
-    console.error("[Xenial] Error backfilling destinations:", error);
+    console.error("[Xenial] Error backfilling order_source:", error);
     return 0;
   }
 }

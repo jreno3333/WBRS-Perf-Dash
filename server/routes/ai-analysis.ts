@@ -205,7 +205,7 @@ async function getFullLaneBUsage(startDate: string, endDate: string) {
       and(
         gte(posOrders.businessDate, startTs),
         lte(posOrders.businessDate, endTs),
-        sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource})) like '%dt3%'`
+        sql`LOWER(${posOrders.orderSource}) like '%dt3%'`
       )
     )
     .groupBy(posOrders.storeNumber, sql`${posOrders.businessDate}::date::text`, sql`extract(hour from ${posOrders.orderClosedAt})::int`)
@@ -481,24 +481,18 @@ async function getStoreMapping() {
   return new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 }
 
-// COALESCE expression for destination — falls back to order_source for app/3PD orders
-const destCoalesce = sql`COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}))`;
+const destCoalesce = sql`LOWER(${posOrders.orderSource})`;
 
-// SQL CASE expression to classify order channel using both order_source and destination
 function destChannelExpr() {
   return sql`CASE
     WHEN LOWER(${posOrders.orderSource}) IN ('app', 'mobile', 'online') THEN 'app'
     WHEN LOWER(${posOrders.orderSource}) LIKE '%3pd%' OR LOWER(${posOrders.orderSource}) IN ('doordash', 'ubereats', 'grubhub') THEN '3pd'
     WHEN LOWER(${posOrders.orderSource}) LIKE '%delivery%' THEN 'delivery'
-    WHEN LOWER(${posOrders.destination}) IN ('in', 'dine-in') OR LOWER(${posOrders.destination}) LIKE '%dine%' THEN 'dine_in'
-    WHEN LOWER(${posOrders.destination}) = 'dt3' THEN 'dt3_outside'
-    WHEN LOWER(${posOrders.destination}) IN ('dt1', 'dt2', 'drive-thru', 'drive_thru') THEN 'drive_thru'
-    WHEN LOWER(${posOrders.destination}) IN ('app', 'mobile', 'online') THEN 'app'
-    WHEN LOWER(${posOrders.destination}) LIKE '%3pd%' THEN '3pd'
-    WHEN LOWER(${posOrders.destination}) LIKE '%delivery%' THEN 'delivery'
-    WHEN LOWER(${posOrders.destination}) IN ('doordash', 'ubereats', 'grubhub') THEN '3pd'
+    WHEN LOWER(${posOrders.orderSource}) IN ('in', 'dine-in') OR LOWER(${posOrders.orderSource}) LIKE '%dine%' THEN 'dine_in'
+    WHEN LOWER(${posOrders.orderSource}) = 'dt3' THEN 'dt3_outside'
+    WHEN LOWER(${posOrders.orderSource}) IN ('dt1', 'dt2', 'drive-thru', 'drive_thru') THEN 'drive_thru'
     WHEN LOWER(${posOrders.orderSource}) = 'pos' THEN 'drive_thru'
-    ELSE COALESCE(LOWER(${posOrders.destination}), LOWER(${posOrders.orderSource}), 'unknown')
+    ELSE COALESCE(LOWER(${posOrders.orderSource}), 'unknown')
   END`;
 }
 
