@@ -64,10 +64,16 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
-  // Exclude training units from totals
   const activeRestaurants = restaurants.filter(r => r.status !== "training");
   
-  // SSS (Same Store Sales): Only units open >18 months
+  const forecastEligible = activeRestaurants.filter(r => {
+    if (!r.openDate) return true;
+    const openDate = new Date(r.openDate);
+    const now = new Date();
+    const daysOpen = Math.floor((now.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24));
+    return daysOpen >= 14;
+  });
+
   const sssRestaurants = activeRestaurants.filter(r => {
     if (!r.openDate) return true;
     const openDate = new Date(r.openDate);
@@ -91,16 +97,14 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     ? (dailyOsatTotals.fiveStarCount / dailyOsatTotals.totalResponses) * 100 
     : 0;
   
-  // Total Sales: Use ALL active restaurants (not SSS-filtered)
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
-  const totalLastWeekSales = activeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-  const totalForecastSales = activeRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+  const totalLastWeekSales = forecastEligible.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
+  const totalForecastSales = forecastEligible.reduce((sum, r) => sum + r.forecastSales, 0);
   
-  // Projected: Use ALL active restaurants for projected daily total and LW full day comparison
-  const totalLastWeekFullDay = activeRestaurants.reduce((sum, r) => {
+  const totalLastWeekFullDay = forecastEligible.reduce((sum, r) => {
     return sum + (r.lastWeekFullDay ?? ((r.actualLastWeekSales || 0) + Math.max(0, (r.forecastSales || 0) - (r.actualSales || 0))));
   }, 0);
-  const aheadOfPaceCount = activeRestaurants.filter((r) => r.isAheadOfPace).length;
+  const aheadOfPaceCount = forecastEligible.filter((r) => r.isAheadOfPace).length;
   
   // Calculate variance vs last week
   const lwVariance = totalLastWeekSales > 0 
@@ -108,13 +112,12 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     : 0;
   const lwDollarDiff = totalTodaySales - totalLastWeekSales;
 
-  // Calculate company-wide weekly sales totals (Sat-Fri)
   let weeklyCurrentTotal = 0;
   let weeklyPriorTotal = 0;
   let weeklyEowForecast = 0;
   let weeklyPriorWeekFull = 0;
   if (weeklySalesData?.restaurants) {
-    for (const r of activeRestaurants) {
+    for (const r of forecastEligible) {
       const wk = weeklySalesData.restaurants[r.restaurantId];
       if (wk) {
         weeklyCurrentTotal += wk.currentWeek;
