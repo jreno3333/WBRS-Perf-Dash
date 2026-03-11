@@ -28,10 +28,11 @@ export const BONUS_CAP = 15;
 export const BONUS_DEFINITIONS = [
   { id: "perfectOsat", label: "Perfect OSAT", points: 3, description: "100% OSAT with 5+ surveys for the day" },
   { id: "highVolumeOsat", label: "High-Volume OSAT", points: 2, description: "85%+ OSAT with 10+ surveys for the day" },
-  { id: "salesGrowth", label: "Sales Growth", points: 2, description: "Daily sales 5%+ above same day last week" },
-  { id: "transactionGrowth", label: "Transaction Growth", points: 2, description: "Transaction count 5%+ above same day last week" },
+  { id: "salesGrowth", label: "Sales Growth (WoW)", points: 2, description: "Daily sales 5%+ above same day last week" },
+  { id: "transactionGrowth", label: "Txn Growth (WoW)", points: 2, description: "Transaction count 5%+ above same day last week" },
+  { id: "recoveryKicker", label: "Recovery", points: 2, description: "Had 2+ hours graded C or below, but daily avg still B- or better" },
   { id: "consistency", label: "Consistency", points: 2, description: "No hour graded below B for the entire day" },
-  { id: "yoyGrowth", label: "YoY Growth", points: 2, description: "Daily sales above same day last year (any amount)" },
+  { id: "yoyGrowth", label: "Sales Growth (YoY)", points: 2, description: "Daily sales above same day last year (any amount)" },
   { id: "theCloser", label: "The Closer", points: 4, description: "Hit 4+ of 6 attachment rate targets for the day (+1 pt per category at target)" },
 ] as const;
 
