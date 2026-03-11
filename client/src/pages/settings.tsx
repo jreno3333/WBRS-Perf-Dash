@@ -410,6 +410,8 @@ export default function SettingsPage() {
 
           <PushReportCard />
 
+          <SalesSummaryReportCard />
+
           <HistoricalSalesUploadCard />
 
           <TickerMessagesCard />
@@ -2556,6 +2558,317 @@ function PushReportCard() {
                 Expand any unit card and click the "Report" button to preview, print/save as PDF, or share via link.
               </p>
             </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function SalesSummaryReportCard() {
+  const { toast } = useToast();
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const { data: subscribers, isLoading: subscribersLoading } = useQuery<EmailSubscriber[]>({
+    queryKey: ["/api/email-subscribers"],
+  });
+
+  const { data: schedules } = useQuery<ReportSchedule[]>({
+    queryKey: ["/api/report-schedules"],
+  });
+
+  const summarySchedule = schedules?.find(s => s.reportType === 'sales_summary');
+  const summarySubscribers = (subscribers || []).filter(s => s.reportTypes?.includes('sales_summary'));
+
+  const scheduleUpdateMutation = useMutation({
+    mutationFn: async ({ reportType, sendHour, sendMinute, isEnabled }: { reportType: string; sendHour?: number; sendMinute?: number; isEnabled?: boolean }) => {
+      return apiRequest("PATCH", `/api/report-schedules/${reportType}`, { sendHour, sendMinute, isEnabled });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/report-schedules"] });
+      toast({ title: "Schedule updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to update schedule", variant: "destructive" });
+    },
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/email-subscribers", {
+        email: newEmail.trim(),
+        name: newName.trim() || null,
+        reportTypes: ['sales_summary'],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+      setNewEmail("");
+      setNewName("");
+      toast({ title: "Subscriber added", description: "Sales summary reports will be sent to this email." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to add subscriber", variant: "destructive" });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/email-subscribers/${id}`, { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (sub: EmailSubscriber) => {
+      const remaining = (sub.reportTypes || []).filter(t => t !== 'sales_summary');
+      if (remaining.length === 0) {
+        return apiRequest("DELETE", `/api/email-subscribers/${sub.id}`);
+      }
+      return apiRequest("PATCH", `/api/email-subscribers/${sub.id}`, { reportTypes: remaining });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email-subscribers"] });
+      toast({ title: "Subscriber removed from sales summary report" });
+    },
+  });
+
+  const sendNowMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/sales-summary/send-now");
+    },
+    onSuccess: async (response) => {
+      const data = await response.json();
+      toast({
+        title: "Sales summary sent",
+        description: `${data.sent} email(s) sent, ${data.failed} failed.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to send sales summary", variant: "destructive" });
+    },
+  });
+
+  const loadPreview = async () => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch("/api/sales-summary/preview");
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ title: "No preview available", description: err.error || "No data for yesterday", variant: "destructive" });
+        setPreviewHtml(null);
+      } else {
+        const html = await res.text();
+        setPreviewHtml(html);
+      }
+      setShowPreview(true);
+    } catch {
+      toast({ title: "Error", description: "Failed to load preview", variant: "destructive" });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const formatScheduleTime = (hour: number, minute: number) => {
+    const h = hour.toString().padStart(2, '0');
+    const m = minute.toString().padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const handleTimeChange = (timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+      scheduleUpdateMutation.mutate({ reportType: 'sales_summary', sendHour: h, sendMinute: m });
+    }
+  };
+
+  const handleToggleSchedule = (checked: boolean) => {
+    scheduleUpdateMutation.mutate({ reportType: 'sales_summary', isEnabled: checked });
+  };
+
+  return (
+    <Collapsible data-testid="collapsible-sales-summary">
+      <Card>
+        <CollapsibleTrigger asChild data-testid="trigger-sales-summary">
+          <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Sales Summary Report
+              </CardTitle>
+              <CardDescription>
+                Company-wide sales summary for the previous day with per-unit breakdown, YoY comparisons, and market totals.
+              </CardDescription>
+            </div>
+            <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between gap-4 p-3 border rounded-md" data-testid="schedule-sales-summary">
+              <div className="flex items-center gap-3 min-w-0">
+                <Checkbox
+                  checked={summarySchedule?.isEnabled ?? false}
+                  onCheckedChange={(checked) => handleToggleSchedule(checked === true)}
+                  data-testid="checkbox-sales-summary-enabled"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Automated Sending</p>
+                  <p className="text-xs text-muted-foreground">Enable or disable scheduled delivery</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Send at</Label>
+                <Input
+                  type="time"
+                  className="w-28"
+                  value={formatScheduleTime(summarySchedule?.sendHour ?? 6, summarySchedule?.sendMinute ?? 0)}
+                  onChange={(e) => handleTimeChange(e.target.value)}
+                  disabled={!(summarySchedule?.isEnabled ?? false)}
+                  data-testid="input-sales-summary-time"
+                />
+                <span className="text-xs text-muted-foreground">CT</span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium">Subscribers</h4>
+              <div className="flex gap-2 flex-wrap">
+                <Input
+                  type="text"
+                  placeholder="Name (optional)"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-40"
+                  data-testid="input-sales-summary-subscriber-name"
+                />
+                <Input
+                  type="email"
+                  placeholder="Email address"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="flex-1 min-w-[200px]"
+                  data-testid="input-sales-summary-subscriber-email"
+                />
+                <Button
+                  onClick={() => addMutation.mutate()}
+                  disabled={!newEmail.trim() || addMutation.isPending}
+                  data-testid="button-add-sales-summary-subscriber"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add
+                </Button>
+              </div>
+
+              {subscribersLoading ? (
+                <div className="text-center py-4 text-muted-foreground text-sm">Loading subscribers...</div>
+              ) : summarySubscribers.length > 0 ? (
+                <div className="space-y-2">
+                  {summarySubscribers.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="flex items-center gap-3 p-3 rounded-md border"
+                      data-testid={`row-sales-summary-subscriber-${sub.id}`}
+                    >
+                      <Checkbox
+                        checked={sub.isActive}
+                        onCheckedChange={(checked) => {
+                          toggleMutation.mutate({ id: sub.id, isActive: !!checked });
+                        }}
+                        data-testid={`checkbox-sales-summary-subscriber-active-${sub.id}`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {sub.name || sub.email}
+                        </div>
+                        {sub.name && (
+                          <div className="text-xs text-muted-foreground truncate">{sub.email}</div>
+                        )}
+                      </div>
+                      <Badge variant={sub.isActive ? "default" : "secondary"} className="shrink-0">
+                        {sub.isActive ? "Active" : "Paused"}
+                      </Badge>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeMutation.mutate(sub)}
+                        disabled={removeMutation.isPending}
+                        data-testid={`button-remove-sales-summary-subscriber-${sub.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No subscribers yet.</p>
+                  <p className="text-sm">Add email addresses to receive sales summary reports.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 flex-wrap pt-2 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadPreview}
+                disabled={previewLoading}
+                data-testid="button-preview-sales-summary"
+              >
+                <Eye className="h-4 w-4 mr-1" />
+                {previewLoading ? "Loading..." : "Preview"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sendNowMutation.mutate()}
+                disabled={sendNowMutation.isPending || summarySubscribers.length === 0}
+                data-testid="button-send-sales-summary-now"
+              >
+                <Send className="h-4 w-4 mr-1" />
+                {sendNowMutation.isPending ? "Sending..." : "Send Now"}
+              </Button>
+            </div>
+
+            {showPreview && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Report Preview (Yesterday)</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => { setShowPreview(false); setPreviewHtml(null); }}
+                    data-testid="button-close-sales-summary-preview"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                {previewHtml ? (
+                  <div className="border rounded-md overflow-hidden">
+                    <iframe
+                      srcDoc={previewHtml}
+                      className="w-full border-0"
+                      style={{ height: "600px" }}
+                      title="Sales Summary Report Preview"
+                      data-testid="iframe-sales-summary-preview"
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground border rounded-md">
+                    <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No report data available for yesterday.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </CollapsibleContent>
       </Card>
