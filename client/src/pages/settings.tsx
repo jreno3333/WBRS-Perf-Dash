@@ -2658,10 +2658,14 @@ function SalesSummaryReportCard() {
   const loadPreview = async () => {
     setPreviewLoading(true);
     try {
-      const res = await fetch("/api/sales-summary/preview");
+      const res = await fetch("/api/sales-summary/preview", { credentials: "include" });
       if (!res.ok) {
-        const err = await res.json();
-        toast({ title: "No preview available", description: err.error || "No data for yesterday", variant: "destructive" });
+        let errorMsg = "No data for yesterday";
+        try {
+          const err = await res.json();
+          errorMsg = err.error || err.message || errorMsg;
+        } catch { /* response may not be JSON */ }
+        toast({ title: "No preview available", description: errorMsg, variant: "destructive" });
         setPreviewHtml(null);
       } else {
         const html = await res.text();
