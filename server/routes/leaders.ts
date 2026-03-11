@@ -345,7 +345,7 @@ router.get("/api/leaders", async (req, res) => {
             dailyTransactionVariancePct: txnVariancePct,
             dailyYoySalesVariancePct: dailyYoySalesVar,
             attachmentCategoriesAtTarget: attachCatsAtTarget,
-            hourlyScores: [gradeResult.score], // day-level aggregate (recovery/consistency need per-hour data)
+            hourlyScores: [gradeResult.score], // day-level aggregate (consistency needs per-hour data)
           });
           const finalScore = Math.min(gradeResult.score + bonusResult.cappedBonus, 100);
           dailyGrades.push({ score: finalScore, hours: day.hoursCount });

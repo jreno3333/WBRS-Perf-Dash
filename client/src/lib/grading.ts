@@ -19,7 +19,6 @@ export const BONUS_DEFINITIONS = [
   { id: "highVolumeOsat", label: "High-Volume OSAT", points: 2, description: "85%+ OSAT with 10+ surveys for the day" },
   { id: "salesGrowth", label: "Sales Growth", points: 2, description: "Daily sales 5%+ above same day last week" },
   { id: "transactionGrowth", label: "Transaction Growth", points: 2, description: "Transaction count 5%+ above same day last week" },
-  { id: "recoveryKicker", label: "Recovery", points: 2, description: "Had 2+ hours graded C or below, but daily avg still B- or better" },
   { id: "consistency", label: "Consistency", points: 2, description: "No hour graded below B for the entire day" },
   { id: "yoyGrowth", label: "YoY Growth", points: 2, description: "Daily sales above same day last year (any amount)" },
   { id: "theCloser", label: "The Closer", points: 4, description: "Hit 4+ of 6 attachment rate targets for the day (+1 pt per category at target)" },
@@ -286,26 +285,17 @@ export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
 
   // YoY sales growth: above last year by any amount
   if (input.dailyYoySalesVariancePct !== undefined && input.dailyYoySalesVariancePct > 0) {
-    bonuses.push({ ...BONUS_DEFINITIONS[6] });
-  }
-
-  // Recovery kicker: ≥2 hours at C or below (<77), but daily avg ≥ B- (80)
-  if (input.hourlyScores.length >= 4) {
-    const badHours = input.hourlyScores.filter(s => s < 77).length;
-    const dailyAvg = input.hourlyScores.reduce((a, b) => a + b, 0) / input.hourlyScores.length;
-    if (badHours >= 2 && dailyAvg >= 80) {
-      bonuses.push({ ...BONUS_DEFINITIONS[4] });
-    }
+    bonuses.push({ ...BONUS_DEFINITIONS[5] });
   }
 
   // Consistency: no hour below B (83)
   if (input.hourlyScores.length >= 4 && input.hourlyScores.every(s => s >= 83)) {
-    bonuses.push({ ...BONUS_DEFINITIONS[5] });
+    bonuses.push({ ...BONUS_DEFINITIONS[4] });
   }
 
   // The Closer: 1 bonus point per attachment category at target, requires 4+/6
   if (input.attachmentCategoriesAtTarget !== undefined && input.attachmentCategoriesAtTarget >= 4) {
-    bonuses.push({ ...BONUS_DEFINITIONS[7], points: input.attachmentCategoriesAtTarget });
+    bonuses.push({ ...BONUS_DEFINITIONS[6], points: input.attachmentCategoriesAtTarget });
   }
 
   const totalBonus = bonuses.reduce((sum, b) => sum + b.points, 0);
