@@ -816,7 +816,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     <div style="background: linear-gradient(135deg, #18181b 0%, #27272a 100%); color: white; padding: 28px 24px; border-radius: 8px 8px 0 0; text-align: center;">
       <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">Executive Sales Summary</h1>
       <p style="margin: 6px 0 0; font-size: 14px; color: #a1a1aa;">${dayOfWeek}, ${formattedDate}</p>
-      <p style="margin: 4px 0 0; font-size: 12px; color: #71717a;">MWB Restaurant Group &middot; ${restaurantData.length} Active Units</p>
+      <p style="margin: 4px 0 0; font-size: 12px; color: #71717a;">MWB Restaurants &middot; ${restaurantData.length} Active Units</p>
     </div>
 
     ${holidayCtx.todayHoliday || holidayCtx.lastWeekHoliday || holidayComp.thisYear ? `
@@ -856,7 +856,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     <!-- ═══ ROLLING TREND YoY ═══ -->
     <div style="${sectionStyle}">
-      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Comp Store Sales YoY <span style="font-size: 11px; color: #71717a; font-weight: 400;">(${compStores.length} stores, same day-of-week aligned)</span></h3>
+      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Comp Store Sales YoY <span style="font-size: 11px; color: #71717a; font-weight: 400;">(${compStores.length} of ${restaurantData.length} stores, same day-of-week aligned)</span></h3>
       <div style="display: flex; justify-content: space-around; text-align: center; gap: 8px; flex-wrap: wrap;">
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
           <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">7-DAY YoY</div>
@@ -1077,7 +1077,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         Open Full Dashboard
       </a>
       <p style="font-size: 11px; color: #a1a1aa; margin-top: 12px;">
-        MWB Executive Sales Summary &middot; All figures in Central Time
+        MWB Restaurants &middot; All figures in Central Time
       </p>
       <p style="font-size: 10px; color: #a1a1aa; margin-top: 4px;">
         Comp threshold: 18 months from open date &middot; Rolling trends compare same day-of-week period prior year
