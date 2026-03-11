@@ -168,6 +168,39 @@ router.post("/api/daily-report/send-now", async (req, res) => {
   }
 });
 
+// Sales Summary Report (Executive)
+router.get("/api/sales-summary/preview", async (req, res) => {
+  try {
+    const { buildSalesSummaryHtml } = await import("../sales-summary-report");
+    const now = new Date();
+    const centralFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = req.query.date as string || centralFormatter.format(yesterday);
+    const html = await buildSalesSummaryHtml(dateStr);
+    if (!html) {
+      res.status(404).json({ error: "No data available for this date" });
+      return;
+    }
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch (error) {
+    console.error("Error generating sales summary preview:", error);
+    res.status(500).json({ error: "Failed to generate sales summary preview" });
+  }
+});
+
+router.post("/api/sales-summary/send-now", async (req, res) => {
+  try {
+    const { sendSalesSummaryReports } = await import("../sales-summary-report");
+    const result = await sendSalesSummaryReports(true);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("Error sending sales summary report:", error);
+    res.status(500).json({ error: "Failed to send sales summary report" });
+  }
+});
+
 // Report schedule configuration
 router.get("/api/report-schedules", async (req, res) => {
   try {
@@ -187,6 +220,13 @@ router.get("/api/report-schedules", async (req, res) => {
       }).onConflictDoNothing();
       schedules = await db.select().from(reportSchedules);
     }
+    // Ensure sales_summary schedule exists
+    if (!schedules.find(s => s.reportType === 'sales_summary')) {
+      await db.insert(reportSchedules).values({
+        reportType: 'sales_summary', sendHour: 6, sendMinute: 15, isEnabled: false,
+      }).onConflictDoNothing();
+      schedules = await db.select().from(reportSchedules);
+    }
     res.json(schedules);
   } catch (error) {
     console.error("Error fetching report schedules:", error);
@@ -197,7 +237,7 @@ router.get("/api/report-schedules", async (req, res) => {
 router.patch("/api/report-schedules/:reportType", async (req, res) => {
   try {
     const { reportType } = req.params;
-    const validTypes = ['daily_report', 'leader_report', 'push_report'];
+    const validTypes = ['daily_report', 'leader_report', 'push_report', 'sales_summary'];
     if (!validTypes.includes(reportType)) {
       return res.status(400).json({ error: "Invalid report type" });
     }
