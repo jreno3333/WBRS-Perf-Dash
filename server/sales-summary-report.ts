@@ -857,9 +857,9 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">Non-Comp <span style="color: #a1a1aa; font-weight: 400;">(${nonCompStats.count})</span></td>
             <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(nonCompStats.sales)}</td>
             <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(nonCompStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${nonCompStats.vsLW !== undefined ? pctStr(nonCompStats.vsLW) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">--</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">--</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">--</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
             <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${nonCompStats.osatPct !== null ? (nonCompStats.osatPct >= 85 ? '#16a34a' : nonCompStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${nonCompStats.osatPct !== null ? Math.round(nonCompStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${nonCompStats.osatSurveys > 0 ? '(' + nonCompStats.osatSurveys + ')' : ''}</span></td>
           </tr>` : ''}
         </tbody>
