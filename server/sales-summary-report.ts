@@ -51,6 +51,16 @@ function getStoreAgeLabel(openDate: string | Date | null | undefined): string {
   return remainingMonths > 0 ? `${years}y${remainingMonths}m` : `${years}y`;
 }
 
+function getStoreAgeWeeks(openDate: string | Date | null | undefined): number | null {
+  if (!openDate) return null;
+  const open = new Date(openDate);
+  if (isNaN(open.getTime())) return null;
+  const now = new Date();
+  const diffMs = now.getTime() - open.getTime();
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
+}
+
 function getGradeColor(grade: string): string {
   return getGradeColorHex(grade);
 }
@@ -91,6 +101,7 @@ interface RestaurantDayData {
   state: "AL" | "TN";
   isComp: boolean;
   storeAge: string;
+  storeAgeWeeks: number | null;
   status: "training" | "new" | "established";
   // Yesterday's numbers
   sales: number;
@@ -516,6 +527,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         state: isTennesseeStore(restaurant.restaurantName) ? "TN" : "AL",
         isComp: isCompStore(openDate),
         storeAge: getStoreAgeLabel(openDate),
+        storeAgeWeeks: getStoreAgeWeeks(openDate),
         status: restaurant.status || "established",
         sales,
         lastWeekSales,
@@ -683,12 +695,13 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     const compStats = stateStats(compStores);
     const nonCompStats = stateStats(nonCompStores);
 
-    // Comp YoY rolling: fetch last year's 7D and 30D sales for comp stores
+    // Comp YoY rolling: fetch last year's 7D, 30D, and 90D sales for comp stores
     const compStoreIds = new Set(compStores.map(r => r.restaurantId));
+    const allStoreIds = new Set(restaurantData.map(r => r.restaurantId));
     const yesterday = new Date(`${dateStr}T12:00:00`);
     const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-    // Current period: 7D and 30D ending on dateStr
+    // Current period: 7D, 30D, and 90D ending on dateStr
     const comp7Sales = compStores.reduce((s, r) => s + r.prior7Sales, 0);
     const comp30Sales = compStores.reduce((s, r) => s + r.prior30Sales, 0);
 
@@ -702,35 +715,50 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     ly7Start.setDate(ly7Start.getDate() - 6);
     const ly30Start = new Date(lyYesterday);
     ly30Start.setDate(ly30Start.getDate() - 29);
+    const ly90Start = new Date(lyYesterday);
+    ly90Start.setDate(ly90Start.getDate() - 89);
 
     let compYoY7: number | undefined;
     let compYoY30: number | undefined;
+    // Company-wide YoY for the Rolling Trend section
+    let coYoY7: number | undefined;
+    let coYoY30: number | undefined;
+    let coYoY90: number | undefined;
     try {
       const lyRows = await db.select().from(historicalDailySales)
         .where(and(
-          gte(historicalDailySales.date, fmt(ly30Start)),
+          gte(historicalDailySales.date, fmt(ly90Start)),
           lte(historicalDailySales.date, fmt(lyYesterday))
         ));
       let ly7Total = 0, ly30Total = 0;
+      let coLy7Total = 0, coLy30Total = 0, coLy90Total = 0;
       for (const row of lyRows) {
-        if (!compStoreIds.has(row.restaurantId)) continue;
         const rowDate = new Date(`${row.date}T12:00:00`);
         const sales = parseFloat(row.netSales);
-        if (rowDate >= ly7Start) ly7Total += sales;
-        ly30Total += sales;
+        // Company-wide YoY (all stores that existed last year)
+        if (allStoreIds.has(row.restaurantId)) {
+          if (rowDate >= ly7Start) coLy7Total += sales;
+          if (rowDate >= ly30Start) coLy30Total += sales;
+          coLy90Total += sales;
+        }
+        // Comp-only YoY
+        if (compStoreIds.has(row.restaurantId)) {
+          if (rowDate >= ly7Start) ly7Total += sales;
+          if (rowDate >= ly30Start) ly30Total += sales;
+        }
       }
       if (ly7Total > 0) compYoY7 = pctVar(comp7Sales, ly7Total);
       if (ly30Total > 0) compYoY30 = pctVar(comp30Sales, ly30Total);
+      if (coLy7Total > 0) coYoY7 = pctVar(total7, coLy7Total);
+      if (coLy30Total > 0) coYoY30 = pctVar(total30, coLy30Total);
+      if (coLy90Total > 0) coYoY90 = pctVar(total90, coLy90Total);
     } catch { /* historical data may not be available */ }
 
     // Sort by daily sales (descending) for top performers and all-units
     const sortedBySales = [...restaurantData].sort((a, b) => b.sales - a.sales);
     const top5 = sortedBySales.slice(0, 5);
 
-    // Bottom 3 by sales needing attention
-    const bottom3 = sortedBySales.slice(-3).reverse();
-
-    // Units with most badges
+    // Units with most badges (bottom3 removed - Needs Attention section removed)
     const badgeLeaders = [...restaurantData]
       .filter(r => r.earnedBadges.length > 0)
       .sort((a, b) => b.earnedBadges.length - a.earnedBadges.length)
@@ -739,24 +767,25 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     // New stores (status === "new")
     const newStores = restaurantData.filter(r => r.status === "new");
 
-    // Trend insight
-    const var7 = pctVar(total7, total7LW);
-    const var30 = pctVar(total30, total30LW);
-    const var90 = pctVar(total90, total90LW);
-
+    // Trend insight - YoY gap analysis
     let trendInsight = "";
-    if (var7 !== undefined && var30 !== undefined) {
-      if (var7 > 0 && var30 > 0 && var7 > var30) {
-        trendInsight = "Sales momentum is accelerating &mdash; the 7-day trend is outpacing the 30-day trend.";
-      } else if (var7 > 0 && var30 > 0 && var7 < var30) {
-        trendInsight = "Sales are positive but the pace is slowing &mdash; 7-day growth is trailing the 30-day trend.";
-      } else if (var7 < 0 && var30 >= 0) {
-        trendInsight = "Short-term softness &mdash; the last 7 days are below prior year despite a positive 30-day trend.";
-      } else if (var7 < 0 && var30 < 0) {
-        trendInsight = "Sustained headwind &mdash; both 7-day and 30-day trends are tracking below prior comparable periods.";
-      } else if (var7 >= 0 && var30 < 0) {
-        trendInsight = "Encouraging recovery &mdash; the 7-day trend has turned positive despite a negative 30-day backdrop.";
+    if (coYoY7 !== undefined && coYoY90 !== undefined) {
+      // Compare 7-day YoY vs 90-day YoY to determine if gap is closing or widening
+      const gapClosing = coYoY7 > coYoY90; // 7-day is better than 90-day = closing the gap
+      if (coYoY7 >= 0) {
+        trendInsight = gapClosing
+          ? "&#9650; Closing the gap &mdash; recent 7-day YoY is outperforming the 90-day trend. Momentum is building."
+          : "&#9660; Widening the gap &mdash; despite positive YoY, the 7-day pace is trailing the 90-day trend.";
+      } else {
+        trendInsight = gapClosing
+          ? "&#9650; Closing the gap &mdash; the 7-day deficit is narrower than the 90-day trend. Recovery underway."
+          : "&#9660; Widening the gap &mdash; the 7-day YoY deficit is larger than the 90-day trend. Headwind increasing.";
       }
+    } else if (coYoY7 !== undefined && coYoY30 !== undefined) {
+      const gapClosing = coYoY7 > coYoY30;
+      trendInsight = gapClosing
+        ? "&#9650; Closing the gap &mdash; 7-day YoY is improving relative to the 30-day trend."
+        : "&#9660; Widening the gap &mdash; 7-day YoY is underperforming the 30-day trend.";
     }
 
     // Formatting
@@ -838,27 +867,27 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       </div>
     </div>
 
-    <!-- ═══ ROLLING TREND ═══ -->
+    <!-- ═══ ROLLING TREND YoY ═══ -->
     <div style="${sectionStyle}">
-      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Sales Trend vs Prior Year Comparable</h3>
+      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Sales Trend vs Prior Year <span style="font-size: 11px; color: #71717a; font-weight: 400;">(same day-of-week aligned)</span></h3>
       <div style="display: flex; justify-content: space-around; text-align: center; gap: 8px; flex-wrap: wrap;">
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
-          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">PRIOR 7 DAYS</div>
-          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(var7 ?? 0)};">${var7 !== undefined ? pctStr(var7) : '--'} <span style="font-size: 14px;">${var7 !== undefined ? trendArrow(var7) : ''}</span></div>
+          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">7-DAY YoY</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(coYoY7 ?? 0)};">${coYoY7 !== undefined ? pctStr(coYoY7) : '--'} <span style="font-size: 14px;">${coYoY7 !== undefined ? trendArrow(coYoY7) : ''}</span></div>
           <div style="font-size: 11px; color: #71717a;">${formatCurrency(total7)}</div>
         </div>
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
-          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">PRIOR 30 DAYS</div>
-          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(var30 ?? 0)};">${var30 !== undefined ? pctStr(var30) : '--'} <span style="font-size: 14px;">${var30 !== undefined ? trendArrow(var30) : ''}</span></div>
+          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">30-DAY YoY</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(coYoY30 ?? 0)};">${coYoY30 !== undefined ? pctStr(coYoY30) : '--'} <span style="font-size: 14px;">${coYoY30 !== undefined ? trendArrow(coYoY30) : ''}</span></div>
           <div style="font-size: 11px; color: #71717a;">${formatCurrency(total30)}</div>
         </div>
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
-          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">PRIOR 90 DAYS</div>
-          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(var90 ?? 0)};">${var90 !== undefined ? pctStr(var90) : '--'} <span style="font-size: 14px;">${var90 !== undefined ? trendArrow(var90) : ''}</span></div>
+          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">90-DAY YoY</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(coYoY90 ?? 0)};">${coYoY90 !== undefined ? pctStr(coYoY90) : '--'} <span style="font-size: 14px;">${coYoY90 !== undefined ? trendArrow(coYoY90) : ''}</span></div>
           <div style="font-size: 11px; color: #71717a;">${formatCurrency(total90)}</div>
         </div>
       </div>
-      ${trendInsight ? `<div style="margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: #f0f9ff; border: 1px solid #bae6fd; font-size: 12px; color: #0c4a6e;">${trendInsight}</div>` : ''}
+      ${trendInsight ? `<div style="margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: ${trendInsight.includes('Closing') ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${trendInsight.includes('Closing') ? '#bbf7d0' : '#fecaca'}; font-size: 12px; color: ${trendInsight.includes('Closing') ? '#166534' : '#991b1b'};">${trendInsight}</div>` : ''}
     </div>
 
     <!-- ═══ STATE BREAKDOWN: AL vs TN ═══ -->
@@ -955,37 +984,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       </table>
     </div>
 
-    <!-- ═══ NEEDS ATTENTION ═══ -->
-    ${bottom3.length > 0 ? `
-    <div style="${sectionStyle}">
-      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #dc2626;">Needs Attention <span style="font-size: 11px; color: #71717a; font-weight: 400;">(lowest daily sales)</span></h3>
-      <table>
-        <thead>
-          <tr style="border-bottom: 2px solid #e4e4e7;">
-            <th style="padding: 4px; ${headerCell} width: 20px;">#</th>
-            <th style="padding: 4px; ${headerCell}">UNIT</th>
-            <th style="padding: 4px; ${headerCell} text-align: right; width: 60px;">SALES</th>
-            <th style="padding: 4px; ${headerCell} text-align: right; width: 50px;">vs LW</th>
-            <th style="padding: 4px; ${headerCell} text-align: right; width: 60px;">OSAT</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${bottom3.map((r, i) => `
-          <tr style="border-bottom: 1px solid #f4f4f5;">
-            <td style="padding: 6px 4px; font-size: 12px; color: #a1a1aa;">${restaurantData.length - bottom3.length + i + 1}</td>
-            <td style="padding: 6px 4px;">
-              <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 12px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
-              ${r.status === 'new' ? `<span style="font-size: 9px; background: #dbeafe; color: #1e40af; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">NEW ${r.storeAge}</span>` : ''}
-              <span style="font-size: 9px; color: #a1a1aa; margin-left: 2px;">${r.state}${!r.isComp ? ' NC' : ''}</span>
-            </td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(r.sales)}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>` : ''}
-
     <!-- ═══ NEW STORES ═══ -->
     ${newStores.length > 0 ? `
     <div style="${sectionStyle}">
@@ -997,23 +995,29 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <th style="padding: 4px; ${headerCell} text-align: center;">AGE</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">SALES</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">vs LW</th>
+            <th style="padding: 4px; ${headerCell} text-align: right;">EOW FCST</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">OSAT</th>
+            <th style="padding: 4px; ${headerCell} text-align: right;">90D SALES</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">7D TREND</th>
           </tr>
         </thead>
         <tbody>
           ${newStores.map(r => {
             const p7Var = r.prior7LWSales > 0 ? ((r.prior7Sales - r.prior7LWSales) / r.prior7LWSales) * 100 : undefined;
+            const weeksOpen = r.storeAgeWeeks;
+            const ageDisplay = weeksOpen !== null && weeksOpen <= 26 ? `${weeksOpen}wk${weeksOpen !== 1 ? 's' : ''}` : r.storeAge;
             return `
           <tr style="border-bottom: 1px solid #f4f4f5;">
             <td style="padding: 6px 4px;">
               <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 12px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
               <span style="font-size: 9px; color: #a1a1aa; margin-left: 2px;">${r.state}</span>
             </td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: center;"><span style="background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;">${r.storeAge}</span></td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: center;"><span style="background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;">${ageDisplay}</span></td>
             <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(r.sales)}</td>
             <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #3b82f6;">${r.eowForecast > 0 ? formatCurrency(r.eowForecast) : '--'}</td>
             <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span></td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${r.prior90Sales > 0 ? formatCurrency(r.prior90Sales) : '--'}</td>
             <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${trendColor(p7Var ?? 0)};">${p7Var !== undefined ? pctStr(p7Var) : '--'}</td>
           </tr>`;
           }).join('')}
