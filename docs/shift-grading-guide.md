@@ -136,13 +136,11 @@ Bonus points reward exceptional daily performance. They're added to the base sco
 | High-Volume OSAT | +2 | 85%+ OSAT with 10+ surveys for the day |
 | Sales Growth | +2 | Daily sales 5%+ above same day last week |
 | Transaction Growth | +2 | Transaction count 5%+ above same day last week |
-| Recovery | +3 | Had 2+ hours graded C or below, but daily avg still B- or better |
 | Consistency | +2 | No hour graded below B for the entire day |
 
 **Notes:**
 - Perfect OSAT and High-Volume OSAT are mutually exclusive — you earn whichever applies, not both
-- Recovery kicker rewards resilience — a rough lunch rush doesn't have to ruin the whole day
-- Minimum 4 graded hours required for Recovery and Consistency bonuses
+- Minimum 4 graded hours required for Consistency bonus
 
 **Daily Score = min(Base Score + Capped Bonus, 100)**
 
@@ -167,19 +165,7 @@ Bonus points reward exceptional daily performance. They're added to the base sco
 
 ---
 
-### Example 2: Recovery Day
-
-**Hours graded:** 10am: C (75), 11am: D+ (68), 12pm: B (85), 1pm: A- (91), 2pm: A (95), 3pm: B+ (88), 4pm: A- (90)
-
-**Base Score:** average = **84.6 (B)**
-
-**Bonuses:** Recovery (+3) — had 2 hours at C or below but daily avg ≥ B-
-
-**Final Score:** min(84.6 + 3, 100) = **87.6 → Grade: B+**
-
----
-
-### Example 3: Sales Surge Exception
+### Example 2: Sales Surge Exception
 
 **Hour: 12 PM**
 - Sales: +25% vs last week → Score: 100
@@ -201,7 +187,6 @@ Without the surge exception, staffing would be 60 and the score would be 89.5 (B
 3. **Bonus points incentivize daily excellence** — aim for growth AND consistency
 4. **Missing data doesn't hurt you** — the system only grades on what it can measure
 5. **Unexpected rushes are forgiven** — 20%+ sales surge protects against understaffing
-6. **Recovery is rewarded** — a bad hour doesn't have to define your day
 
 ---
 
