@@ -697,13 +697,13 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     // Comp YoY rolling: fetch last year's 7D, 30D, and 90D sales for comp stores
     const compStoreIds = new Set(compStores.map(r => r.restaurantId));
-    const allStoreIds = new Set(restaurantData.map(r => r.restaurantId));
     const yesterday = new Date(`${dateStr}T12:00:00`);
     const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-    // Current period: 7D, 30D, and 90D ending on dateStr
+    // Current period: 7D, 30D, and 90D ending on dateStr (comp stores only)
     const comp7Sales = compStores.reduce((s, r) => s + r.prior7Sales, 0);
     const comp30Sales = compStores.reduce((s, r) => s + r.prior30Sales, 0);
+    const comp90Sales = compStores.reduce((s, r) => s + r.prior90Sales, 0);
 
     // Last year equivalent date ranges (same DOW aligned)
     const lyYesterday = new Date(yesterday);
@@ -720,38 +720,25 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     let compYoY7: number | undefined;
     let compYoY30: number | undefined;
-    // Company-wide YoY for the Rolling Trend section
-    let coYoY7: number | undefined;
-    let coYoY30: number | undefined;
-    let coYoY90: number | undefined;
+    let compYoY90: number | undefined;
     try {
       const lyRows = await db.select().from(historicalDailySales)
         .where(and(
           gte(historicalDailySales.date, fmt(ly90Start)),
           lte(historicalDailySales.date, fmt(lyYesterday))
         ));
-      let ly7Total = 0, ly30Total = 0;
-      let coLy7Total = 0, coLy30Total = 0, coLy90Total = 0;
+      let ly7Total = 0, ly30Total = 0, ly90Total = 0;
       for (const row of lyRows) {
+        if (!compStoreIds.has(row.restaurantId)) continue;
         const rowDate = new Date(`${row.date}T12:00:00`);
         const sales = parseFloat(row.netSales);
-        // Company-wide YoY (all stores that existed last year)
-        if (allStoreIds.has(row.restaurantId)) {
-          if (rowDate >= ly7Start) coLy7Total += sales;
-          if (rowDate >= ly30Start) coLy30Total += sales;
-          coLy90Total += sales;
-        }
-        // Comp-only YoY
-        if (compStoreIds.has(row.restaurantId)) {
-          if (rowDate >= ly7Start) ly7Total += sales;
-          if (rowDate >= ly30Start) ly30Total += sales;
-        }
+        if (rowDate >= ly7Start) ly7Total += sales;
+        if (rowDate >= ly30Start) ly30Total += sales;
+        ly90Total += sales;
       }
       if (ly7Total > 0) compYoY7 = pctVar(comp7Sales, ly7Total);
       if (ly30Total > 0) compYoY30 = pctVar(comp30Sales, ly30Total);
-      if (coLy7Total > 0) coYoY7 = pctVar(total7, coLy7Total);
-      if (coLy30Total > 0) coYoY30 = pctVar(total30, coLy30Total);
-      if (coLy90Total > 0) coYoY90 = pctVar(total90, coLy90Total);
+      if (ly90Total > 0) compYoY90 = pctVar(comp90Sales, ly90Total);
     } catch { /* historical data may not be available */ }
 
     // Sort by daily sales (descending) for top performers and all-units
@@ -769,10 +756,10 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     // Trend insight - YoY gap analysis
     let trendInsight = "";
-    if (coYoY7 !== undefined && coYoY90 !== undefined) {
+    if (compYoY7 !== undefined && compYoY90 !== undefined) {
       // Compare 7-day YoY vs 90-day YoY to determine if gap is closing or widening
-      const gapClosing = coYoY7 > coYoY90; // 7-day is better than 90-day = closing the gap
-      if (coYoY7 >= 0) {
+      const gapClosing = compYoY7 > compYoY90; // 7-day is better than 90-day = closing the gap
+      if (compYoY7 >= 0) {
         trendInsight = gapClosing
           ? "&#9650; Closing the gap &mdash; recent 7-day YoY is outperforming the 90-day trend. Momentum is building."
           : "&#9660; Widening the gap &mdash; despite positive YoY, the 7-day pace is trailing the 90-day trend.";
@@ -781,8 +768,8 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           ? "&#9650; Closing the gap &mdash; the 7-day deficit is narrower than the 90-day trend. Recovery underway."
           : "&#9660; Widening the gap &mdash; the 7-day YoY deficit is larger than the 90-day trend. Headwind increasing.";
       }
-    } else if (coYoY7 !== undefined && coYoY30 !== undefined) {
-      const gapClosing = coYoY7 > coYoY30;
+    } else if (compYoY7 !== undefined && compYoY30 !== undefined) {
+      const gapClosing = compYoY7 > compYoY30;
       trendInsight = gapClosing
         ? "&#9650; Closing the gap &mdash; 7-day YoY is improving relative to the 30-day trend."
         : "&#9660; Widening the gap &mdash; 7-day YoY is underperforming the 30-day trend.";
@@ -869,22 +856,22 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     <!-- ═══ ROLLING TREND YoY ═══ -->
     <div style="${sectionStyle}">
-      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Sales Trend vs Prior Year <span style="font-size: 11px; color: #71717a; font-weight: 400;">(same day-of-week aligned)</span></h3>
+      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Comp Store Sales YoY <span style="font-size: 11px; color: #71717a; font-weight: 400;">(${compStores.length} stores, same day-of-week aligned)</span></h3>
       <div style="display: flex; justify-content: space-around; text-align: center; gap: 8px; flex-wrap: wrap;">
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
           <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">7-DAY YoY</div>
-          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(coYoY7 ?? 0)};">${coYoY7 !== undefined ? pctStr(coYoY7) : '--'} <span style="font-size: 14px;">${coYoY7 !== undefined ? trendArrow(coYoY7) : ''}</span></div>
-          <div style="font-size: 11px; color: #71717a;">${formatCurrency(total7)}</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY7 ?? 0)};">${compYoY7 !== undefined ? pctStr(compYoY7) : '--'} <span style="font-size: 14px;">${compYoY7 !== undefined ? trendArrow(compYoY7) : ''}</span></div>
+          <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp7Sales)}</div>
         </div>
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
           <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">30-DAY YoY</div>
-          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(coYoY30 ?? 0)};">${coYoY30 !== undefined ? pctStr(coYoY30) : '--'} <span style="font-size: 14px;">${coYoY30 !== undefined ? trendArrow(coYoY30) : ''}</span></div>
-          <div style="font-size: 11px; color: #71717a;">${formatCurrency(total30)}</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY30 ?? 0)};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'} <span style="font-size: 14px;">${compYoY30 !== undefined ? trendArrow(compYoY30) : ''}</span></div>
+          <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp30Sales)}</div>
         </div>
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
           <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">90-DAY YoY</div>
-          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(coYoY90 ?? 0)};">${coYoY90 !== undefined ? pctStr(coYoY90) : '--'} <span style="font-size: 14px;">${coYoY90 !== undefined ? trendArrow(coYoY90) : ''}</span></div>
-          <div style="font-size: 11px; color: #71717a;">${formatCurrency(total90)}</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY90 ?? 0)};">${compYoY90 !== undefined ? pctStr(compYoY90) : '--'} <span style="font-size: 14px;">${compYoY90 !== undefined ? trendArrow(compYoY90) : ''}</span></div>
+          <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp90Sales)}</div>
         </div>
       </div>
       ${trendInsight ? `<div style="margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: ${trendInsight.includes('Closing') ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${trendInsight.includes('Closing') ? '#bbf7d0' : '#fecaca'}; font-size: 12px; color: ${trendInsight.includes('Closing') ? '#166534' : '#991b1b'};">${trendInsight}</div>` : ''}
