@@ -21,7 +21,7 @@ router.post("/api/email-subscribers", async (req, res) => {
     return res.status(400).json({ error: "Email is required" });
   }
   const normalizedEmail = email.trim().toLowerCase();
-  const validTypes = ['daily_report', 'leader_report', 'push_report'];
+  const validTypes = ['daily_report', 'leader_report', 'push_report', 'sales_summary'];
   const requestedTypes = Array.isArray(reportTypes)
     ? reportTypes.filter((t: string) => validTypes.includes(t))
     : ['daily_report', 'leader_report'];
@@ -74,7 +74,7 @@ router.patch("/api/email-subscribers/:id", async (req, res) => {
     if (name !== undefined) updates.name = name;
     if (reportTime) updates.reportTime = reportTime;
     if (Array.isArray(reportTypes)) {
-      const validTypes = ['daily_report', 'leader_report'];
+      const validTypes = ['daily_report', 'leader_report', 'push_report', 'sales_summary'];
       updates.reportTypes = reportTypes.filter((t: string) => validTypes.includes(t));
     }
 
@@ -217,6 +217,13 @@ router.get("/api/report-schedules", async (req, res) => {
     if (!schedules.find(s => s.reportType === 'push_report')) {
       await db.insert(reportSchedules).values({
         reportType: 'push_report', sendHour: 6, sendMinute: 30, isEnabled: false,
+      }).onConflictDoNothing();
+      schedules = await db.select().from(reportSchedules);
+    }
+    // Ensure sales_summary schedule exists
+    if (!schedules.find(s => s.reportType === 'sales_summary')) {
+      await db.insert(reportSchedules).values({
+        reportType: 'sales_summary', sendHour: 6, sendMinute: 15, isEnabled: false,
       }).onConflictDoNothing();
       schedules = await db.select().from(reportSchedules);
     }
