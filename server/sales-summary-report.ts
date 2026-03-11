@@ -110,6 +110,8 @@ interface RestaurantDayData {
   // Weather
   weatherCondition: string | null;
   weatherHighTemp: number | null;
+  // EOW forecast
+  eowForecast: number; // projected end-of-week sales (Sat-Fri)
   // Multi-day rolling totals
   prior7Sales: number;
   prior7LWSales: number;
@@ -530,6 +532,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         actualHours: Math.round(actualHoursTotal * 10) / 10,
         weatherCondition: weather?.condition ?? null,
         weatherHighTemp: weather?.highTemp ? parseFloat(String(weather.highTemp)) : null,
+        eowForecast: 0,
         prior7Sales: 0, prior7LWSales: 0,
         prior30Sales: 0, prior30LWSales: 0,
         prior90Sales: 0, prior90LWSales: 0,
@@ -551,6 +554,58 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         r.prior30LWSales = rd.prior30LW;
         r.prior90Sales = rd.prior90;
         r.prior90LWSales = rd.prior90LW;
+      }
+    }
+
+    // ──── EOW Forecast (Sat-Fri business week) ────────────────
+    {
+      const reportDate = new Date(dateStr + "T12:00:00");
+      const dayOfWeek = reportDate.getDay(); // 0=Sun, 6=Sat
+      const daysSinceSaturday = (dayOfWeek + 1) % 7; // Sat=0, Sun=1, ..., Fri=6
+      const weekSaturday = new Date(reportDate);
+      weekSaturday.setDate(reportDate.getDate() - daysSinceSaturday);
+      const weekFriday = new Date(weekSaturday);
+      weekFriday.setDate(weekSaturday.getDate() + 6);
+
+      const fmt = (d: Date) => d.toISOString().split("T")[0];
+      const satStr = fmt(weekSaturday);
+      const friStr = fmt(weekFriday);
+
+      // Last week's same window for projection
+      const lastWeekSat = new Date(weekSaturday);
+      lastWeekSat.setDate(lastWeekSat.getDate() - 7);
+      const lastWeekFri = new Date(weekFriday);
+      lastWeekFri.setDate(lastWeekFri.getDate() - 7);
+
+      // Fetch this week's actuals and last week's sales
+      const [thisWeekMap, lastWeekMap] = await Promise.all([
+        getDailySalesForRange(satStr, dateStr),
+        getDailySalesForRange(fmt(lastWeekSat), fmt(lastWeekFri)),
+      ]);
+
+      for (const r of restaurantData) {
+        // Sum WTD actuals (Sat through report date)
+        let wtdActual = 0;
+        const d = new Date(weekSaturday);
+        while (d <= reportDate) {
+          wtdActual += thisWeekMap.get(`${r.restaurantId}-${fmt(d)}`) || 0;
+          d.setDate(d.getDate() + 1);
+        }
+
+        // Project remaining days (day after report date through Fri) using last week
+        let projectedRemaining = 0;
+        const nextDay = new Date(reportDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const d2 = new Date(nextDay);
+        while (d2 <= weekFriday) {
+          // Use last week's same day-of-week sales as projection
+          const lwSameDay = new Date(d2);
+          lwSameDay.setDate(lwSameDay.getDate() - 7);
+          projectedRemaining += lastWeekMap.get(`${r.restaurantId}-${fmt(lwSameDay)}`) || 0;
+          d2.setDate(d2.getDate() + 1);
+        }
+
+        r.eowForecast = wtdActual + projectedRemaining;
       }
     }
 
@@ -627,6 +682,46 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     const nonCompStores = restaurantData.filter(r => !r.isComp);
     const compStats = stateStats(compStores);
     const nonCompStats = stateStats(nonCompStores);
+
+    // Comp YoY rolling: fetch last year's 7D and 30D sales for comp stores
+    const compStoreIds = new Set(compStores.map(r => r.restaurantId));
+    const yesterday = new Date(`${dateStr}T12:00:00`);
+    const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+    // Current period: 7D and 30D ending on dateStr
+    const comp7Sales = compStores.reduce((s, r) => s + r.prior7Sales, 0);
+    const comp30Sales = compStores.reduce((s, r) => s + r.prior30Sales, 0);
+
+    // Last year equivalent date ranges (same DOW aligned)
+    const lyYesterday = new Date(yesterday);
+    lyYesterday.setFullYear(lyYesterday.getFullYear() - 1);
+    const lyDowDiff = yesterday.getDay() - lyYesterday.getDay();
+    lyYesterday.setDate(lyYesterday.getDate() + lyDowDiff);
+
+    const ly7Start = new Date(lyYesterday);
+    ly7Start.setDate(ly7Start.getDate() - 6);
+    const ly30Start = new Date(lyYesterday);
+    ly30Start.setDate(ly30Start.getDate() - 29);
+
+    let compYoY7: number | undefined;
+    let compYoY30: number | undefined;
+    try {
+      const lyRows = await db.select().from(historicalDailySales)
+        .where(and(
+          gte(historicalDailySales.date, fmt(ly30Start)),
+          lte(historicalDailySales.date, fmt(lyYesterday))
+        ));
+      let ly7Total = 0, ly30Total = 0;
+      for (const row of lyRows) {
+        if (!compStoreIds.has(row.restaurantId)) continue;
+        const rowDate = new Date(`${row.date}T12:00:00`);
+        const sales = parseFloat(row.netSales);
+        if (rowDate >= ly7Start) ly7Total += sales;
+        ly30Total += sales;
+      }
+      if (ly7Total > 0) compYoY7 = pctVar(comp7Sales, ly7Total);
+      if (ly30Total > 0) compYoY30 = pctVar(comp30Sales, ly30Total);
+    } catch { /* historical data may not be available */ }
 
     // Sort by daily sales (descending) for top performers and all-units
     const sortedBySales = [...restaurantData].sort((a, b) => b.sales - a.sales);
@@ -797,14 +892,31 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <th style="padding: 4px; ${headerCell} text-align: right;">SALES</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">vs LW</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">vs LY</th>
+            <th style="padding: 4px; ${headerCell} text-align: right;">7D YoY</th>
+            <th style="padding: 4px; ${headerCell} text-align: right;">30D YoY</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">OSAT</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">7D</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">30D</th>
           </tr>
         </thead>
         <tbody>
-          ${renderStatRow('Comp', compStats.count, compStats.sales, compStats.vsLW, compStats.osatPct, compStats.osatSurveys, compStats.p7Var, compStats.p30Var, compStats.vsLY)}
-          ${nonCompStores.length > 0 ? renderStatRow('Non-Comp', nonCompStats.count, nonCompStats.sales, nonCompStats.vsLW, nonCompStats.osatPct, nonCompStats.osatSurveys, nonCompStats.p7Var, nonCompStats.p30Var) : ''}
+          <tr>
+            <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">Comp <span style="color: #a1a1aa; font-weight: 400;">(${compStats.count})</span></td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(compStats.sales)}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLW !== undefined ? pctStr(compStats.vsLW) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compStats.vsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLY !== undefined ? pctStr(compStats.vsLY) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compYoY7 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY7 !== undefined ? pctStr(compYoY7) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compYoY30 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${compStats.osatPct !== null ? (compStats.osatPct >= 85 ? '#16a34a' : compStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${compStats.osatPct !== null ? Math.round(compStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${compStats.osatSurveys > 0 ? '(' + compStats.osatSurveys + ')' : ''}</span></td>
+          </tr>
+          ${nonCompStores.length > 0 ? `
+          <tr>
+            <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">Non-Comp <span style="color: #a1a1aa; font-weight: 400;">(${nonCompStats.count})</span></td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(nonCompStats.sales)}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(nonCompStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${nonCompStats.vsLW !== undefined ? pctStr(nonCompStats.vsLW) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${nonCompStats.osatPct !== null ? (nonCompStats.osatPct >= 85 ? '#16a34a' : nonCompStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${nonCompStats.osatPct !== null ? Math.round(nonCompStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${nonCompStats.osatSurveys > 0 ? '(' + nonCompStats.osatSurveys + ')' : ''}</span></td>
+          </tr>` : ''}
         </tbody>
       </table>
     </div>
@@ -927,7 +1039,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     <!-- ═══ ALL UNITS ═══ -->
     <div style="${sectionStyle}">
       <h3 style="margin: 0 0 4px; font-size: 14px; font-weight: 600;">All Units <span style="font-size: 11px; color: #71717a; font-weight: 400;">(sorted by daily sales)</span></h3>
-      <div style="font-size: 10px; color: #a1a1aa; margin-bottom: 10px;">C = Comp (open &gt; 18 months) &middot; NC = Non-Comp (open &le; 18 months) &middot; Labor = Model hrs / Actual hrs</div>
+      <div style="font-size: 10px; color: #a1a1aa; margin-bottom: 10px;">C = Comp (open &gt; 18 months) &middot; NC = Non-Comp (open &le; 18 months) &middot; Labor = Actual hrs (&#177; vs model) &middot; EOW = Projected end-of-week sales</div>
       <table>
         <thead>
           <tr style="border-bottom: 2px solid #e4e4e7;">
@@ -938,6 +1050,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             ${hasLYData ? `<th style="padding: 3px 4px; ${headerCell} text-align: right; width: 44px;">vs LY</th>` : ''}
             <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 50px;">OSAT</th>
             <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 64px;">LABOR</th>
+            <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 58px;">EOW</th>
             <th style="padding: 3px 4px; ${headerCell} text-align: center; width: 28px;">WX</th>
           </tr>
         </thead>
@@ -958,7 +1071,8 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <td style="padding: 4px; font-size: 11px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</td>
             ${hasLYData ? `<td style="padding: 4px; font-size: 11px; text-align: right; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'}</td>` : ''}
             <td style="padding: 4px; font-size: 11px; text-align: right; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'} <span style="font-size: 8px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span></td>
-            <td style="padding: 4px; font-size: 10px; text-align: right; color: ${laborColor};">${r.modelHours > 0 ? r.modelHours.toFixed(0) + '/' + r.actualHours.toFixed(0) : '--'}</td>
+            <td style="padding: 4px; font-size: 10px; text-align: right; color: ${laborColor};">${r.modelHours > 0 ? r.actualHours.toFixed(0) + ' <span style="font-size: 9px;">(' + (laborDiff >= 0 ? '+' : '') + laborDiff.toFixed(0) + ')</span>' : '--'}</td>
+            <td style="padding: 4px; font-size: 10px; text-align: right; color: #3b82f6;">${r.eowForecast > 0 ? formatCurrency(r.eowForecast) : '--'}</td>
             <td style="padding: 4px; font-size: 11px; text-align: center;" title="${r.weatherCondition || ''}">${weatherIcon(r.weatherCondition)}${r.weatherHighTemp !== null ? '<span style="font-size: 9px; color: #71717a;">' + Math.round(r.weatherHighTemp) + '&deg;</span>' : ''}</td>
           </tr>`;
           }).join('')}
