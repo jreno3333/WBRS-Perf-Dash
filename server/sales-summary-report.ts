@@ -628,6 +628,46 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     const compStats = stateStats(compStores);
     const nonCompStats = stateStats(nonCompStores);
 
+    // Comp YoY rolling: fetch last year's 7D and 30D sales for comp stores
+    const compStoreIds = new Set(compStores.map(r => r.restaurantId));
+    const yesterday = new Date(`${dateStr}T12:00:00`);
+    const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+    // Current period: 7D and 30D ending on dateStr
+    const comp7Sales = compStores.reduce((s, r) => s + r.prior7Sales, 0);
+    const comp30Sales = compStores.reduce((s, r) => s + r.prior30Sales, 0);
+
+    // Last year equivalent date ranges (same DOW aligned)
+    const lyYesterday = new Date(yesterday);
+    lyYesterday.setFullYear(lyYesterday.getFullYear() - 1);
+    const lyDowDiff = yesterday.getDay() - lyYesterday.getDay();
+    lyYesterday.setDate(lyYesterday.getDate() + lyDowDiff);
+
+    const ly7Start = new Date(lyYesterday);
+    ly7Start.setDate(ly7Start.getDate() - 6);
+    const ly30Start = new Date(lyYesterday);
+    ly30Start.setDate(ly30Start.getDate() - 29);
+
+    let compYoY7: number | undefined;
+    let compYoY30: number | undefined;
+    try {
+      const lyRows = await db.select().from(historicalDailySales)
+        .where(and(
+          gte(historicalDailySales.date, fmt(ly30Start)),
+          lte(historicalDailySales.date, fmt(lyYesterday))
+        ));
+      let ly7Total = 0, ly30Total = 0;
+      for (const row of lyRows) {
+        if (!compStoreIds.has(row.restaurantId)) continue;
+        const rowDate = new Date(`${row.date}T12:00:00`);
+        const sales = parseFloat(row.netSales);
+        if (rowDate >= ly7Start) ly7Total += sales;
+        ly30Total += sales;
+      }
+      if (ly7Total > 0) compYoY7 = pctVar(comp7Sales, ly7Total);
+      if (ly30Total > 0) compYoY30 = pctVar(comp30Sales, ly30Total);
+    } catch { /* historical data may not be available */ }
+
     // Sort by daily sales (descending) for top performers and all-units
     const sortedBySales = [...restaurantData].sort((a, b) => b.sales - a.sales);
     const top5 = sortedBySales.slice(0, 5);
@@ -797,14 +837,31 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <th style="padding: 4px; ${headerCell} text-align: right;">SALES</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">vs LW</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">vs LY</th>
+            <th style="padding: 4px; ${headerCell} text-align: right;">7D YoY</th>
+            <th style="padding: 4px; ${headerCell} text-align: right;">30D YoY</th>
             <th style="padding: 4px; ${headerCell} text-align: right;">OSAT</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">7D</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">30D</th>
           </tr>
         </thead>
         <tbody>
-          ${renderStatRow('Comp', compStats.count, compStats.sales, compStats.vsLW, compStats.osatPct, compStats.osatSurveys, compStats.p7Var, compStats.p30Var, compStats.vsLY)}
-          ${nonCompStores.length > 0 ? renderStatRow('Non-Comp', nonCompStats.count, nonCompStats.sales, nonCompStats.vsLW, nonCompStats.osatPct, nonCompStats.osatSurveys, nonCompStats.p7Var, nonCompStats.p30Var) : ''}
+          <tr>
+            <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">Comp <span style="color: #a1a1aa; font-weight: 400;">(${compStats.count})</span></td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(compStats.sales)}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLW !== undefined ? pctStr(compStats.vsLW) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compStats.vsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLY !== undefined ? pctStr(compStats.vsLY) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compYoY7 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY7 !== undefined ? pctStr(compYoY7) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compYoY30 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${compStats.osatPct !== null ? (compStats.osatPct >= 85 ? '#16a34a' : compStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${compStats.osatPct !== null ? Math.round(compStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${compStats.osatSurveys > 0 ? '(' + compStats.osatSurveys + ')' : ''}</span></td>
+          </tr>
+          ${nonCompStores.length > 0 ? `
+          <tr>
+            <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">Non-Comp <span style="color: #a1a1aa; font-weight: 400;">(${nonCompStats.count})</span></td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(nonCompStats.sales)}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(nonCompStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${nonCompStats.vsLW !== undefined ? pctStr(nonCompStats.vsLW) : '--'}</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">--</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">--</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">--</td>
+            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${nonCompStats.osatPct !== null ? (nonCompStats.osatPct >= 85 ? '#16a34a' : nonCompStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${nonCompStats.osatPct !== null ? Math.round(nonCompStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${nonCompStats.osatSurveys > 0 ? '(' + nonCompStats.osatSurveys + ')' : ''}</span></td>
+          </tr>` : ''}
         </tbody>
       </table>
     </div>
