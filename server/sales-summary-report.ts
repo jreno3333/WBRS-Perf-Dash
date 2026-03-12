@@ -286,14 +286,29 @@ export async function sendSalesSummaryReports(force = false): Promise<{ sent: nu
   const result = { sent: 0, failed: 0 };
 
   try {
+    const schedules = await db.select().from(reportSchedules)
+      .where(eq(reportSchedules.reportType, "sales_summary"));
+    const schedule = schedules[0];
+
     if (!force) {
-      const schedules = await db.select().from(reportSchedules)
-        .where(eq(reportSchedules.reportType, "sales_summary"));
-      const schedule = schedules[0];
       if (schedule && !schedule.isEnabled) {
         console.log("[sales-summary] Automated sending is disabled - skipping");
         return result;
       }
+      // Double-check we're past the scheduled time (belt-and-suspenders guard)
+      if (schedule) {
+        const now = new Date();
+        const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(now));
+        const centralMinute = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', minute: 'numeric' }).format(now));
+        const currentMinutes = centralHour * 60 + centralMinute;
+        const targetMinutes = schedule.sendHour * 60 + schedule.sendMinute;
+        if (currentMinutes < targetMinutes) {
+          console.log(`[sales-summary] Too early to send: CT ${centralHour}:${String(centralMinute).padStart(2, '0')}, scheduled for ${schedule.sendHour}:${String(schedule.sendMinute).padStart(2, '0')} - skipping`);
+          return result;
+        }
+      }
+    } else {
+      console.log("[sales-summary] Force send requested (Send Now button)");
     }
 
     const subscribers = await db.select()
@@ -791,19 +806,19 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     // ──── HTML ─────────────────────────────────────────────────
 
-    const sectionStyle = `background: white; border: 1px solid #e4e4e7; border-top: none; padding: 20px 24px;`;
+    const sectionStyle = `background: white; border: 1px solid #e4e4e7; border-top: none; padding: 16px 12px;`;
     const headerCell = `font-size: 10px; color: #a1a1aa; font-weight: 600;`;
     const dataCell = `font-size: 12px;`;
 
     const renderStatRow = (label: string, count: number, sales: number, vsLW: number | undefined, osat: number | null, osatSurveys: number, p7Var: number | undefined, p30Var: number | undefined, vsLY?: number | undefined) => `
       <tr>
-        <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">${label} <span style="color: #a1a1aa; font-weight: 400;">(${count})</span></td>
-        <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(sales)}</td>
-        <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${vsLW !== undefined && vsLW >= 0 ? '#16a34a' : '#dc2626'};">${vsLW !== undefined ? pctStr(vsLW) : '--'}</td>
-        ${vsLY !== undefined ? `<td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${vsLY >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(vsLY)}</td>` : ''}
-        <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${osat !== null ? (osat >= 85 ? '#16a34a' : osat >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${osat !== null ? Math.round(osat) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${osatSurveys > 0 ? '(' + osatSurveys + ')' : ''}</span></td>
-        <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${trendColor(p7Var ?? 0)};">${p7Var !== undefined ? pctStr(p7Var) : '--'}</td>
-        <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${trendColor(p30Var ?? 0)};">${p30Var !== undefined ? pctStr(p30Var) : '--'}</td>
+        <td style="padding: 5px 2px; font-size: 11px; font-weight: 600;">${label} <span style="color: #a1a1aa; font-weight: 400;">(${count})</span></td>
+        <td style="padding: 5px 2px; font-size: 11px; text-align: right;">${formatCurrency(sales)}</td>
+        <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${vsLW !== undefined && vsLW >= 0 ? '#16a34a' : '#dc2626'};">${vsLW !== undefined ? pctStr(vsLW) : '--'}</td>
+        ${vsLY !== undefined ? `<td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${vsLY >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(vsLY)}</td>` : ''}
+        <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${osat !== null ? (osat >= 85 ? '#16a34a' : osat >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${osat !== null ? Math.round(osat) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${osatSurveys > 0 ? '(' + osatSurveys + ')' : ''}</span></td>
+        <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${trendColor(p7Var ?? 0)};">${p7Var !== undefined ? pctStr(p7Var) : '--'}</td>
+        <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${trendColor(p30Var ?? 0)};">${p30Var !== undefined ? pctStr(p30Var) : '--'}</td>
       </tr>`;
 
     return `
@@ -819,10 +834,10 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
   </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <div style="max-width: 720px; margin: 0 auto; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 8px;">
 
     <!-- ═══ HEADER ═══ -->
-    <div style="background: linear-gradient(135deg, #18181b 0%, #27272a 100%); color: white; padding: 28px 24px; border-radius: 8px 8px 0 0; text-align: center;">
+    <div style="background: linear-gradient(135deg, #18181b 0%, #27272a 100%); color: white; padding: 24px 16px; border-radius: 8px 8px 0 0; text-align: center;">
       <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">Executive Sales Summary</h1>
       <p style="margin: 6px 0 0; font-size: 14px; color: #a1a1aa;">${dayOfWeek}, ${formattedDate}</p>
       <p style="margin: 4px 0 0; font-size: 12px; color: #71717a;">MWB Restaurants &middot; ${restaurantData.length} Active Units</p>
@@ -892,12 +907,12 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       <table>
         <thead>
           <tr style="border-bottom: 2px solid #e4e4e7;">
-            <th style="padding: 4px; ${headerCell}">STATE</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">SALES</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">vs LW</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">OSAT</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">7D</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">30D</th>
+            <th style="padding: 3px 2px; ${headerCell}">STATE</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">SALES</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">vs LW</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">OSAT</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">7D</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">30D</th>
           </tr>
         </thead>
         <tbody>
@@ -913,34 +928,34 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       <table>
         <thead>
           <tr style="border-bottom: 2px solid #e4e4e7;">
-            <th style="padding: 4px; ${headerCell}">GROUP</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">SALES</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">vs LW</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">vs LY</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">7D YoY</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">30D YoY</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">OSAT</th>
+            <th style="padding: 3px 2px; ${headerCell}">GROUP</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">SALES</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">vs LW</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">vs LY</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">7D YoY</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">30D</th>
+            <th style="padding: 3px 2px; ${headerCell} text-align: right;">OSAT</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">Comp <span style="color: #a1a1aa; font-weight: 400;">(${compStats.count})</span></td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(compStats.sales)}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLW !== undefined ? pctStr(compStats.vsLW) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compStats.vsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLY !== undefined ? pctStr(compStats.vsLY) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compYoY7 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY7 !== undefined ? pctStr(compYoY7) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(compYoY30 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${compStats.osatPct !== null ? (compStats.osatPct >= 85 ? '#16a34a' : compStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${compStats.osatPct !== null ? Math.round(compStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${compStats.osatSurveys > 0 ? '(' + compStats.osatSurveys + ')' : ''}</span></td>
+            <td style="padding: 5px 2px; font-size: 11px; font-weight: 600;">Comp <span style="color: #a1a1aa; font-weight: 400;">(${compStats.count})</span></td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right;">${formatCurrency(compStats.sales)}</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(compStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLW !== undefined ? pctStr(compStats.vsLW) : '--'}</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(compStats.vsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLY !== undefined ? pctStr(compStats.vsLY) : '--'}</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(compYoY7 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY7 !== undefined ? pctStr(compYoY7) : '--'}</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(compYoY30 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'}</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${compStats.osatPct !== null ? (compStats.osatPct >= 85 ? '#16a34a' : compStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${compStats.osatPct !== null ? Math.round(compStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${compStats.osatSurveys > 0 ? '(' + compStats.osatSurveys + ')' : ''}</span></td>
           </tr>
           ${nonCompStores.length > 0 ? `
           <tr>
-            <td style="padding: 6px 4px; font-size: 12px; font-weight: 600;">Non-Comp <span style="color: #a1a1aa; font-weight: 400;">(${nonCompStats.count})</span></td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(nonCompStats.sales)}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(nonCompStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${nonCompStats.vsLW !== undefined ? pctStr(nonCompStats.vsLW) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #a1a1aa;">N/A</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${nonCompStats.osatPct !== null ? (nonCompStats.osatPct >= 85 ? '#16a34a' : nonCompStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${nonCompStats.osatPct !== null ? Math.round(nonCompStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${nonCompStats.osatSurveys > 0 ? '(' + nonCompStats.osatSurveys + ')' : ''}</span></td>
+            <td style="padding: 5px 2px; font-size: 11px; font-weight: 600;">Non-Comp <span style="color: #a1a1aa; font-weight: 400;">(${nonCompStats.count})</span></td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right;">${formatCurrency(nonCompStats.sales)}</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(nonCompStats.vsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${nonCompStats.vsLW !== undefined ? pctStr(nonCompStats.vsLW) : '--'}</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: #a1a1aa;">N/A</td>
+            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${nonCompStats.osatPct !== null ? (nonCompStats.osatPct >= 85 ? '#16a34a' : nonCompStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${nonCompStats.osatPct !== null ? Math.round(nonCompStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${nonCompStats.osatSurveys > 0 ? '(' + nonCompStats.osatSurveys + ')' : ''}</span></td>
           </tr>` : ''}
         </tbody>
       </table>
@@ -949,76 +964,58 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     <!-- ═══ TOP PERFORMERS ═══ -->
     <div style="${sectionStyle}">
       <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #16a34a;">Top Performers <span style="font-size: 11px; color: #71717a; font-weight: 400;">(by daily sales)</span></h3>
-      <table>
-        <thead>
-          <tr style="border-bottom: 2px solid #e4e4e7;">
-            <th style="padding: 4px; ${headerCell} width: 20px;">#</th>
-            <th style="padding: 4px; ${headerCell}">UNIT</th>
-            <th style="padding: 4px; ${headerCell} text-align: right; width: 60px;">SALES</th>
-            <th style="padding: 4px; ${headerCell} text-align: right; width: 50px;">vs LW</th>
-            ${hasLYData ? `<th style="padding: 4px; ${headerCell} text-align: right; width: 50px;">vs LY</th>` : ''}
-            <th style="padding: 4px; ${headerCell} text-align: right; width: 60px;">OSAT</th>
-            <th style="padding: 4px; ${headerCell} width: 90px;">BADGES</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${top5.map((r, i) => `
-          <tr style="border-bottom: 1px solid #f4f4f5;">
-            <td style="padding: 6px 4px; font-size: 12px; color: #16a34a; font-weight: 700;">${i + 1}</td>
-            <td style="padding: 6px 4px;">
-              <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 12px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
-              ${r.status === 'new' ? `<span style="font-size: 9px; background: #dbeafe; color: #1e40af; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">NEW ${r.storeAge}</span>` : ''}
-              <span style="font-size: 9px; color: #a1a1aa; margin-left: 2px;">${r.state}${!r.isComp ? ' NC' : ''}</span>
-            </td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(r.sales)}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</td>
-            ${hasLYData ? `<td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'}</td>` : ''}
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span></td>
-            <td style="padding: 6px 4px; font-size: 9px; color: #71717a;">${r.earnedBadges.length > 0 ? r.earnedBadges.join(', ') : '--'}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
+      ${top5.map((r, i) => `
+      <div style="padding: 10px 0;${i < top5.length - 1 ? ' border-bottom: 1px solid #f4f4f5;' : ''}">
+        <div>
+          <span style="font-size: 16px; font-weight: 700; color: #16a34a; margin-right: 6px;">${i + 1}</span>
+          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 14px; font-weight: 600; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
+          ${r.status === 'new' ? `<span style="font-size: 9px; background: #dbeafe; color: #1e40af; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">NEW</span>` : ''}
+        </div>
+        <div style="margin-top: 6px; margin-left: 24px;">
+          <span style="font-size: 15px; font-weight: 600;">${formatCurrency(r.sales)}</span>
+          <span style="margin-left: 10px; font-size: 13px; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)} <span style="font-size: 10px; color: #a1a1aa;">WoW</span></span>
+          ${hasLYData ? `<span style="margin-left: 10px; font-size: 13px; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'} <span style="font-size: 10px; color: #a1a1aa;">YoY</span></span>` : ''}
+        </div>
+        <div style="margin-top: 4px; margin-left: 24px;">
+          <span style="font-size: 12px; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">OSAT ${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
+          <span style="font-size: 10px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
+          ${r.earnedBadges.length > 0 ? `<span style="margin-left: 8px; font-size: 10px; color: #71717a;">${r.earnedBadges.join(', ')}</span>` : ''}
+        </div>
+        <div style="margin-top: 2px; margin-left: 24px;">
+          ${r.status === 'new' ? `<span style="font-size: 10px; background: #dbeafe; color: #1e40af; padding: 1px 5px; border-radius: 3px;">${r.storeAge}</span>` : ''}
+          <span style="font-size: 10px; color: #a1a1aa;">${r.state}${!r.isComp ? ' &middot; NC' : ''}</span>
+        </div>
+      </div>`).join('')}
     </div>
 
     <!-- ═══ NEW STORES ═══ -->
     ${newStores.length > 0 ? `
     <div style="${sectionStyle}">
       <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #2563eb;">New Store Spotlight</h3>
-      <table>
-        <thead>
-          <tr style="border-bottom: 2px solid #e4e4e7;">
-            <th style="padding: 4px; ${headerCell}">UNIT</th>
-            <th style="padding: 4px; ${headerCell} text-align: center;">AGE</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">SALES</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">vs LW</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">EOW FCST</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">OSAT</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">90D SALES</th>
-            <th style="padding: 4px; ${headerCell} text-align: right;">7D TREND</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${newStores.map(r => {
-            const p7Var = r.prior7LWSales > 0 ? ((r.prior7Sales - r.prior7LWSales) / r.prior7LWSales) * 100 : undefined;
-            const weeksOpen = r.storeAgeWeeks;
-            const ageDisplay = weeksOpen !== null && weeksOpen <= 26 ? `${weeksOpen}wk${weeksOpen !== 1 ? 's' : ''}` : r.storeAge;
-            return `
-          <tr style="border-bottom: 1px solid #f4f4f5;">
-            <td style="padding: 6px 4px;">
-              <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 12px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
-              <span style="font-size: 9px; color: #a1a1aa; margin-left: 2px;">${r.state}</span>
-            </td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: center;"><span style="background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;">${ageDisplay}</span></td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${formatCurrency(r.sales)}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: #3b82f6;">${r.eowForecast > 0 ? formatCurrency(r.eowForecast) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span></td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right;">${r.prior90Sales > 0 ? formatCurrency(r.prior90Sales) : '--'}</td>
-            <td style="padding: 6px 4px; font-size: 12px; text-align: right; color: ${trendColor(p7Var ?? 0)};">${p7Var !== undefined ? pctStr(p7Var) : '--'}</td>
-          </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
+      ${newStores.map((r, idx) => {
+        const p7Var = r.prior7LWSales > 0 ? ((r.prior7Sales - r.prior7LWSales) / r.prior7LWSales) * 100 : undefined;
+        const weeksOpen = r.storeAgeWeeks;
+        const ageDisplay = weeksOpen !== null && weeksOpen <= 26 ? `${weeksOpen}wk${weeksOpen !== 1 ? 's' : ''}` : r.storeAge;
+        return `
+      <div style="padding: 10px 0;${idx < newStores.length - 1 ? ' border-bottom: 1px solid #f4f4f5;' : ''}">
+        <div>
+          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 14px; font-weight: 600; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
+          <span style="font-size: 10px; background: #dbeafe; color: #1e40af; padding: 1px 5px; border-radius: 3px; margin-left: 6px; font-weight: 600;">${ageDisplay}</span>
+          <span style="font-size: 10px; color: #a1a1aa; margin-left: 4px;">${r.state}</span>
+        </div>
+        <div style="margin-top: 6px;">
+          <span style="font-size: 15px; font-weight: 600;">${formatCurrency(r.sales)}</span>
+          <span style="margin-left: 10px; font-size: 13px; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)} <span style="font-size: 10px; color: #a1a1aa;">WoW</span></span>
+          <span style="margin-left: 10px; font-size: 12px; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">OSAT ${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
+          <span style="font-size: 10px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
+        </div>
+        <div style="margin-top: 4px; font-size: 11px; color: #71717a;">
+          ${r.eowForecast > 0 ? `EOW <span style="color: #3b82f6; font-weight: 500;">${formatCurrency(r.eowForecast)}</span>` : ''}
+          ${r.prior90Sales > 0 ? `<span style="margin-left: 10px;">90D ${formatCurrency(r.prior90Sales)}</span>` : ''}
+          ${p7Var !== undefined ? `<span style="margin-left: 10px;">7D Trend <span style="color: ${trendColor(p7Var)}; font-weight: 500;">${pctStr(p7Var)}</span></span>` : ''}
+        </div>
+      </div>`;
+      }).join('')}
     </div>` : ''}
 
     <!-- ═══ BADGE LEADERS ═══ -->
@@ -1039,45 +1036,33 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     <!-- ═══ ALL UNITS ═══ -->
     <div style="${sectionStyle}">
       <h3 style="margin: 0 0 4px; font-size: 14px; font-weight: 600;">All Units <span style="font-size: 11px; color: #71717a; font-weight: 400;">(sorted by daily sales)</span></h3>
-      <div style="font-size: 10px; color: #a1a1aa; margin-bottom: 10px;">C = Comp (open &gt; 18 months) &middot; NC = Non-Comp (open &le; 18 months) &middot; Labor = Actual hrs (&#177; vs model) &middot; EOW = Projected end-of-week sales</div>
-      <table>
-        <thead>
-          <tr style="border-bottom: 2px solid #e4e4e7;">
-            <th style="padding: 3px 4px; ${headerCell} width: 18px;">#</th>
-            <th style="padding: 3px 4px; ${headerCell}">UNIT</th>
-            <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 54px;">SALES</th>
-            <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 44px;">vs LW</th>
-            ${hasLYData ? `<th style="padding: 3px 4px; ${headerCell} text-align: right; width: 44px;">vs LY</th>` : ''}
-            <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 50px;">OSAT</th>
-            <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 64px;">LABOR</th>
-            <th style="padding: 3px 4px; ${headerCell} text-align: right; width: 58px;">EOW</th>
-            <th style="padding: 3px 4px; ${headerCell} text-align: center; width: 28px;">WX</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${sortedBySales.map((r, i) => {
-            const laborDiff = r.actualHours - r.modelHours;
-            const laborColor = r.modelHours > 0 ? (Math.abs(laborDiff) <= 2 ? '#16a34a' : laborDiff > 0 ? '#dc2626' : '#d97706') : '#a1a1aa';
-            return `
-          <tr style="border-bottom: 1px solid #fafafa;">
-            <td style="padding: 4px; font-size: 10px; color: #a1a1aa;">${i + 1}</td>
-            <td style="padding: 4px;">
-              <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 11px; color: inherit; text-decoration: none; border-bottom: 1px dashed #a1a1aa;">${r.restaurantName}</a>
-              ${r.status === 'new' ? '<span style="font-size: 8px; background: #dbeafe; color: #1e40af; padding: 0 3px; border-radius: 2px; margin-left: 2px;">NEW</span>' : ''}
-              <span style="font-size: 8px; padding: 0 3px; border-radius: 2px; margin-left: 1px; ${r.isComp ? 'color: #a1a1aa;' : 'background: #fef3c7; color: #92400e;'}">${r.isComp ? 'C' : 'NC'}</span>
-              <span style="font-size: 8px; color: #a1a1aa;">${r.state}</span>
-            </td>
-            <td style="padding: 4px; font-size: 11px; text-align: right;">${formatCurrency(r.sales)}</td>
-            <td style="padding: 4px; font-size: 11px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</td>
-            ${hasLYData ? `<td style="padding: 4px; font-size: 11px; text-align: right; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'}</td>` : ''}
-            <td style="padding: 4px; font-size: 11px; text-align: right; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'} <span style="font-size: 8px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span></td>
-            <td style="padding: 4px; font-size: 10px; text-align: right; color: ${laborColor};">${r.modelHours > 0 ? r.actualHours.toFixed(0) + ' <span style="font-size: 9px;">(' + (laborDiff >= 0 ? '+' : '') + laborDiff.toFixed(0) + ')</span>' : '--'}</td>
-            <td style="padding: 4px; font-size: 10px; text-align: right; color: #3b82f6;">${r.eowForecast > 0 ? formatCurrency(r.eowForecast) : '--'}</td>
-            <td style="padding: 4px; font-size: 11px; text-align: center;" title="${r.weatherCondition || ''}">${weatherIcon(r.weatherCondition)}${r.weatherHighTemp !== null ? '<span style="font-size: 9px; color: #71717a;">' + Math.round(r.weatherHighTemp) + '&deg;</span>' : ''}</td>
-          </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
+      <div style="font-size: 10px; color: #a1a1aa; margin-bottom: 10px;">C = Comp &middot; NC = Non-Comp &middot; Labor = Actual hrs (&plusmn; vs model)</div>
+      ${sortedBySales.map((r, i) => {
+        const laborDiff = r.actualHours - r.modelHours;
+        const laborColor = r.modelHours > 0 ? (Math.abs(laborDiff) <= 2 ? '#16a34a' : laborDiff > 0 ? '#dc2626' : '#d97706') : '#a1a1aa';
+        return `
+      <div style="padding: 7px 0;${i < sortedBySales.length - 1 ? ' border-bottom: 1px solid #f4f4f5;' : ''}">
+        <div>
+          <span style="font-size: 11px; color: #a1a1aa; margin-right: 4px;">${i + 1}</span>
+          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 13px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #a1a1aa;">${r.restaurantName}</a>
+          ${r.status === 'new' ? '<span style="font-size: 8px; background: #dbeafe; color: #1e40af; padding: 0 3px; border-radius: 2px; margin-left: 3px;">NEW</span>' : ''}
+          <span style="font-size: 9px; padding: 0 2px; margin-left: 2px; ${r.isComp ? 'color: #a1a1aa;' : 'background: #fef3c7; color: #92400e; border-radius: 2px;'}">${r.isComp ? 'C' : 'NC'}</span>
+          <span style="font-size: 9px; color: #a1a1aa;">${r.state}</span>
+          <span style="float: right; font-size: 11px;">${weatherIcon(r.weatherCondition)}${r.weatherHighTemp !== null ? '<span style="font-size: 10px; color: #71717a;">' + Math.round(r.weatherHighTemp) + '&deg;</span>' : ''}</span>
+        </div>
+        <div style="margin-top: 3px; margin-left: 18px; font-size: 12px;">
+          <span style="font-weight: 600;">${formatCurrency(r.sales)}</span>
+          <span style="margin-left: 8px; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</span>
+          ${hasLYData ? `<span style="margin-left: 6px; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'} <span style="font-size: 9px; color: #a1a1aa;">YoY</span></span>` : ''}
+          <span style="margin-left: 8px; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
+          <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
+        </div>
+        <div style="margin-top: 2px; margin-left: 18px; font-size: 11px; color: #71717a;">
+          ${r.modelHours > 0 ? `Labor <span style="color: ${laborColor};">${r.actualHours.toFixed(0)} <span style="font-size: 10px;">(${laborDiff >= 0 ? '+' : ''}${laborDiff.toFixed(0)})</span></span>` : ''}
+          ${r.eowForecast > 0 ? `<span style="margin-left: 8px;">EOW <span style="color: #3b82f6;">${formatCurrency(r.eowForecast)}</span></span>` : ''}
+        </div>
+      </div>`;
+      }).join('')}
     </div>
 
     <!-- ═══ FOOTER ═══ -->
