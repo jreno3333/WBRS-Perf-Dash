@@ -214,7 +214,7 @@ function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAtta
   let storesWithData = 0;
 
   for (const r of marketRestaurants) {
-    const dt = (r as any).driveThru;
+    const dt = r.driveThru;
     if (dt && dt.carCount > 0) {
       totalCars += dt.carCount;
       totalUnder6 += dt.carsUnder6Min || 0;

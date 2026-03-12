@@ -413,7 +413,7 @@ export default function Dashboard() {
     const map = new Map<string, number>();
     if (!leaderboardData?.restaurants || !hourlyByRestaurant) return map;
     for (const r of leaderboardData.restaurants) {
-      const localCutoff = (r as any).localCurrentHour ?? r.normalizedHour;
+      const localCutoff = r.localCurrentHour ?? r.normalizedHour;
       map.set(r.restaurantId, calculateXScore(hourlyByRestaurant[r.restaurantId], localCutoff, r, gradingCfg));
     }
     return map;
@@ -461,8 +461,8 @@ export default function Dashboard() {
           case "sales":
             return b.actualSales - a.actualSales;
           case "variance": {
-            const aLastWeek = (a as any).actualLastWeekSales ?? a.lastWeekSales;
-            const bLastWeek = (b as any).actualLastWeekSales ?? b.lastWeekSales;
+            const aLastWeek = a.actualLastWeekSales ?? a.lastWeekSales;
+            const bLastWeek = b.actualLastWeekSales ?? b.lastWeekSales;
             const aVariance = aLastWeek > 0 ? ((a.actualSales / aLastWeek) - 1) * 100 : 0;
             const bVariance = bLastWeek > 0 ? ((b.actualSales / bLastWeek) - 1) * 100 : 0;
             return bVariance - aVariance;
@@ -475,8 +475,8 @@ export default function Dashboard() {
             return bWtdVar - aWtdVar;
           }
           case "dt_time": {
-            const aAtt = a.driveThru ? ((a.driveThru as any).carsUnder6Min / (a.driveThru.carCount || 1)) * 100 : -1;
-            const bAtt = b.driveThru ? ((b.driveThru as any).carsUnder6Min / (b.driveThru.carCount || 1)) * 100 : -1;
+            const aAtt = a.driveThru ? ((a.driveThru.carsUnder6Min ?? 0) / (a.driveThru.carCount || 1)) * 100 : -1;
+            const bAtt = b.driveThru ? ((b.driveThru.carsUnder6Min ?? 0) / (b.driveThru.carCount || 1)) * 100 : -1;
             return bAtt - aAtt;
           }
           case "xscore": {

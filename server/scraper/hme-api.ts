@@ -101,8 +101,7 @@ export async function fetchHMEStores(): Promise<HMEStore[]> {
 
   while (true) {
     const url = `${HME_BASE_URL}/dxsmgmt/v2/store/list/default?Limit=${limit}&Offset=${offset}`;
-    const headers = getHMEHeaders();
-    delete (headers as any)["account-email"]; // Not needed for stores endpoint
+    const { "account-email": _, ...headers } = getHMEHeaders(); // account-email not needed for stores endpoint
 
     const response = await fetch(url, { headers });
     if (!response.ok) {

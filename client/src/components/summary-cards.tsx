@@ -85,7 +85,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   // Calculate OSAT totals from restaurant-level daily data (not hourly)
   // This ensures we count all surveys regardless of whether there's hourly sales data
   const dailyOsatTotals = activeRestaurants.reduce((acc, r) => {
-    const osat = (r as any).osat;
+    const osat = r.osat;
     if (osat && osat.totalResponses > 0) {
       acc.totalResponses += osat.totalResponses;
       acc.fiveStarCount += osat.fiveStarCount;
@@ -166,7 +166,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
       
       // Use restaurant's local hour cutoff to only count completed hours
       // This matches the leaderboard card logic for consistent grading
-      const localGradeCutoff = (restaurant as any).localCurrentHour ?? restaurant.normalizedHour;
+      const localGradeCutoff = restaurant.localCurrentHour ?? restaurant.normalizedHour;
       
       const restaurantHourlyScores: number[] = [];
       let restTotalSales = 0;
@@ -411,7 +411,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
       const restaurant = activeRestaurants.find(r => r.restaurantId === restaurantId);
       if (!restaurant) continue;
-      const localGradeCutoff = (restaurant as any).localCurrentHour ?? restaurant.normalizedHour;
+      const localGradeCutoff = restaurant.localCurrentHour ?? restaurant.normalizedHour;
       
       for (const hour of hours) {
         if (hour.hour > localGradeCutoff) continue;

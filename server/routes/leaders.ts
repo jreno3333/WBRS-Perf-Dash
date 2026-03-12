@@ -197,7 +197,7 @@ router.get("/api/leaders", async (req, res) => {
 
     const crewByUserId = new Map<string, typeof crewData>();
     for (const crew of crewData) {
-      const members = (crew.crewMembers as any[]) || [];
+      const members = crew.crewMembers ?? [];
       for (const m of members) {
         if (m.userId != null) {
           const uid = String(m.userId);

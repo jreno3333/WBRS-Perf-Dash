@@ -69,7 +69,7 @@ router.post("/api/push-report/share", async (req, res) => {
     const token = crypto.randomBytes(24).toString('hex');
 
     // Get user email from session
-    const userEmail = (req.session as any)?.email || null;
+    const userEmail = req.session?.email || null;
 
     const [created] = await db.insert(reportShareTokens).values({
       token,

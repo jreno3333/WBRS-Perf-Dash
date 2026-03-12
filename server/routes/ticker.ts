@@ -118,7 +118,7 @@ router.post("/api/ticker/messages", async (req: Request, res: Response) => {
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
         restaurantId: restaurantId || null,
-        createdBy: (req.session as any)?.userId || "admin",
+        createdBy: req.session?.userId || "admin",
       })
       .returning();
 
@@ -240,7 +240,7 @@ router.put("/api/ticker/milestone-config", async (req: Request, res: Response) =
           isEnabled: isEnabled ?? existing.isEnabled,
           milestoneTypes: milestoneTypes ?? existing.milestoneTypes,
           updatedAt: new Date(),
-          updatedBy: (req.session as any)?.userId || "admin",
+          updatedBy: req.session?.userId || "admin",
         })
         .where(eq(milestoneConfig.id, existing.id))
         .returning();
@@ -258,7 +258,7 @@ router.put("/api/ticker/milestone-config", async (req: Request, res: Response) =
             topCheckAverage: true,
             paceLeader: true,
           },
-          updatedBy: (req.session as any)?.userId || "admin",
+          updatedBy: req.session?.userId || "admin",
         })
         .returning();
 
