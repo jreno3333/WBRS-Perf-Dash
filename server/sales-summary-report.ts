@@ -728,17 +728,27 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           lte(historicalDailySales.date, fmt(lyYesterday))
         ));
       let ly7Total = 0, ly30Total = 0, ly90Total = 0;
+      // Track unique (store, date) pairs to validate data coverage
+      const ly7Days = new Set<string>();
+      const ly30Days = new Set<string>();
+      const ly90Days = new Set<string>();
       for (const row of lyRows) {
         if (!compStoreIds.has(row.restaurantId)) continue;
         const rowDate = new Date(`${row.date}T12:00:00`);
         const sales = parseFloat(row.netSales);
-        if (rowDate >= ly7Start) ly7Total += sales;
-        if (rowDate >= ly30Start) ly30Total += sales;
+        if (rowDate >= ly7Start) { ly7Total += sales; ly7Days.add(`${row.restaurantId}-${row.date}`); }
+        if (rowDate >= ly30Start) { ly30Total += sales; ly30Days.add(`${row.restaurantId}-${row.date}`); }
         ly90Total += sales;
+        ly90Days.add(`${row.restaurantId}-${row.date}`);
       }
+      const compCount = compStores.length;
       if (ly7Total > 0) compYoY7 = pctVar(comp7Sales, ly7Total);
       if (ly30Total > 0) compYoY30 = pctVar(comp30Sales, ly30Total);
-      if (ly90Total > 0) compYoY90 = pctVar(comp90Sales, ly90Total);
+      // Only compute 90-day YoY if we have at least 75% data coverage
+      const expected90 = compCount * 90;
+      if (ly90Total > 0 && ly90Days.size >= expected90 * 0.75) {
+        compYoY90 = pctVar(comp90Sales, ly90Total);
+      }
     } catch { /* historical data may not be available */ }
 
     // Sort by daily sales (descending) for top performers and all-units
@@ -754,25 +764,24 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     // New stores (status === "new")
     const newStores = restaurantData.filter(r => r.status === "new");
 
-    // Trend insight - YoY gap analysis
+    // Trend insight - compare 7-day vs 30-day YoY (adjacent windows, most intuitive)
     let trendInsight = "";
-    if (compYoY7 !== undefined && compYoY90 !== undefined) {
-      // Compare 7-day YoY vs 90-day YoY to determine if gap is closing or widening
-      const gapClosing = compYoY7 > compYoY90; // 7-day is better than 90-day = closing the gap
-      if (compYoY7 >= 0) {
+    if (compYoY7 !== undefined && compYoY30 !== undefined) {
+      // 7-day better than 30-day means trend is improving (gap closing)
+      const gapClosing = compYoY7 > compYoY30;
+      if (compYoY7 >= 0 && compYoY30 >= 0) {
         trendInsight = gapClosing
-          ? "&#9650; Closing the gap &mdash; recent 7-day YoY is outperforming the 90-day trend. Momentum is building."
-          : "&#9660; Widening the gap &mdash; despite positive YoY, the 7-day pace is trailing the 90-day trend.";
+          ? "&#9650; Accelerating &mdash; 7-day YoY is outpacing the 30-day trend. Momentum building."
+          : "&#9660; Decelerating &mdash; 7-day YoY is trailing the 30-day trend.";
+      } else if (compYoY7 < 0 && compYoY30 < 0) {
+        trendInsight = gapClosing
+          ? "&#9650; Closing the gap &mdash; 7-day YoY deficit is narrower than the 30-day trend. Recovery underway."
+          : "&#9660; Widening the gap &mdash; 7-day YoY deficit is larger than the 30-day trend. Headwind increasing.";
       } else {
         trendInsight = gapClosing
-          ? "&#9650; Closing the gap &mdash; the 7-day deficit is narrower than the 90-day trend. Recovery underway."
-          : "&#9660; Widening the gap &mdash; the 7-day YoY deficit is larger than the 90-day trend. Headwind increasing.";
+          ? "&#9650; Improving &mdash; 7-day YoY is stronger than the 30-day trend."
+          : "&#9660; Softening &mdash; 7-day YoY is weaker than the 30-day trend.";
       }
-    } else if (compYoY7 !== undefined && compYoY30 !== undefined) {
-      const gapClosing = compYoY7 > compYoY30;
-      trendInsight = gapClosing
-        ? "&#9650; Closing the gap &mdash; 7-day YoY is improving relative to the 30-day trend."
-        : "&#9660; Widening the gap &mdash; 7-day YoY is underperforming the 30-day trend.";
     }
 
     // Formatting
