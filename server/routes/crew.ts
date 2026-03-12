@@ -64,7 +64,7 @@ router.get("/api/crew/experience", async (req, res) => {
       let totalCrew = 0;
 
       const hourlyFormatted = hourlyData.map(h => {
-        const members = (h.crewMembers as any[]) || [];
+        const members = h.crewMembers ?? [];
         totalCrew += members.length;
         members.forEach(m => totalMonths += m.tenureMonths || 0);
 
@@ -74,7 +74,7 @@ router.get("/api/crew/experience", async (req, res) => {
           crewCount: h.crewCount,
           avgTenure: formatTenure(Number(h.avgTenureMonths) || 0),
           score: h.experienceScore || 0,
-          mix: formatTenureMix(h.tenureMix as any || { trainee: 0, developing: 0, experienced: 0, veteran: 0 }),
+          mix: formatTenureMix(h.tenureMix ?? { trainee: 0, developing: 0, experienced: 0, veteran: 0 }),
           team: members.map(m => ({
             name: `${m.firstName} ${m.lastName?.charAt(0) || ''}.`,
             tenureMonths: m.tenureMonths,
@@ -104,7 +104,7 @@ router.get("/api/crew/experience", async (req, res) => {
           hour: h.hour,
           crewCount: h.crewCount,
           experienceScore: h.score,
-          tenureMix: (restaurantCrewMap.get(r.restaurantId)?.find(d => d.hour === h.hour)?.tenureMix as any) || { trainee: 0, developing: 0, experienced: 0, veteran: 0 },
+          tenureMix: restaurantCrewMap.get(r.restaurantId)?.find(d => d.hour === h.hour)?.tenureMix ?? { trainee: 0, developing: 0, experienced: 0, veteran: 0 },
         }));
       }
     }
@@ -308,7 +308,7 @@ router.get("/api/people/performance", async (req, res) => {
       let totalSurveyResponses = 0;
 
       for (const crew of crewData) {
-        const members = (crew.crewMembers as any[]) || [];
+        const members = crew.crewMembers ?? [];
         const wasWorking = members.some(m => m.userId === userId);
 
         if (wasWorking) {

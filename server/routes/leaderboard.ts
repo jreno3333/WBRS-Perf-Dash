@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { hourlySales, hourlyLabor, hourlyCrew, restaurants, markets, restaurantMarkets, dailyOsat, hmeTimerData, osatData as osatDataTable } from "@shared/schema";
 import { sql, and, gte, lte, eq } from "drizzle-orm";
-import { fetchWeather, fetchHistoricalWeather } from "../utils/weather";
+import { fetchWeather, fetchHistoricalWeather, CurrentWeather, HistoricalWeather } from "../utils/weather";
 import { delay } from "../utils/db-helpers";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear, getNormalBaselineDate } from "../holidays";
 import { getDailyDriveThruSummary } from "../scraper/hme-api";
@@ -86,22 +86,23 @@ router.get("/api/leaderboard", async (req, res) => {
       const weather = weatherResults[i];
       if (weather) {
         if (useHistoricalWeather) {
-          (r as any).weather = {
-            temp: (weather as any).avgTemp,
-            highTemp: (weather as any).highTemp,
-            lowTemp: (weather as any).lowTemp,
-            condition: (weather as any).condition,
+          const hw = weather as HistoricalWeather;
+          r.weather = {
+            temp: hw.avgTemp,
+            highTemp: hw.highTemp,
+            lowTemp: hw.lowTemp,
+            condition: hw.condition,
             humidity: 0,
             windSpeed: 0,
           };
         } else {
-          (r as any).weather = weather;
+          r.weather = weather as CurrentWeather;
         }
       }
 
       const hmeData = hmeSummary.get(r.restaurantId);
       if (hmeData) {
-        (r as any).driveThru = {
+        r.driveThru = {
           carCount: hmeData.carCount,
           avgTotalTime: hmeData.avgTotalTime,
           avgServiceTime: hmeData.avgServiceTime,
@@ -112,7 +113,7 @@ router.get("/api/leaderboard", async (req, res) => {
 
       const reviews = googleReviews.get(r.restaurantId);
       if (reviews) {
-        (r as any).googleReviews = {
+        r.googleReviews = {
           rating: reviews.rating,
           reviewCount: reviews.reviewCount,
           newReviewsToday: reviews.newReviewsToday,
@@ -121,7 +122,7 @@ router.get("/api/leaderboard", async (req, res) => {
 
       const osat = osatDataMap[r.restaurantId];
       if (osat) {
-        (r as any).osat = {
+        r.osat = {
           osatPercent: osat.osatPercent,
           totalResponses: osat.totalResponses,
           fiveStarCount: osat.fiveStarCount,

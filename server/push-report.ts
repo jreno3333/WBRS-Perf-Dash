@@ -116,7 +116,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     const allLeaders = new Map<string, { firstName: string; position: string; hours: number[] }>();
 
     for (const hour of hourlyData) {
-      const leaders = (hour as any).leaders as { firstName: string; position: string }[] | undefined;
+      const leaders = hour.leaders as { firstName: string; position: string }[] | undefined;
       if (leaders && leaders.length > 0) {
         leadersByHour.set(hour.hour, leaders);
         for (const l of leaders) {
@@ -152,7 +152,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
         ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
         : 0;
 
-      const positions = (hour as any).positionBreakdown || {};
+      const positions = hour.positionBreakdown || {};
       const operatorHrs = positions['_operatorScheduled'] || 0;
       const rawEmployeeCount = Number(hour.employeeCount) || 0;
       const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
@@ -164,11 +164,11 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
       const gradeInfo = getExecutionGrade(
         hourVariance,
-        (hour as any).ootActive ? undefined : (hour as any).speedAttainment,
+        hour.ootActive ? undefined : hour.speedAttainment,
         staffingDiff,
         hasComparableSales,
         hasValidStaffing,
-        (hour as any).osatPercent,
+        hour.osatPercent,
         txnVar,
         hasCompTxn,
         gradingCfg
@@ -187,9 +187,9 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
         grade: gradeInfo.hasGrade ? gradeInfo.grade : '-',
         score: gradeInfo.score,
         employeeCount: actualStaff,
-        speedAttainment: (hour as any).speedAttainment,
-        osatPercent: (hour as any).osatPercent,
-        osatResponses: (hour as any).osatResponses,
+        speedAttainment: hour.speedAttainment,
+        osatPercent: hour.osatPercent,
+        osatResponses: hour.osatResponses,
         staffingDiff,
         leaders: hourLeaders.map(l => l.firstName),
       });
@@ -207,9 +207,9 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     const beDailyTotalTxn = completedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
     const beDailyTotalLWTxn = completedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
     const dailyTxnVar = beDailyTotalLWTxn > 0 ? ((beDailyTotalTxn - beDailyTotalLWTxn) / beDailyTotalLWTxn) * 100 : undefined;
-    const osatHoursForBonus = completedHours.filter(h => (h as any).osatPercent !== undefined && ((h as any).osatResponses ?? 0) > 0);
-    const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + ((h as any).osatResponses ?? 0), 0);
-    const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + ((h as any).osatPercent ?? 0) * ((h as any).osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
+    const osatHoursForBonus = completedHours.filter(h => h.osatPercent !== undefined && (h.osatResponses ?? 0) > 0);
+    const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
+    const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
 
     // YoY variance from historical_daily_sales (same value on every hour record)
     const lastYearDaily = completedHours[0]?.lastYearDailySales;
@@ -245,7 +245,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
 
     // ─── Speed summary ───────────────────────────────────────────────────
     const speedData = hourlyData.reduce((acc, h) => {
-      const sa = (h as any).speedAttainment;
+      const sa = h.speedAttainment;
       if (sa !== undefined && sa >= 0) { acc.total += sa; acc.count++; }
       return acc;
     }, { total: 0, count: 0 });
@@ -253,8 +253,8 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
 
     // ─── OSAT summary ────────────────────────────────────────────────────
     const osatSummary = hourlyData.reduce((acc, h) => {
-      const op = (h as any).osatPercent;
-      const or2 = (h as any).osatResponses;
+      const op = h.osatPercent;
+      const or2 = h.osatResponses;
       if (op !== undefined && op >= 0 && or2 > 0) {
         acc.totalWeighted += op * or2;
         acc.totalResponses += or2;
@@ -279,7 +279,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
         ));
 
       for (const [key, label] of Object.entries(OSAT_CATEGORY_NAMES)) {
-        const ratings = issues.map(i => (i as any)[key]).filter((r: any) => r !== null && r !== undefined) as number[];
+        const ratings = issues.map(i => i[key as keyof typeof i]).filter((r): r is number => r !== null && r !== undefined) as number[];
         if (ratings.length > 0) {
           const lowCount = ratings.filter(r => r < 3).length;
           const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
@@ -300,7 +300,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     // ─── Drive-thru, weather, Google reviews ─────────────────────────────
     const driveThru = restaurant.driveThru;
     const weather = restaurant.weather;
-    const googleReviews = (restaurant as any).googleReviews as { rating: number; reviewCount: number; newReviewsToday: number } | undefined;
+    const googleReviews = restaurant.googleReviews;
 
     // ─── Fetch notes ─────────────────────────────────────────────────────
     let unitNotes: { note: string; hour: number | null; category: string }[] = [];

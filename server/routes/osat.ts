@@ -129,8 +129,8 @@ router.get("/api/osat/category-issues", async (req, res) => {
 
     for (const [key, label] of Object.entries(categoryNames)) {
       const ratings = issues
-        .map(i => (i as any)[key])
-        .filter((r: any) => r !== null && r !== undefined) as number[];
+        .map(i => i[key as keyof typeof i])
+        .filter((r): r is number => r !== null && r !== undefined) as number[];
 
       if (ratings.length > 0) {
         const lowCount = ratings.filter(r => r < 3).length;

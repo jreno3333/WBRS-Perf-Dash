@@ -432,7 +432,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   // Generate all 24 hours, filling in zeros for missing hours
   // Use localCurrentHour for grade display (restaurant's own timezone)
   // Fall back to normalizedHour if not available (for backward compatibility)
-  const localGradeCutoff = (restaurant as any).localCurrentHour ?? restaurant.normalizedHour;
+  const localGradeCutoff = restaurant.localCurrentHour ?? restaurant.normalizedHour;
   const normalizedCutoff = restaurant.normalizedHour;
   
   // Create a map of existing hourly data
@@ -767,7 +767,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 {/* Drive-Thru SOS Badge */}
                 {restaurant.driveThru && (() => {
                   const carCount = restaurant.driveThru.carCount || 0;
-                  const carsUnder6 = (restaurant.driveThru as any).carsUnder6Min || 0;
+                  const carsUnder6 = restaurant.driveThru.carsUnder6Min ?? 0;
                   const attainment = carCount > 0 ? Math.round((carsUnder6 / carCount) * 100) : 0;
                   const attColor = attainment >= 70
                     ? "bg-green-500/10 text-green-500"

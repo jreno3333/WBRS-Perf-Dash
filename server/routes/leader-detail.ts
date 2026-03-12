@@ -107,8 +107,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
 
     const leaderCrewRecords = crewData.filter(c => {
-      const members = (c.crewMembers as any[]) || [];
-      return members.some((m: any) => m.userId === userId);
+      const members = c.crewMembers ?? [];
+      return members.some(m => m.userId === userId);
     });
     const leaderDates = [...new Set(leaderCrewRecords.map(c => c.date))].sort();
     console.log(`[LEADER-DETAIL] userId=${userId}, crewData total=${crewData.length}, leaderCrewRecords=${leaderCrewRecords.length}, dates=${leaderDates.join(', ')}`);
@@ -170,8 +170,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const dailyMap = new Map<string, { restaurantId: string; hours: HourDetail[] }>();
 
     for (const crew of crewData) {
-      const members = (crew.crewMembers as any[]) || [];
-      const wasWorking = members.some((m: any) => m.userId === userId);
+      const members = crew.crewMembers ?? [];
+      const wasWorking = members.some(m => m.userId === userId);
       if (!wasWorking) continue;
 
       const key = crew.date;

@@ -116,7 +116,7 @@ export async function registerRoutes(
       await db.delete(gradingConfigTable);
       const [row] = await db.insert(gradingConfigTable).values({
         config,
-        updatedBy: (req.session as any)?.userId || "unknown",
+        updatedBy: req.session?.userId || "unknown",
       }).returning();
       console.log("[grading-config] Saved successfully, id:", row.id);
       invalidateGradingCache();

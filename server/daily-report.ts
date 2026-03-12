@@ -190,7 +190,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
           ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
           : 0;
 
-        const positions = (hour as any).positionBreakdown || {};
+        const positions = hour.positionBreakdown || {};
         const operatorHrs = positions['_operatorScheduled'] || 0;
         const rawEmployeeCount = Number(hour.employeeCount) || 0;
         const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
@@ -202,11 +202,11 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
         const gradeInfo = getExecutionGrade(
           salesVariancePct,
-          (hour as any).ootActive ? undefined : (hour as any).speedAttainment,
+          hour.ootActive ? undefined : hour.speedAttainment,
           staffingDiff,
           hasComparableSales,
           hasValidStaffing,
-          (hour as any).osatPercent,
+          hour.osatPercent,
           txnVar,
           hasCompTxn,
           gradingCfg
@@ -230,9 +230,9 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       const dailyTotalTxn = completedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
       const dailyTotalLWTxn = completedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
       const dailyTxnVar = dailyTotalLWTxn > 0 ? ((dailyTotalTxn - dailyTotalLWTxn) / dailyTotalLWTxn) * 100 : undefined;
-      const osatHoursForBonus = completedHours.filter(h => (h as any).osatPercent !== undefined && ((h as any).osatResponses ?? 0) > 0);
-      const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + ((h as any).osatResponses ?? 0), 0);
-      const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + ((h as any).osatPercent ?? 0) * ((h as any).osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
+      const osatHoursForBonus = completedHours.filter(h => h.osatPercent !== undefined && (h.osatResponses ?? 0) > 0);
+      const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
+      const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
 
       // YoY variance from historical_daily_sales (same value on every hour record)
       const lastYearDaily = completedHours[0]?.lastYearDailySales;
@@ -258,7 +258,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       const gradeLabel = validScores.length > 0 ? scoreToGradeLabel(overallScore) : '-';
 
       const speedData = hourlyData.reduce((acc, h) => {
-        const sa = (h as any).speedAttainment;
+        const sa = h.speedAttainment;
         if (sa !== undefined && sa >= 0) {
           acc.total += sa;
           acc.count++;
@@ -267,7 +267,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       }, { total: 0, count: 0 });
 
       const osatData = hourlyData.reduce((acc, h) => {
-        const op = (h as any).osatPercent;
+        const op = h.osatPercent;
         if (op !== undefined && op >= 0) {
           acc.total += op;
           acc.count++;

@@ -568,7 +568,7 @@ function aggregateInsights(insights: UnitInsight[], name: string, groupRestauran
     let totalUnder6 = 0;
     let storesWithData = 0;
     for (const r of groupRestaurants) {
-      const dt = (r as any).driveThru;
+      const dt = r.driveThru;
       if (dt && dt.carCount > 0) {
         totalCars += dt.carCount;
         totalUnder6 += dt.carsUnder6Min || 0;
@@ -1234,7 +1234,7 @@ export function DailySummary({
       for (const [key, label] of Object.entries(categoryNames)) {
         const ratings = issues
           .map(i => (i as any)[key])
-          .filter((r: any) => r !== null && r !== undefined) as number[];
+          .filter((r: number | null | undefined): r is number => r !== null && r !== undefined);
         
         if (ratings.length > 0) {
           const lowCount = ratings.filter(r => r < 3).length;

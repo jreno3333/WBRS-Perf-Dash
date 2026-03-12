@@ -197,10 +197,13 @@ export interface RestaurantSales {
     humidity: number;
     windSpeed: number;
   } | null;
+  localCurrentHour?: number; // Current hour in the restaurant's local timezone
   driveThru?: {
     carCount: number;
     avgTotalTime: number; // seconds
     avgServiceTime: number; // seconds
+    speedAttainment?: number; // % of cars served under 6 min
+    carsUnder6Min?: number; // count of cars under 6 min
   } | null;
   googleReviews?: {
     rating: number; // 1.0-5.0

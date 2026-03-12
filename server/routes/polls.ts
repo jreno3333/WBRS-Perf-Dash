@@ -11,7 +11,7 @@ const router = Router();
 router.get("/api/polls/active", async (req: Request, res: Response) => {
   try {
     const now = new Date();
-    const userId = (req.session as any)?.userId || null;
+    const userId = req.session?.userId || null;
 
     const activePolls = await db
       .select()
@@ -84,7 +84,7 @@ router.post("/api/polls/:pollId/vote", async (req: Request, res: Response) => {
   try {
     const { pollId } = req.params;
     const { optionId } = req.body;
-    const userId = (req.session as any)?.userId;
+    const userId = req.session?.userId;
 
     if (!userId) {
       return res.status(401).json({ message: "Must be logged in to vote" });
@@ -221,7 +221,7 @@ router.post("/api/polls", async (req: Request, res: Response) => {
         question: question.trim(),
         expiresAt: expiresAt ? new Date(expiresAt) : null,
         allowMultipleVotes: allowMultipleVotes ?? false,
-        createdBy: (req.session as any)?.userId || "admin",
+        createdBy: req.session?.userId || "admin",
       })
       .returning();
 

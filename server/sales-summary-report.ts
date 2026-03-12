@@ -441,7 +441,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         const salesVariancePct = hasComparableSales
           ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 : 0;
 
-        const positions = (hour as any).positionBreakdown || {};
+        const positions = hour.positionBreakdown || {};
         const operatorHrs = positions["_operatorScheduled"] || 0;
         const rawEmployeeCount = Number(hour.employeeCount) || 0;
         const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
@@ -457,8 +457,8 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           hasComparableSales,
           transactionVariancePct: txnVar,
           hasComparableTransactions: hasCompTxn,
-          speedAttainment: (hour as any).ootActive ? undefined : (hour as any).speedAttainment,
-          osatPercent: (hour as any).osatPercent,
+          speedAttainment: hour.ootActive ? undefined : hour.speedAttainment,
+          osatPercent: hour.osatPercent,
           staffingDiff,
           hasValidStaffing,
         }, gradingCfg);
@@ -477,10 +477,10 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       const dailyTotalTxn = completedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
       const dailyTotalLWTxn = completedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
       const dailyTxnVar = dailyTotalLWTxn > 0 ? ((dailyTotalTxn - dailyTotalLWTxn) / dailyTotalLWTxn) * 100 : undefined;
-      const osatHoursForBonus = completedHours.filter(h => (h as any).osatPercent !== undefined && ((h as any).osatResponses ?? 0) > 0);
-      const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + ((h as any).osatResponses ?? 0), 0);
+      const osatHoursForBonus = completedHours.filter(h => h.osatPercent !== undefined && (h.osatResponses ?? 0) > 0);
+      const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
       const dailyOsatPct = dailyOsatResponses > 0
-        ? osatHoursForBonus.reduce((s, h) => s + ((h as any).osatPercent ?? 0) * ((h as any).osatResponses ?? 0), 0) / dailyOsatResponses
+        ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses
         : undefined;
 
       const lastYearDaily = completedHours[0]?.lastYearDailySales;
@@ -505,15 +505,15 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
       // Speed
       const speedData = hourlyData.reduce((acc, h) => {
-        const sa = (h as any).speedAttainment;
+        const sa = h.speedAttainment;
         if (sa !== undefined && sa >= 0) { acc.total += sa; acc.count++; }
         return acc;
       }, { total: 0, count: 0 });
 
       // OSAT
       const osatData = hourlyData.reduce((acc, h) => {
-        const op = (h as any).osatPercent;
-        const or2 = (h as any).osatResponses;
+        const op = h.osatPercent;
+        const or2 = h.osatResponses;
         if (op !== undefined && op >= 0 && or2 > 0) { acc.totalWeighted += op * or2; acc.totalResponses += or2; }
         return acc;
       }, { totalWeighted: 0, totalResponses: 0 });
@@ -526,7 +526,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       let actualHoursTotal = 0;
       for (const hour of completedHours) {
         modelHoursTotal += getTotalRequiredStaff(hour.hour, hour.todaySales);
-        const positions = (hour as any).positionBreakdown || {};
+        const positions = hour.positionBreakdown || {};
         const operatorHrs = positions["_operatorScheduled"] || 0;
         const rawEmployeeCount = Number(hour.employeeCount) || 0;
         actualHoursTotal += Math.max(0, rawEmployeeCount - operatorHrs);

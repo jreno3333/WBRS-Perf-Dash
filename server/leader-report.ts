@@ -267,7 +267,7 @@ export async function buildLeaderReportHtml(dateStr: string): Promise<string | n
       let leaderTotalSurveys = 0;
 
       for (const crew of crewData) {
-        const members = (crew.crewMembers as any[]) || [];
+        const members = crew.crewMembers ?? [];
         const wasWorking = members.some(m => m.userId === userId);
         if (!wasWorking) continue;
 
