@@ -286,14 +286,29 @@ export async function sendSalesSummaryReports(force = false): Promise<{ sent: nu
   const result = { sent: 0, failed: 0 };
 
   try {
+    const schedules = await db.select().from(reportSchedules)
+      .where(eq(reportSchedules.reportType, "sales_summary"));
+    const schedule = schedules[0];
+
     if (!force) {
-      const schedules = await db.select().from(reportSchedules)
-        .where(eq(reportSchedules.reportType, "sales_summary"));
-      const schedule = schedules[0];
       if (schedule && !schedule.isEnabled) {
         console.log("[sales-summary] Automated sending is disabled - skipping");
         return result;
       }
+      // Double-check we're past the scheduled time (belt-and-suspenders guard)
+      if (schedule) {
+        const now = new Date();
+        const centralHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(now));
+        const centralMinute = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', minute: 'numeric' }).format(now));
+        const currentMinutes = centralHour * 60 + centralMinute;
+        const targetMinutes = schedule.sendHour * 60 + schedule.sendMinute;
+        if (currentMinutes < targetMinutes) {
+          console.log(`[sales-summary] Too early to send: CT ${centralHour}:${String(centralMinute).padStart(2, '0')}, scheduled for ${schedule.sendHour}:${String(schedule.sendMinute).padStart(2, '0')} - skipping`);
+          return result;
+        }
+      }
+    } else {
+      console.log("[sales-summary] Force send requested (Send Now button)");
     }
 
     const subscribers = await db.select()
