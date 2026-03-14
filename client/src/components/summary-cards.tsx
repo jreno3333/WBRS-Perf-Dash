@@ -660,7 +660,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
             const projYoYDiff = projectedSSSTotal - yoyTotalPrior;
             return (
               <p className={`text-xs font-medium mt-1.5 tabular-nums ${projectedYoYVariance >= 0 ? "text-blue-500" : "text-orange-500"}`} data-testid="text-yoy-projected-summary">
-                SSS YoY {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}%
+                Comp Store YoY {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}%
                 <span className="text-muted-foreground ml-1">({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})</span>
               </p>
             );
