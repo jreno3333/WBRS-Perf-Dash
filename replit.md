@@ -40,7 +40,7 @@ Preferred communication style: Simple, everyday language.
 - **Weekly Sales Trends**: Tracks Saturday-Friday business week totals at company, state, market, and unit levels with prior week comparison (via `/api/weekly-sales` endpoint).
 - **Sales Variance**: Calculates sales variance against historical data from 7 days prior.
 - **Same Store Sales (SSS)**: Company-level sales only count units open over 18 months, with a filter for SSS-eligible stores.
-- **Forecast Eligibility**: Units open less than 14 days are excluded from company-level forecast/projected rollups (daily and weekly) since they lack prior-week data. Their actual sales still appear in Total Sales.
+- **Forecast Eligibility**: All active (non-training) units are included in company-level forecast/projected rollups immediately. New units without prior-week data contribute their actual sales to projections.
 - **Year-over-Year (YoY) Sales Comparison**: Allows upload of historical daily sales CSVs for YoY comparisons, matching the same day of the week from the prior year. Displays projected YoY for individual units and aggregated SSS YoY.
 
 ## External Dependencies

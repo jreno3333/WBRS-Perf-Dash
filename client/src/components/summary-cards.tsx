@@ -66,13 +66,9 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
 
   const activeRestaurants = restaurants.filter(r => r.status !== "training");
   
-  const forecastEligible = activeRestaurants.filter(r => {
-    if (!r.openDate) return true;
-    const openDate = new Date(r.openDate);
-    const now = new Date();
-    const daysOpen = Math.floor((now.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24));
-    return daysOpen >= 14;
-  });
+  // Include all active restaurants in forecast/projected totals (no 14-day exclusion).
+  // New units without prior-week data contribute their actual sales to projections.
+  const forecastEligible = activeRestaurants;
 
   const sssRestaurants = activeRestaurants.filter(r => {
     if (!r.openDate) return true;
