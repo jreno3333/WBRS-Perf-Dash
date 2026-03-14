@@ -54,3 +54,7 @@ integrations = ["javascript_database:1.0.0"]
 WORKSTREAM_API_TOKEN = "gvK_0RnzCIXhddu-mhbdSAcimWlLIWoYyB0OAmIZ2yI"
 RESEND_API_KEY = "re_9smnVHLk_G2vxtyE7JFoUCoqxr27eaPEy"
 RESEND_FROM_EMAIL = "MWB Dashboard <system@wbrssystem.com>"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
