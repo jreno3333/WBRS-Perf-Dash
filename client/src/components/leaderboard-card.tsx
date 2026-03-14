@@ -3,7 +3,7 @@ import { Link } from "wouter";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles, Trophy, Flame, Diamond, Zap } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles, Trophy, Flame, Diamond, Zap, Target } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
@@ -166,6 +166,7 @@ interface LeaderboardCardProps {
   dateStr?: string;
   onNoteAdded?: () => void;
   attachmentCategories?: Record<string, { attachRate: number }>;
+  overallAttachScore?: number;
 }
 
 function formatTenure(months: number): string {
@@ -365,7 +366,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
   );
 }
 
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories }: LeaderboardCardProps) {
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   const gradingCfg = useGradingConfig();
@@ -839,6 +840,23 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         ? <TrendingUp className="w-2.5 h-2.5 text-green-500" />
                         : <TrendingDown className="w-2.5 h-2.5 text-red-500" />
                     )}
+                  </BadgeWithTooltip>
+                )}
+                {overallAttachScore !== undefined && (
+                  <BadgeWithTooltip
+                    className={`flex-shrink-0 text-xs px-1.5 gap-1 border-0 ${
+                      overallAttachScore >= 100
+                        ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                        : overallAttachScore >= 80
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                          : 'bg-red-500/10 text-red-500'
+                    }`}
+                    data-testid={`badge-upsell-${restaurant.restaurantId}`}
+                    tooltipTitle="Upsell Score"
+                    tooltipDetail="Composite score based on attachment rates across all upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize). 100+ is at or above target."
+                  >
+                    <Target className="w-3 h-3" />
+                    <span className="font-medium">{overallAttachScore}</span>
                   </BadgeWithTooltip>
                 )}
                 {/* Revenue Port Badges */}

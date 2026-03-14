@@ -208,7 +208,7 @@ export default function Dashboard() {
 
   // Fetch attachment rates for The Closer bonus
   const { data: attachmentRatesResponse } = useQuery<{
-    restaurants: Record<string, { categories: Record<string, { attachRate: number; vsTarget: number }> }>;
+    restaurants: Record<string, { categories: Record<string, { attachRate: number; vsTarget: number }>; overallAttachScore?: number }>;
   }>({
     queryKey: ["/api/pos/attachment-rates", dateStr],
     queryFn: async () => {
@@ -862,6 +862,7 @@ export default function Dashboard() {
                       dateStr={dateStr}
                       onNoteAdded={refetchNotes}
                       attachmentCategories={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.categories}
+                      overallAttachScore={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.overallAttachScore}
                     />
                   ))}
                 </div>

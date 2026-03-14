@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, BarChart3, Users, AlertTriangle, Clock, Activity, ShoppingBag } from "lucide-react";
 import { useState } from "react";
@@ -564,21 +565,29 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                       const catsAtTarget = categories.filter(cat => r.categories[cat]?.vsTarget >= 0).length;
                       return (
                         <div key={r.id} className="flex items-center justify-between text-xs">
-                          <span className="flex items-center mr-2 max-w-[140px]">
-                            <span className="truncate" title={r.restaurantName || r.id}>
+                          {catsAtTarget >= 4 ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <span
+                                  className="mr-2 max-w-[140px] truncate font-bold text-amber-600 dark:text-amber-400 cursor-pointer"
+                                  title={r.restaurantName || r.id}
+                                  data-testid={`text-attach-restaurant-${r.id}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                >
+                                  {displayName}
+                                </span>
+                              </PopoverTrigger>
+                              <PopoverContent side="top" className="w-auto max-w-[280px] p-2 text-xs">
+                                <div className="font-medium">The Closer</div>
+                                <div className="text-muted-foreground">{`Hit ${catsAtTarget}/6 attachment rate targets today. Earned +${catsAtTarget} bonus points. The Closer badge is awarded when a unit meets or exceeds the target on 4 or more of the 6 upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize) — proving the team is closing the sale on every order.`}</div>
+                              </PopoverContent>
+                            </Popover>
+                          ) : (
+                            <span className="mr-2 max-w-[140px] truncate" title={r.restaurantName || r.id} data-testid={`text-attach-restaurant-${r.id}`}>
                               {displayName}
                             </span>
-                            {catsAtTarget >= 4 && (
-                              <BadgeWithTooltip
-                                tooltipTitle="The Closer"
-                                tooltipDetail={`Hit ${catsAtTarget}/6 attachment rate targets today. Earned +${catsAtTarget} bonus points. The Closer badge is awarded when a unit meets or exceeds the target on 4 or more of the 6 upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize) — proving the team is closing the sale on every order.`}
-                              >
-                                <Badge variant="outline" className="text-[8px] ml-1 py-0 px-1 text-amber-600 border-amber-400 cursor-pointer shrink-0">
-                                  🎯
-                                </Badge>
-                              </BadgeWithTooltip>
-                            )}
-                          </span>
+                          )}
                           <div className="flex items-center gap-1">
                             {categories.map(cat => {
                               const data = r.categories[cat];
