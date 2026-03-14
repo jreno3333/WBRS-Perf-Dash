@@ -143,6 +143,7 @@ export class DatabaseStorage {
 
       let selectedDateSalesAmount = 0;
       let actualSalesAmount = 0;
+      let completedSalesAmount = 0;
 
       if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
         posSalesForRestaurant.forEach((sales, hour) => {
@@ -150,8 +151,9 @@ export class DatabaseStorage {
             selectedDateSalesAmount += sales;
           }
           if (hour <= restaurantCompletedHour) {
-            actualSalesAmount += sales;
+            completedSalesAmount += sales;
           }
+          actualSalesAmount += sales;
         });
       } else if (!isToday) {
         selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
@@ -160,6 +162,7 @@ export class DatabaseStorage {
         actualSalesAmount = allSelectedDateHours.reduce(
           (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
         );
+        completedSalesAmount = actualSalesAmount;
       }
 
       let lastWeekSalesAmount = 0;
@@ -213,7 +216,7 @@ export class DatabaseStorage {
           }
         }
       }
-      const rawPaceRatio = actualLastWeekAmount > 0 ? actualSalesAmount / actualLastWeekAmount : 1;
+      const rawPaceRatio = actualLastWeekAmount > 0 ? completedSalesAmount / actualLastWeekAmount : 1;
       // Dampen the pace ratio early in the day to avoid volatile projections.
       // Typical restaurant operating hours are ~6 AM to 10 PM (16 hours).
       // Early in the day, blend toward 1.0 (assume same as last week);
@@ -222,7 +225,7 @@ export class DatabaseStorage {
       const dayProgress = isToday ? Math.min((restaurantCompletedHour + 1) / operatingHours, 1) : 1;
       const paceRatio = 1 + (rawPaceRatio - 1) * dayProgress;
       const lastWeekFullDayAmount = actualLastWeekAmount + lastWeekRemainingHoursSales;
-      const forecastSalesAmount = actualSalesAmount + lastWeekRemainingHoursSales * paceRatio;
+      const forecastSalesAmount = completedSalesAmount + lastWeekRemainingHoursSales * paceRatio;
 
       const completedHours = Math.max(0, normalizedHourCutoff + 1);
       const pacePercentage = (completedHours / 24) * 100;
