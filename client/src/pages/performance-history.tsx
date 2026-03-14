@@ -272,6 +272,7 @@ interface AnniversaryData {
 interface AgendaExtras {
   attachment?: AttachmentData | null;
   anniversaries?: AnniversaryData[];
+  weekendDates?: string[];
 }
 
 function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], leaders: LeaderRanking[] = [], extras: AgendaExtras = {}): string {
@@ -406,9 +407,73 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   });
   agenda += "\n";
 
-  // Section 2: Daypart Performance Breakdown
+  // Section 2: Weekend Scorecard
+  const weekend = restaurant.weekend;
+  const { weekendDates } = extras;
   agenda += "───────────────────────────────────────────\n";
-  agenda += "2. DAYPART PERFORMANCE BREAKDOWN\n";
+  agenda += "2. WEEKEND SCORECARD";
+  if (weekendDates && weekendDates.length > 0) {
+    agenda += ` (${weekendDates.map(d => formatDate(d)).join(", ")})`;
+  } else {
+    agenda += " (Fri / Sat / Sun)";
+  }
+  agenda += "\n───────────────────────────────────────────\n\n";
+
+  if (weekend && weekend.weekendDayCount > 0) {
+    agenda += `  Weekend Grade:        ${weekend.weekendGradeLabel} (${weekend.weekendGrade.toFixed(1)})\n`;
+    agenda += `  Weekend Sales:        ${formatCurrency(weekend.weekendTotalSales)}\n`;
+    agenda += `  Avg Sales Variance:   ${weekend.weekendAvgSalesVariance >= 0 ? "+" : ""}${weekend.weekendAvgSalesVariance.toFixed(1)}%\n`;
+    if (weekend.weekendAvgSpeed !== undefined) {
+      agenda += `  Speed Attainment:     ${Math.round(weekend.weekendAvgSpeed)}%\n`;
+    }
+    if (weekend.weekendAvgOsat !== undefined) {
+      agenda += `  OSAT:                 ${weekend.weekendAvgOsat.toFixed(0)}% (${weekend.weekendTotalOsatResponses} responses)\n`;
+    }
+    agenda += `  Staffing Diff:        ${weekend.weekendAvgStaffingDiff >= 0 ? "+" : ""}${weekend.weekendAvgStaffingDiff.toFixed(1)}\n`;
+    if (weekend.weekendAvgAttachScore !== undefined) {
+      const upsellColor = weekend.weekendAvgAttachScore >= 90 ? "✓" : weekend.weekendAvgAttachScore >= 70 ? "⚠" : "✗";
+      agenda += `  Upsell Score:         ${upsellColor} ${weekend.weekendAvgAttachScore}%\n`;
+    }
+    agenda += "\n";
+
+    // Comparison to overall period
+    agenda += "  vs Overall Period:\n";
+    const gradeDelta = weekend.overallGradeDelta;
+    agenda += `    Grade:              ${gradeDelta >= 0 ? "+" : ""}${gradeDelta.toFixed(1)} pts ${gradeDelta > 0 ? "↑ better" : gradeDelta < 0 ? "↓ weaker" : "→ same"}\n`;
+    const salesVarDelta = weekend.overallSalesVarianceDelta;
+    agenda += `    Sales Variance:     ${salesVarDelta >= 0 ? "+" : ""}${salesVarDelta.toFixed(1)}% ${salesVarDelta > 0 ? "↑" : salesVarDelta < 0 ? "↓" : "→"}\n`;
+    if (weekend.overallSpeedDelta !== undefined) {
+      agenda += `    Speed:              ${weekend.overallSpeedDelta >= 0 ? "+" : ""}${weekend.overallSpeedDelta.toFixed(1)}% ${weekend.overallSpeedDelta > 0 ? "↑" : weekend.overallSpeedDelta < 0 ? "↓" : "→"}\n`;
+    }
+    if (weekend.overallOsatDelta !== undefined) {
+      agenda += `    OSAT:               ${weekend.overallOsatDelta >= 0 ? "+" : ""}${weekend.overallOsatDelta.toFixed(1)}% ${weekend.overallOsatDelta > 0 ? "↑" : weekend.overallOsatDelta < 0 ? "↓" : "→"}\n`;
+    }
+    agenda += "\n";
+
+    // Per-day breakdown
+    if (weekend.perDay.length > 0) {
+      agenda += "  Per-Day Breakdown:\n";
+      agenda += "  ┌───────────────┬───────┬──────────┬──────────┬───────┐\n";
+      agenda += "  │ Day           │ Grade │ Sales    │ Variance │ Speed │\n";
+      agenda += "  ├───────────────┼───────┼──────────┼──────────┼───────┤\n";
+      weekend.perDay.forEach(day => {
+        const dayLabel = formatDate(day.day).padEnd(13);
+        const gradeStr = day.avgGradeLabel.padEnd(3);
+        const salesStr = formatCurrency(day.totalSales).padStart(8);
+        const varStr = ((day.avgSalesVariance >= 0 ? "+" : "") + day.avgSalesVariance.toFixed(1) + "%").padStart(8);
+        const speedStr = day.avgSpeed !== undefined ? (Math.round(day.avgSpeed) + "%").padStart(5) : "  N/A";
+        agenda += `  │ ${dayLabel} │ ${gradeStr}   │ ${salesStr} │ ${varStr} │ ${speedStr} │\n`;
+      });
+      agenda += "  └───────────────┴───────┴──────────┴──────────┴───────┘\n";
+    }
+  } else {
+    agenda += "  No weekend data available for this period.\n";
+  }
+  agenda += "\n";
+
+  // Section 3: Daypart Performance Breakdown
+  agenda += "───────────────────────────────────────────\n";
+  agenda += "3. DAYPART PERFORMANCE BREAKDOWN\n";
   agenda += "───────────────────────────────────────────\n\n";
 
   // Aggregate daypart data across all days in the period
@@ -505,9 +570,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   });
   agenda += "\n";
 
-  // Section 3: Leader Rankings
+  // Section 4: Leader Rankings
   agenda += "───────────────────────────────────────────\n";
-  agenda += "3. LEADER RANKINGS (Same Period)\n";
+  agenda += "4. LEADER RANKINGS (Same Period)\n";
   agenda += "───────────────────────────────────────────\n\n";
 
   if (leaders.length > 0) {
@@ -542,9 +607,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
     agenda += "  No leader ranking data available for this period.\n\n";
   }
 
-  // Section 4: Leader Shout-Outs
+  // Section 5: Leader Shout-Outs
   agenda += "───────────────────────────────────────────\n";
-  agenda += "4. LEADER SHOUT-OUTS & WINS\n";
+  agenda += "5. LEADER SHOUT-OUTS & WINS\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (shoutOuts.length > 0) {
     shoutOuts.forEach(s => {
@@ -558,9 +623,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   }
   agenda += "\n";
 
-  // Section 5: Opportunity Day Parts
+  // Section 6: Opportunity Day Parts
   agenda += "───────────────────────────────────────────\n";
-  agenda += "5. OPPORTUNITY AREAS & WEAK DAYS\n";
+  agenda += "6. OPPORTUNITY AREAS & WEAK DAYS\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (opportunityDays.length > 0) {
     agenda += "  Lowest Performing Days:\n";
@@ -576,9 +641,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   }
   agenda += "\n";
 
-  // Section 6: Customer Service
+  // Section 7: Customer Service
   agenda += "───────────────────────────────────────────\n";
-  agenda += "6. CUSTOMER SERVICE (OSAT)\n";
+  agenda += "7. CUSTOMER SERVICE (OSAT)\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (avgOsat !== undefined) {
     agenda += `  Average OSAT:    ${avgOsat.toFixed(0)}% (${restaurant.totalOsatResponses} total responses)\n`;
@@ -601,9 +666,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   }
   agenda += "\n";
 
-  // Section 7: Speed of Service & B-Lane
+  // Section 8: Speed of Service & B-Lane
   agenda += "───────────────────────────────────────────\n";
-  agenda += "7. SPEED OF SERVICE & B-LANE\n";
+  agenda += "8. SPEED OF SERVICE & B-LANE\n";
   agenda += "───────────────────────────────────────────\n\n";
   if (restaurant.avgSpeed !== undefined) {
     agenda += `  Avg Speed Attainment: ${Math.round(restaurant.avgSpeed)}%\n`;
@@ -632,9 +697,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   }
   agenda += "\n";
 
-  // Section 8: Staffing
+  // Section 9: Staffing
   agenda += "───────────────────────────────────────────\n";
-  agenda += "8. STAFFING & CREW\n";
+  agenda += "9. STAFFING & CREW\n";
   agenda += "───────────────────────────────────────────\n\n";
   agenda += `  Avg Staffing Diff:  ${restaurant.avgStaffingDiff >= 0 ? "+" : ""}${restaurant.avgStaffingDiff.toFixed(1)}\n`;
   if (restaurant.avgXp !== undefined) {
@@ -649,10 +714,10 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   }
   agenda += "\n";
 
-  // Section 9: Attachment Rate / Upsell Metrics
+  // Section 10: Attachment Rate / Upsell Metrics
   const { attachment, anniversaries } = extras;
   agenda += "───────────────────────────────────────────\n";
-  agenda += "9. ATTACHMENT RATE & UPSELL METRICS\n";
+  agenda += "10. ATTACHMENT RATE & UPSELL METRICS\n";
   agenda += "───────────────────────────────────────────\n\n";
 
   if (attachment && attachment.totalOrders > 0) {
@@ -701,9 +766,9 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
     agenda += "  No attachment rate data available (requires POS integration).\n\n";
   }
 
-  // Section 10: Upcoming Team Anniversaries
+  // Section 11: Upcoming Team Anniversaries
   agenda += "───────────────────────────────────────────\n";
-  agenda += "10. UPCOMING TEAM ANNIVERSARIES (Next 7 Days)\n";
+  agenda += "11. UPCOMING TEAM ANNIVERSARIES (Next 7 Days)\n";
   agenda += "───────────────────────────────────────────\n\n";
 
   if (anniversaries && anniversaries.length > 0) {
@@ -722,7 +787,7 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
 
   // Section 11: Action Items
   agenda += "═══════════════════════════════════════════\n";
-  agenda += "11. ACTION ITEMS (Next 7 Days)\n";
+  agenda += "12. ACTION ITEMS (Next 7 Days)\n";
   agenda += "═══════════════════════════════════════════\n\n";
 
   let actionNum = 1;
@@ -829,11 +894,12 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
   return agenda;
 }
 
-function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
+function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange, weekendDates }: {
   restaurant: RestaurantHistory;
   dateRange: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  weekendDates?: string[];
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -902,7 +968,8 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange }: {
   const agenda = useMemo(() => generateRMMAgenda(restaurant, dateRange, storeLeaders, {
     attachment: storeAttachment,
     anniversaries: storeAnniversaries,
-  }), [restaurant, dateRange, storeLeaders, storeAttachment, storeAnniversaries]);
+    weekendDates,
+  }), [restaurant, dateRange, storeLeaders, storeAttachment, storeAnniversaries, weekendDates]);
 
   const handleCopySelection = useCallback(async () => {
     const selection = window.getSelection()?.toString();
@@ -1175,7 +1242,7 @@ function WeekendScorecardSection({ weekend, restaurant }: { weekend: WeekendData
   );
 }
 
-function RestaurantCard({ restaurant, dateRange }: { restaurant: RestaurantHistory; dateRange: string[] }) {
+function RestaurantCard({ restaurant, dateRange, weekendDates }: { restaurant: RestaurantHistory; dateRange: string[]; weekendDates?: string[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const [rmmOpen, setRmmOpen] = useState(false);
 
@@ -1268,6 +1335,7 @@ function RestaurantCard({ restaurant, dateRange }: { restaurant: RestaurantHisto
                 dateRange={dateRange}
                 open={rmmOpen}
                 onOpenChange={setRmmOpen}
+                weekendDates={weekendDates}
               />
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -1700,7 +1768,7 @@ export default function PerformanceHistoryPage() {
               ) : (
                 <div>
                   {filteredRestaurants.map((restaurant) => (
-                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} />
+                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendSummary?.weekendDates} />
                   ))}
                 </div>
               )}
