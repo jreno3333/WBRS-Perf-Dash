@@ -5,7 +5,7 @@ import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, 
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
-import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange } from "../xenial-webhook";
+import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
 import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
@@ -60,6 +60,18 @@ router.get("/api/performance-history", async (req, res) => {
           dateRange.push(dateStr);
         }
       }
+    }
+
+    if (dateRange.length === 0) {
+      return res.json({
+        restaurants: [],
+        companySummary: { restaurantCount: 0, avgGrade: 0, avgGradeLabel: 'N/A', totalSales: 0, avgSalesVariance: 0, avgOsat: undefined, avgImprovement: 0 },
+        stateSummaries: [],
+        marketSummaries: [],
+        weekendSummary: { company: null, states: [], markets: [] },
+        dateRange: [],
+        latestDataDate: latestDataDate || todayCentral
+      });
     }
 
     // Fetch all data in parallel for performance
@@ -735,6 +747,250 @@ router.get("/api/performance-history", async (req, res) => {
     // Sort by average grade descending
     restaurantHistories.sort((a, b) => b.avgGrade - a.avgGrade);
 
+    // ── Fetch attachment rates for weekend days ──
+    const weekendDatesInRange = dateRange.filter(d => {
+      const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
+      return dow === 5 || dow === 6 || dow === 0;
+    });
+
+    type AttachmentDayData = {
+      overallAttachScore: number;
+      categoriesAtTarget: number;
+      totalOrders: number;
+    };
+    const attachmentByRestaurantDay = new Map<string, AttachmentDayData>();
+
+    if (weekendDatesInRange.length > 0) {
+      try {
+        const attachResults = await Promise.all(
+          weekendDatesInRange.map(d => getAttachmentRatesFromDetail(new Date(`${d}T12:00:00Z`)))
+        );
+        for (let i = 0; i < weekendDatesInRange.length; i++) {
+          const dateStr = weekendDatesInRange[i];
+          const dayData = attachResults[i];
+          dayData.forEach((value, restaurantId) => {
+            const cats = value.categories || {};
+            const atTarget = Object.values(cats).filter(c => c.vsTarget >= 0).length;
+            attachmentByRestaurantDay.set(`${restaurantId}::${dateStr}`, {
+              overallAttachScore: value.overallAttachScore,
+              categoriesAtTarget: atTarget,
+              totalOrders: value.totalOrders,
+            });
+          });
+        }
+      } catch (err) {
+        console.error("[perf-history] Error fetching weekend attachment rates:", err);
+      }
+    }
+
+    // ── Weekend Scorecard computation ──
+    // Weekend days: Friday (5), Saturday (6), Sunday (0)
+    const isWeekendDay = (dateStr: string): boolean => {
+      const d = new Date(`${dateStr}T12:00:00Z`);
+      const dow = d.getUTCDay();
+      return dow === 5 || dow === 6 || dow === 0;
+    };
+    const getWeekendDayLabel = (dateStr: string): string => {
+      const d = new Date(`${dateStr}T12:00:00Z`);
+      const dow = d.getUTCDay();
+      if (dow === 5) return "Friday";
+      if (dow === 6) return "Saturday";
+      if (dow === 0) return "Sunday";
+      return "";
+    };
+
+    type WeekendDaySummary = {
+      day: string;
+      avgGrade: number;
+      avgGradeLabel: string;
+      totalSales: number;
+      avgSalesVariance: number;
+      avgSpeed?: number;
+      avgStaffingDiff: number;
+      avgOsat?: number;
+      totalOsatResponses: number;
+      dayCount: number;
+      avgAttachScore?: number;
+      avgCategoriesAtTarget?: number;
+    };
+
+    type RestaurantWeekendData = {
+      weekendGrade: number;
+      weekendGradeLabel: string;
+      weekendTotalSales: number;
+      weekendAvgSalesVariance: number;
+      weekendAvgSpeed?: number;
+      weekendAvgStaffingDiff: number;
+      weekendAvgOsat?: number;
+      weekendTotalOsatResponses: number;
+      weekendDayCount: number;
+      overallGradeDelta: number;
+      overallSalesVarianceDelta: number;
+      overallSpeedDelta?: number;
+      overallOsatDelta?: number;
+      weekendAvgAttachScore?: number;
+      weekendAvgCategoriesAtTarget?: number;
+      perDay: WeekendDaySummary[];
+    };
+
+    function computeWeekendStats(restaurantId: string, grades: DailyGrade[], overallAvgGrade: number, overallAvgSalesVariance: number, overallAvgSpeed?: number, overallAvgOsat?: number): RestaurantWeekendData | null {
+      const weekendGrades = grades.filter(g => isWeekendDay(g.date));
+      if (weekendGrades.length === 0) return null;
+
+      const wkGrade = weekendGrades.reduce((s, g) => s + g.grade, 0) / weekendGrades.length;
+      const wkSales = weekendGrades.reduce((s, g) => s + g.totalSales, 0);
+      const comparableWk = weekendGrades.filter(g => g.hasComparableSales);
+      const wkSalesVar = comparableWk.length > 0
+        ? comparableWk.reduce((s, g) => s + g.salesVariance, 0) / comparableWk.length
+        : 0;
+      const wkSpeedDays = weekendGrades.filter(g => g.avgSpeed !== undefined);
+      const wkSpeed = wkSpeedDays.length > 0
+        ? wkSpeedDays.reduce((s, g) => s + g.avgSpeed!, 0) / wkSpeedDays.length
+        : undefined;
+      const wkStaffDiff = weekendGrades.reduce((s, g) => s + g.staffingDiff, 0) / weekendGrades.length;
+      const wkOsatDays = weekendGrades.filter(g => g.osatPercent !== undefined && g.osatResponses && g.osatResponses > 0);
+      const wkOsatResp = wkOsatDays.reduce((s, g) => s + (g.osatResponses || 0), 0);
+      const wkOsat = wkOsatResp > 0
+        ? wkOsatDays.reduce((s, g) => s + (g.osatPercent! * (g.osatResponses || 0)), 0) / wkOsatResp
+        : undefined;
+
+      const wkAttachScores: number[] = [];
+      const wkAttachCats: number[] = [];
+      weekendGrades.forEach(g => {
+        const ad = attachmentByRestaurantDay.get(`${restaurantId}::${g.date}`);
+        if (ad && ad.totalOrders > 0) {
+          wkAttachScores.push(ad.overallAttachScore);
+          wkAttachCats.push(ad.categoriesAtTarget);
+        }
+      });
+      const wkAvgAttach = wkAttachScores.length > 0
+        ? Math.round(wkAttachScores.reduce((s, v) => s + v, 0) / wkAttachScores.length * 10) / 10
+        : undefined;
+      const wkAvgCats = wkAttachCats.length > 0
+        ? Math.round(wkAttachCats.reduce((s, v) => s + v, 0) / wkAttachCats.length * 10) / 10
+        : undefined;
+
+      const perDay: WeekendDaySummary[] = [];
+      for (const dayLabel of ["Friday", "Saturday", "Sunday"]) {
+        const dayGrades = weekendGrades.filter(g => getWeekendDayLabel(g.date) === dayLabel);
+        if (dayGrades.length === 0) continue;
+        const dGrade = dayGrades.reduce((s, g) => s + g.grade, 0) / dayGrades.length;
+        const dSales = dayGrades.reduce((s, g) => s + g.totalSales, 0);
+        const dCompGrades = dayGrades.filter(g => g.hasComparableSales);
+        const dSalesVar = dCompGrades.length > 0
+          ? dCompGrades.reduce((s, g) => s + g.salesVariance, 0) / dCompGrades.length
+          : 0;
+        const dSpeedDays = dayGrades.filter(g => g.avgSpeed !== undefined);
+        const dSpeed = dSpeedDays.length > 0
+          ? dSpeedDays.reduce((s, g) => s + g.avgSpeed!, 0) / dSpeedDays.length
+          : undefined;
+        const dStaffDiff = dayGrades.reduce((s, g) => s + g.staffingDiff, 0) / dayGrades.length;
+        const dOsatDays = dayGrades.filter(g => g.osatPercent !== undefined && g.osatResponses && g.osatResponses > 0);
+        const dOsatResp = dOsatDays.reduce((s, g) => s + (g.osatResponses || 0), 0);
+        const dOsat = dOsatResp > 0
+          ? dOsatDays.reduce((s, g) => s + (g.osatPercent! * (g.osatResponses || 0)), 0) / dOsatResp
+          : undefined;
+
+        const dAttachScores: number[] = [];
+        const dAttachCats: number[] = [];
+        dayGrades.forEach(g => {
+          const ad = attachmentByRestaurantDay.get(`${restaurantId}::${g.date}`);
+          if (ad && ad.totalOrders > 0) {
+            dAttachScores.push(ad.overallAttachScore);
+            dAttachCats.push(ad.categoriesAtTarget);
+          }
+        });
+
+        perDay.push({
+          day: dayLabel,
+          avgGrade: dGrade,
+          avgGradeLabel: getGradeLabel(dGrade),
+          totalSales: dSales,
+          avgSalesVariance: Math.round(dSalesVar * 10) / 10,
+          avgSpeed: dSpeed !== undefined ? Math.round(dSpeed) : undefined,
+          avgStaffingDiff: Math.round(dStaffDiff * 10) / 10,
+          avgOsat: dOsat !== undefined ? Math.round(dOsat * 10) / 10 : undefined,
+          totalOsatResponses: dOsatResp,
+          dayCount: dayGrades.length,
+          avgAttachScore: dAttachScores.length > 0
+            ? Math.round(dAttachScores.reduce((s, v) => s + v, 0) / dAttachScores.length * 10) / 10
+            : undefined,
+          avgCategoriesAtTarget: dAttachCats.length > 0
+            ? Math.round(dAttachCats.reduce((s, v) => s + v, 0) / dAttachCats.length * 10) / 10
+            : undefined,
+        });
+      }
+
+      return {
+        weekendGrade: wkGrade,
+        weekendGradeLabel: getGradeLabel(wkGrade),
+        weekendTotalSales: wkSales,
+        weekendAvgSalesVariance: Math.round(wkSalesVar * 10) / 10,
+        weekendAvgSpeed: wkSpeed !== undefined ? Math.round(wkSpeed) : undefined,
+        weekendAvgStaffingDiff: Math.round(wkStaffDiff * 10) / 10,
+        weekendAvgOsat: wkOsat !== undefined ? Math.round(wkOsat * 10) / 10 : undefined,
+        weekendTotalOsatResponses: wkOsatResp,
+        weekendDayCount: weekendGrades.length,
+        overallGradeDelta: Math.round((wkGrade - overallAvgGrade) * 10) / 10,
+        overallSalesVarianceDelta: Math.round(((comparableWk.length > 0 ? wkSalesVar : 0) - overallAvgSalesVariance) * 10) / 10,
+        overallSpeedDelta: wkSpeed !== undefined && overallAvgSpeed !== undefined
+          ? Math.round(wkSpeed - overallAvgSpeed)
+          : undefined,
+        overallOsatDelta: wkOsat !== undefined && overallAvgOsat !== undefined
+          ? Math.round((wkOsat - overallAvgOsat) * 10) / 10
+          : undefined,
+        weekendAvgAttachScore: wkAvgAttach,
+        weekendAvgCategoriesAtTarget: wkAvgCats,
+        perDay,
+      };
+    }
+
+    // Attach weekend data to each restaurant
+    const restaurantWeekendMap = new Map<string, RestaurantWeekendData>();
+    restaurantHistories.forEach(r => {
+      const wkData = computeWeekendStats(r.restaurantId, r.dailyGrades, r.avgGrade, r.avgSalesVariance, r.avgSpeed, r.avgOsat);
+      if (wkData) restaurantWeekendMap.set(r.restaurantId, wkData);
+    });
+
+    // Weekend roll-up helper
+    function computeWeekendRollup(restaurants: RestaurantHistory[]) {
+      const withWeekend = restaurants.filter(r => restaurantWeekendMap.has(r.restaurantId));
+      if (withWeekend.length === 0) return undefined;
+      const wkDatas = withWeekend.map(r => restaurantWeekendMap.get(r.restaurantId)!);
+      const avgGrade = wkDatas.reduce((s, w) => s + w.weekendGrade, 0) / wkDatas.length;
+      const totalSales = wkDatas.reduce((s, w) => s + w.weekendTotalSales, 0);
+      const avgSalesVar = wkDatas.reduce((s, w) => s + w.weekendAvgSalesVariance, 0) / wkDatas.length;
+      const speedDatas = wkDatas.filter(w => w.weekendAvgSpeed !== undefined);
+      const avgSpeed = speedDatas.length > 0
+        ? speedDatas.reduce((s, w) => s + w.weekendAvgSpeed!, 0) / speedDatas.length
+        : undefined;
+      const osatDatas = wkDatas.filter(w => w.weekendAvgOsat !== undefined);
+      const avgOsat = osatDatas.length > 0
+        ? osatDatas.reduce((s, w) => s + w.weekendAvgOsat!, 0) / osatDatas.length
+        : undefined;
+      const avgStaffDiff = wkDatas.reduce((s, w) => s + w.weekendAvgStaffingDiff, 0) / wkDatas.length;
+      const attachDatas = wkDatas.filter(w => w.weekendAvgAttachScore !== undefined);
+      const avgAttachScore = attachDatas.length > 0
+        ? attachDatas.reduce((s, w) => s + w.weekendAvgAttachScore!, 0) / attachDatas.length
+        : undefined;
+      const catDatas = wkDatas.filter(w => w.weekendAvgCategoriesAtTarget !== undefined);
+      const avgCatsAtTarget = catDatas.length > 0
+        ? catDatas.reduce((s, w) => s + w.weekendAvgCategoriesAtTarget!, 0) / catDatas.length
+        : undefined;
+      return {
+        restaurantCount: withWeekend.length,
+        avgGrade,
+        avgGradeLabel: getGradeLabel(avgGrade),
+        totalSales,
+        avgSalesVariance: Math.round(avgSalesVar * 10) / 10,
+        avgSpeed: avgSpeed !== undefined ? Math.round(avgSpeed) : undefined,
+        avgOsat: avgOsat !== undefined ? Math.round(avgOsat * 10) / 10 : undefined,
+        avgStaffingDiff: Math.round(avgStaffDiff * 10) / 10,
+        avgAttachScore: avgAttachScore !== undefined ? Math.round(avgAttachScore * 10) / 10 : undefined,
+        avgCategoriesAtTarget: avgCatsAtTarget !== undefined ? Math.round(avgCatsAtTarget * 10) / 10 : undefined,
+      };
+    }
+
     // Calculate state summaries
     const stateMap = new Map<string, RestaurantHistory[]>();
     restaurantHistories.forEach(r => {
@@ -795,6 +1051,19 @@ router.get("/api/performance-history", async (req, res) => {
       };
     });
 
+    // Weekend roll-up summaries (computed after state/market maps are built)
+    const weekendCompanySummary = computeWeekendRollup(restaurantHistories);
+
+    const weekendStateSummaries = Array.from(stateMap.entries()).map(([state, restaurants]) => ({
+      state,
+      ...computeWeekendRollup(restaurants),
+    })).filter(s => s.avgGrade !== undefined);
+
+    const weekendMarketSummaries = Array.from(marketMap.entries()).map(([market, restaurants]) => ({
+      market,
+      ...computeWeekendRollup(restaurants),
+    })).filter(s => s.avgGrade !== undefined);
+
     // Overall company summary
     const companySummary = {
       restaurantCount: restaurantHistories.length,
@@ -821,12 +1090,22 @@ router.get("/api/performance-history", async (req, res) => {
         : 0,
     };
 
+    const restaurantsWithWeekend = restaurantHistories.map(r => ({
+      ...r,
+      weekend: restaurantWeekendMap.get(r.restaurantId) || null,
+    }));
+
     res.json({
       dateRange,
-      restaurants: restaurantHistories,
+      restaurants: restaurantsWithWeekend,
       stateSummaries,
       marketSummaries,
       companySummary,
+      weekendSummary: {
+        company: weekendCompanySummary || null,
+        states: weekendStateSummaries,
+        markets: weekendMarketSummaries,
+      },
     });
   } catch (error) {
     console.error("Error fetching performance history:", error);

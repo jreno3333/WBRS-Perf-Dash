@@ -76,6 +76,53 @@ interface DailyGrade {
   bLaneHours?: number;
 }
 
+interface WeekendDaySummary {
+  day: string;
+  avgGrade: number;
+  avgGradeLabel: string;
+  totalSales: number;
+  avgSalesVariance: number;
+  avgSpeed?: number;
+  avgStaffingDiff: number;
+  avgOsat?: number;
+  totalOsatResponses: number;
+  dayCount: number;
+  avgAttachScore?: number;
+  avgCategoriesAtTarget?: number;
+}
+
+interface WeekendData {
+  weekendGrade: number;
+  weekendGradeLabel: string;
+  weekendTotalSales: number;
+  weekendAvgSalesVariance: number;
+  weekendAvgSpeed?: number;
+  weekendAvgStaffingDiff: number;
+  weekendAvgOsat?: number;
+  weekendTotalOsatResponses: number;
+  weekendDayCount: number;
+  overallGradeDelta: number;
+  overallSalesVarianceDelta: number;
+  overallSpeedDelta?: number;
+  overallOsatDelta?: number;
+  weekendAvgAttachScore?: number;
+  weekendAvgCategoriesAtTarget?: number;
+  perDay: WeekendDaySummary[];
+}
+
+interface WeekendRollup {
+  restaurantCount: number;
+  avgGrade: number;
+  avgGradeLabel: string;
+  totalSales: number;
+  avgSalesVariance: number;
+  avgSpeed?: number;
+  avgOsat?: number;
+  avgStaffingDiff: number;
+  avgAttachScore?: number;
+  avgCategoriesAtTarget?: number;
+}
+
 interface RestaurantHistory {
   restaurantId: string;
   restaurantName: string;
@@ -93,6 +140,7 @@ interface RestaurantHistory {
   totalOsatResponses: number;
   avgXp?: number;
   gradeImprovement: number;
+  weekend?: WeekendData | null;
 }
 
 interface StateSummary {
@@ -130,6 +178,11 @@ interface PerformanceHistoryData {
     avgSalesVariance: number;
     avgOsat?: number;
     avgImprovement: number;
+  };
+  weekendSummary?: {
+    company: WeekendRollup | null;
+    states: (WeekendRollup & { state: string })[];
+    markets: (WeekendRollup & { market: string })[];
   };
 }
 
@@ -1002,6 +1055,125 @@ function GradeTimeline({ grades }: { grades: DailyGrade[] }) {
   );
 }
 
+function DeltaBadge({ value, suffix = "", invert = false }: { value: number; suffix?: string; invert?: boolean }) {
+  const isPositive = invert ? value < 0 : value > 0;
+  const isNegative = invert ? value > 0 : value < 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${isPositive ? "text-green-600" : isNegative ? "text-red-600" : "text-muted-foreground"}`}>
+      {value > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : value < 0 ? <TrendingDown className="w-2.5 h-2.5" /> : null}
+      {value > 0 ? "+" : ""}{value}{suffix}
+    </span>
+  );
+}
+
+function WeekendDayCard({ day }: { day: WeekendDaySummary }) {
+  return (
+    <div className="p-3 rounded-lg border bg-card" data-testid={`card-weekend-day-${day.day.toLowerCase()}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold">{day.day}</span>
+        <span className="text-[10px] text-muted-foreground">{day.dayCount} day{day.dayCount !== 1 ? "s" : ""}</span>
+      </div>
+      <div className={`text-2xl font-bold mb-2 ${getGradeColor(day.avgGradeLabel)}`}>
+        {day.avgGradeLabel}
+        <span className="text-xs font-normal text-muted-foreground ml-1">({day.avgGrade.toFixed(0)})</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+        <div>
+          <span className="text-muted-foreground">Sales</span>
+          <div className="font-medium">{formatCurrency(day.totalSales)}</div>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Variance</span>
+          <div className={`font-medium ${day.avgSalesVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {day.avgSalesVariance >= 0 ? "+" : ""}{day.avgSalesVariance.toFixed(1)}%
+          </div>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Speed</span>
+          <div className={`font-medium ${day.avgSpeed !== undefined ? (day.avgSpeed >= 70 ? "text-green-600" : day.avgSpeed >= 50 ? "text-yellow-600" : "text-red-600") : ""}`}>
+            {day.avgSpeed !== undefined ? `${day.avgSpeed}%` : "N/A"}
+          </div>
+        </div>
+        <div>
+          <span className="text-muted-foreground">OSAT</span>
+          <div className={`font-medium ${day.avgOsat !== undefined ? (day.avgOsat >= 85 ? "text-green-600" : day.avgOsat >= 80 ? "text-yellow-600" : "text-red-600") : ""}`}>
+            {day.avgOsat !== undefined ? `${day.avgOsat}%` : "N/A"}
+          </div>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Staff Diff</span>
+          <div className="font-medium">
+            {day.avgStaffingDiff >= 0 ? "+" : ""}{day.avgStaffingDiff}
+          </div>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Upsell</span>
+          <div className={`font-medium ${day.avgAttachScore !== undefined ? (day.avgAttachScore >= 30 ? "text-green-600" : day.avgAttachScore >= 20 ? "text-yellow-600" : "text-red-600") : ""}`}>
+            {day.avgAttachScore !== undefined ? `${day.avgAttachScore}%` : "N/A"}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeekendScorecardSection({ weekend, restaurant }: { weekend: WeekendData; restaurant: RestaurantHistory }) {
+  return (
+    <div className="space-y-3 pt-2" data-testid={`section-weekend-scorecard-${restaurant.restaurantId}`}>
+      <div className="flex items-center gap-2">
+        <Calendar className="w-4 h-4 text-orange-500" />
+        <h4 className="text-sm font-semibold">Weekend Scorecard</h4>
+        <Badge variant="secondary" className="text-[10px]">{weekend.weekendDayCount} days</Badge>
+      </div>
+
+      <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+        <div>
+          <div className={`text-2xl font-bold ${getGradeColor(weekend.weekendGradeLabel)}`}>
+            {weekend.weekendGradeLabel}
+          </div>
+          <div className="text-[10px] text-muted-foreground">Weekend Avg ({weekend.weekendGrade.toFixed(0)})</div>
+        </div>
+        <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div>
+            <span className="text-muted-foreground">vs Overall</span>
+            <div className="font-medium"><DeltaBadge value={weekend.overallGradeDelta} suffix=" pts" /></div>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Sales Var Δ</span>
+            <div className="font-medium"><DeltaBadge value={weekend.overallSalesVarianceDelta} suffix="%" /></div>
+          </div>
+          {weekend.overallSpeedDelta !== undefined && (
+            <div>
+              <span className="text-muted-foreground">Speed Δ</span>
+              <div className="font-medium"><DeltaBadge value={weekend.overallSpeedDelta} suffix="%" /></div>
+            </div>
+          )}
+          {weekend.overallOsatDelta !== undefined && (
+            <div>
+              <span className="text-muted-foreground">OSAT Δ</span>
+              <div className="font-medium"><DeltaBadge value={weekend.overallOsatDelta} suffix="%" /></div>
+            </div>
+          )}
+          {weekend.weekendAvgAttachScore !== undefined && (
+            <div>
+              <span className="text-muted-foreground">Upsell</span>
+              <div className={`font-medium ${weekend.weekendAvgAttachScore >= 30 ? "text-green-600" : weekend.weekendAvgAttachScore >= 20 ? "text-yellow-600" : "text-red-600"}`}>
+                {weekend.weekendAvgAttachScore}%
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {weekend.perDay.map(day => (
+          <WeekendDayCard key={day.day} day={day} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RestaurantCard({ restaurant, dateRange }: { restaurant: RestaurantHistory; dateRange: string[] }) {
   const [isOpen, setIsOpen] = useState(false);
   const [rmmOpen, setRmmOpen] = useState(false);
@@ -1030,6 +1202,12 @@ function RestaurantCard({ restaurant, dateRange }: { restaurant: RestaurantHisto
                     )}
                   </div>
                 </div>
+                {restaurant.weekend && (
+                  <div className={`flex flex-col items-center px-2 py-1 rounded-md border ${getGradeBgColor(restaurant.weekend.weekendGradeLabel)}`} data-testid={`badge-weekend-grade-${restaurant.restaurantId}`}>
+                    <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Wknd</span>
+                    <span className={`text-sm font-bold ${getGradeColor(restaurant.weekend.weekendGradeLabel)}`}>{restaurant.weekend.weekendGradeLabel}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-4 flex-wrap">
@@ -1160,10 +1338,64 @@ function RestaurantCard({ restaurant, dateRange }: { restaurant: RestaurantHisto
                   </div>
                 </div>
               </div>
+
+              {restaurant.weekend && (
+                <WeekendScorecardSection weekend={restaurant.weekend} restaurant={restaurant} />
+              )}
             </div>
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
+    </Card>
+  );
+}
+
+function WeekendRollupCard({ title, icon: Icon, rollup }: { title: string; icon: typeof Globe; rollup: WeekendRollup }) {
+  return (
+    <Card data-testid={`card-weekend-rollup-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Icon className="w-4 h-4 text-orange-500" />
+            <CardTitle className="text-sm">{title}</CardTitle>
+          </div>
+          <Badge variant="secondary" className="text-[10px]">{rollup.restaurantCount} units</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div className={`text-2xl font-bold ${getGradeColor(rollup.avgGradeLabel)}`}>{rollup.avgGradeLabel}</div>
+            <div className="text-[10px] text-muted-foreground">Avg Grade ({rollup.avgGrade.toFixed(0)})</div>
+          </div>
+          <div>
+            <div className="text-base font-semibold">{formatCurrency(rollup.totalSales)}</div>
+            <div className="text-[10px] text-muted-foreground">Wknd Sales</div>
+          </div>
+          <div>
+            <div className={`text-sm font-semibold ${rollup.avgSalesVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {rollup.avgSalesVariance >= 0 ? "+" : ""}{rollup.avgSalesVariance}%
+            </div>
+            <div className="text-[10px] text-muted-foreground">Avg Variance</div>
+          </div>
+          {rollup.avgOsat !== undefined && (
+            <div>
+              <div className={`text-sm font-semibold ${rollup.avgOsat >= 85 ? "text-green-600" : rollup.avgOsat >= 80 ? "text-yellow-600" : "text-red-600"}`}>
+                {rollup.avgOsat}%
+              </div>
+              <div className="text-[10px] text-muted-foreground">OSAT</div>
+            </div>
+          )}
+          {rollup.avgAttachScore !== undefined && (
+            <div>
+              <div className={`text-sm font-semibold ${rollup.avgAttachScore >= 30 ? "text-green-600" : rollup.avgAttachScore >= 20 ? "text-yellow-600" : "text-red-600"}`}>
+                {rollup.avgAttachScore}%
+              </div>
+              <div className="text-[10px] text-muted-foreground">Upsell</div>
+            </div>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }
@@ -1405,6 +1637,39 @@ export default function PerformanceHistoryPage() {
                       avgOsat={market.avgOsat}
                       avgImprovement={market.avgImprovement}
                       count={market.restaurantCount}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {data.weekendSummary?.company && (
+              <div data-testid="section-weekend-summary">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-5 h-5 text-orange-500" />
+                  <h2 className="text-lg font-semibold">Weekend Scorecard</h2>
+                  <span className="text-xs text-muted-foreground">(Fri / Sat / Sun)</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <WeekendRollupCard
+                    title="Company Weekend"
+                    icon={Globe}
+                    rollup={data.weekendSummary.company}
+                  />
+                  {data.weekendSummary.states.map((s) => (
+                    <WeekendRollupCard
+                      key={s.state}
+                      title={`${s.state} Wknd`}
+                      icon={MapPin}
+                      rollup={s}
+                    />
+                  ))}
+                  {data.weekendSummary.markets.map((m) => (
+                    <WeekendRollupCard
+                      key={m.market}
+                      title={`${m.market} Wknd`}
+                      icon={Building2}
+                      rollup={m}
                     />
                   ))}
                 </div>
