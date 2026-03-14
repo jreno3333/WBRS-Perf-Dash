@@ -51,23 +51,8 @@ router.post("/api/google-reviews/sync", async (req, res) => {
   }
 });
 
-// Get Google reviews for a specific restaurant
-router.get("/api/google-reviews/:restaurantId", async (req, res) => {
-  try {
-    const { restaurantId } = req.params;
-    const { date } = req.query;
-
-    const { getGoogleReviewsForRestaurant } = await import("../google-places");
-    const reviews = await getGoogleReviewsForRestaurant(restaurantId, date ? String(date) : undefined);
-
-    res.json({ restaurantId, reviews });
-  } catch (error) {
-    console.error("Error fetching Google reviews:", error);
-    res.status(500).json({ error: "Failed to fetch Google reviews" });
-  }
-});
-
 // Get Google reviews summary for all restaurants
+// NOTE: This must be defined BEFORE the :restaurantId route to avoid "daily-summary" being captured as a restaurantId
 router.get("/api/google-reviews/daily-summary", async (req, res) => {
   try {
     const { date } = req.query;
@@ -84,6 +69,22 @@ router.get("/api/google-reviews/daily-summary", async (req, res) => {
   } catch (error) {
     console.error("Error fetching Google reviews summary:", error);
     res.status(500).json({ error: "Failed to fetch Google reviews summary" });
+  }
+});
+
+// Get Google reviews for a specific restaurant
+router.get("/api/google-reviews/:restaurantId", async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { date } = req.query;
+
+    const { getGoogleReviewsForRestaurant } = await import("../google-places");
+    const reviews = await getGoogleReviewsForRestaurant(restaurantId, date ? String(date) : undefined);
+
+    res.json({ restaurantId, reviews });
+  } catch (error) {
+    console.error("Error fetching Google reviews:", error);
+    res.status(500).json({ error: "Failed to fetch Google reviews" });
   }
 });
 

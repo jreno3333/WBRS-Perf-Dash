@@ -103,8 +103,21 @@ export async function ensureFeatureTables() {
         updated_at TIMESTAMP DEFAULT now(),
         updated_by TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS daily_google_reviews (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        restaurant_id VARCHAR NOT NULL,
+        date TEXT NOT NULL,
+        rating DECIMAL(2, 1),
+        review_count INTEGER,
+        last_synced_at TIMESTAMP DEFAULT now(),
+        is_final_snapshot BOOLEAN DEFAULT false
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS daily_google_reviews_restaurant_date_idx
+        ON daily_google_reviews (restaurant_id, date);
     `);
-    console.log("[db] Feature tables (ticker, polls, milestones, grading_config) ready");
+    console.log("[db] Feature tables (ticker, polls, milestones, grading_config, daily_google_reviews) ready");
   } catch (error) {
     console.error("[db] Failed to ensure feature tables:", error);
   }
