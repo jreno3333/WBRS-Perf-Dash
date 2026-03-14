@@ -34,6 +34,7 @@ import {
   X,
   MessageSquare,
   UserCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -112,6 +113,22 @@ interface DeliveryPercentage {
   totalOrders: number;
 }
 
+interface MissingManagerStore {
+  restaurant: string;
+  restaurantId: string;
+  uncoveredHours: number;
+  totalHours: number;
+  gapPercentage: number;
+  gaps: { date: string; hour: number }[];
+}
+
+interface MissingManagerReport {
+  totalUncoveredHours: number;
+  storeCount: number;
+  stores: MissingManagerStore[];
+  worstStore: { restaurant: string; uncoveredHours: number; gapPercentage: number } | null;
+}
+
 interface AnalysisData {
   dateRange: { start: string; end: string; days: number };
   previousPeriod: { start: string; end: string };
@@ -123,6 +140,7 @@ interface AnalysisData {
     appPercentages: AppPercentage[];
     deliveryPercentages: DeliveryPercentage[];
     fullLaneB: FullLaneBData[];
+    missingManagerReport: MissingManagerReport;
   };
 }
 
@@ -1163,6 +1181,111 @@ export default function AiAnalysisPage() {
                         </Card>
                       );
                     })()}
+                  </>
+                )}
+              </div>
+            </InsightCard>
+
+            {/* 7. Missing Manager Report */}
+            <InsightCard
+              icon={ShieldAlert}
+              title="Missing Manager Report"
+              question="Which hours at each store had no manager, shift supervisor, or operator present?"
+              defaultOpen={true}
+              accentColor="text-rose-600"
+              bgColor="bg-rose-500/10"
+            >
+              <div className="space-y-4" data-testid="missing-manager-section">
+                {!data?.insights.missingManagerReport ? (
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Loading missing manager data...</span>
+                  </div>
+                ) : data.insights.missingManagerReport.storeCount === 0 ? (
+                  <p className="text-sm text-muted-foreground italic" data-testid="text-full-coverage">
+                    All stores had manager/supervisor/operator coverage during every operational hour in this period.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Badge variant="destructive" className="text-base px-3 py-1" data-testid="badge-uncovered-hours">
+                        {data.insights.missingManagerReport.totalUncoveredHours}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        total uncovered hours across {data.insights.missingManagerReport.storeCount} store{data.insights.missingManagerReport.storeCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    <div className="rounded-lg border overflow-hidden overflow-x-auto">
+                      <table className="w-full text-sm" data-testid="table-missing-manager">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="text-left px-3 py-2 font-medium">Store</th>
+                            <th className="text-center px-3 py-2 font-medium">Uncovered Hours</th>
+                            <th className="text-center px-3 py-2 font-medium">Gap %</th>
+                            <th className="text-left px-3 py-2 font-medium">Affected Dates & Hours</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.insights.missingManagerReport.stores.map((store) => {
+                            const groupedGaps = store.gaps.reduce<Record<string, number[]>>((acc, g) => {
+                              if (!acc[g.date]) acc[g.date] = [];
+                              acc[g.date].push(g.hour);
+                              return acc;
+                            }, {});
+                            const dateEntries = Object.entries(groupedGaps).slice(0, 5);
+                            const remainingDates = Object.keys(groupedGaps).length - dateEntries.length;
+
+                            return (
+                              <tr key={store.restaurantId} className="border-t hover:bg-muted/30" data-testid={`row-missing-manager-${store.restaurantId}`}>
+                                <td className="px-3 py-2 font-medium whitespace-nowrap">
+                                  {store.restaurant.replace(/^\d+\s*-\s*/, '')}
+                                </td>
+                                <td className="px-3 py-2 text-center font-semibold text-rose-600 dark:text-rose-400">
+                                  {store.uncoveredHours}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className={`font-semibold ${store.gapPercentage >= 50 ? 'text-rose-600' : store.gapPercentage >= 25 ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                                    {store.gapPercentage}%
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className="space-y-0.5">
+                                    {dateEntries.map(([date, hours]) => (
+                                      <div key={date} className="text-xs">
+                                        <span className="font-medium">{formatDate(date)}:</span>{' '}
+                                        <span className="text-muted-foreground">
+                                          {hours.map(h => formatHour(h)).join(', ')}
+                                        </span>
+                                      </div>
+                                    ))}
+                                    {remainingDates > 0 && (
+                                      <div className="text-xs text-muted-foreground italic">
+                                        +{remainingDates} more date{remainingDates !== 1 ? 's' : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {data.insights.missingManagerReport.worstStore && (
+                      <Card className="border-rose-500/30 bg-rose-500/5" data-testid="card-worst-gap">
+                        <CardContent className="p-3">
+                          <p className="text-xs font-semibold text-rose-600 mb-1">Worst Coverage Gap</p>
+                          <p className="text-sm">
+                            <span className="font-medium">{data.insights.missingManagerReport.worstStore.restaurant.replace(/^\d+\s*-\s*/, '')}</span>
+                            <span className="text-muted-foreground">
+                              {' '}— {data.insights.missingManagerReport.worstStore.uncoveredHours} uncovered hours ({data.insights.missingManagerReport.worstStore.gapPercentage}% of operational hours)
+                            </span>
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
                   </>
                 )}
               </div>

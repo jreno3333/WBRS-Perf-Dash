@@ -54,6 +54,7 @@ router.get("/api/ai-analysis", async (req, res) => {
       destinationData,
       prevDestinationData,
       ootData,
+      missingManagerData,
     ] = await Promise.all([
       // 1a. Hours with sales over $2000
       getHighSalesHours(startDateStr, endDateStr, 2000),
@@ -67,6 +68,8 @@ router.get("/api/ai-analysis", async (req, res) => {
       getDestinationBreakdown(prevStartDateStr, prevEndDateStr),
       // 5. Full Lane B usage
       getFullLaneBUsage(startDateStr, endDateStr),
+      // 7. Missing manager hours
+      getMissingManagerHours(startDateStr, endDateStr),
     ]);
 
     // Process dine-in % change
@@ -85,6 +88,7 @@ router.get("/api/ai-analysis", async (req, res) => {
         appPercentages,
         deliveryPercentages,
         fullLaneB: formatFullLaneBData(ootData, restaurantMap),
+        missingManagerReport: formatMissingManagerReport(missingManagerData, restaurantMap),
       },
     });
   } catch (error) {
@@ -226,6 +230,144 @@ async function getFullLaneBUsage(startDate: string, endDate: string) {
   }
 
   return restaurantLaneB;
+}
+
+async function getMissingManagerHours(startDate: string, endDate: string) {
+  const laborRows = await db
+    .select({
+      restaurantId: hourlyLabor.restaurantId,
+      date: hourlyLabor.date,
+      hour: hourlyLabor.hour,
+      employeeCount: hourlyLabor.employeeCount,
+      positionBreakdown: hourlyLabor.positionBreakdown,
+    })
+    .from(hourlyLabor)
+    .where(
+      and(
+        gte(hourlyLabor.date, startDate),
+        lte(hourlyLabor.date, endDate),
+        sql`(${hourlyLabor.employeeCount})::numeric > 0`
+      )
+    );
+
+  const laborKeys = new Set(laborRows.map(r => `${r.restaurantId}|${r.date}|${r.hour}`));
+
+  const startTs = new Date(startDate + "T00:00:00Z");
+  const endTs = new Date(endDate + "T23:59:59Z");
+  const salesRows = await db
+    .select({
+      restaurantId: hourlySales.restaurantId,
+      salesDate: hourlySales.salesDate,
+      hour: hourlySales.hour,
+      employeeCount: hourlySales.employeeCount,
+      positionBreakdown: hourlySales.positionBreakdown,
+    })
+    .from(hourlySales)
+    .where(
+      and(
+        gte(hourlySales.salesDate, startTs),
+        lte(hourlySales.salesDate, endTs),
+        sql`(${hourlySales.employeeCount})::numeric > 0`
+      )
+    );
+
+  interface HourRecord {
+    restaurantId: string;
+    date: string;
+    hour: number;
+    positionBreakdown: Record<string, number> | null;
+  }
+
+  const allHours: HourRecord[] = [];
+
+  for (const row of laborRows) {
+    allHours.push({
+      restaurantId: row.restaurantId,
+      date: row.date,
+      hour: row.hour,
+      positionBreakdown: row.positionBreakdown,
+    });
+  }
+
+  for (const row of salesRows) {
+    const dateStr = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const key = `${row.restaurantId}|${dateStr}|${row.hour}`;
+    if (laborKeys.has(key)) continue;
+    allHours.push({
+      restaurantId: row.restaurantId,
+      date: dateStr,
+      hour: row.hour,
+      positionBreakdown: row.positionBreakdown,
+    });
+  }
+
+  const result = new Map<string, { totalHours: number; uncoveredHours: number; gaps: { date: string; hour: number }[] }>();
+
+  for (const row of allHours) {
+    if (!result.has(row.restaurantId)) {
+      result.set(row.restaurantId, { totalHours: 0, uncoveredHours: 0, gaps: [] });
+    }
+    const data = result.get(row.restaurantId)!;
+    data.totalHours++;
+
+    const positions = row.positionBreakdown || {};
+    const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
+    const hasManager = positionKeys.some(p => p.includes("manager"));
+    const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
+    const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
+
+    if (!hasManager && !hasShiftSupervisor && !hasOperatorScheduled) {
+      data.uncoveredHours++;
+      data.gaps.push({ date: row.date, hour: row.hour });
+    }
+  }
+
+  return result;
+}
+
+function formatMissingManagerReport(
+  data: Map<string, { totalHours: number; uncoveredHours: number; gaps: { date: string; hour: number }[] }>,
+  restaurantMap: Map<string, string>
+) {
+  const stores: {
+    restaurant: string;
+    restaurantId: string;
+    uncoveredHours: number;
+    totalHours: number;
+    gapPercentage: number;
+    gaps: { date: string; hour: number }[];
+  }[] = [];
+
+  let totalUncovered = 0;
+
+  data.forEach((info, restaurantId) => {
+    if (info.uncoveredHours === 0) return;
+    totalUncovered += info.uncoveredHours;
+    const name = restaurantMap.get(restaurantId) || restaurantId;
+    stores.push({
+      restaurant: name,
+      restaurantId,
+      uncoveredHours: info.uncoveredHours,
+      totalHours: info.totalHours,
+      gapPercentage: Math.round((info.uncoveredHours / info.totalHours) * 1000) / 10,
+      gaps: info.gaps.sort((a: { date: string; hour: number }, b: { date: string; hour: number }) => a.date.localeCompare(b.date) || a.hour - b.hour),
+    });
+  });
+
+  stores.sort((a, b) => b.uncoveredHours - a.uncoveredHours);
+
+  const worstStore = stores.length > 0 ? stores[0] : null;
+
+  return {
+    totalUncoveredHours: totalUncovered,
+    storeCount: stores.length,
+    stores,
+    worstStore: worstStore ? {
+      restaurant: worstStore.restaurant,
+      uncoveredHours: worstStore.uncoveredHours,
+      gapPercentage: worstStore.gapPercentage,
+    } : null,
+  };
 }
 
 // ---- Helper Functions ----
