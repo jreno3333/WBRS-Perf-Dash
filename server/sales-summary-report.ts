@@ -784,7 +784,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       } else if (compYoY7 < 0 && compYoY30 < 0) {
         trendInsight = gapClosing
           ? "&#9650; Closing the gap &mdash; 7-day YoY deficit is narrower than the 30-day trend. Recovery underway."
-          : "&#9660; Widening the gap &mdash; 7-day YoY deficit is larger than the 30-day trend. Headwind increasing.";
+          : "&#9660; Widening the gap &mdash; 7-day YoY deficit is larger than the 30-day trend.";
       } else {
         trendInsight = gapClosing
           ? "&#9650; Improving &mdash; 7-day YoY is stronger than the 30-day trend."

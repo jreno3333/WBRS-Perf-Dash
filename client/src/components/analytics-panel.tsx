@@ -215,42 +215,24 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                 <Activity className="w-4 h-4 text-muted-foreground" />
                 <CardTitle className="text-sm font-semibold">Sandbox</CardTitle>
 
-                {/* Quick summary badges — collapsed header shows consistency, schedule, suppressed */}
-                {consistency && (
-                  <BadgeWithTooltip
-                    variant="outline"
-                    className={`text-xs ${getConsistencyColor(consistency.companyAvgConsistency)}`}
-                    tooltipContent={
-                      <div className="space-y-1.5">
-                        <div className={`font-semibold ${getConsistencyColor(consistency.companyAvgConsistency)}`}>
-                          Company Consistency: {consistency.companyAvgConsistency}/100
-                        </div>
-                        <div className="text-muted-foreground leading-snug">
-                          Measures 14-day hourly grade stability across all units. Lower variance and fewer D/F hours = higher score. Below 50 needs attention.
-                        </div>
-                        {consistency.restaurants.length > 0 && (
-                          <div className="border-t border-border/50 pt-1 space-y-0.5">
-                            <div className="font-medium text-[10px] text-muted-foreground">Lowest scoring units:</div>
-                            {[...consistency.restaurants]
-                              .sort((a, b) => a.consistencyScore - b.consistencyScore)
-                              .slice(0, 3)
-                              .map(r => (
-                                <div key={r.restaurantId} className="flex justify-between gap-3">
-                                  <span className="truncate">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
-                                  <span className={`font-semibold flex-shrink-0 ${getConsistencyColor(r.consistencyScore)}`}>
-                                    {r.consistencyScore} · {r.dfPercent}% D/F
-                                  </span>
-                                </div>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    }
-                    side="bottom"
-                  >
-                    CST: {consistency.companyAvgConsistency}
-                  </BadgeWithTooltip>
-                )}
+                {attachmentRates && Object.keys(attachmentRates.restaurants).length > 0 && (() => {
+                  const rList = Object.values(attachmentRates.restaurants);
+                  const companyAvgUpsell = rList.length > 0
+                    ? Math.round(rList.reduce((s, r) => s + r.overallAttachScore, 0) / rList.length)
+                    : 0;
+                  const upsellColor = companyAvgUpsell >= 90 ? "text-green-600 dark:text-green-400" : companyAvgUpsell >= 70 ? "text-yellow-600 dark:text-yellow-400" : "text-red-600 dark:text-red-400";
+                  return (
+                    <BadgeWithTooltip
+                      variant="outline"
+                      className={`text-xs ${upsellColor}`}
+                      tooltipTitle={`Upsell Score: ${companyAvgUpsell}`}
+                      tooltipDetail="Company avg composite upsell score based on attachment rates across all categories. 90+ green, 70-89 yellow, below 70 red."
+                      side="bottom"
+                    >
+                      Upsell: {companyAvgUpsell}
+                    </BadgeWithTooltip>
+                  );
+                })()}
                 {avgCompliance !== null && (
                   <BadgeWithTooltip
                     variant="outline"
@@ -604,8 +586,8 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                               );
                             })}
                             <span className={`w-10 text-center font-bold ${
-                              r.overallAttachScore >= 100 ? 'text-green-600 dark:text-green-400' :
-                              r.overallAttachScore >= 80 ? 'text-amber-600 dark:text-amber-400' :
+                              r.overallAttachScore >= 90 ? 'text-green-600 dark:text-green-400' :
+                              r.overallAttachScore >= 70 ? 'text-yellow-600 dark:text-yellow-400' :
                               'text-red-500'
                             }`}>
                               {r.overallAttachScore}

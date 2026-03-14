@@ -183,6 +183,7 @@ interface PerformanceHistoryData {
     company: WeekendRollup | null;
     states: (WeekendRollup & { state: string })[];
     markets: (WeekendRollup & { market: string })[];
+    weekendDates?: string[];
   };
 }
 
@@ -377,7 +378,7 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
 
   // Section 1: Performance Summary
   agenda += "───────────────────────────────────────────\n";
-  agenda += "1. PERFORMANCE SUMMARY (Last 7 Days)\n";
+  agenda += "1. PERFORMANCE SUMMARY (Last 8 Days)\n";
   agenda += "───────────────────────────────────────────\n\n";
   agenda += `  Overall Grade:        ${avgLabel} (${avgGradeNum.toFixed(1)})\n`;
   agenda += `  Total Sales:          ${totalSales}\n`;
@@ -1108,7 +1109,7 @@ function WeekendDayCard({ day }: { day: WeekendDaySummary }) {
         </div>
         <div>
           <span className="text-muted-foreground">Upsell</span>
-          <div className={`font-medium ${day.avgAttachScore !== undefined ? (day.avgAttachScore >= 30 ? "text-green-600" : day.avgAttachScore >= 20 ? "text-yellow-600" : "text-red-600") : ""}`}>
+          <div className={`font-medium ${day.avgAttachScore !== undefined ? (day.avgAttachScore >= 90 ? "text-green-600" : day.avgAttachScore >= 70 ? "text-yellow-600" : "text-red-600") : ""}`}>
             {day.avgAttachScore !== undefined ? `${day.avgAttachScore}%` : "N/A"}
           </div>
         </div>
@@ -1157,7 +1158,7 @@ function WeekendScorecardSection({ weekend, restaurant }: { weekend: WeekendData
           {weekend.weekendAvgAttachScore !== undefined && (
             <div>
               <span className="text-muted-foreground">Upsell</span>
-              <div className={`font-medium ${weekend.weekendAvgAttachScore >= 30 ? "text-green-600" : weekend.weekendAvgAttachScore >= 20 ? "text-yellow-600" : "text-red-600"}`}>
+              <div className={`font-medium ${weekend.weekendAvgAttachScore >= 90 ? "text-green-600" : weekend.weekendAvgAttachScore >= 70 ? "text-yellow-600" : "text-red-600"}`}>
                 {weekend.weekendAvgAttachScore}%
               </div>
             </div>
@@ -1388,7 +1389,7 @@ function WeekendRollupCard({ title, icon: Icon, rollup }: { title: string; icon:
           )}
           {rollup.avgAttachScore !== undefined && (
             <div>
-              <div className={`text-sm font-semibold ${rollup.avgAttachScore >= 30 ? "text-green-600" : rollup.avgAttachScore >= 20 ? "text-yellow-600" : "text-red-600"}`}>
+              <div className={`text-sm font-semibold ${rollup.avgAttachScore >= 90 ? "text-green-600" : rollup.avgAttachScore >= 70 ? "text-yellow-600" : "text-red-600"}`}>
                 {rollup.avgAttachScore}%
               </div>
               <div className="text-[10px] text-muted-foreground">Upsell</div>
@@ -1476,7 +1477,7 @@ function SummaryCard({
 }
 
 export default function PerformanceHistoryPage() {
-  const [dateRange, setDateRange] = useState("7");
+  const [dateRange, setDateRange] = useState("8");
   const [selectedState, setSelectedState] = useState<string>("all");
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
 
@@ -1535,7 +1536,7 @@ export default function PerformanceHistoryPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="7">Last 7 Days</SelectItem>
+                  <SelectItem value="8">Last 8 Days</SelectItem>
                   <SelectItem value="14">Last 14 Days</SelectItem>
                   <SelectItem value="30">Last 30 Days</SelectItem>
                 </SelectContent>
@@ -1648,7 +1649,11 @@ export default function PerformanceHistoryPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <Calendar className="w-5 h-5 text-orange-500" />
                   <h2 className="text-lg font-semibold">Weekend Scorecard</h2>
-                  <span className="text-xs text-muted-foreground">(Fri / Sat / Sun)</span>
+                  <span className="text-xs text-muted-foreground">
+                    {data.weekendSummary.weekendDates && data.weekendSummary.weekendDates.length > 0
+                      ? `(${data.weekendSummary.weekendDates.map(d => formatDate(d)).join(", ")})`
+                      : "(Fri / Sat / Sun)"}
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   <WeekendRollupCard

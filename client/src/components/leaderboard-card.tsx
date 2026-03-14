@@ -845,15 +845,15 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                 {overallAttachScore !== undefined && (
                   <BadgeWithTooltip
                     className={`flex-shrink-0 text-xs px-1.5 gap-1 border-0 ${
-                      overallAttachScore >= 100
+                      overallAttachScore >= 90
                         ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                        : overallAttachScore >= 80
-                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                        : overallAttachScore >= 70
+                          ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
                           : 'bg-red-500/10 text-red-500'
                     }`}
                     data-testid={`badge-upsell-${restaurant.restaurantId}`}
                     tooltipTitle="Upsell Score"
-                    tooltipDetail="Composite score based on attachment rates across all upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize). 100+ is at or above target."
+                    tooltipDetail="Composite score based on attachment rates across all upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize). 90+ is green (at target), 70-89 is yellow, below 70 is red."
                   >
                     <Target className="w-3 h-3" />
                     <span className="font-medium">{overallAttachScore}</span>

@@ -1105,6 +1105,7 @@ router.get("/api/performance-history", async (req, res) => {
         company: weekendCompanySummary || null,
         states: weekendStateSummaries,
         markets: weekendMarketSummaries,
+        weekendDates: dateRange.filter(d => isWeekendDay(d)),
       },
     });
   } catch (error) {
