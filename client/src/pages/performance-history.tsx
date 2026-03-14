@@ -1483,7 +1483,7 @@ export default function PerformanceHistoryPage() {
   const { data, isLoading, error } = useQuery<PerformanceHistoryData>({
     queryKey: ["/api/performance-history", dateRange],
     queryFn: async () => {
-      const res = await fetch(`/api/performance-history?days=${dateRange}`);
+      const res = await fetch(`/api/performance-history?days=${dateRange}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch performance history");
       return res.json();
     },
