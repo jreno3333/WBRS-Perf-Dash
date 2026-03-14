@@ -710,15 +710,20 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     const compStats = stateStats(compStores);
     const nonCompStats = stateStats(nonCompStores);
 
-    // Comp YoY rolling: fetch last year's 7D, 30D, and 90D sales for comp stores
+    // Comp YoY rolling: fetch last year's 1D, 7D, and 30D sales for comp stores
     const compStoreIds = new Set(compStores.map(r => r.restaurantId));
     const yesterday = new Date(`${dateStr}T12:00:00`);
     const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-    // Current period: 7D, 30D, and 90D ending on dateStr (comp stores only)
+    // Current period: 1D, 7D, and 30D ending on dateStr (comp stores only)
+    const compStoresWithLY = compStores.filter(r => r.lastYearSales !== undefined && r.lastYearSales > 0);
+    const comp1Sales = compStoresWithLY.reduce((s, r) => s + r.sales, 0);
+    const comp1LYSales = compStoresWithLY.reduce((s, r) => s + (r.lastYearSales || 0), 0);
     const comp7Sales = compStores.reduce((s, r) => s + r.prior7Sales, 0);
     const comp30Sales = compStores.reduce((s, r) => s + r.prior30Sales, 0);
-    const comp90Sales = compStores.reduce((s, r) => s + r.prior90Sales, 0);
+
+    // 1-Day comp YoY from existing per-store data (same cohort for both current and LY)
+    const compYoY1: number | undefined = comp1LYSales > 0 ? pctVar(comp1Sales, comp1LYSales) : undefined;
 
     // Last year equivalent date ranges (same DOW aligned)
     const lyYesterday = new Date(yesterday);
@@ -730,40 +735,28 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     ly7Start.setDate(ly7Start.getDate() - 6);
     const ly30Start = new Date(lyYesterday);
     ly30Start.setDate(ly30Start.getDate() - 29);
-    const ly90Start = new Date(lyYesterday);
-    ly90Start.setDate(ly90Start.getDate() - 89);
 
     let compYoY7: number | undefined;
     let compYoY30: number | undefined;
-    let compYoY90: number | undefined;
     try {
       const lyRows = await db.select().from(historicalDailySales)
         .where(and(
-          gte(historicalDailySales.date, fmt(ly90Start)),
+          gte(historicalDailySales.date, fmt(ly30Start)),
           lte(historicalDailySales.date, fmt(lyYesterday))
         ));
-      let ly7Total = 0, ly30Total = 0, ly90Total = 0;
-      // Track unique (store, date) pairs to validate data coverage
+      let ly7Total = 0, ly30Total = 0;
       const ly7Days = new Set<string>();
       const ly30Days = new Set<string>();
-      const ly90Days = new Set<string>();
       for (const row of lyRows) {
         if (!compStoreIds.has(row.restaurantId)) continue;
         const rowDate = new Date(`${row.date}T12:00:00`);
         const sales = parseFloat(row.netSales);
         if (rowDate >= ly7Start) { ly7Total += sales; ly7Days.add(`${row.restaurantId}-${row.date}`); }
-        if (rowDate >= ly30Start) { ly30Total += sales; ly30Days.add(`${row.restaurantId}-${row.date}`); }
-        ly90Total += sales;
-        ly90Days.add(`${row.restaurantId}-${row.date}`);
+        ly30Total += sales;
+        ly30Days.add(`${row.restaurantId}-${row.date}`);
       }
-      const compCount = compStores.length;
       if (ly7Total > 0) compYoY7 = pctVar(comp7Sales, ly7Total);
       if (ly30Total > 0) compYoY30 = pctVar(comp30Sales, ly30Total);
-      // Only compute 90-day YoY if we have at least 75% data coverage
-      const expected90 = compCount * 90;
-      if (ly90Total > 0 && ly90Days.size >= expected90 * 0.75) {
-        compYoY90 = pctVar(comp90Sales, ly90Total);
-      }
     } catch { /* historical data may not be available */ }
 
     // Sort by daily sales (descending) for top performers and all-units
@@ -865,10 +858,10 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           <div style="font-size: 28px; font-weight: 700; color: ${(companyVsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${companyVsLW !== undefined ? pctStr(companyVsLW) : '--'}</div>
           <div style="font-size: 11px; color: #71717a; margin-top: 2px;">vs Last Week</div>
         </div>
-        ${companyVsLY !== undefined ? `
+        ${nonCompStores.length > 0 ? `
         <div style="min-width: 70px;">
-          <div style="font-size: 28px; font-weight: 700; color: ${companyVsLY >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(companyVsLY)}</div>
-          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">vs Last Year</div>
+          <div style="font-size: 28px; font-weight: 700; color: #2563eb;">${nonCompStores.length}</div>
+          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">Non-Comp Units</div>
         </div>` : ''}
         ${companyOsat !== null ? `
         <div style="min-width: 70px;">
@@ -883,6 +876,11 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Comp Store Sales YoY <span style="font-size: 11px; color: #71717a; font-weight: 400;">(${compStores.length} of ${restaurantData.length} stores, same day-of-week aligned)</span></h3>
       <div style="display: flex; justify-content: space-around; text-align: center; gap: 8px; flex-wrap: wrap;">
         <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
+          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">1-DAY YoY</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY1 ?? 0)};">${compYoY1 !== undefined ? pctStr(compYoY1) : '--'} <span style="font-size: 14px;">${compYoY1 !== undefined ? trendArrow(compYoY1) : ''}</span></div>
+          <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp1Sales)}</div>
+        </div>
+        <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
           <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">7-DAY YoY</div>
           <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY7 ?? 0)};">${compYoY7 !== undefined ? pctStr(compYoY7) : '--'} <span style="font-size: 14px;">${compYoY7 !== undefined ? trendArrow(compYoY7) : ''}</span></div>
           <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp7Sales)}</div>
@@ -891,11 +889,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">30-DAY YoY</div>
           <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY30 ?? 0)};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'} <span style="font-size: 14px;">${compYoY30 !== undefined ? trendArrow(compYoY30) : ''}</span></div>
           <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp30Sales)}</div>
-        </div>
-        <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
-          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">90-DAY YoY</div>
-          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY90 ?? 0)};">${compYoY90 !== undefined ? pctStr(compYoY90) : '--'} <span style="font-size: 14px;">${compYoY90 !== undefined ? trendArrow(compYoY90) : ''}</span></div>
-          <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp90Sales)}</div>
         </div>
       </div>
       ${trendInsight ? `<div style="margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: ${trendInsight.includes('Closing') ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${trendInsight.includes('Closing') ? '#bbf7d0' : '#fecaca'}; font-size: 12px; color: ${trendInsight.includes('Closing') ? '#166534' : '#991b1b'};">${trendInsight}</div>` : ''}
@@ -964,28 +957,39 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     <!-- ═══ TOP PERFORMERS ═══ -->
     <div style="${sectionStyle}">
       <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #16a34a;">Top Performers <span style="font-size: 11px; color: #71717a; font-weight: 400;">(by daily sales)</span></h3>
-      ${top5.map((r, i) => `
-      <div style="padding: 10px 0;${i < top5.length - 1 ? ' border-bottom: 1px solid #f4f4f5;' : ''}">
-        <div>
-          <span style="font-size: 16px; font-weight: 700; color: #16a34a; margin-right: 6px;">${i + 1}</span>
-          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 14px; font-weight: 600; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
-          ${r.status === 'new' ? `<span style="font-size: 9px; background: #dbeafe; color: #1e40af; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">NEW</span>` : ''}
-        </div>
-        <div style="margin-top: 6px; margin-left: 24px;">
-          <span style="font-size: 15px; font-weight: 600;">${formatCurrency(r.sales)}</span>
-          <span style="margin-left: 10px; font-size: 13px; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)} <span style="font-size: 10px; color: #a1a1aa;">WoW</span></span>
-          ${hasLYData ? `<span style="margin-left: 10px; font-size: 13px; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'} <span style="font-size: 10px; color: #a1a1aa;">YoY</span></span>` : ''}
-        </div>
-        <div style="margin-top: 4px; margin-left: 24px;">
-          <span style="font-size: 12px; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">OSAT ${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
-          <span style="font-size: 10px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
-          ${r.earnedBadges.length > 0 ? `<span style="margin-left: 8px; font-size: 10px; color: #71717a;">${r.earnedBadges.join(', ')}</span>` : ''}
-        </div>
-        <div style="margin-top: 2px; margin-left: 24px;">
-          ${r.status === 'new' ? `<span style="font-size: 10px; background: #dbeafe; color: #1e40af; padding: 1px 5px; border-radius: 3px;">${r.storeAge}</span>` : ''}
-          <span style="font-size: 10px; color: #a1a1aa;">${r.state}${!r.isComp ? ' &middot; NC' : ''}</span>
-        </div>
-      </div>`).join('')}
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="border-bottom: 2px solid #e4e4e7;">
+            <th style="text-align: left; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">#</th>
+            <th style="text-align: left; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">Store</th>
+            <th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">Sales</th>
+            <th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">vs LW</th>
+            ${hasLYData ? `<th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">YoY</th>` : ''}
+            <th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">OSAT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${top5.map((r, i) => `
+          <tr style="${i < top5.length - 1 ? 'border-bottom: 1px solid #f4f4f5;' : ''}">
+            <td style="padding: 8px 4px; font-size: 16px; font-weight: 700; color: #16a34a; vertical-align: top;">${i + 1}</td>
+            <td style="padding: 8px 4px; vertical-align: top;">
+              <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 14px; font-weight: 600; color: inherit; text-decoration: none; border-bottom: 1px dashed #71717a;">${r.restaurantName}</a>
+              ${r.status === 'new' ? `<span style="font-size: 9px; background: #dbeafe; color: #1e40af; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">NEW</span>` : ''}
+              <div style="margin-top: 2px;">
+                <span style="font-size: 10px; color: #a1a1aa;">${r.state}${!r.isComp ? ' &middot; NC' : ''}</span>
+                ${r.earnedBadges.length > 0 ? `<span style="margin-left: 6px; font-size: 10px; color: #71717a;">${r.earnedBadges.join(', ')}</span>` : ''}
+              </div>
+            </td>
+            <td style="padding: 8px 4px; text-align: right; font-weight: 600; vertical-align: top;">${formatCurrency(r.sales)}</td>
+            <td style="padding: 8px 4px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${pctStr(r.salesVsLW)}</td>
+            ${hasLYData ? `<td style="padding: 8px 4px; text-align: right; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'}</td>` : ''}
+            <td style="padding: 8px 4px; text-align: right; vertical-align: top;">
+              <span style="color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
+              <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
     </div>
 
     <!-- ═══ NEW STORES ═══ -->
@@ -1036,42 +1040,52 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     <!-- ═══ ALL UNITS ═══ -->
     <div style="${sectionStyle}">
       <h3 style="margin: 0 0 4px; font-size: 14px; font-weight: 600;">All Units <span style="font-size: 11px; color: #71717a; font-weight: 400;">(sorted by daily sales)</span></h3>
-      <div style="font-size: 10px; color: #a1a1aa; margin-bottom: 10px;">C = Comp &middot; NC = Non-Comp &middot; Labor = Actual hrs (&plusmn; vs model)</div>
-      ${sortedBySales.map((r, i) => {
+      <div style="font-size: 10px; color: #a1a1aa; margin-bottom: 10px;">C = Comp &middot; NC = Non-Comp &middot; Labor Hours = Actual hrs (&plusmn; vs model)</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+          <tr style="border-bottom: 2px solid #e4e4e7;">
+            <th style="text-align: left; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">#</th>
+            <th style="text-align: left; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">Store</th>
+            <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">Sales</th>
+            <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">vs LW</th>
+            ${hasLYData ? `<th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">YoY</th>` : ''}
+            <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">OSAT</th>
+            <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">Labor Hrs</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sortedBySales.map((r, i) => {
         const laborDiff = r.actualHours - r.modelHours;
         const laborColor = r.modelHours > 0 ? (Math.abs(laborDiff) <= 2 ? '#16a34a' : laborDiff > 0 ? '#dc2626' : '#d97706') : '#a1a1aa';
         return `
-      <div style="padding: 7px 0;${i < sortedBySales.length - 1 ? ' border-bottom: 1px solid #f4f4f5;' : ''}">
-        <div>
-          <span style="font-size: 11px; color: #a1a1aa; margin-right: 4px;">${i + 1}</span>
-          <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 13px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #a1a1aa;">${r.restaurantName}</a>
-          ${r.status === 'new' ? '<span style="font-size: 8px; background: #dbeafe; color: #1e40af; padding: 0 3px; border-radius: 2px; margin-left: 3px;">NEW</span>' : ''}
-          <span style="font-size: 9px; padding: 0 2px; margin-left: 2px; ${r.isComp ? 'color: #a1a1aa;' : 'background: #fef3c7; color: #92400e; border-radius: 2px;'}">${r.isComp ? 'C' : 'NC'}</span>
-          <span style="font-size: 9px; color: #a1a1aa;">${r.state}</span>
-          <span style="float: right; font-size: 11px;">${weatherIcon(r.weatherCondition)}${r.weatherHighTemp !== null ? '<span style="font-size: 10px; color: #71717a;">' + Math.round(r.weatherHighTemp) + '&deg;</span>' : ''}</span>
-        </div>
-        <div style="margin-top: 3px; margin-left: 18px; font-size: 12px;">
-          <span style="font-weight: 600;">${formatCurrency(r.sales)}</span>
-          <span style="margin-left: 8px; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)}</span>
-          ${hasLYData ? `<span style="margin-left: 6px; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'} <span style="font-size: 9px; color: #a1a1aa;">YoY</span></span>` : ''}
-          <span style="margin-left: 8px; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
-          <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
-        </div>
-        <div style="margin-top: 2px; margin-left: 18px; font-size: 11px; color: #71717a;">
-          ${r.modelHours > 0 ? `Labor <span style="color: ${laborColor};">${r.actualHours.toFixed(0)} <span style="font-size: 10px;">(${laborDiff >= 0 ? '+' : ''}${laborDiff.toFixed(0)})</span></span>` : ''}
-          ${r.eowForecast > 0 ? `<span style="margin-left: 8px;">EOW <span style="color: #3b82f6;">${formatCurrency(r.eowForecast)}</span></span>` : ''}
-        </div>
-      </div>`;
+          <tr style="${i < sortedBySales.length - 1 ? 'border-bottom: 1px solid #f4f4f5;' : ''}">
+            <td style="padding: 6px 3px; font-size: 11px; color: #a1a1aa; vertical-align: top;">${i + 1}</td>
+            <td style="padding: 6px 3px; vertical-align: top;">
+              <a href="${baseUrl}/dashboard-view?date=${dateStr}&unit=${r.restaurantId}" style="font-size: 12px; font-weight: 500; color: inherit; text-decoration: none; border-bottom: 1px dashed #a1a1aa;">${r.restaurantName}</a>
+              ${r.status === 'new' ? '<span style="font-size: 8px; background: #dbeafe; color: #1e40af; padding: 0 3px; border-radius: 2px; margin-left: 3px;">NEW</span>' : ''}
+              <span style="font-size: 9px; padding: 0 2px; margin-left: 2px; ${r.isComp ? 'color: #a1a1aa;' : 'background: #fef3c7; color: #92400e; border-radius: 2px;'}">${r.isComp ? 'C' : 'NC'}</span>
+              <div style="margin-top: 1px; font-size: 9px; color: #a1a1aa;">${r.state} ${weatherIcon(r.weatherCondition)}${r.weatherHighTemp !== null ? Math.round(r.weatherHighTemp) + '&deg;' : ''}</div>
+            </td>
+            <td style="padding: 6px 3px; text-align: right; font-weight: 600; vertical-align: top;">${formatCurrency(r.sales)}</td>
+            <td style="padding: 6px 3px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${pctStr(r.salesVsLW)}</td>
+            ${hasLYData ? `<td style="padding: 6px 3px; text-align: right; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'}</td>` : ''}
+            <td style="padding: 6px 3px; text-align: right; vertical-align: top;">
+              <span style="color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
+              <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
+            </td>
+            <td style="padding: 6px 3px; text-align: right; vertical-align: top; color: ${laborColor};">
+              ${r.modelHours > 0 ? `${r.actualHours.toFixed(0)} <span style="font-size: 10px;">(${laborDiff >= 0 ? '+' : ''}${laborDiff.toFixed(0)})</span>` : '--'}
+            </td>
+          </tr>`;
       }).join('')}
+        </tbody>
+      </table>
     </div>
 
     <!-- ═══ FOOTER ═══ -->
     <div style="${sectionStyle} border-radius: 0 0 8px 8px; text-align: center;">
-      <a href="${baseUrl}" style="display: inline-block; background-color: #2563eb; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 14px;">
-        Open Full Dashboard
-      </a>
-      <p style="font-size: 11px; color: #a1a1aa; margin-top: 12px;">
-        MWB Restaurants &middot; All figures in Central Time
+      <p style="font-size: 11px; color: #a1a1aa; margin-top: 0;">
+        MWB Restaurants
       </p>
       <p style="font-size: 10px; color: #a1a1aa; margin-top: 4px;">
         Comp threshold: 18 months from open date &middot; Rolling trends compare same day-of-week period prior year
