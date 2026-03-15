@@ -1397,6 +1397,117 @@ async function getAttachmentForSingleDay(dateStr: string, storeToRestaurant: Map
   return dayResult;
 }
 
+export async function getAttachmentRatesMultiDay(dates: string[]): Promise<Map<string, {
+  overallAttachScore: number;
+  categoriesAtTarget: number;
+  totalOrders: number;
+}>> {
+  if (dates.length === 0) return new Map();
+
+  const storeMap = await getCachedStoreMap();
+  const storeToRestaurant = new Map<string, { id: string; name: string }>();
+  storeMap.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, name: info.name });
+  });
+
+  const earliest = dates.reduce((a, b) => a < b ? a : b);
+  const latest = dates.reduce((a, b) => a > b ? a : b);
+  const dayStart = new Date(earliest + 'T00:00:00.000Z');
+  const dayEnd = new Date(latest + 'T23:59:59.999Z');
+  const dateSet = new Set(dates);
+
+  const orders = await posDb
+    .select({
+      storeNumber: posOrders.storeNumber,
+      orderTotal: posOrders.orderTotal,
+      rawJson: posOrders.rawJson,
+      businessDate: posOrders.businessDate,
+    })
+    .from(posOrders)
+    .where(
+      and(
+        gte(posOrders.businessDate, dayStart),
+        lt(posOrders.businessDate, dayEnd),
+        sql`${posOrders.rawJson} IS NOT NULL`
+      )
+    );
+
+  const categories = Object.keys(ATTACHMENT_CATEGORIES);
+  const restaurantData = new Map<string, { totalOrders: number; totalSales: number; categoryHits: Record<string, number> }>();
+
+  for (const order of orders) {
+    const orderDateStr = order.businessDate instanceof Date
+      ? order.businessDate.toISOString().split('T')[0]
+      : String(order.businessDate).split('T')[0];
+    if (!dateSet.has(orderDateStr)) continue;
+
+    const restaurantInfo = storeToRestaurant.get(order.storeNumber);
+    if (!restaurantInfo) continue;
+    const compositeKey = `${restaurantInfo.id}::${orderDateStr}`;
+
+    if (!restaurantData.has(compositeKey)) {
+      restaurantData.set(compositeKey, {
+        totalOrders: 0,
+        totalSales: 0,
+        categoryHits: Object.fromEntries(categories.map(c => [c, 0])),
+      });
+    }
+
+    const entry = restaurantData.get(compositeKey)!;
+    entry.totalOrders++;
+    entry.totalSales += Number(order.orderTotal) || 0;
+
+    const items = extractItemsFromOrder(order.rawJson || '');
+    if (items.length === 0) continue;
+
+    for (const cat of categories) {
+      const catDef = ATTACHMENT_CATEGORIES[cat];
+      if (cat === 'dipping_sauces') {
+        const sauceCount = items.filter(item =>
+          item.itemType !== 'modifier' && classifyItem(item, catDef)
+        ).length;
+        const chickenEntreeCount = items.filter(item => isChickenWithIncludedSauce(item)).length;
+        if (sauceCount > chickenEntreeCount) {
+          entry.categoryHits[cat]++;
+        }
+      } else if (cat === 'whatasize') {
+        const hasUpsizedSide = items.some(item => isUpsizedMealSide(item));
+        if (hasUpsizedSide) {
+          entry.categoryHits[cat]++;
+        }
+      } else {
+        const hasAttachment = items.some(item => classifyItem(item, catDef));
+        if (hasAttachment) {
+          entry.categoryHits[cat]++;
+        }
+      }
+    }
+  }
+
+  const result = new Map<string, { overallAttachScore: number; categoriesAtTarget: number; totalOrders: number }>();
+  restaurantData.forEach((entry, compositeKey) => {
+    if (entry.totalOrders === 0) return;
+    let totalScore = 0;
+    const catData: Record<string, { attachRate: number; estimatedUnits: number; benchmark: number; vsTarget: number }> = {};
+    for (const cat of categories) {
+      const hits = entry.categoryHits[cat];
+      const attachRate = Math.round((hits / entry.totalOrders) * 1000) / 10;
+      const benchmark = ATTACHMENT_BENCHMARKS[cat].benchmark;
+      const vsTarget = Math.round((attachRate - benchmark) * 10) / 10;
+      const catScore = Math.min(100, Math.max(0, (attachRate / benchmark) * 100));
+      totalScore += catScore;
+      catData[cat] = { attachRate, estimatedUnits: hits, benchmark, vsTarget };
+    }
+    result.set(compositeKey, {
+      overallAttachScore: Math.round(totalScore / categories.length),
+      categoriesAtTarget: countAttachmentCategoriesAtTarget(catData),
+      totalOrders: entry.totalOrders,
+    });
+  });
+
+  return result;
+}
+
 export async function getAttachmentRatesFromDetailBatch(startDate: string, endDate: string): Promise<Map<string, number>> {
   const fullStoreMapBatch = await getCachedStoreMap();
   const storeToRestaurant = new Map<string, { id: string; name: string }>();
