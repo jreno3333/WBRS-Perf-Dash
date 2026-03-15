@@ -18,7 +18,6 @@ import {
   Calendar,
   Building2,
   MapPin,
-  Globe,
   Target,
   DollarSign,
   Users,
@@ -110,19 +109,6 @@ interface WeekendData {
   perDay: WeekendDaySummary[];
 }
 
-interface WeekendRollup {
-  restaurantCount: number;
-  avgGrade: number;
-  avgGradeLabel: string;
-  totalSales: number;
-  avgSalesVariance: number;
-  avgSpeed?: number;
-  avgOsat?: number;
-  avgStaffingDiff: number;
-  avgAttachScore?: number;
-  avgCategoriesAtTarget?: number;
-}
-
 interface RestaurantHistory {
   restaurantId: string;
   restaurantName: string;
@@ -143,48 +129,10 @@ interface RestaurantHistory {
   weekend?: WeekendData | null;
 }
 
-interface StateSummary {
-  state: string;
-  restaurantCount: number;
-  avgGrade: number;
-  avgGradeLabel: string;
-  totalSales: number;
-  avgSalesVariance: number;
-  avgOsat?: number;
-  avgImprovement: number;
-}
-
-interface MarketSummary {
-  market: string;
-  restaurantCount: number;
-  avgGrade: number;
-  avgGradeLabel: string;
-  totalSales: number;
-  avgSalesVariance: number;
-  avgOsat?: number;
-  avgImprovement: number;
-}
-
 interface PerformanceHistoryData {
   dateRange: string[];
   restaurants: RestaurantHistory[];
-  stateSummaries: StateSummary[];
-  marketSummaries: MarketSummary[];
-  companySummary: {
-    restaurantCount: number;
-    avgGrade: number;
-    avgGradeLabel: string;
-    totalSales: number;
-    avgSalesVariance: number;
-    avgOsat?: number;
-    avgImprovement: number;
-  };
-  weekendSummary?: {
-    company: WeekendRollup | null;
-    states: (WeekendRollup & { state: string })[];
-    markets: (WeekendRollup & { market: string })[];
-    weekendDates?: string[];
-  };
+  weekendDates?: string[];
 }
 
 function getGradeColor(label: string): string {
@@ -1419,131 +1367,6 @@ function RestaurantCard({ restaurant, dateRange, weekendDates }: { restaurant: R
   );
 }
 
-function WeekendRollupCard({ title, icon: Icon, rollup }: { title: string; icon: typeof Globe; rollup: WeekendRollup }) {
-  return (
-    <Card data-testid={`card-weekend-rollup-${title.toLowerCase().replace(/\s+/g, '-')}`}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Icon className="w-4 h-4 text-orange-500" />
-            <CardTitle className="text-sm">{title}</CardTitle>
-          </div>
-          <Badge variant="secondary" className="text-[10px]">{rollup.restaurantCount} units</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className={`text-2xl font-bold ${getGradeColor(rollup.avgGradeLabel)}`}>{rollup.avgGradeLabel}</div>
-            <div className="text-[10px] text-muted-foreground">Avg Grade ({rollup.avgGrade.toFixed(0)})</div>
-          </div>
-          <div>
-            <div className="text-base font-semibold">{formatCurrency(rollup.totalSales)}</div>
-            <div className="text-[10px] text-muted-foreground">Wknd Sales</div>
-          </div>
-          <div>
-            <div className={`text-sm font-semibold ${rollup.avgSalesVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {rollup.avgSalesVariance >= 0 ? "+" : ""}{rollup.avgSalesVariance}%
-            </div>
-            <div className="text-[10px] text-muted-foreground">Avg Variance</div>
-          </div>
-          {rollup.avgOsat !== undefined && (
-            <div>
-              <div className={`text-sm font-semibold ${rollup.avgOsat >= 85 ? "text-green-600" : rollup.avgOsat >= 80 ? "text-yellow-600" : "text-red-600"}`}>
-                {rollup.avgOsat}%
-              </div>
-              <div className="text-[10px] text-muted-foreground">OSAT</div>
-            </div>
-          )}
-          {rollup.avgAttachScore !== undefined && (
-            <div>
-              <div className={`text-sm font-semibold ${rollup.avgAttachScore >= 90 ? "text-green-600" : rollup.avgAttachScore >= 70 ? "text-yellow-600" : "text-red-600"}`}>
-                {rollup.avgAttachScore}%
-              </div>
-              <div className="text-[10px] text-muted-foreground">Upsell</div>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SummaryCard({ 
-  title, 
-  icon: Icon, 
-  avgGrade, 
-  avgGradeLabel, 
-  totalSales, 
-  avgVariance, 
-  avgOsat, 
-  avgImprovement,
-  count 
-}: { 
-  title: string;
-  icon: typeof Globe;
-  avgGrade: number;
-  avgGradeLabel: string;
-  totalSales: number;
-  avgVariance: number;
-  avgOsat?: number;
-  avgImprovement: number;
-  count: number;
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Icon className="w-5 h-5 text-muted-foreground" />
-            <CardTitle className="text-base">{title}</CardTitle>
-          </div>
-          <Badge variant="secondary">{count} units</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <div className={`text-3xl font-bold ${getGradeColor(avgGradeLabel)}`}>{avgGradeLabel}</div>
-            <div className="text-xs text-muted-foreground">Avg Grade ({avgGrade.toFixed(0)})</div>
-          </div>
-          <div>
-            <div className="text-lg font-semibold">{formatCurrency(totalSales)}</div>
-            <div className="text-xs text-muted-foreground">Total Sales</div>
-          </div>
-          <div>
-            <div className={`text-lg font-semibold ${avgVariance >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {avgVariance >= 0 ? "+" : ""}{avgVariance.toFixed(1)}%
-            </div>
-            <div className="text-xs text-muted-foreground">Avg Variance</div>
-          </div>
-          <div>
-            <div className="flex items-center gap-1">
-              <TrendIndicator value={avgImprovement} />
-              <span className={`text-lg font-semibold ${avgImprovement > 0 ? "text-green-600" : avgImprovement < 0 ? "text-red-600" : ""}`}>
-                {avgImprovement !== 0
-                  ? `${avgImprovement > 0 ? "+" : ""}${avgImprovement.toFixed(1)}`
-                  : "—"}
-              </span>
-            </div>
-            <div className="text-xs text-muted-foreground">Avg Trend Days</div>
-          </div>
-        </div>
-        {avgOsat !== undefined && (
-          <div className="mt-3 pt-3 border-t">
-            <div className="flex items-center gap-2">
-              <ThumbsUp className="w-4 h-4 text-green-500" />
-              <span className={`font-semibold ${avgOsat >= 85 ? "text-green-600" : avgOsat >= 80 ? "text-yellow-600" : "text-red-600"}`}>
-                {avgOsat.toFixed(0)}% OSAT
-              </span>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function PerformanceHistoryPage() {
   const [dateRange, setDateRange] = useState("8");
   const [selectedState, setSelectedState] = useState<string>("all");
@@ -1661,94 +1484,6 @@ export default function PerformanceHistoryPage() {
 
         {data && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <SummaryCard
-                title="Company Overall"
-                icon={Globe}
-                avgGrade={data.companySummary.avgGrade}
-                avgGradeLabel={data.companySummary.avgGradeLabel}
-                totalSales={data.companySummary.totalSales}
-                avgVariance={data.companySummary.avgSalesVariance}
-                avgOsat={data.companySummary.avgOsat}
-                avgImprovement={data.companySummary.avgImprovement}
-                count={data.companySummary.restaurantCount}
-              />
-
-              {data.stateSummaries.map((state) => (
-                <SummaryCard
-                  key={state.state}
-                  title={state.state}
-                  icon={MapPin}
-                  avgGrade={state.avgGrade}
-                  avgGradeLabel={state.avgGradeLabel}
-                  totalSales={state.totalSales}
-                  avgVariance={state.avgSalesVariance}
-                  avgOsat={state.avgOsat}
-                  avgImprovement={state.avgImprovement}
-                  count={state.restaurantCount}
-                />
-              ))}
-            </div>
-
-            {data.marketSummaries.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-3">Markets</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {data.marketSummaries.map((market) => (
-                    <SummaryCard
-                      key={market.market}
-                      title={market.market}
-                      icon={Building2}
-                      avgGrade={market.avgGrade}
-                      avgGradeLabel={market.avgGradeLabel}
-                      totalSales={market.totalSales}
-                      avgVariance={market.avgSalesVariance}
-                      avgOsat={market.avgOsat}
-                      avgImprovement={market.avgImprovement}
-                      count={market.restaurantCount}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {data.weekendSummary?.company && (
-              <div data-testid="section-weekend-summary">
-                <div className="flex items-center gap-2 mb-3">
-                  <Calendar className="w-5 h-5 text-orange-500" />
-                  <h2 className="text-lg font-semibold">Weekend Scorecard</h2>
-                  <span className="text-xs text-muted-foreground">
-                    {data.weekendSummary.weekendDates && data.weekendSummary.weekendDates.length > 0
-                      ? `(${data.weekendSummary.weekendDates.map(d => formatDate(d)).join(", ")})`
-                      : "(Fri / Sat / Sun)"}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  <WeekendRollupCard
-                    title="Company Weekend"
-                    icon={Globe}
-                    rollup={data.weekendSummary.company}
-                  />
-                  {data.weekendSummary.states.map((s) => (
-                    <WeekendRollupCard
-                      key={s.state}
-                      title={`${s.state} Wknd`}
-                      icon={MapPin}
-                      rollup={s}
-                    />
-                  ))}
-                  {data.weekendSummary.markets.map((m) => (
-                    <WeekendRollupCard
-                      key={m.market}
-                      title={`${m.market} Wknd`}
-                      icon={Building2}
-                      rollup={m}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold">
@@ -1768,7 +1503,7 @@ export default function PerformanceHistoryPage() {
               ) : (
                 <div>
                   {filteredRestaurants.map((restaurant) => (
-                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendSummary?.weekendDates} />
+                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendDates} />
                   ))}
                 </div>
               )}

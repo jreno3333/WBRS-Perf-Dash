@@ -65,10 +65,7 @@ router.get("/api/performance-history", async (req, res) => {
     if (dateRange.length === 0) {
       return res.json({
         restaurants: [],
-        companySummary: { restaurantCount: 0, avgGrade: 0, avgGradeLabel: 'N/A', totalSales: 0, avgSalesVariance: 0, avgOsat: undefined, avgImprovement: 0 },
-        stateSummaries: [],
-        marketSummaries: [],
-        weekendSummary: { company: null, states: [], markets: [] },
+        weekendDates: [],
         dateRange: [],
         latestDataDate: latestDataDate || todayCentral
       });
@@ -975,143 +972,6 @@ router.get("/api/performance-history", async (req, res) => {
     });
 
     // Weekend roll-up helper
-    function computeWeekendRollup(restaurants: RestaurantHistory[]) {
-      const withWeekend = restaurants.filter(r => restaurantWeekendMap.has(r.restaurantId));
-      if (withWeekend.length === 0) return undefined;
-      const wkDatas = withWeekend.map(r => restaurantWeekendMap.get(r.restaurantId)!);
-      const avgGrade = wkDatas.reduce((s, w) => s + w.weekendGrade, 0) / wkDatas.length;
-      const totalSales = wkDatas.reduce((s, w) => s + w.weekendTotalSales, 0);
-      const avgSalesVar = wkDatas.reduce((s, w) => s + w.weekendAvgSalesVariance, 0) / wkDatas.length;
-      const speedDatas = wkDatas.filter(w => w.weekendAvgSpeed !== undefined);
-      const avgSpeed = speedDatas.length > 0
-        ? speedDatas.reduce((s, w) => s + w.weekendAvgSpeed!, 0) / speedDatas.length
-        : undefined;
-      const osatDatas = wkDatas.filter(w => w.weekendAvgOsat !== undefined);
-      const avgOsat = osatDatas.length > 0
-        ? osatDatas.reduce((s, w) => s + w.weekendAvgOsat!, 0) / osatDatas.length
-        : undefined;
-      const avgStaffDiff = wkDatas.reduce((s, w) => s + w.weekendAvgStaffingDiff, 0) / wkDatas.length;
-      const attachDatas = wkDatas.filter(w => w.weekendAvgAttachScore !== undefined);
-      const avgAttachScore = attachDatas.length > 0
-        ? attachDatas.reduce((s, w) => s + w.weekendAvgAttachScore!, 0) / attachDatas.length
-        : undefined;
-      const catDatas = wkDatas.filter(w => w.weekendAvgCategoriesAtTarget !== undefined);
-      const avgCatsAtTarget = catDatas.length > 0
-        ? catDatas.reduce((s, w) => s + w.weekendAvgCategoriesAtTarget!, 0) / catDatas.length
-        : undefined;
-      return {
-        restaurantCount: withWeekend.length,
-        avgGrade,
-        avgGradeLabel: getGradeLabel(avgGrade),
-        totalSales,
-        avgSalesVariance: Math.round(avgSalesVar * 10) / 10,
-        avgSpeed: avgSpeed !== undefined ? Math.round(avgSpeed) : undefined,
-        avgOsat: avgOsat !== undefined ? Math.round(avgOsat * 10) / 10 : undefined,
-        avgStaffingDiff: Math.round(avgStaffDiff * 10) / 10,
-        avgAttachScore: avgAttachScore !== undefined ? Math.round(avgAttachScore * 10) / 10 : undefined,
-        avgCategoriesAtTarget: avgCatsAtTarget !== undefined ? Math.round(avgCatsAtTarget * 10) / 10 : undefined,
-      };
-    }
-
-    // Calculate state summaries
-    const stateMap = new Map<string, RestaurantHistory[]>();
-    restaurantHistories.forEach(r => {
-      if (!stateMap.has(r.state)) stateMap.set(r.state, []);
-      stateMap.get(r.state)!.push(r);
-    });
-
-    const stateSummaries = Array.from(stateMap.entries()).map(([state, restaurants]) => {
-      const avgGrade = restaurants.reduce((sum, r) => sum + r.avgGrade, 0) / restaurants.length;
-      const totalSales = restaurants.reduce((sum, r) => sum + r.totalSales, 0);
-      const avgSalesVariance = restaurants.reduce((sum, r) => sum + r.avgSalesVariance, 0) / restaurants.length;
-      const osatRestaurants = restaurants.filter(r => r.avgOsat !== undefined);
-      const avgOsat = osatRestaurants.length > 0
-        ? osatRestaurants.reduce((sum, r) => sum + r.avgOsat!, 0) / osatRestaurants.length
-        : undefined;
-      const avgImprovement = restaurants.reduce((sum, r) => sum + r.gradeImprovement, 0) / restaurants.length;
-
-      return {
-        state,
-        restaurantCount: restaurants.length,
-        avgGrade,
-        avgGradeLabel: getGradeLabel(avgGrade),
-        totalSales,
-        avgSalesVariance,
-        avgOsat,
-        avgImprovement,
-      };
-    });
-
-    // Calculate market summaries
-    const marketMap = new Map<string, RestaurantHistory[]>();
-    restaurantHistories.forEach(r => {
-      if (r.marketName) {
-        if (!marketMap.has(r.marketName)) marketMap.set(r.marketName, []);
-        marketMap.get(r.marketName)!.push(r);
-      }
-    });
-
-    const marketSummaries = Array.from(marketMap.entries()).map(([market, restaurants]) => {
-      const avgGrade = restaurants.reduce((sum, r) => sum + r.avgGrade, 0) / restaurants.length;
-      const totalSales = restaurants.reduce((sum, r) => sum + r.totalSales, 0);
-      const avgSalesVariance = restaurants.reduce((sum, r) => sum + r.avgSalesVariance, 0) / restaurants.length;
-      const osatRestaurants = restaurants.filter(r => r.avgOsat !== undefined);
-      const avgOsat = osatRestaurants.length > 0
-        ? osatRestaurants.reduce((sum, r) => sum + r.avgOsat!, 0) / osatRestaurants.length
-        : undefined;
-      const avgImprovement = restaurants.reduce((sum, r) => sum + r.gradeImprovement, 0) / restaurants.length;
-
-      return {
-        market,
-        restaurantCount: restaurants.length,
-        avgGrade,
-        avgGradeLabel: getGradeLabel(avgGrade),
-        totalSales,
-        avgSalesVariance,
-        avgOsat,
-        avgImprovement,
-      };
-    });
-
-    // Weekend roll-up summaries (computed after state/market maps are built)
-    const weekendCompanySummary = computeWeekendRollup(restaurantHistories);
-
-    const weekendStateSummaries = Array.from(stateMap.entries()).map(([state, restaurants]) => ({
-      state,
-      ...computeWeekendRollup(restaurants),
-    })).filter(s => s.avgGrade !== undefined);
-
-    const weekendMarketSummaries = Array.from(marketMap.entries()).map(([market, restaurants]) => ({
-      market,
-      ...computeWeekendRollup(restaurants),
-    })).filter(s => s.avgGrade !== undefined);
-
-    // Overall company summary
-    const companySummary = {
-      restaurantCount: restaurantHistories.length,
-      avgGrade: restaurantHistories.length > 0
-        ? restaurantHistories.reduce((sum, r) => sum + r.avgGrade, 0) / restaurantHistories.length
-        : 0,
-      avgGradeLabel: getGradeLabel(
-        restaurantHistories.length > 0
-          ? restaurantHistories.reduce((sum, r) => sum + r.avgGrade, 0) / restaurantHistories.length
-          : 0
-      ),
-      totalSales: restaurantHistories.reduce((sum, r) => sum + r.totalSales, 0),
-      avgSalesVariance: restaurantHistories.length > 0
-        ? restaurantHistories.reduce((sum, r) => sum + r.avgSalesVariance, 0) / restaurantHistories.length
-        : 0,
-      avgOsat: (() => {
-        const osatRestaurants = restaurantHistories.filter(r => r.avgOsat !== undefined);
-        return osatRestaurants.length > 0
-          ? osatRestaurants.reduce((sum, r) => sum + r.avgOsat!, 0) / osatRestaurants.length
-          : undefined;
-      })(),
-      avgImprovement: restaurantHistories.length > 0
-        ? restaurantHistories.reduce((sum, r) => sum + r.gradeImprovement, 0) / restaurantHistories.length
-        : 0,
-    };
-
     const restaurantsWithWeekend = restaurantHistories.map(r => ({
       ...r,
       weekend: restaurantWeekendMap.get(r.restaurantId) || null,
@@ -1120,15 +980,7 @@ router.get("/api/performance-history", async (req, res) => {
     res.json({
       dateRange,
       restaurants: restaurantsWithWeekend,
-      stateSummaries,
-      marketSummaries,
-      companySummary,
-      weekendSummary: {
-        company: weekendCompanySummary || null,
-        states: weekendStateSummaries,
-        markets: weekendMarketSummaries,
-        weekendDates: dateRange.filter(d => isWeekendDay(d)),
-      },
+      weekendDates: dateRange.filter(d => isWeekendDay(d)),
     });
     console.log(`[perf-history] Total response time: ${Date.now() - t0}ms (${dateRange.length} days, ${weekendDatesInRange.length} weekend days)`);
   } catch (error) {
