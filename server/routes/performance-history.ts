@@ -74,6 +74,7 @@ router.get("/api/performance-history", async (req, res) => {
       });
     }
 
+    const t0 = Date.now();
     // Fetch all data in parallel for performance
     const expandedStartDate = new Date(`${dateRange[0]}T00:00:00Z`);
     expandedStartDate.setDate(expandedStartDate.getDate() - 7);
@@ -103,7 +104,9 @@ router.get("/api/performance-history", async (req, res) => {
       db.select().from(hourlyCrew).where(and(gte(hourlyCrew.date, rangeStart), lte(hourlyCrew.date, rangeEnd))),
       db.select().from(dailyWeather).where(and(gte(dailyWeather.date, rangeStart), lte(dailyWeather.date, rangeEnd))),
     ]);
+    console.log(`[perf-history] Batch 1 (hourly/labor/osat/hme/pos/crew/weather): ${Date.now() - t0}ms`);
 
+    const t1 = Date.now();
     // Build weather lookup by restaurantId-date
     const weatherByKey = new Map<string, typeof allWeatherData[0]>();
     allWeatherData.forEach(w => {
@@ -133,13 +136,48 @@ router.get("/api/performance-history", async (req, res) => {
     const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
     const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
 
-    // Pre-compute weekend dates for parallel attachment fetch
-    const weekendDatesInRange = dateRange.filter(d => {
+    // Find the most recent weekend (Fri/Sat/Sun) for Weekend Scorecard.
+    // Anchor on the most recent Friday in the date range, then include Sat+Sun if available.
+    // This ensures the current weekend shows as soon as Friday data is complete,
+    // and persists until the next Friday arrives.
+    const allWeekendDatesInRange = dateRange.filter(d => {
       const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
       return dow === 5 || dow === 6 || dow === 0;
     });
+    let recentWeekendDates: string[] = [];
+    // Walk backward to find the most recent Friday
+    for (let i = allWeekendDatesInRange.length - 1; i >= 0; i--) {
+      const d = new Date(`${allWeekendDatesInRange[i]}T12:00:00Z`);
+      if (d.getUTCDay() === 5) {
+        // Found a Friday — collect Fri + Sat + Sun of this weekend
+        const friStr = allWeekendDatesInRange[i];
+        const satDate = new Date(d); satDate.setDate(satDate.getDate() + 1);
+        const sunDate = new Date(d); sunDate.setDate(sunDate.getDate() + 2);
+        const satStr = satDate.toISOString().split('T')[0];
+        const sunStr = sunDate.toISOString().split('T')[0];
+        recentWeekendDates = [friStr, satStr, sunStr].filter(dd => dateRange.includes(dd));
+        break;
+      }
+    }
+    // If no Friday found, use whatever weekend days are available (Sat/Sun)
+    if (recentWeekendDates.length === 0 && allWeekendDatesInRange.length > 0) {
+      for (let i = allWeekendDatesInRange.length - 1; i >= 0; i--) {
+        const d = new Date(`${allWeekendDatesInRange[i]}T12:00:00Z`);
+        const dow = d.getUTCDay();
+        if (dow === 6) {
+          const sunDate = new Date(d); sunDate.setDate(sunDate.getDate() + 1);
+          const sunStr = sunDate.toISOString().split('T')[0];
+          recentWeekendDates = [allWeekendDatesInRange[i], sunStr].filter(dd => dateRange.includes(dd));
+          break;
+        } else if (dow === 0) {
+          recentWeekendDates = [allWeekendDatesInRange[i]];
+          break;
+        }
+      }
+    }
+    const weekendDatesInRange = recentWeekendDates;
 
-    const [yoySalesData, yoyPosRows, allRestaurants, allMarkets, marketAssignments, weekendAttachmentData] = await Promise.all([
+    const [yoySalesData, yoyPosRows, allRestaurants, allMarkets, marketAssignments, weekendAttachmentData, ootHoursResult] = await Promise.all([
       db.select().from(historicalDailySales).where(and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))),
       db.select({
         restaurantId: hourlySales.restaurantId,
@@ -155,7 +193,11 @@ router.get("/api/performance-history", async (req, res) => {
             return new Map<string, { overallAttachScore: number; categoriesAtTarget: number; totalOrders: number }>();
           })
         : Promise.resolve(new Map<string, { overallAttachScore: number; categoriesAtTarget: number; totalOrders: number }>()),
+      dateRange.length > 0
+        ? getOotHoursByDateRange(dateRange[0], dateRange[dateRange.length - 1])
+        : Promise.resolve(new Set<string>()),
     ]);
+    console.log(`[perf-history] Batch 2 (yoy/restaurants/markets/attachment/oot): ${Date.now() - t1}ms`);
 
     const yoySalesMap = new Map<string, number>();
     for (const row of yoySalesData) {
@@ -293,10 +335,8 @@ router.get("/api/performance-history", async (req, res) => {
       hmeByKey.set(key, h);
     });
 
-    // OOT (dt3) hours — skip speed measurement for these hours
-    const ootHours = dateRange.length > 0
-      ? await getOotHoursByDateRange(dateRange[0], dateRange[dateRange.length - 1])
-      : new Set<string>();
+    // OOT (dt3) hours — pre-fetched in parallel batch above
+    const ootHours = ootHoursResult;
 
     // Build labor lookup by restaurantId-date-hour
     const laborByKey = new Map<string, typeof allHourlyLabor[0]>();
@@ -758,6 +798,7 @@ router.get("/api/performance-history", async (req, res) => {
 
     // Sort by average grade descending
     restaurantHistories.sort((a, b) => b.avgGrade - a.avgGrade);
+    console.log(`[perf-history] Processing loop: ${Date.now() - t1}ms, total so far: ${Date.now() - t0}ms`);
 
     // Use pre-fetched attachment data from the parallel Promise.all above
     type AttachmentDayData = {
@@ -768,12 +809,9 @@ router.get("/api/performance-history", async (req, res) => {
     const attachmentByRestaurantDay: Map<string, AttachmentDayData> = weekendAttachmentData;
 
     // ── Weekend Scorecard computation ──
-    // Weekend days: Friday (5), Saturday (6), Sunday (0)
-    const isWeekendDay = (dateStr: string): boolean => {
-      const d = new Date(`${dateStr}T12:00:00Z`);
-      const dow = d.getUTCDay();
-      return dow === 5 || dow === 6 || dow === 0;
-    };
+    // Only the most recent weekend (Fri/Sat/Sun) in the date range
+    const weekendDateSet = new Set(weekendDatesInRange);
+    const isWeekendDay = (dateStr: string): boolean => weekendDateSet.has(dateStr);
     const getWeekendDayLabel = (dateStr: string): string => {
       const d = new Date(`${dateStr}T12:00:00Z`);
       const dow = d.getUTCDay();
@@ -1092,6 +1130,7 @@ router.get("/api/performance-history", async (req, res) => {
         weekendDates: dateRange.filter(d => isWeekendDay(d)),
       },
     });
+    console.log(`[perf-history] Total response time: ${Date.now() - t0}ms (${dateRange.length} days, ${weekendDatesInRange.length} weekend days)`);
   } catch (error) {
     console.error("Error fetching performance history:", error);
     res.status(500).json({ error: "Failed to fetch performance history" });
