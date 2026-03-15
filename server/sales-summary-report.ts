@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import type { HourlySalesData, RestaurantSales } from "@shared/schema";
 import { computeHourlyScore, scoreToGradeLabel, getGradeColorHex, formatCurrency, computeDailyBonuses, countAttachmentCategoriesAtTarget, BONUS_DEFINITIONS } from "./lib/scoring";
 import { getTotalRequiredStaff } from "./labor-model";
-import { getAttachmentRatesFromDetail, getAllHourlyPosSalesRange } from "./xenial-webhook";
+import { getAttachmentRatesFromDetail, getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "./xenial-webhook";
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
 import { getHolidayContext, getHolidayComparisonContext } from "./holidays";
@@ -133,6 +133,9 @@ interface RestaurantDayData {
   prior30LWSales: number;
   prior90Sales: number;
   prior90LWSales: number;
+  // Multi-day rolling transaction totals
+  prior7Txn: number;
+  prior30Txn: number;
 }
 
 /**
@@ -183,6 +186,28 @@ async function getDailySalesFromHourlyTable(startDate: string, endDate: string):
   for (const row of rows) {
     const key = `${row.restaurantId}-${row.date}`;
     dailyMap.set(key, parseFloat(row.totalSales || "0"));
+  }
+  return dailyMap;
+}
+
+/**
+ * Fetch daily POS transaction (order) counts aggregated by restaurant for a date range.
+ * Returns Map<"restaurantId-YYYY-MM-DD", orderCount>
+ */
+async function getDailyTransactionsForRange(startDate: string, endDate: string): Promise<Map<string, number>> {
+  const hourlyOrderMap = await getAllHourlyPosOrderCountRange(startDate, endDate);
+  const dailyMap = new Map<string, number>();
+  for (const [key, orders] of hourlyOrderMap) {
+    const lastDash = key.lastIndexOf("-");
+    const restAndDate = key.substring(0, lastDash);
+    const dateDash = restAndDate.lastIndexOf("-");
+    const monthDash = restAndDate.lastIndexOf("-", dateDash - 1);
+    const yearDash = restAndDate.lastIndexOf("-", monthDash - 1);
+    const dateStr = restAndDate.substring(yearDash + 1);
+    const restaurantId = restAndDate.substring(0, yearDash);
+
+    const dailyKey = `${restaurantId}-${dateStr}`;
+    dailyMap.set(dailyKey, (dailyMap.get(dailyKey) || 0) + orders);
   }
   return dailyMap;
 }
@@ -410,6 +435,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     const yoyRows = await db.select().from(historicalDailySales)
       .where(eq(historicalDailySales.date, priorDateStr));
     const yoyMap = new Map(yoyRows.map(r => [r.restaurantId, parseFloat(r.netSales)]));
+    const yoyTxnMap = new Map(yoyRows.filter(r => r.guestCount > 0).map(r => [r.restaurantId, r.guestCount]));
 
     // Fetch weather data for the target date
     const weatherRows = await db.select().from(dailyWeather)
@@ -568,6 +594,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         prior7Sales: 0, prior7LWSales: 0,
         prior30Sales: 0, prior30LWSales: 0,
         prior90Sales: 0, prior90LWSales: 0,
+        prior7Txn: 0, prior30Txn: 0,
       });
     }
 
@@ -587,6 +614,33 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         r.prior90Sales = rd.prior90;
         r.prior90LWSales = rd.prior90LW;
       }
+    }
+
+    // Fetch rolling transaction data (7D and 30D)
+    {
+      const yesterday = new Date(`${dateStr}T12:00:00`);
+      const fmtD = (d: Date) => d.toISOString().split("T")[0];
+      const prior7Start = new Date(yesterday);
+      prior7Start.setDate(prior7Start.getDate() - 6);
+      const prior30Start = new Date(yesterday);
+      prior30Start.setDate(prior30Start.getDate() - 29);
+
+      try {
+        const txnDailyMap = await getDailyTransactionsForRange(fmtD(prior30Start), dateStr);
+        for (const r of restaurantData) {
+          let txn7 = 0, txn30 = 0;
+          const d = new Date(prior30Start);
+          while (d <= yesterday) {
+            const key = `${r.restaurantId}-${fmtD(d)}`;
+            const val = txnDailyMap.get(key) || 0;
+            txn30 += val;
+            if (d >= prior7Start) txn7 += val;
+            d.setDate(d.getDate() + 1);
+          }
+          r.prior7Txn = txn7;
+          r.prior30Txn = txn30;
+        }
+      } catch { /* POS transaction data may not be available */ }
     }
 
     // ──── EOW Forecast (Sat-Fri business week) ────────────────
@@ -735,8 +789,16 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     const comp7Sales = compStores.reduce((s, r) => s + r.prior7Sales, 0);
     const comp30Sales = compStores.reduce((s, r) => s + r.prior30Sales, 0);
 
+    // Current period transactions (comp stores)
+    const compStoresWithLYTxn = compStores.filter(r => yoyTxnMap.has(r.restaurantId) && r.transactionCount > 0);
+    const comp1Txn = compStoresWithLYTxn.reduce((s, r) => s + r.transactionCount, 0);
+    const comp1LYTxn = compStoresWithLYTxn.reduce((s, r) => s + (yoyTxnMap.get(r.restaurantId) || 0), 0);
+    const comp7Txn = compStores.reduce((s, r) => s + r.prior7Txn, 0);
+    const comp30Txn = compStores.reduce((s, r) => s + r.prior30Txn, 0);
+
     // 1-Day comp YoY from existing per-store data (same cohort for both current and LY)
     const compYoY1: number | undefined = comp1LYSales > 0 ? pctVar(comp1Sales, comp1LYSales) : undefined;
+    const compTxnYoY1: number | undefined = comp1LYTxn > 0 ? pctVar(comp1Txn, comp1LYTxn) : undefined;
 
     // Last year equivalent date ranges (same DOW aligned)
     const lyYesterday = new Date(yesterday);
@@ -751,6 +813,8 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     let compYoY7: number | undefined;
     let compYoY30: number | undefined;
+    let compTxnYoY7: number | undefined;
+    let compTxnYoY30: number | undefined;
     try {
       const lyRows = await db.select().from(historicalDailySales)
         .where(and(
@@ -758,18 +822,27 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           lte(historicalDailySales.date, fmt(lyYesterday))
         ));
       let ly7Total = 0, ly30Total = 0;
+      let ly7Txn = 0, ly30Txn = 0;
       const ly7Days = new Set<string>();
       const ly30Days = new Set<string>();
       for (const row of lyRows) {
         if (!compStoreIds.has(row.restaurantId)) continue;
         const rowDate = new Date(`${row.date}T12:00:00`);
         const sales = parseFloat(row.netSales);
-        if (rowDate >= ly7Start) { ly7Total += sales; ly7Days.add(`${row.restaurantId}-${row.date}`); }
+        const txn = row.guestCount || 0;
+        if (rowDate >= ly7Start) {
+          ly7Total += sales;
+          ly7Txn += txn;
+          ly7Days.add(`${row.restaurantId}-${row.date}`);
+        }
         ly30Total += sales;
+        ly30Txn += txn;
         ly30Days.add(`${row.restaurantId}-${row.date}`);
       }
       if (ly7Total > 0) compYoY7 = pctVar(comp7Sales, ly7Total);
       if (ly30Total > 0) compYoY30 = pctVar(comp30Sales, ly30Total);
+      if (ly7Txn > 0) compTxnYoY7 = pctVar(comp7Txn, ly7Txn);
+      if (ly30Txn > 0) compTxnYoY30 = pctVar(comp30Txn, ly30Txn);
     } catch { /* historical data may not be available */ }
 
     // Sort by daily sales (descending) for top performers and all-units
@@ -899,6 +972,28 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">30-DAY YoY</div>
           <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compYoY30 ?? 0)};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'} <span style="font-size: 14px;">${compYoY30 !== undefined ? trendArrow(compYoY30) : ''}</span></div>
           <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp30Sales)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ COMP STORE TRANSACTIONS YoY ═══ -->
+    <div style="${sectionStyle}">
+      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Comp Store Transactions YoY <span style="font-size: 11px; color: #71717a; font-weight: 400;">(${compStores.length} of ${restaurantData.length} stores, same day-of-week aligned)</span></h3>
+      <div style="display: flex; justify-content: space-around; text-align: center; gap: 8px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
+          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">1-DAY YoY</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compTxnYoY1 ?? 0)};">${compTxnYoY1 !== undefined ? pctStr(compTxnYoY1) : '--'} <span style="font-size: 14px;">${compTxnYoY1 !== undefined ? trendArrow(compTxnYoY1) : ''}</span></div>
+          <div style="font-size: 11px; color: #71717a;">${comp1Txn.toLocaleString()}</div>
+        </div>
+        <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
+          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">7-DAY YoY</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compTxnYoY7 ?? 0)};">${compTxnYoY7 !== undefined ? pctStr(compTxnYoY7) : '--'} <span style="font-size: 14px;">${compTxnYoY7 !== undefined ? trendArrow(compTxnYoY7) : ''}</span></div>
+          <div style="font-size: 11px; color: #71717a;">${comp7Txn.toLocaleString()}</div>
+        </div>
+        <div style="flex: 1; min-width: 100px; padding: 12px 8px; border-radius: 8px; background: #fafafa;">
+          <div style="font-size: 10px; color: #71717a; margin-bottom: 4px;">30-DAY YoY</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${trendColor(compTxnYoY30 ?? 0)};">${compTxnYoY30 !== undefined ? pctStr(compTxnYoY30) : '--'} <span style="font-size: 14px;">${compTxnYoY30 !== undefined ? trendArrow(compTxnYoY30) : ''}</span></div>
+          <div style="font-size: 11px; color: #71717a;">${comp30Txn.toLocaleString()}</div>
         </div>
       </div>
     </div>
