@@ -115,6 +115,9 @@ interface RestaurantDayData {
   osatPercent: number | null;
   osatResponses: number;
   earnedBadges: string[];
+  // Transactions
+  transactionCount: number;
+  lastWeekTransactionCount: number;
   // Labor
   modelHours: number;
   actualHours: number;
@@ -555,6 +558,8 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         osatPercent: osatData.totalResponses > 0 ? osatData.totalWeighted / osatData.totalResponses : null,
         osatResponses: osatData.totalResponses,
         earnedBadges: bonusResult.bonuses.map(b => b.label),
+        transactionCount: dailyTotalTxn,
+        lastWeekTransactionCount: dailyTotalLWTxn,
         modelHours: Math.round(modelHoursTotal * 10) / 10,
         actualHours: Math.round(actualHoursTotal * 10) / 10,
         weatherCondition: weather?.condition ?? null,
@@ -670,6 +675,14 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       ? osatWeighted.reduce((s, r) => s + r.osatPercent! * r.osatResponses, 0) / osatWeighted.reduce((s, r) => s + r.osatResponses, 0)
       : null;
     const companyOsatResponses = restaurantData.reduce((s, r) => s + r.osatResponses, 0);
+
+    // Transactions & Check Average
+    const totalTransactions = sum(restaurantData, r => r.transactionCount);
+    const totalLWTransactions = sum(restaurantData, r => r.lastWeekTransactionCount);
+    const transactionsVsLW = pctVar(totalTransactions, totalLWTransactions);
+    const checkAverage = totalTransactions > 0 ? totalSales / totalTransactions : 0;
+    const lwCheckAverage = totalLWTransactions > 0 ? totalLWSales / totalLWTransactions : 0;
+    const checkAvgVsLW = pctVar(checkAverage, lwCheckAverage);
 
     // State breakdowns
     const alStores = restaurantData.filter(r => r.state === "AL");
@@ -803,13 +816,12 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     const headerCell = `font-size: 10px; color: #a1a1aa; font-weight: 600;`;
     const dataCell = `font-size: 12px;`;
 
-    const renderStatRow = (label: string, count: number, sales: number, vsLW: number | undefined, osat: number | null, osatSurveys: number, p7Var: number | undefined, p30Var: number | undefined, vsLY?: number | undefined) => `
+    const renderStatRow = (label: string, count: number, sales: number, vsLW: number | undefined, _osat: number | null, _osatSurveys: number, p7Var: number | undefined, p30Var: number | undefined, vsLY?: number | undefined) => `
       <tr>
         <td style="padding: 5px 2px; font-size: 11px; font-weight: 600;">${label} <span style="color: #a1a1aa; font-weight: 400;">(${count})</span></td>
         <td style="padding: 5px 2px; font-size: 11px; text-align: right;">${formatCurrency(sales)}</td>
         <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${vsLW !== undefined && vsLW >= 0 ? '#16a34a' : '#dc2626'};">${vsLW !== undefined ? pctStr(vsLW) : '--'}</td>
         ${vsLY !== undefined ? `<td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${vsLY >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(vsLY)}</td>` : ''}
-        <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${osat !== null ? (osat >= 85 ? '#16a34a' : osat >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${osat !== null ? Math.round(osat) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${osatSurveys > 0 ? '(' + osatSurveys + ')' : ''}</span></td>
         <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${trendColor(p7Var ?? 0)};">${p7Var !== undefined ? pctStr(p7Var) : '--'}</td>
         <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${trendColor(p30Var ?? 0)};">${p30Var !== undefined ? pctStr(p30Var) : '--'}</td>
       </tr>`;
@@ -852,22 +864,20 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       <div style="display: flex; justify-content: space-around; text-align: center; flex-wrap: wrap; gap: 8px;">
         <div style="min-width: 90px;">
           <div style="font-size: 28px; font-weight: 700;">${formatCurrency(totalSales)}</div>
-          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">Yesterday Sales</div>
+          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">Sales</div>
         </div>
         <div style="min-width: 70px;">
           <div style="font-size: 28px; font-weight: 700; color: ${(companyVsLW ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${companyVsLW !== undefined ? pctStr(companyVsLW) : '--'}</div>
           <div style="font-size: 11px; color: #71717a; margin-top: 2px;">vs Last Week</div>
         </div>
-        ${nonCompStores.length > 0 ? `
         <div style="min-width: 70px;">
-          <div style="font-size: 28px; font-weight: 700; color: #2563eb;">${nonCompStores.length}</div>
-          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">Non-Comp Units</div>
-        </div>` : ''}
-        ${companyOsat !== null ? `
+          <div style="font-size: 28px; font-weight: 700;">${totalTransactions.toLocaleString()}</div>
+          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">Transactions</div>
+        </div>
         <div style="min-width: 70px;">
-          <div style="font-size: 28px; font-weight: 700; color: ${companyOsat >= 85 ? '#16a34a' : companyOsat >= 80 ? '#d97706' : '#dc2626'};">${Math.round(companyOsat)}%</div>
-          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">OSAT <span style="font-size: 10px;">(${companyOsatResponses} surveys)</span></div>
-        </div>` : ''}
+          <div style="font-size: 28px; font-weight: 700;">${formatCurrency(checkAverage)}</div>
+          <div style="font-size: 11px; color: #71717a; margin-top: 2px;">Check Avg</div>
+        </div>
       </div>
     </div>
 
@@ -891,7 +901,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           <div style="font-size: 11px; color: #71717a;">${formatCurrency(comp30Sales)}</div>
         </div>
       </div>
-      ${trendInsight ? `<div style="margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: ${trendInsight.includes('Closing') ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${trendInsight.includes('Closing') ? '#bbf7d0' : '#fecaca'}; font-size: 12px; color: ${trendInsight.includes('Closing') ? '#166534' : '#991b1b'};">${trendInsight}</div>` : ''}
     </div>
 
     <!-- ═══ STATE BREAKDOWN: AL vs TN ═══ -->
@@ -903,7 +912,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <th style="padding: 3px 2px; ${headerCell}">STATE</th>
             <th style="padding: 3px 2px; ${headerCell} text-align: right;">SALES</th>
             <th style="padding: 3px 2px; ${headerCell} text-align: right;">vs LW</th>
-            <th style="padding: 3px 2px; ${headerCell} text-align: right;">OSAT</th>
             <th style="padding: 3px 2px; ${headerCell} text-align: right;">7D</th>
             <th style="padding: 3px 2px; ${headerCell} text-align: right;">30D</th>
           </tr>
@@ -927,7 +935,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <th style="padding: 3px 2px; ${headerCell} text-align: right;">vs LY</th>
             <th style="padding: 3px 2px; ${headerCell} text-align: right;">7D YoY</th>
             <th style="padding: 3px 2px; ${headerCell} text-align: right;">30D</th>
-            <th style="padding: 3px 2px; ${headerCell} text-align: right;">OSAT</th>
           </tr>
         </thead>
         <tbody>
@@ -938,7 +945,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(compStats.vsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compStats.vsLY !== undefined ? pctStr(compStats.vsLY) : '--'}</td>
             <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(compYoY7 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY7 !== undefined ? pctStr(compYoY7) : '--'}</td>
             <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${(compYoY30 ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${compYoY30 !== undefined ? pctStr(compYoY30) : '--'}</td>
-            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${compStats.osatPct !== null ? (compStats.osatPct >= 85 ? '#16a34a' : compStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${compStats.osatPct !== null ? Math.round(compStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${compStats.osatSurveys > 0 ? '(' + compStats.osatSurveys + ')' : ''}</span></td>
           </tr>
           ${nonCompStores.length > 0 ? `
           <tr>
@@ -948,7 +954,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: #a1a1aa;">N/A</td>
             <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: #a1a1aa;">N/A</td>
             <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: #a1a1aa;">N/A</td>
-            <td style="padding: 5px 2px; font-size: 11px; text-align: right; color: ${nonCompStats.osatPct !== null ? (nonCompStats.osatPct >= 85 ? '#16a34a' : nonCompStats.osatPct >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${nonCompStats.osatPct !== null ? Math.round(nonCompStats.osatPct) + '%' : '--'} <span style="font-size: 9px; color: #a1a1aa;">${nonCompStats.osatSurveys > 0 ? '(' + nonCompStats.osatSurveys + ')' : ''}</span></td>
           </tr>` : ''}
         </tbody>
       </table>
@@ -965,7 +970,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">Sales</th>
             <th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">vs LW</th>
             ${hasLYData ? `<th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">YoY</th>` : ''}
-            <th style="text-align: right; padding: 6px 4px; font-size: 10px; color: #71717a; font-weight: 600;">OSAT</th>
           </tr>
         </thead>
         <tbody>
@@ -983,10 +987,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <td style="padding: 8px 4px; text-align: right; font-weight: 600; vertical-align: top;">${formatCurrency(r.sales)}</td>
             <td style="padding: 8px 4px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${pctStr(r.salesVsLW)}</td>
             ${hasLYData ? `<td style="padding: 8px 4px; text-align: right; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'}</td>` : ''}
-            <td style="padding: 8px 4px; text-align: right; vertical-align: top;">
-              <span style="color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
-              <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
-            </td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -1010,8 +1010,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         <div style="margin-top: 6px;">
           <span style="font-size: 15px; font-weight: 600;">${formatCurrency(r.sales)}</span>
           <span style="margin-left: 10px; font-size: 13px; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'};">${pctStr(r.salesVsLW)} <span style="font-size: 10px; color: #a1a1aa;">WoW</span></span>
-          <span style="margin-left: 10px; font-size: 12px; color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">OSAT ${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
-          <span style="font-size: 10px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
         </div>
         <div style="margin-top: 4px; font-size: 11px; color: #71717a;">
           ${r.eowForecast > 0 ? `EOW <span style="color: #3b82f6; font-weight: 500;">${formatCurrency(r.eowForecast)}</span>` : ''}
@@ -1020,21 +1018,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         </div>
       </div>`;
       }).join('')}
-    </div>` : ''}
-
-    <!-- ═══ BADGE LEADERS ═══ -->
-    ${badgeLeaders.length > 0 ? `
-    <div style="${sectionStyle}">
-      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Badge Leaders</h3>
-      <div style="display: flex; flex-direction: column; gap: 6px;">
-        ${badgeLeaders.map(r => `
-        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: #fafafa;">
-          <span style="font-size: 12px; font-weight: 600; min-width: 100px;">${r.restaurantName}</span>
-          <div style="flex: 1; display: flex; gap: 4px; flex-wrap: wrap;">
-            ${r.earnedBadges.map(b => `<span style="display: inline-block; padding: 1px 6px; border-radius: 9999px; font-size: 9px; font-weight: 600; background: #dcfce7; color: #166534;">${b}</span>`).join('')}
-          </div>
-        </div>`).join('')}
-      </div>
     </div>` : ''}
 
     <!-- ═══ ALL UNITS ═══ -->
@@ -1049,7 +1032,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">Sales</th>
             <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">vs LW</th>
             ${hasLYData ? `<th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">YoY</th>` : ''}
-            <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">OSAT</th>
             <th style="text-align: right; padding: 5px 3px; font-size: 9px; color: #71717a; font-weight: 600;">Labor Hrs</th>
           </tr>
         </thead>
@@ -1069,10 +1051,6 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
             <td style="padding: 6px 3px; text-align: right; font-weight: 600; vertical-align: top;">${formatCurrency(r.sales)}</td>
             <td style="padding: 6px 3px; text-align: right; color: ${r.salesVsLW >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${pctStr(r.salesVsLW)}</td>
             ${hasLYData ? `<td style="padding: 6px 3px; text-align: right; color: ${(r.salesVsLY ?? 0) >= 0 ? '#16a34a' : '#dc2626'}; vertical-align: top;">${r.salesVsLY !== undefined ? pctStr(r.salesVsLY) : '--'}</td>` : ''}
-            <td style="padding: 6px 3px; text-align: right; vertical-align: top;">
-              <span style="color: ${r.osatPercent !== null ? (r.osatPercent >= 85 ? '#16a34a' : r.osatPercent >= 80 ? '#d97706' : '#dc2626') : '#a1a1aa'};">${r.osatPercent !== null ? Math.round(r.osatPercent) + '%' : '--'}</span>
-              <span style="font-size: 9px; color: #a1a1aa;">${r.osatResponses > 0 ? '(' + r.osatResponses + ')' : ''}</span>
-            </td>
             <td style="padding: 6px 3px; text-align: right; vertical-align: top; color: ${laborColor};">
               ${r.modelHours > 0 ? `${r.actualHours.toFixed(0)} <span style="font-size: 10px;">(${laborDiff >= 0 ? '+' : ''}${laborDiff.toFixed(0)})</span>` : '--'}
             </td>
@@ -1082,13 +1060,23 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       </table>
     </div>
 
+    <!-- ═══ LEGEND ═══ -->
+    <div style="${sectionStyle}">
+      <h3 style="margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #71717a;">Legend</h3>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: #52525b;">
+        <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; color: #a1a1aa; margin-right: 4px;">C</span> Comp (open &gt; 18 months)</div>
+        <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #fef3c7; color: #92400e; margin-right: 4px;">NC</span> Non-Comp (open &le; 18 months)</div>
+        <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #dbeafe; color: #1e40af; margin-right: 4px;">NEW</span> New store</div>
+      </div>
+      <div style="margin-top: 6px; font-size: 10px; color: #a1a1aa;">
+        vs LW = compared to same day last week &middot; YoY = year-over-year (same day-of-week aligned) &middot; 7D/30D = rolling period trends
+      </div>
+    </div>
+
     <!-- ═══ FOOTER ═══ -->
     <div style="${sectionStyle} border-radius: 0 0 8px 8px; text-align: center;">
       <p style="font-size: 11px; color: #a1a1aa; margin-top: 0;">
         MWB Restaurants
-      </p>
-      <p style="font-size: 10px; color: #a1a1aa; margin-top: 4px;">
-        Comp threshold: 18 months from open date &middot; Rolling trends compare same day-of-week period prior year
       </p>
     </div>
 
