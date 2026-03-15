@@ -5,7 +5,7 @@ import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, 
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
-import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
+import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesMultiDay } from "../xenial-webhook";
 import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
@@ -133,7 +133,13 @@ router.get("/api/performance-history", async (req, res) => {
     const yoyPosStart = new Date(`${yoyStartStr}T00:00:00.000Z`);
     const yoyPosEnd = new Date(`${yoyEndStr}T23:59:59.999Z`);
 
-    const [yoySalesData, yoyPosRows, allRestaurants, allMarkets, marketAssignments] = await Promise.all([
+    // Pre-compute weekend dates for parallel attachment fetch
+    const weekendDatesInRange = dateRange.filter(d => {
+      const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
+      return dow === 5 || dow === 6 || dow === 0;
+    });
+
+    const [yoySalesData, yoyPosRows, allRestaurants, allMarkets, marketAssignments, weekendAttachmentData] = await Promise.all([
       db.select().from(historicalDailySales).where(and(gte(historicalDailySales.date, yoyStartStr), lte(historicalDailySales.date, yoyEndStr))),
       db.select({
         restaurantId: hourlySales.restaurantId,
@@ -143,6 +149,12 @@ router.get("/api/performance-history", async (req, res) => {
       storage.getRestaurants(),
       db.select().from(markets),
       db.select().from(restaurantMarkets),
+      weekendDatesInRange.length > 0
+        ? getAttachmentRatesMultiDay(weekendDatesInRange).catch(err => {
+            console.error("[perf-history] Error fetching weekend attachment rates:", err);
+            return new Map<string, { overallAttachScore: number; categoriesAtTarget: number; totalOrders: number }>();
+          })
+        : Promise.resolve(new Map<string, { overallAttachScore: number; categoriesAtTarget: number; totalOrders: number }>()),
     ]);
 
     const yoySalesMap = new Map<string, number>();
@@ -747,41 +759,13 @@ router.get("/api/performance-history", async (req, res) => {
     // Sort by average grade descending
     restaurantHistories.sort((a, b) => b.avgGrade - a.avgGrade);
 
-    // ── Fetch attachment rates for weekend days ──
-    const weekendDatesInRange = dateRange.filter(d => {
-      const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
-      return dow === 5 || dow === 6 || dow === 0;
-    });
-
+    // Use pre-fetched attachment data from the parallel Promise.all above
     type AttachmentDayData = {
       overallAttachScore: number;
       categoriesAtTarget: number;
       totalOrders: number;
     };
-    const attachmentByRestaurantDay = new Map<string, AttachmentDayData>();
-
-    if (weekendDatesInRange.length > 0) {
-      try {
-        const attachResults = await Promise.all(
-          weekendDatesInRange.map(d => getAttachmentRatesFromDetail(new Date(`${d}T12:00:00Z`)))
-        );
-        for (let i = 0; i < weekendDatesInRange.length; i++) {
-          const dateStr = weekendDatesInRange[i];
-          const dayData = attachResults[i];
-          dayData.forEach((value, restaurantId) => {
-            const cats = value.categories || {};
-            const atTarget = Object.values(cats).filter(c => c.vsTarget >= 0).length;
-            attachmentByRestaurantDay.set(`${restaurantId}::${dateStr}`, {
-              overallAttachScore: value.overallAttachScore,
-              categoriesAtTarget: atTarget,
-              totalOrders: value.totalOrders,
-            });
-          });
-        }
-      } catch (err) {
-        console.error("[perf-history] Error fetching weekend attachment rates:", err);
-      }
-    }
+    const attachmentByRestaurantDay: Map<string, AttachmentDayData> = weekendAttachmentData;
 
     // ── Weekend Scorecard computation ──
     // Weekend days: Friday (5), Saturday (6), Sunday (0)
