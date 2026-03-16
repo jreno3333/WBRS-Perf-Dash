@@ -55,6 +55,7 @@ router.get("/api/ai-analysis", async (req, res) => {
       prevDestinationData,
       ootData,
       missingManagerData,
+      hourlyDistributionData,
     ] = await Promise.all([
       // 1a. Hours with sales over $2000
       getHighSalesHours(startDateStr, endDateStr, 2000),
@@ -70,6 +71,8 @@ router.get("/api/ai-analysis", async (req, res) => {
       getFullLaneBUsage(startDateStr, endDateStr),
       // 7. Missing manager hours
       getMissingManagerHours(startDateStr, endDateStr),
+      // 8. Hourly sales distribution
+      getHourlySalesDistribution(startDateStr, endDateStr),
     ]);
 
     // Process dine-in % change
@@ -89,6 +92,7 @@ router.get("/api/ai-analysis", async (req, res) => {
         deliveryPercentages,
         fullLaneB: formatFullLaneBData(ootData, restaurantMap),
         missingManagerReport: formatMissingManagerReport(missingManagerData, restaurantMap),
+        hourlyDistribution: formatHourlyDistribution(hourlyDistributionData, restaurantMap),
       },
     });
   } catch (error) {
@@ -386,6 +390,104 @@ function formatMissingManagerReport(
       uncoveredHours: worstStore.uncoveredHours,
       gapPercentage: worstStore.gapPercentage,
     } : null,
+  };
+}
+
+async function getHourlySalesDistribution(startDate: string, endDate: string) {
+  const startTs = new Date(startDate + "T00:00:00Z");
+  const endTs = new Date(endDate + "T23:59:59Z");
+
+  return db
+    .select({
+      restaurantId: hourlySales.restaurantId,
+      hour: hourlySales.hour,
+      totalSales: sql<number>`coalesce(sum(${hourlySales.actualSales}::numeric), 0)`,
+    })
+    .from(hourlySales)
+    .where(
+      and(
+        gte(hourlySales.salesDate, startTs),
+        lte(hourlySales.salesDate, endTs),
+        sql`(${hourlySales.actualSales})::numeric > 0`
+      )
+    )
+    .groupBy(hourlySales.restaurantId, hourlySales.hour)
+    .orderBy(hourlySales.hour);
+}
+
+function formatHourlyDistribution(
+  rows: { restaurantId: string; hour: number; totalSales: number }[],
+  restaurantMap: Map<string, string>
+) {
+  const isTraining = (id: string) => (restaurantMap.get(id) || '').toLowerCase().includes('training');
+
+  const companyByHour = new Map<number, number>();
+  let companyTotal = 0;
+
+  const byRestaurant = new Map<string, { name: string; byHour: Map<number, number>; total: number }>();
+
+  for (const row of rows) {
+    if (isTraining(row.restaurantId)) continue;
+    const sales = Number(row.totalSales);
+    companyByHour.set(row.hour, (companyByHour.get(row.hour) || 0) + sales);
+    companyTotal += sales;
+
+    if (!byRestaurant.has(row.restaurantId)) {
+      byRestaurant.set(row.restaurantId, { name: restaurantMap.get(row.restaurantId) || row.restaurantId, byHour: new Map(), total: 0 });
+    }
+    const rest = byRestaurant.get(row.restaurantId)!;
+    rest.byHour.set(row.hour, (rest.byHour.get(row.hour) || 0) + sales);
+    rest.total += sales;
+  }
+
+  if (companyTotal === 0) {
+    return {
+      hasData: false,
+      companyTotal: 0,
+      peakHour: 0,
+      peakPct: 0,
+      hours: [],
+      restaurants: [],
+    };
+  }
+
+  const companyHours: { hour: number; sales: number; pct: number }[] = [];
+  for (let h = 0; h < 24; h++) {
+    const sales = companyByHour.get(h) || 0;
+    companyHours.push({
+      hour: h,
+      sales: Math.round(sales * 100) / 100,
+      pct: Math.round((sales / companyTotal) * 1000) / 10,
+    });
+  }
+
+  const peakHour = companyHours.reduce((best, cur) => cur.sales > best.sales ? cur : best, companyHours[0]);
+
+  const restaurantBreakdown: { restaurant: string; peakHour: number; peakPct: number; topHours: { hour: number; pct: number }[] }[] = [];
+  byRestaurant.forEach((data) => {
+    const hours: { hour: number; pct: number }[] = [];
+    for (let h = 0; h < 24; h++) {
+      const sales = data.byHour.get(h) || 0;
+      hours.push({ hour: h, pct: data.total > 0 ? Math.round((sales / data.total) * 1000) / 10 : 0 });
+    }
+    const peak = hours.reduce((best, cur) => cur.pct > best.pct ? cur : best, hours[0]);
+    restaurantBreakdown.push({
+      restaurant: data.name,
+      peakHour: peak.hour,
+      peakPct: peak.pct,
+      topHours: hours.filter(h => h.pct >= 3).sort((a, b) => b.pct - a.pct),
+    });
+  });
+
+  restaurantBreakdown.sort((a, b) => a.restaurant.localeCompare(b.restaurant));
+
+  return {
+    hasData: true,
+    companyTotal: Math.round(companyTotal * 100) / 100,
+    peakHour: peakHour.hour,
+    peakPct: peakHour.pct,
+    hours: companyHours,
+    restaurants: restaurantBreakdown,
   };
 }
 

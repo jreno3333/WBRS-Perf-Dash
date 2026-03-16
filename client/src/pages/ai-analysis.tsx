@@ -35,6 +35,7 @@ import {
   MessageSquare,
   UserCheck,
   ShieldAlert,
+  Clock,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -131,6 +132,28 @@ interface MissingManagerReport {
   worstStore: { restaurant: string; uncoveredHours: number; gapPercentage: number } | null;
 }
 
+interface HourlyDistributionHour {
+  hour: number;
+  sales: number;
+  pct: number;
+}
+
+interface HourlyDistributionRestaurant {
+  restaurant: string;
+  peakHour: number;
+  peakPct: number;
+  topHours: { hour: number; pct: number }[];
+}
+
+interface HourlyDistribution {
+  hasData: boolean;
+  companyTotal: number;
+  peakHour: number;
+  peakPct: number;
+  hours: HourlyDistributionHour[];
+  restaurants: HourlyDistributionRestaurant[];
+}
+
 interface AnalysisData {
   dateRange: { start: string; end: string; days: number };
   previousPeriod: { start: string; end: string };
@@ -143,6 +166,7 @@ interface AnalysisData {
     deliveryPercentages: DeliveryPercentage[];
     fullLaneB: FullLaneBData[];
     missingManagerReport: MissingManagerReport;
+    hourlyDistribution: HourlyDistribution;
   };
 }
 
@@ -1183,6 +1207,113 @@ export default function AiAnalysisPage() {
                         </Card>
                       );
                     })()}
+                  </>
+                )}
+              </div>
+            </InsightCard>
+
+            {/* 8. Hourly Sales Distribution */}
+            <InsightCard
+              icon={Clock}
+              title="Sales by Hour of Day"
+              question="What percentage of sales happen in each hour across all units?"
+              defaultOpen={true}
+              accentColor="text-indigo-600"
+              bgColor="bg-indigo-500/10"
+            >
+              <div className="space-y-4" data-testid="hourly-distribution-section">
+                {!data?.insights.hourlyDistribution ? (
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Loading distribution data...</span>
+                  </div>
+                ) : !data.insights.hourlyDistribution.hasData ? (
+                  <p className="text-sm text-muted-foreground italic">No sales data available for the selected period.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Badge variant="secondary" className="text-base px-3 py-1" data-testid="badge-peak-hour">
+                        {formatHour(data.insights.hourlyDistribution.peakHour)}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        is the peak hour with {data.insights.hourlyDistribution.peakPct}% of total sales ({formatCurrency(data.insights.hourlyDistribution.companyTotal)} total)
+                      </span>
+                    </div>
+
+                    <div className="space-y-1" data-testid="hourly-bars">
+                      {(() => {
+                        const maxPct = Math.max(...data.insights.hourlyDistribution.hours.map(x => x.pct));
+                        return data.insights.hourlyDistribution.hours.map((h) => {
+                        const barWidth = maxPct > 0 ? (h.pct / maxPct) * 100 : 0;
+                        const isOperational = h.pct >= 1;
+                        const isPeak = h.pct >= maxPct * 0.8;
+                        return (
+                          <div key={h.hour} className="flex items-center gap-2 text-xs" data-testid={`hourly-bar-${h.hour}`}>
+                            <span className="w-14 text-right text-muted-foreground font-mono shrink-0">
+                              {formatHour(h.hour).padStart(5)}
+                            </span>
+                            <div className="flex-1 h-5 bg-muted/30 rounded-sm overflow-hidden relative">
+                              <div
+                                className={`h-full rounded-sm transition-all ${
+                                  isPeak ? 'bg-indigo-500' : isOperational ? 'bg-indigo-400/70' : 'bg-indigo-300/30'
+                                }`}
+                                style={{ width: `${barWidth}%` }}
+                              />
+                            </div>
+                            <span className={`w-12 text-right font-semibold shrink-0 ${
+                              isPeak ? 'text-indigo-600' : isOperational ? 'text-foreground' : 'text-muted-foreground'
+                            }`}>
+                              {h.pct > 0 ? `${h.pct}%` : '—'}
+                            </span>
+                            <span className="w-16 text-right text-muted-foreground shrink-0 hidden sm:block">
+                              {h.sales > 0 ? formatCurrency(h.sales) : ''}
+                            </span>
+                          </div>
+                        );
+                      });
+                      })()}
+                    </div>
+
+                    {data.insights.hourlyDistribution.restaurants.length > 0 && (
+                      <Collapsible>
+                        <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                          <ChevronDown className="w-3.5 h-3.5" />
+                          <span>Peak hours by unit</span>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="rounded-lg border overflow-hidden mt-2">
+                            <table className="w-full text-sm" data-testid="table-hourly-by-unit">
+                              <thead>
+                                <tr className="bg-muted/50">
+                                  <th className="text-left px-3 py-2 font-medium">Unit</th>
+                                  <th className="text-center px-3 py-2 font-medium">Peak Hour</th>
+                                  <th className="text-center px-3 py-2 font-medium">% at Peak</th>
+                                  <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Busy Hours (≥3%)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.insights.hourlyDistribution.restaurants.map((r) => (
+                                  <tr key={r.restaurant} className="border-t hover:bg-muted/30" data-testid={`row-dist-${r.restaurant}`}>
+                                    <td className="px-3 py-2 font-medium whitespace-nowrap">
+                                      {r.restaurant.replace(/^\d+\s*-\s*/, '')}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      <Badge variant="outline">{formatHour(r.peakHour)}</Badge>
+                                    </td>
+                                    <td className="px-3 py-2 text-center font-semibold text-indigo-600">
+                                      {r.peakPct}%
+                                    </td>
+                                    <td className="px-3 py-2 hidden sm:table-cell text-muted-foreground text-xs">
+                                      {r.topHours.map(h => `${formatHour(h.hour)} (${h.pct}%)`).join(', ')}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
                   </>
                 )}
               </div>
