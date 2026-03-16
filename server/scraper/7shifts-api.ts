@@ -1050,7 +1050,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
         const tzLiteral = sql.raw(`'${locationTimezone}'`);
         const posResults = await posDb
           .select({
-            hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})::int`,
+            hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`,
             totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
           })
           .from(posOrders)
@@ -1061,7 +1061,7 @@ export async function fetchHourlySalesFromAPI(date?: Date): Promise<{ success: b
               lt(posOrders.businessDate, posEndOfDay)
             )
           )
-          .groupBy(sql`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})`);
+          .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})`);
         
         for (const row of posResults) {
           posSalesByHour.set(row.hour, Number(row.totalSales) || 0);
@@ -1254,7 +1254,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
         const tzLiteral = sql.raw(`'${locationTimezone}'`);
         const posResults = await posDb
           .select({
-            hour: sql<number>`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})::int`,
+            hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`,
             totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
           })
           .from(posOrders)
@@ -1265,7 +1265,7 @@ export async function syncSalesWithXenialPOS(date?: Date): Promise<{ success: bo
               lt(posOrders.businessDate, endOfDay)
             )
           )
-          .groupBy(sql`extract(hour from ${posOrders.orderClosedAt} AT TIME ZONE ${tzLiteral})`);
+          .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})`);
         
         for (const row of posResults) {
           restaurantSales.set(row.hour, Number(row.totalSales) || 0);

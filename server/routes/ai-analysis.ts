@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
 import { hourlySales, restaurants, dailyOsat, osatData, posOrders, locationMapping, dailySales, dailyLabor, hourlyLabor, hmeTimerData, dailyWeather, dailyGoogleReviews, hourlyCrew, employees, historicalDailySales, osatCategoryIssues } from "@shared/schema";
-import { sql, and, gte, lte, lt, eq, desc, asc } from "drizzle-orm";
+import { sql, and, gte, lte, lt, eq, desc, asc, inArray } from "drizzle-orm";
 import { getAttachmentRatesFromDetail } from "../xenial-webhook";
 
 const router = Router();
@@ -42,9 +42,9 @@ router.get("/api/ai-analysis", async (req, res) => {
     prevStartDate.setDate(prevStartDate.getDate() - numDays + 1);
     const prevStartDateStr = prevStartDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 
-    // Get restaurant list for name mapping
     const restaurantList = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
     const restaurantMap = new Map(restaurantList.map((r) => [r.id, r.name]));
+    const timezoneMap = new Map(restaurantList.map((r) => [r.id, r.timezone || 'America/Chicago']));
 
     // Run all analysis queries in parallel
     const [
@@ -81,8 +81,8 @@ router.get("/api/ai-analysis", async (req, res) => {
       dateRange: { start: startDateStr, end: endDateStr, days: numDays },
       previousPeriod: { start: prevStartDateStr, end: prevEndDateStr },
       insights: {
-        highSalesHours: formatHighSalesHours(highSalesHours, restaurantMap),
-        highSalesHours1k: formatHighSalesHours1k(highSalesHours1k, restaurantMap),
+        highSalesHours: formatHighSalesHours(highSalesHours, restaurantMap, timezoneMap),
+        highSalesHours1k: formatHighSalesHours1k(highSalesHours1k, restaurantMap, timezoneMap),
         osatLeaders: formatOsatLeaders(osatLeaders, restaurantMap),
         dineInChange,
         appPercentages,
@@ -196,29 +196,48 @@ async function getFullLaneBUsage(startDate: string, endDate: string) {
   const mappings = await db.select().from(locationMapping);
   const storeToRestaurant = new Map(mappings.map((m) => [m.xenialStoreNumber, m.restaurantId]));
 
-  // dt3 = Full Lane B — check both destination and order_source
-  const rows = await posDb
-    .select({
-      storeNumber: posOrders.storeNumber,
-      businessDate: sql<string>`${posOrders.businessDate}::date::text`,
-      hour: sql<number>`extract(hour from ${posOrders.orderClosedAt})::int`,
-      orderCount: sql<number>`count(*)::int`,
-    })
-    .from(posOrders)
-    .where(
-      and(
-        gte(posOrders.businessDate, startTs),
-        lte(posOrders.businessDate, endTs),
-        sql`LOWER(${posOrders.orderSource}) like '%dt3%'`
-      )
-    )
-    .groupBy(posOrders.storeNumber, sql`${posOrders.businessDate}::date::text`, sql`extract(hour from ${posOrders.orderClosedAt})::int`)
-    .orderBy(desc(sql`count(*)`));
+  const allRestaurants = await db.select().from(restaurants);
+  const restaurantTzMap = new Map(allRestaurants.map((r) => [r.id, r.timezone || 'America/Chicago']));
+  const storeTzMap = new Map<string, string>();
+  for (const m of mappings) {
+    if (m.restaurantId && m.xenialStoreNumber) {
+      storeTzMap.set(m.xenialStoreNumber, restaurantTzMap.get(m.restaurantId) || 'America/Chicago');
+    }
+  }
 
-  // Aggregate by restaurant
+  const uniqueTimezones = [...new Set(storeTzMap.values())];
+  const allRows: { storeNumber: string; businessDate: string; hour: number; orderCount: number }[] = [];
+
+  for (const tz of uniqueTimezones) {
+    const storesInTz = [...storeTzMap.entries()].filter(([, t]) => t === tz).map(([s]) => s);
+    if (storesInTz.length === 0) continue;
+
+    const tzLiteral = sql.raw(`'${tz}'`);
+    const rows = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        businessDate: sql<string>`${posOrders.businessDate}::date::text`,
+        hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`,
+        orderCount: sql<number>`count(*)::int`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.businessDate, startTs),
+          lte(posOrders.businessDate, endTs),
+          sql`LOWER(${posOrders.orderSource}) like '%dt3%'`,
+          inArray(posOrders.storeNumber, storesInTz)
+        )
+      )
+      .groupBy(posOrders.storeNumber, sql`${posOrders.businessDate}::date::text`, sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`)
+      .orderBy(desc(sql`count(*)`));
+
+    allRows.push(...rows);
+  }
+
   const restaurantLaneB = new Map<string, { totalOrders: number; hoursUsed: number; daysUsed: Set<string> }>();
 
-  for (const row of rows) {
+  for (const row of allRows) {
     const restaurantId = storeToRestaurant.get(row.storeNumber) || row.storeNumber;
     if (!restaurantLaneB.has(restaurantId)) {
       restaurantLaneB.set(restaurantId, { totalOrders: 0, hoursUsed: 0, daysUsed: new Set() });
@@ -373,14 +392,18 @@ function formatMissingManagerReport(
 // ---- Helper Functions ----
 
 
-function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
-  // Group by restaurant
-  const byRestaurant = new Map<string, { count: number; totalSales: number; peakSales: number; peakHour: number; peakDate: string }>();
+function getTzAbbrev(tz: string): string {
+  return tz === 'America/New_York' ? 'ET' : 'CT';
+}
+
+function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>, timezoneMap: Map<string, string>) {
+  const byRestaurant = new Map<string, { count: number; totalSales: number; peakSales: number; peakHour: number; peakDate: string; tz: string }>();
 
   for (const row of rows) {
     const name = restaurantMap.get(row.restaurantId) || row.restaurantId;
+    const tz = timezoneMap.get(row.restaurantId) || 'America/Chicago';
     if (!byRestaurant.has(name)) {
-      byRestaurant.set(name, { count: 0, totalSales: 0, peakSales: 0, peakHour: 0, peakDate: "" });
+      byRestaurant.set(name, { count: 0, totalSales: 0, peakSales: 0, peakHour: 0, peakDate: "", tz });
     }
     const data = byRestaurant.get(name)!;
     data.count++;
@@ -389,7 +412,7 @@ function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
     if (sales > data.peakSales) {
       data.peakSales = sales;
       data.peakHour = row.hour;
-      data.peakDate = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+      data.peakDate = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: tz });
     }
   }
 
@@ -401,6 +424,7 @@ function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
       peakSales: Math.round(data.peakSales),
       peakHour: data.peakHour,
       peakDate: data.peakDate,
+      tzLabel: getTzAbbrev(data.tz),
     }))
     .sort((a, b) => b.hoursOver2k - a.hoursOver2k);
 
@@ -410,14 +434,14 @@ function formatHighSalesHours(rows: any[], restaurantMap: Map<string, string>) {
   };
 }
 
-function formatHighSalesHours1k(rows: any[], restaurantMap: Map<string, string>) {
-  // Group by restaurant
-  const byRestaurant = new Map<string, { count: number; totalSales: number; peakSales: number; peakHour: number; peakDate: string }>();
+function formatHighSalesHours1k(rows: any[], restaurantMap: Map<string, string>, timezoneMap: Map<string, string>) {
+  const byRestaurant = new Map<string, { count: number; totalSales: number; peakSales: number; peakHour: number; peakDate: string; tz: string }>();
 
   for (const row of rows) {
     const name = restaurantMap.get(row.restaurantId) || row.restaurantId;
+    const tz = timezoneMap.get(row.restaurantId) || 'America/Chicago';
     if (!byRestaurant.has(name)) {
-      byRestaurant.set(name, { count: 0, totalSales: 0, peakSales: 0, peakHour: 0, peakDate: "" });
+      byRestaurant.set(name, { count: 0, totalSales: 0, peakSales: 0, peakHour: 0, peakDate: "", tz });
     }
     const data = byRestaurant.get(name)!;
     data.count++;
@@ -426,7 +450,7 @@ function formatHighSalesHours1k(rows: any[], restaurantMap: Map<string, string>)
     if (sales > data.peakSales) {
       data.peakSales = sales;
       data.peakHour = row.hour;
-      data.peakDate = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+      data.peakDate = new Date(row.salesDate).toLocaleDateString("en-CA", { timeZone: tz });
     }
   }
 
@@ -438,6 +462,7 @@ function formatHighSalesHours1k(rows: any[], restaurantMap: Map<string, string>)
       peakSales: Math.round(data.peakSales),
       peakHour: data.peakHour,
       peakDate: data.peakDate,
+      tzLabel: getTzAbbrev(data.tz),
     }))
     .sort((a, b) => b.hoursOver1k - a.hoursOver1k);
 

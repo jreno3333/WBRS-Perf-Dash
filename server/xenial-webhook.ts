@@ -170,16 +170,17 @@ export async function getPosOrdersSummary(targetDate: Date): Promise<Map<string,
   return summary;
 }
 
-export async function getHourlyPosSales(storeNumber: string, targetDate: Date): Promise<Map<number, number>> {
+export async function getHourlyPosSales(storeNumber: string, targetDate: Date, timezone: string = 'America/Chicago'): Promise<Map<number, number>> {
   const startOfDay = new Date(targetDate);
   startOfDay.setUTCHours(0, 0, 0, 0);
   
   const endOfDay = new Date(targetDate);
   endOfDay.setUTCHours(23, 59, 59, 999);
 
+  const tzLiteral = sql.raw(`'${timezone}'`);
   const results = await posDb
     .select({
-      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
+      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
@@ -190,7 +191,7 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date): 
         lt(posOrders.businessDate, endOfDay)
       )
     )
-    .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
+    .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})`);
 
   const hourlyData = new Map<number, number>();
   for (const row of results) {
@@ -242,13 +243,11 @@ export async function getPosSalesByRestaurant(targetDate: Date): Promise<Map<str
   return salesByRestaurant;
 }
 
-// Get hourly POS sales by restaurant ID for a specific date
-export async function getHourlyPosSalesByRestaurant(restaurantId: string, targetDate: Date): Promise<Map<number, number>> {
+export async function getHourlyPosSalesByRestaurant(restaurantId: string, targetDate: Date, timezone: string = 'America/Chicago'): Promise<Map<number, number>> {
   const dateStr = targetDate.toISOString().split('T')[0];
   const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
   const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // First, get the store number for this restaurant from location_mapping
   const mapping = await db.select()
     .from(locationMapping)
     .where(eq(locationMapping.restaurantId, restaurantId))
@@ -260,10 +259,10 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
 
   const storeNumber = mapping[0].xenialStoreNumber;
 
-  // Query POS orders from posDb (may be separate database)
+  const tzLiteral = sql.raw(`'${timezone}'`);
   const results = await posDb
     .select({
-      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')::int`,
+      hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`,
       totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
     })
     .from(posOrders)
@@ -274,7 +273,7 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
         lt(posOrders.businessDate, endOfDay)
       )
     )
-    .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')`);
+    .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})`);
 
   const hourlyData = new Map<number, number>();
   for (const row of results) {

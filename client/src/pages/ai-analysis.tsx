@@ -45,6 +45,7 @@ interface HighSalesRestaurant {
   peakSales: number;
   peakHour: number;
   peakDate: string;
+  tzLabel?: string;
 }
 
 interface HighSalesRestaurant1k {
@@ -54,6 +55,7 @@ interface HighSalesRestaurant1k {
   peakSales: number;
   peakHour: number;
   peakDate: string;
+  tzLabel?: string;
 }
 
 interface OsatLeader {
@@ -664,7 +666,7 @@ export default function AiAnalysisPage() {
                               {formatCurrency(r.peakSales)}
                             </td>
                             <td className="px-3 py-2 text-right hidden md:table-cell text-muted-foreground">
-                              {formatDate(r.peakDate)} @ {formatHour(r.peakHour)}
+                              {formatDate(r.peakDate)} @ {formatHour(r.peakHour)} {r.tzLabel || 'CT'}
                             </td>
                           </tr>
                         ))}
@@ -721,7 +723,7 @@ export default function AiAnalysisPage() {
                               {formatCurrency(r.peakSales)}
                             </td>
                             <td className="px-3 py-2 text-right hidden md:table-cell text-muted-foreground">
-                              {formatDate(r.peakDate)} @ {formatHour(r.peakHour)}
+                              {formatDate(r.peakDate)} @ {formatHour(r.peakHour)} {r.tzLabel || 'CT'}
                             </td>
                           </tr>
                         ))}
