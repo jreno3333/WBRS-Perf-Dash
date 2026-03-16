@@ -24,7 +24,7 @@ router.get("/api/performance-history/detail/:restaurantId", async (req, res) => 
     const { days = "8" } = req.query;
     const cacheKey = String(days);
     const cached = perfHistoryCache.get(cacheKey);
-    if (!cached || Date.now() - cached.timestamp > CACHE_TTL) {
+    if (!cached) {
       return res.status(404).json({ error: "Data not ready, refresh the page" });
     }
     const restaurant = cached.data.restaurants.find((r: any) => r.restaurantId === restaurantId);
