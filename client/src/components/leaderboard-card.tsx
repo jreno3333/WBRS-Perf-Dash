@@ -384,10 +384,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     return `${sign}${formatCurrency(amount)}`;
   };
 
-  // Display variance uses actual local-timezone sales for accurate store-level comparison
   const displayLastWeek = restaurant.actualLastWeekSales ?? restaurant.lastWeekSales;
+  const comparisonSales = restaurant.completedSales ?? restaurant.actualSales;
   const paceVariance = displayLastWeek > 0 
-    ? ((restaurant.actualSales / displayLastWeek) - 1) * 100 
+    ? ((comparisonSales / displayLastWeek) - 1) * 100 
     : 0;
 
 

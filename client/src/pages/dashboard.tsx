@@ -483,8 +483,10 @@ export default function Dashboard() {
           case "variance": {
             const aLastWeek = a.actualLastWeekSales ?? a.lastWeekSales;
             const bLastWeek = b.actualLastWeekSales ?? b.lastWeekSales;
-            const aVariance = aLastWeek > 0 ? ((a.actualSales / aLastWeek) - 1) * 100 : 0;
-            const bVariance = bLastWeek > 0 ? ((b.actualSales / bLastWeek) - 1) * 100 : 0;
+            const aCompleted = a.completedSales ?? a.actualSales;
+            const bCompleted = b.completedSales ?? b.actualSales;
+            const aVariance = aLastWeek > 0 ? ((aCompleted / aLastWeek) - 1) * 100 : 0;
+            const bVariance = bLastWeek > 0 ? ((bCompleted / bLastWeek) - 1) * 100 : 0;
             return bVariance - aVariance;
           }
           case "wtd_variance": {
