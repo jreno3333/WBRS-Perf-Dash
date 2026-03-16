@@ -1215,8 +1215,8 @@ export default function AiAnalysisPage() {
             {/* 8. Hourly Sales Distribution */}
             <InsightCard
               icon={Clock}
-              title="Sales by Hour of Day"
-              question="What percentage of sales happen in each hour across all units?"
+              title="Sales by Hour of Day (Central Time)"
+              question="What percentage of sales happen in each hour across all units? (All times shown in Central Time)"
               defaultOpen={true}
               accentColor="text-indigo-600"
               bgColor="bg-indigo-500/10"

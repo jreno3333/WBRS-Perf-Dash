@@ -397,13 +397,21 @@ async function getHourlySalesDistribution(startDate: string, endDate: string) {
   const startTs = new Date(startDate + "T00:00:00Z");
   const endTs = new Date(endDate + "T23:59:59Z");
 
+  const centralHourExpr = sql<number>`
+    extract(hour from (
+      (${hourlySales.salesDate}::date + (${hourlySales.hour} || ' hours')::interval)
+      AT TIME ZONE ${restaurants.timezone}
+      AT TIME ZONE 'America/Chicago'
+    ))::int`;
+
   return db
     .select({
       restaurantId: hourlySales.restaurantId,
-      hour: hourlySales.hour,
+      hour: centralHourExpr,
       totalSales: sql<number>`coalesce(sum(${hourlySales.actualSales}::numeric), 0)`,
     })
     .from(hourlySales)
+    .innerJoin(restaurants, eq(hourlySales.restaurantId, restaurants.id))
     .where(
       and(
         gte(hourlySales.salesDate, startTs),
@@ -411,8 +419,8 @@ async function getHourlySalesDistribution(startDate: string, endDate: string) {
         sql`(${hourlySales.actualSales})::numeric > 0`
       )
     )
-    .groupBy(hourlySales.restaurantId, hourlySales.hour)
-    .orderBy(hourlySales.hour);
+    .groupBy(hourlySales.restaurantId, centralHourExpr)
+    .orderBy(centralHourExpr);
 }
 
 function formatHourlyDistribution(
@@ -1636,23 +1644,30 @@ function buildTemplates(): QueryTemplate[] {
     {
       id: "sales_by_hour",
       keywords: ["hourly", "by hour", "sales by hour", "peak hour", "busiest hour", "hour breakdown", "hourly breakdown"],
-      description: "Sales breakdown by hour",
+      description: "Sales breakdown by hour (Central Time)",
       execute: async (params) => {
+        const centralHour = sql<number>`extract(hour from (
+          (${hourlySales.salesDate}::date + (${hourlySales.hour} || ' hours')::interval)
+          AT TIME ZONE ${restaurants.timezone}
+          AT TIME ZONE 'America/Chicago'
+        ))::int`;
+
         const rows = await db
           .select({
-            hour: hourlySales.hour,
+            hour: centralHour,
             totalSales: sql<number>`sum(${hourlySales.actualSales}::numeric)`,
             avgSales: sql<number>`round(avg(${hourlySales.actualSales}::numeric), 0)`,
             cnt: sql<number>`count(*)::int`,
           })
           .from(hourlySales)
+          .innerJoin(restaurants, eq(hourlySales.restaurantId, restaurants.id))
           .where(and(
             gte(hourlySales.salesDate, new Date(params.startDate + "T00:00:00Z")),
             lte(hourlySales.salesDate, new Date(params.endDate + "T23:59:59Z")),
             ...(params.restaurantFilter ? [eq(hourlySales.restaurantId, params.restaurantFilter)] : [])
           ))
-          .groupBy(hourlySales.hour)
-          .orderBy(asc(hourlySales.hour));
+          .groupBy(centralHour)
+          .orderBy(asc(centralHour));
 
         const formatted = rows.map((r) => ({
           hour: r.hour < 12 ? (r.hour === 0 ? "12 AM" : `${r.hour} AM`) : (r.hour === 12 ? "12 PM" : `${r.hour - 12} PM`),
@@ -1665,10 +1680,10 @@ function buildTemplates(): QueryTemplate[] {
         const peakHour = peakRow ? (peakRow.hour < 12 ? (peakRow.hour === 0 ? "12 AM" : `${peakRow.hour} AM`) : (peakRow.hour === 12 ? "12 PM" : `${peakRow.hour - 12} PM`)) : "-";
 
         return {
-          title: "Sales by Hour",
-          summary: `Average sales per hour across all units.`,
+          title: "Sales by Hour (Central Time)",
+          summary: `Average sales per hour across all units (all times in Central Time).`,
           columns: [
-            { key: "hour", label: "Hour", align: "left" },
+            { key: "hour", label: "Hour (CT)", align: "left" },
             { key: "totalSales", label: "Total Sales", align: "right" },
             { key: "avgSales", label: "Avg Sales", align: "right" },
             { key: "dataPoints", label: "Data Points", align: "right" },
