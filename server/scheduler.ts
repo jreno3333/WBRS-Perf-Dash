@@ -732,3 +732,4 @@ async function forceInitialCrewSync() {
     log(`Initial crew sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
+
