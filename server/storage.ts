@@ -142,7 +142,6 @@ export class DatabaseStorage {
       const posLastWeekSalesForRestaurant = posLastWeekHourlySales.get(restaurant.id);
 
       let selectedDateSalesAmount = 0;
-      let actualSalesAmount = 0;
       let completedSalesAmount = 0;
 
       if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
@@ -153,16 +152,14 @@ export class DatabaseStorage {
           if (hour <= restaurantCompletedHour) {
             completedSalesAmount += sales;
           }
-          actualSalesAmount += sales;
         });
       } else if (!isToday) {
         selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
           (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
         );
-        actualSalesAmount = allSelectedDateHours.reduce(
+        completedSalesAmount = allSelectedDateHours.reduce(
           (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
         );
-        completedSalesAmount = actualSalesAmount;
       }
 
       let lastWeekSalesAmount = 0;
@@ -296,7 +293,7 @@ export class DatabaseStorage {
         restaurantName: restaurant.name,
         timezone: restaurant.timezone,
         todaySales: selectedDateSalesAmount,
-        actualSales: actualSalesAmount,
+        actualSales: completedSalesAmount,
         lastWeekSales: lastWeekSalesAmount,
         actualLastWeekSales: actualLastWeekAmount,
         forecastSales: forecastSalesAmount,

@@ -169,9 +169,9 @@ export interface RestaurantSales {
   restaurantName: string;
   timezone: string;
   todaySales: number; // Normalized sales for fair ranking (capped at normalized hour)
-  actualSales: number; // Actual current sales (all available hours, matches 7shifts)
+  actualSales: number; // Sales through completed local hours (for fair variance comparison)
   lastWeekSales: number; // Normalized last week (for ranking comparison)
-  actualLastWeekSales: number; // Full last week sales (all hours, for display)
+  actualLastWeekSales: number; // Last week sales through completed local hours (for fair variance comparison)
   forecastSales: number;
   lastWeekFullDay?: number; // Last week's full day total (partial + remaining hours)
   pacePercentage: number; // How far through the day they are vs last week
