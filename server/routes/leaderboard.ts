@@ -796,7 +796,7 @@ router.get("/api/weekly-sales", async (req, res) => {
     for (const r of allRestaurants) {
       // Per-restaurant hour cutoff matching the DAY (actualSales) calculation
       const restaurantHourCutoff = isLiveToday
-        ? getCurrentHourInTimezone(r.timezone) - 1
+        ? Math.max(0, getCurrentHourInTimezone(r.timezone) - 1)
         : 23;
 
       // --- WTD: actual sales Sat through selected day ---

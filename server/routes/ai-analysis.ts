@@ -397,18 +397,12 @@ async function getHourlySalesDistribution(startDate: string, endDate: string) {
   const startTs = new Date(startDate + "T00:00:00Z");
   const endTs = new Date(endDate + "T23:59:59Z");
 
-  const centralHourExpr = sql<number>`
-    extract(hour from (
-      (${hourlySales.salesDate}::date + (${hourlySales.hour} || ' hours')::interval)
-      AT TIME ZONE ${restaurants.timezone}
-      AT TIME ZONE 'America/Chicago'
-    ))::int`;
-
-  return db
+  const rows = await db
     .select({
       restaurantId: hourlySales.restaurantId,
-      hour: centralHourExpr,
+      hour: hourlySales.hour,
       totalSales: sql<number>`coalesce(sum(${hourlySales.actualSales}::numeric), 0)`,
+      timezone: restaurants.timezone,
     })
     .from(hourlySales)
     .innerJoin(restaurants, eq(hourlySales.restaurantId, restaurants.id))
@@ -419,8 +413,22 @@ async function getHourlySalesDistribution(startDate: string, endDate: string) {
         sql`(${hourlySales.actualSales})::numeric > 0`
       )
     )
-    .groupBy(hourlySales.restaurantId, centralHourExpr)
-    .orderBy(centralHourExpr);
+    .groupBy(hourlySales.restaurantId, hourlySales.hour, restaurants.timezone)
+    .orderBy(hourlySales.hour);
+
+  const result: { restaurantId: string; hour: number; totalSales: number }[] = [];
+  for (const row of rows) {
+    let centralHour = row.hour;
+    if (row.timezone === 'America/New_York') {
+      centralHour = row.hour === 0 ? 23 : row.hour - 1;
+    }
+    result.push({
+      restaurantId: row.restaurantId,
+      hour: centralHour,
+      totalSales: Number(row.totalSales),
+    });
+  }
+  return result;
 }
 
 function formatHourlyDistribution(
@@ -1646,18 +1654,12 @@ function buildTemplates(): QueryTemplate[] {
       keywords: ["hourly", "by hour", "sales by hour", "peak hour", "busiest hour", "hour breakdown", "hourly breakdown"],
       description: "Sales breakdown by hour (Central Time)",
       execute: async (params) => {
-        const centralHour = sql<number>`extract(hour from (
-          (${hourlySales.salesDate}::date + (${hourlySales.hour} || ' hours')::interval)
-          AT TIME ZONE ${restaurants.timezone}
-          AT TIME ZONE 'America/Chicago'
-        ))::int`;
-
-        const rows = await db
+        const rawRows = await db
           .select({
-            hour: centralHour,
+            hour: hourlySales.hour,
             totalSales: sql<number>`sum(${hourlySales.actualSales}::numeric)`,
-            avgSales: sql<number>`round(avg(${hourlySales.actualSales}::numeric), 0)`,
             cnt: sql<number>`count(*)::int`,
+            timezone: restaurants.timezone,
           })
           .from(hourlySales)
           .innerJoin(restaurants, eq(hourlySales.restaurantId, restaurants.id))
@@ -1666,8 +1668,21 @@ function buildTemplates(): QueryTemplate[] {
             lte(hourlySales.salesDate, new Date(params.endDate + "T23:59:59Z")),
             ...(params.restaurantFilter ? [eq(hourlySales.restaurantId, params.restaurantFilter)] : [])
           ))
-          .groupBy(centralHour)
-          .orderBy(asc(centralHour));
+          .groupBy(hourlySales.hour, restaurants.timezone)
+          .orderBy(asc(hourlySales.hour));
+
+        const hourMap = new Map<number, { totalSales: number; cnt: number }>();
+        for (const r of rawRows) {
+          let h = r.hour;
+          if (r.timezone === 'America/New_York') h = h === 0 ? 23 : h - 1;
+          const existing = hourMap.get(h) || { totalSales: 0, cnt: 0 };
+          existing.totalSales += Number(r.totalSales);
+          existing.cnt += r.cnt;
+          hourMap.set(h, existing);
+        }
+        const rows = Array.from(hourMap.entries())
+          .map(([h, d]) => ({ hour: h, totalSales: d.totalSales, avgSales: d.cnt > 0 ? Math.round(d.totalSales / d.cnt) : 0, cnt: d.cnt }))
+          .sort((a, b) => a.hour - b.hour);
 
         const formatted = rows.map((r) => ({
           hour: r.hour < 12 ? (r.hour === 0 ? "12 AM" : `${r.hour} AM`) : (r.hour === 12 ? "12 PM" : `${r.hour - 12} PM`),
