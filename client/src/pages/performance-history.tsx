@@ -115,17 +115,24 @@ interface RestaurantHistory {
   state: string;
   marketId?: string;
   marketName?: string;
-  dailyGrades: DailyGrade[];
+  dailyGrades?: DailyGrade[];
   avgGrade: number;
   avgGradeLabel: string;
   totalSales: number;
   avgSalesVariance: number;
   avgSpeed?: number;
-  avgStaffingDiff: number;
+  avgStaffingDiff?: number;
   avgOsat?: number;
-  totalOsatResponses: number;
+  totalOsatResponses?: number;
   avgXp?: number;
   gradeImprovement: number;
+  weekend?: WeekendData | null;
+}
+
+interface RestaurantDetail extends RestaurantHistory {
+  dailyGrades: DailyGrade[];
+  avgStaffingDiff: number;
+  totalOsatResponses: number;
   weekend?: WeekendData | null;
 }
 
@@ -224,7 +231,7 @@ interface AgendaExtras {
 }
 
 function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], leaders: LeaderRanking[] = [], extras: AgendaExtras = {}): string {
-  const grades = restaurant.dailyGrades;
+  const grades = restaurant.dailyGrades || [];
   const startDate = dateRange.length > 0 ? formatDate(dateRange[0]) : "N/A";
   const endDate = dateRange.length > 0 ? formatDate(dateRange[dateRange.length - 1]) : "N/A";
 
@@ -1190,9 +1197,149 @@ function WeekendScorecardSection({ weekend, restaurant }: { weekend: WeekendData
   );
 }
 
-function RestaurantCard({ restaurant, dateRange, weekendDates }: { restaurant: RestaurantHistory; dateRange: string[]; weekendDates?: string[] }) {
-  const [isOpen, setIsOpen] = useState(false);
+function RestaurantCardDetail({ restaurant, detail, isLoadingDetail, dateRange, weekendDates }: {
+  restaurant: RestaurantHistory;
+  detail?: RestaurantDetail;
+  isLoadingDetail: boolean;
+  dateRange: string[];
+  weekendDates?: string[];
+}) {
   const [rmmOpen, setRmmOpen] = useState(false);
+  const r = detail || restaurant;
+
+  if (isLoadingDetail) {
+    return (
+      <div className="py-6 flex flex-col items-center gap-3">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+        <span className="text-xs text-muted-foreground">Loading details...</span>
+      </div>
+    );
+  }
+
+  if (!detail?.dailyGrades) {
+    return (
+      <div className="py-4 text-center text-sm text-muted-foreground">
+        Unable to load details. Try collapsing and expanding again.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium">Daily Grade History</h4>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setRmmOpen(true);
+          }}
+        >
+          <ClipboardList className="w-4 h-4 mr-1.5" />
+          RMM Agenda
+        </Button>
+      </div>
+      <GradeTimeline grades={detail.dailyGrades} />
+
+      <RMMAgendaDialog
+        restaurant={detail}
+        dateRange={dateRange}
+        open={rmmOpen}
+        onOpenChange={setRmmOpen}
+        weekendDates={weekendDates}
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="p-3 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 mb-1">
+            <Target className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Avg Grade</span>
+          </div>
+          <div className={`text-lg font-bold ${getGradeColor(r.avgGradeLabel)}`}>
+            {r.avgGrade.toFixed(1)} ({r.avgGradeLabel})
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 mb-1">
+            <DollarSign className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Total Sales</span>
+          </div>
+          <div className="text-lg font-bold">{formatCurrency(r.totalSales)}</div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Speed Att.</span>
+          </div>
+          <div className={`text-lg font-bold ${r.avgSpeed !== undefined ? (r.avgSpeed >= 70 ? "text-green-600" : r.avgSpeed >= 50 ? "text-yellow-600" : "text-red-600") : ""}`}>
+            {r.avgSpeed !== undefined ? `${Math.round(r.avgSpeed)}%` : "N/A"}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 mb-1">
+            <ThumbsUp className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">OSAT</span>
+          </div>
+          <div className="text-lg font-bold">
+            {r.avgOsat !== undefined ? `${r.avgOsat.toFixed(0)}%` : "N/A"}
+            {(r.totalOsatResponses || 0) > 0 && (
+              <span className="text-xs text-muted-foreground ml-1">({r.totalOsatResponses})</span>
+            )}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 mb-1">
+            <Users className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Avg XP</span>
+          </div>
+          <div className={`text-lg font-bold ${r.avgXp !== undefined ? (r.avgXp >= 85 ? "text-green-600" : r.avgXp >= 70 ? "text-yellow-600" : r.avgXp >= 50 ? "text-orange-600" : "text-red-600") : ""}`}>
+            {r.avgXp !== undefined ? `${r.avgXp.toFixed(0)}` : "N/A"}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Trend Days</span>
+          </div>
+          <div className={`text-lg font-bold ${r.gradeImprovement > 0 ? "text-green-600" : r.gradeImprovement < 0 ? "text-red-600" : ""}`}>
+            {r.gradeImprovement !== 0
+              ? `${r.gradeImprovement > 0 ? "+" : ""}${r.gradeImprovement}`
+              : "—"}
+            <span className="text-xs text-muted-foreground ml-1">
+              {r.gradeImprovement !== 0
+                ? `day${Math.abs(r.gradeImprovement) !== 1 ? "s" : ""}`
+                : ""}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {detail.weekend && (
+        <WeekendScorecardSection weekend={detail.weekend} restaurant={detail} />
+      )}
+    </div>
+  );
+}
+
+function RestaurantCard({ restaurant, dateRange, weekendDates, daysParam }: { restaurant: RestaurantHistory; dateRange: string[]; weekendDates?: string[]; daysParam: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const { data: detail, isLoading: isLoadingDetail } = useQuery<RestaurantDetail>({
+    queryKey: ["/api/performance-history/detail", restaurant.restaurantId, daysParam],
+    queryFn: async () => {
+      const res = await fetch(`/api/performance-history/detail/${restaurant.restaurantId}?days=${daysParam}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch detail");
+      return res.json();
+    },
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+  });
 
   return (
     <Card className="mb-3">
@@ -1261,105 +1408,13 @@ function RestaurantCard({ restaurant, dateRange, weekendDates }: { restaurant: R
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-0">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium">Daily Grade History</h4>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRmmOpen(true);
-                  }}
-                >
-                  <ClipboardList className="w-4 h-4 mr-1.5" />
-                  RMM Agenda
-                </Button>
-              </div>
-              <GradeTimeline grades={restaurant.dailyGrades} />
-
-              <RMMAgendaDialog
-                restaurant={restaurant}
-                dateRange={dateRange}
-                open={rmmOpen}
-                onOpenChange={setRmmOpen}
-                weekendDates={weekendDates}
-              />
-
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Target className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Avg Grade</span>
-                  </div>
-                  <div className={`text-lg font-bold ${getGradeColor(restaurant.avgGradeLabel)}`}>
-                    {restaurant.avgGrade.toFixed(1)} ({restaurant.avgGradeLabel})
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <DollarSign className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Total Sales</span>
-                  </div>
-                  <div className="text-lg font-bold">{formatCurrency(restaurant.totalSales)}</div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Speed Att.</span>
-                  </div>
-                  <div className={`text-lg font-bold ${restaurant.avgSpeed !== undefined ? (restaurant.avgSpeed >= 70 ? "text-green-600" : restaurant.avgSpeed >= 50 ? "text-yellow-600" : "text-red-600") : ""}`}>
-                    {restaurant.avgSpeed !== undefined ? `${Math.round(restaurant.avgSpeed)}%` : "N/A"}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <ThumbsUp className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">OSAT</span>
-                  </div>
-                  <div className="text-lg font-bold">
-                    {restaurant.avgOsat !== undefined ? `${restaurant.avgOsat.toFixed(0)}%` : "N/A"}
-                    {restaurant.totalOsatResponses > 0 && (
-                      <span className="text-xs text-muted-foreground ml-1">({restaurant.totalOsatResponses})</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Avg XP</span>
-                  </div>
-                  <div className={`text-lg font-bold ${restaurant.avgXp !== undefined ? (restaurant.avgXp >= 85 ? "text-green-600" : restaurant.avgXp >= 70 ? "text-yellow-600" : restaurant.avgXp >= 50 ? "text-orange-600" : "text-red-600") : ""}`}>
-                    {restaurant.avgXp !== undefined ? `${restaurant.avgXp.toFixed(0)}` : "N/A"}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Trend Days</span>
-                  </div>
-                  <div className={`text-lg font-bold ${restaurant.gradeImprovement > 0 ? "text-green-600" : restaurant.gradeImprovement < 0 ? "text-red-600" : ""}`}>
-                    {restaurant.gradeImprovement !== 0
-                      ? `${restaurant.gradeImprovement > 0 ? "+" : ""}${restaurant.gradeImprovement}`
-                      : "—"}
-                    <span className="text-xs text-muted-foreground ml-1">
-                      {restaurant.gradeImprovement !== 0
-                        ? `day${Math.abs(restaurant.gradeImprovement) !== 1 ? "s" : ""}`
-                        : ""}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {restaurant.weekend && (
-                <WeekendScorecardSection weekend={restaurant.weekend} restaurant={restaurant} />
-              )}
-            </div>
+            <RestaurantCardDetail
+              restaurant={restaurant}
+              detail={detail}
+              isLoadingDetail={isLoadingDetail}
+              dateRange={dateRange}
+              weekendDates={weekendDates}
+            />
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
@@ -1469,8 +1524,33 @@ export default function PerformanceHistoryPage() {
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         {isLoading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="space-y-3" data-testid="skeleton-loading">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Card key={i} className="mb-3">
+                <CardHeader className="py-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded bg-muted animate-pulse" />
+                      <div className="space-y-1.5">
+                        <div className="h-4 w-36 rounded bg-muted animate-pulse" />
+                        <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="space-y-1">
+                        <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+                        <div className="h-3 w-12 rounded bg-muted animate-pulse" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="h-4 w-12 rounded bg-muted animate-pulse" />
+                        <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+                      </div>
+                      <div className="h-5 w-5 rounded bg-muted animate-pulse" />
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
           </div>
         )}
 
@@ -1503,7 +1583,7 @@ export default function PerformanceHistoryPage() {
               ) : (
                 <div>
                   {filteredRestaurants.map((restaurant) => (
-                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendDates} />
+                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendDates} daysParam={dateRange} />
                   ))}
                 </div>
               )}

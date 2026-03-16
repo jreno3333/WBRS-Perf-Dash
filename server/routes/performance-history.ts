@@ -10,10 +10,71 @@ import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
 
+const perfHistoryCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000;
+
+export function invalidatePerfHistoryCache() {
+  perfHistoryCache.clear();
+}
+
+router.get("/api/performance-history/detail/:restaurantId", async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const { days = "8" } = req.query;
+    const cacheKey = String(days);
+    const cached = perfHistoryCache.get(cacheKey);
+    if (!cached || Date.now() - cached.timestamp > CACHE_TTL) {
+      return res.status(404).json({ error: "Data not ready, refresh the page" });
+    }
+    const restaurant = cached.data.restaurants.find((r: any) => r.restaurantId === restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+    res.json(restaurant);
+  } catch (error) {
+    console.error("Error fetching restaurant detail:", error);
+    res.status(500).json({ error: "Failed to fetch restaurant detail" });
+  }
+});
+
 // Performance History endpoint - returns daily grades over a date range
 router.get("/api/performance-history", async (req, res) => {
   try {
     const { days = "7", startDate, endDate } = req.query;
+
+    const cacheKey = String(days);
+    const cached = perfHistoryCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      const slim = {
+        dateRange: cached.data.dateRange,
+        weekendDates: cached.data.weekendDates,
+        restaurants: cached.data.restaurants.map((r: any) => ({
+          restaurantId: r.restaurantId,
+          restaurantName: r.restaurantName,
+          state: r.state,
+          marketId: r.marketId,
+          marketName: r.marketName,
+          avgGrade: r.avgGrade,
+          avgGradeLabel: r.avgGradeLabel,
+          totalSales: r.totalSales,
+          avgSalesVariance: r.avgSalesVariance,
+          avgSpeed: r.avgSpeed,
+          avgStaffingDiff: r.avgStaffingDiff,
+          avgOsat: r.avgOsat,
+          totalOsatResponses: r.totalOsatResponses,
+          avgXp: r.avgXp,
+          gradeImprovement: r.gradeImprovement,
+          weekend: r.weekend ? {
+            weekendGrade: r.weekend.weekendGrade,
+            weekendGradeLabel: r.weekend.weekendGradeLabel,
+            weekendDayCount: r.weekend.weekendDayCount,
+          } : null,
+        })),
+      };
+      console.log(`[perf-history] Served from cache (${cacheKey})`);
+      return res.json(slim);
+    }
+
     const gradingCfg = await getActiveGradingConfig();
 
     // Calculate date range based on available data
@@ -971,18 +1032,47 @@ router.get("/api/performance-history", async (req, res) => {
       if (wkData) restaurantWeekendMap.set(r.restaurantId, wkData);
     });
 
-    // Weekend roll-up helper
     const restaurantsWithWeekend = restaurantHistories.map(r => ({
       ...r,
       weekend: restaurantWeekendMap.get(r.restaurantId) || null,
     }));
 
-    res.json({
+    const fullData = {
       dateRange,
       restaurants: restaurantsWithWeekend,
       weekendDates: dateRange.filter(d => isWeekendDay(d)),
-    });
-    console.log(`[perf-history] Total response time: ${Date.now() - t0}ms (${dateRange.length} days, ${weekendDatesInRange.length} weekend days)`);
+    };
+
+    perfHistoryCache.set(cacheKey, { data: fullData, timestamp: Date.now() });
+
+    const slim = {
+      dateRange: fullData.dateRange,
+      weekendDates: fullData.weekendDates,
+      restaurants: fullData.restaurants.map((r: any) => ({
+        restaurantId: r.restaurantId,
+        restaurantName: r.restaurantName,
+        state: r.state,
+        marketId: r.marketId,
+        marketName: r.marketName,
+        avgGrade: r.avgGrade,
+        avgGradeLabel: r.avgGradeLabel,
+        totalSales: r.totalSales,
+        avgSalesVariance: r.avgSalesVariance,
+        avgSpeed: r.avgSpeed,
+        avgStaffingDiff: r.avgStaffingDiff,
+        avgOsat: r.avgOsat,
+        totalOsatResponses: r.totalOsatResponses,
+        avgXp: r.avgXp,
+        gradeImprovement: r.gradeImprovement,
+        weekend: r.weekend ? {
+          weekendGrade: r.weekend.weekendGrade,
+          weekendGradeLabel: r.weekend.weekendGradeLabel,
+          weekendDayCount: r.weekend.weekendDayCount,
+        } : null,
+      })),
+    };
+    res.json(slim);
+    console.log(`[perf-history] Computed & cached in ${Date.now() - t0}ms (${dateRange.length} days, ${weekendDatesInRange.length} weekend days)`);
   } catch (error) {
     console.error("Error fetching performance history:", error);
     res.status(500).json({ error: "Failed to fetch performance history" });
