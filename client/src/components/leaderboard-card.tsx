@@ -397,11 +397,11 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     ? ((restaurant.forecastSales / lwFullDay) - 1) * 100
     : 0;
 
-  // YoY: only for SSS restaurants (>18 months open)
+  // YoY: only for SSS restaurants (>24 months open)
   const isSSS = !restaurant.openDate || (() => {
     const open = new Date(restaurant.openDate);
     const now = new Date();
-    return ((now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth())) > 18;
+    return ((now.getFullYear() - open.getFullYear()) * 12 + (now.getMonth() - open.getMonth())) > 24;
   })();
   const yoyPrior = yoyData?.priorNetSales ?? 0;
   const showYoY = yoyPrior > 0 && isSSS;

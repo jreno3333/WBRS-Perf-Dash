@@ -75,7 +75,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     const openDate = new Date(r.openDate);
     const now = new Date();
     const monthsOpen = (now.getFullYear() - openDate.getFullYear()) * 12 + (now.getMonth() - openDate.getMonth());
-    return monthsOpen > 18;
+    return monthsOpen > 24;
   });
   
   // Calculate OSAT totals from restaurant-level daily data (not hourly)
