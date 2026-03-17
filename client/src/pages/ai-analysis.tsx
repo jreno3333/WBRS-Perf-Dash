@@ -986,7 +986,9 @@ export default function ExecutiveSummary() {
                               </tr>
                               <CollapsibleContent asChild>
                                 <tr>
-                                  <td colSpan={11} className="bg-muted/20 px-6 py-3">
+                                  <td colSpan={11} className="bg-muted/20 p-0">
+                                    <div className="sticky left-0 w-screen max-w-full px-4 py-3">
+                                    <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{r.name}</div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                                       {/* Raw metric values */}
                                       <div>
@@ -1100,6 +1102,7 @@ export default function ExecutiveSummary() {
                                           <span className="text-muted-foreground">No data</span>
                                         )}
                                       </div>
+                                    </div>
                                     </div>
                                   </td>
                                 </tr>
