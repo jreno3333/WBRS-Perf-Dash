@@ -655,15 +655,17 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
           </>
         )}
         {yoyData && (() => {
-          const yoyTotalPrior = sssRestaurants.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
-          if (yoyTotalPrior > 0) {
-            const projectedSSSTotal = sssRestaurants.reduce((sum, r) => sum + r.forecastSales, 0);
+          const sssWithYoY = sssRestaurants.filter(r => yoyData[r.restaurantId]?.priorNetSales > 0);
+          const yoyTotalPrior = sssWithYoY.reduce((sum, r) => sum + (yoyData[r.restaurantId]?.priorNetSales || 0), 0);
+          if (yoyTotalPrior > 0 && sssWithYoY.length > 0) {
+            const projectedSSSTotal = sssWithYoY.reduce((sum, r) => sum + r.forecastSales, 0);
             const projectedYoYVariance = ((projectedSSSTotal - yoyTotalPrior) / yoyTotalPrior) * 100;
             const projYoYDiff = projectedSSSTotal - yoyTotalPrior;
             return (
               <p className={`text-xs font-medium mt-1.5 tabular-nums ${projectedYoYVariance >= 0 ? "text-blue-500" : "text-orange-500"}`} data-testid="text-yoy-projected-summary">
                 Comp Store YoY {projectedYoYVariance >= 0 ? "+" : ""}{Math.round(projectedYoYVariance)}%
                 <span className="text-muted-foreground ml-1">({projYoYDiff >= 0 ? "+" : ""}{formatCurrency(projYoYDiff)})</span>
+                <span className="text-muted-foreground ml-1">({sssWithYoY.length} stores)</span>
               </p>
             );
           }
