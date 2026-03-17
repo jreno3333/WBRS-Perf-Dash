@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Trophy, Grid3X3, TrendingUp, Users, MapPin, Radio, BarChart3 } from "lucide-react";
+import { Trophy, Grid3X3, TrendingUp, Users, MapPin, Radio } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 type NavItem = {
@@ -12,7 +12,6 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { href: "/", icon: Trophy, label: "Rankings", testId: "nav-leaderboard" },
-  { href: "/ai-analysis", icon: BarChart3, label: "Executive", testId: "nav-executive-summary" },
   { href: "/dashboard-view", icon: Grid3X3, label: "Daily AI", testId: "nav-dashboard-view" },
   { href: "/history", icon: TrendingUp, label: "Trends", testId: "nav-history" },
   { href: "/crew", icon: Users, label: "People", testId: "nav-crew" },

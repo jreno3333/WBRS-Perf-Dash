@@ -1,10 +1,11 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, Link, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, BarChart3 } from "lucide-react";
 
 // Lazy-load all page components for route-level code splitting.
 // Only the matched route's JS is downloaded, reducing initial bundle size.
@@ -43,9 +44,31 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ExecSummaryFab() {
+  const [location] = useLocation();
+  const isActive = location === "/ai-analysis";
+  if (isActive) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link href="/ai-analysis">
+          <button
+            data-testid="nav-executive-summary"
+            className="fixed bottom-4 left-4 z-50 p-2.5 rounded-full bg-muted/80 backdrop-blur border border-border shadow-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <BarChart3 className="w-4 h-4" />
+          </button>
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="right">Executive Summary</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ProtectedRoutes() {
   return (
     <AuthGuard>
+      <ExecSummaryFab />
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/settings" component={SettingsPage} />
