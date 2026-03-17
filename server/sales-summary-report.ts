@@ -358,15 +358,19 @@ export async function sendSalesSummaryReports(force = false): Promise<{ sent: nu
     const yesterdayStr = centralFormatter.format(yesterday);
 
     const reportKey = `sales-summary-${yesterdayStr}`;
-    const alreadySent = await db.select()
-      .from(emailSendLog)
-      .where(and(eq(emailSendLog.reportDate, reportKey), eq(emailSendLog.status, "sent")));
-    const sentEmails = new Set(alreadySent.map(s => s.email));
-    const pendingSubscribers = subscribers.filter(s => !sentEmails.has(s.email));
+    let pendingSubscribers = subscribers;
 
-    if (pendingSubscribers.length === 0) {
-      console.log("[sales-summary] All reports already sent for", yesterdayStr);
-      return result;
+    if (!force) {
+      const alreadySent = await db.select()
+        .from(emailSendLog)
+        .where(and(eq(emailSendLog.reportDate, reportKey), eq(emailSendLog.status, "sent")));
+      const sentEmails = new Set(alreadySent.map(s => s.email));
+      pendingSubscribers = subscribers.filter(s => !sentEmails.has(s.email));
+
+      if (pendingSubscribers.length === 0) {
+        console.log("[sales-summary] All reports already sent for", yesterdayStr);
+        return result;
+      }
     }
 
     const reportHtml = await buildSalesSummaryHtml(yesterdayStr);
