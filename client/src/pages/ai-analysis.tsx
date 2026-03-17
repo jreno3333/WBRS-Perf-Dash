@@ -337,6 +337,7 @@ function ChannelBar({
   mix: { drive_thru: number; dine_in: number; app: number; delivery_3pd: number };
   height?: number;
 }) {
+  const [showPct, setShowPct] = useState(false);
   const total = mix.drive_thru + mix.dine_in + mix.app + mix.delivery_3pd;
   if (total === 0) return <div className="text-[10px] text-muted-foreground">No data</div>;
 
@@ -348,7 +349,11 @@ function ChannelBar({
   ];
 
   return (
-    <div className="flex rounded overflow-hidden" style={{ height }}>
+    <div
+      className="flex rounded overflow-hidden cursor-pointer"
+      style={{ height: showPct ? 20 : height }}
+      onClick={(e) => { e.stopPropagation(); setShowPct((v) => !v); }}
+    >
       {segments.map((s) => {
         const pct = (s.val / total) * 100;
         if (pct < 0.5) return null;
@@ -357,8 +362,14 @@ function ChannelBar({
             key={s.key}
             title={`${CHANNEL_LABELS[s.key]}: ${pct.toFixed(1)}%`}
             style={{ width: `${pct}%`, backgroundColor: CHANNEL_COLORS[s.key] }}
-            className="transition-all"
-          />
+            className="transition-all flex items-center justify-center overflow-hidden"
+          >
+            {showPct && pct >= 8 && (
+              <span className="text-[9px] font-bold text-white drop-shadow-sm leading-none">
+                {pct.toFixed(0)}%
+              </span>
+            )}
+          </div>
         );
       })}
     </div>
