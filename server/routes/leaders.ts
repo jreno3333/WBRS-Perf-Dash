@@ -6,6 +6,7 @@ import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursB
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
 import { getActiveGradingConfig } from "./grading-config";
+import { getHelperRewardsForDateRange } from "./helper-rewards";
 
 const router = Router();
 
@@ -142,6 +143,9 @@ router.get("/api/leaders", async (req, res) => {
         }
       }
     }
+
+    // Fetch helper rewards for the date range
+    const helperRewardsMap = await getHelperRewardsForDateRange(startDateStr, endDateStr);
 
     // Helper: get DOW-matched year-ago date string
     function getDowMatchedYoyDate(dateStr: string): string {
@@ -346,6 +350,7 @@ router.get("/api/leaders", async (req, res) => {
             dailyYoySalesVariancePct: dailyYoySalesVar,
             attachmentCategoriesAtTarget: attachCatsAtTarget,
             hourlyScores: [gradeResult.score], // day-level aggregate (consistency needs per-hour data)
+            helperRewardPoints: helperRewardsMap.get(`${dayDate}-${day.restaurantId}`),
           });
           const finalScore = Math.min(gradeResult.score + bonusResult.cappedBonus, 100);
           dailyGrades.push({ score: finalScore, hours: day.hoursCount });

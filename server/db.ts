@@ -116,8 +116,21 @@ export async function ensureFeatureTables() {
 
       CREATE UNIQUE INDEX IF NOT EXISTS daily_google_reviews_restaurant_date_idx
         ON daily_google_reviews (restaurant_id, date);
+
+      CREATE TABLE IF NOT EXISTS helper_rewards (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        restaurant_id VARCHAR NOT NULL,
+        date TEXT NOT NULL,
+        points INTEGER NOT NULL DEFAULT 0,
+        note TEXT,
+        created_at TIMESTAMP DEFAULT now(),
+        created_by TEXT
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS helper_rewards_restaurant_date_idx
+        ON helper_rewards (restaurant_id, date);
     `);
-    console.log("[db] Feature tables (ticker, polls, milestones, grading_config, daily_google_reviews) ready");
+    console.log("[db] Feature tables (ticker, polls, milestones, grading_config, daily_google_reviews, helper_rewards) ready");
   } catch (error) {
     console.error("[db] Failed to ensure feature tables:", error);
   }

@@ -71,6 +71,7 @@ interface DailySummaryProps {
   onUnitExpanded?: () => void;
   notesByRestaurant?: Record<string, RestaurantNote[]>;
   attachmentRatesByRestaurant?: Record<string, { categories: Record<string, { attachRate: number }> }>;
+  helperRewardsByRestaurant?: Record<string, number>;
 }
 
 // Tennessee stores are identified by name pattern
@@ -147,6 +148,7 @@ function analyzeUnit(
   hourlyData: HourlySalesData[] | undefined,
   attachmentCategories?: Record<string, { attachRate: number }>,
   gradingCfg?: GradingConfigData,
+  helperRewardPoints?: number,
 ): UnitInsight {
   const strengths: string[] = [];
   const concerns: string[] = [];
@@ -286,6 +288,7 @@ function analyzeUnit(
     dailyYoySalesVariancePct: dailyYoySalesVar,
     attachmentCategoriesAtTarget: attachCatsAtTarget,
     hourlyScores: hourlyScores,
+    helperRewardPoints,
   });
 
   // Apply bonus to get final daily grade (base avg + capped bonus, max 100)
@@ -1161,6 +1164,7 @@ export function DailySummary({
   onUnitExpanded,
   notesByRestaurant,
   attachmentRatesByRestaurant,
+  helperRewardsByRestaurant,
 }: DailySummaryProps) {
   // Fetch category issues for all dates in range
   const gradingCfg = useGradingConfig();
@@ -1287,7 +1291,7 @@ export function DailySummary({
   const unitInsights = useMemo(() => {
     const activeRestaurants = restaurants.filter(r => r.status !== "training");
     return activeRestaurants.map(r => {
-      const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId], attachmentRatesByRestaurant?.[r.restaurantId]?.categories, gradingCfg);
+      const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId], attachmentRatesByRestaurant?.[r.restaurantId]?.categories, gradingCfg, helperRewardsByRestaurant?.[r.restaurantId]);
       // Add market info if available
       if (markets) {
         const market = markets.find(m => m.restaurantIds?.includes(r.restaurantId));

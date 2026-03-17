@@ -6,6 +6,7 @@ import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursB
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses } from "../lib/scoring";
 import { getActiveGradingConfig } from "./grading-config";
+import { getHelperRewardsForDateRange } from "./helper-rewards";
 
 const router = Router();
 
@@ -105,6 +106,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
     ]);
 
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+
+    // Fetch helper rewards for the date range
+    const helperRewardsMap = await getHelperRewardsForDateRange(startDateStr, endDateStr);
 
     const leaderCrewRecords = crewData.filter(c => {
       const members = c.crewMembers ?? [];
@@ -388,6 +392,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
         dailyYoySalesVariancePct: dailyYoySalesVar,
         attachmentCategoriesAtTarget: undefined,
         hourlyScores: [dailyResult.score],
+        helperRewardPoints: helperRewardsMap.get(`${dateKey}-${dayData.restaurantId}`),
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
       const dailyGradeScore = dailyResult.score > 0 ? Math.min(dailyResult.score + dailyBonusResult.cappedBonus, 100) : 0;
       dailyRawScores.set(dateKey, dailyGradeScore);

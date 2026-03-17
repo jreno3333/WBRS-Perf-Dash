@@ -422,6 +422,8 @@ export default function SettingsPage() {
 
           <GradingConfigCard />
 
+          <HelperRewardsCard />
+
           <UserManagementCard />
         </div>
       </main>
@@ -3635,6 +3637,187 @@ interface ManagedUser {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string | null;
+}
+
+// ─── Helper Rewards Card ─────────────────────────────────────────────────────
+
+interface HelperReward {
+  id: string;
+  restaurantId: string;
+  date: string;
+  points: number;
+  note: string | null;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+function HelperRewardsCard() {
+  const { toast } = useToast();
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
+  const { data: restaurants } = useQuery<Restaurant[]>({
+    queryKey: ["/api/restaurants"],
+  });
+
+  const { data: rewards, isLoading } = useQuery<HelperReward[]>({
+    queryKey: ["/api/helper-rewards", selectedDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/helper-rewards?date=${selectedDate}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async ({ restaurantId, points, note }: { restaurantId: string; points: number; note: string }) => {
+      return apiRequest("POST", "/api/helper-rewards", {
+        restaurantId,
+        date: selectedDate,
+        points,
+        note: note || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/helper-rewards", selectedDate] });
+      queryClient.invalidateQueries({ queryKey: ["/api/helper-rewards"] });
+      toast({ title: "Helper reward saved", description: "Bonus points updated for this unit." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save helper reward.", variant: "destructive" });
+    },
+  });
+
+  const activeRestaurants = (restaurants || []).filter(r => {
+    if (!r.isActive) return false;
+    if (r.name.toLowerCase().includes('training') || r.name.toLowerCase().includes('development')) return false;
+    return true;
+  });
+
+  const rewardsByRestaurant = new Map<string, HelperReward>();
+  (rewards || []).forEach(r => rewardsByRestaurant.set(r.restaurantId, r));
+
+  return (
+    <CollapsibleCard
+      title="Helper Rewards"
+      description="Award bonus points to units for helping another unit. Points are added to the daily execution score with no cap."
+      icon={<Award className="h-5 w-5 text-purple-500" />}
+    >
+      <div className="space-y-4">
+        {/* Date Picker */}
+        <div className="flex items-center gap-3">
+          <Label className="text-sm font-medium">Date:</Label>
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[200px] justify-start text-left font-normal">
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {format(new Date(selectedDate + 'T12:00:00'), 'MMM d, yyyy')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={new Date(selectedDate + 'T12:00:00')}
+                onSelect={(date) => {
+                  if (date) {
+                    setSelectedDate(format(date, 'yyyy-MM-dd'));
+                    setCalendarOpen(false);
+                  }
+                }}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {/* Unit List */}
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading...</div>
+        ) : (
+          <div className="space-y-2">
+            {activeRestaurants.map(restaurant => {
+              const existing = rewardsByRestaurant.get(restaurant.id);
+              return (
+                <HelperRewardRow
+                  key={restaurant.id}
+                  restaurantName={restaurant.name}
+                  existingPoints={existing?.points || 0}
+                  existingNote={existing?.note || ""}
+                  onSave={(points, note) => saveMutation.mutate({ restaurantId: restaurant.id, points, note })}
+                  isPending={saveMutation.isPending}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </CollapsibleCard>
+  );
+}
+
+function HelperRewardRow({ restaurantName, existingPoints, existingNote, onSave, isPending }: {
+  restaurantName: string;
+  existingPoints: number;
+  existingNote: string;
+  onSave: (points: number, note: string) => void;
+  isPending: boolean;
+}) {
+  const [points, setPoints] = useState(String(existingPoints || ""));
+  const [note, setNote] = useState(existingNote || "");
+  const [isEditing, setIsEditing] = useState(false);
+
+  const isDirty = (Number(points) || 0) !== existingPoints || (note || "") !== (existingNote || "");
+
+  const handleSave = () => {
+    onSave(Number(points) || 0, note);
+    setIsEditing(false);
+  };
+
+  if (!isEditing && existingPoints === 0) {
+    return (
+      <div className="flex items-center justify-between py-2 px-3 rounded-lg border border-transparent hover:border-border hover:bg-muted/30 transition-colors">
+        <span className="text-sm">{restaurantName}</span>
+        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setIsEditing(true)}>
+          <Plus className="h-3 w-3 mr-1" /> Add Points
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 py-2 px-3 rounded-lg border bg-muted/20">
+      <span className="text-sm font-medium min-w-[180px]">{restaurantName}</span>
+      <div className="flex items-center gap-2 flex-1">
+        <Input
+          type="number"
+          min={0}
+          max={20}
+          className="w-20 h-8 text-sm"
+          value={points}
+          onChange={(e) => { setPoints(e.target.value); setIsEditing(true); }}
+          placeholder="0"
+        />
+        <span className="text-xs text-muted-foreground">pts</span>
+        <Input
+          className="h-8 text-sm flex-1"
+          value={note}
+          onChange={(e) => { setNote(e.target.value); setIsEditing(true); }}
+          placeholder="Reason (e.g., Helped Unit 1237 during lunch)"
+        />
+        {isDirty && (
+          <Button size="sm" className="h-8" onClick={handleSave} disabled={isPending}>
+            <Save className="h-3 w-3 mr-1" /> Save
+          </Button>
+        )}
+        {existingPoints > 0 && !isDirty && (
+          <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+            +{existingPoints} pts
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Grading Configuration Card ─────────────────────────────────────────────
