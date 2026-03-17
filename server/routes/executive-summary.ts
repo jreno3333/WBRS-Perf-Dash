@@ -58,7 +58,16 @@ router.get("/api/executive-summary", async (req, res) => {
     const numDays = Math.min(parseInt(days as string) || 7, 90);
 
     // Date range computation — anchored in America/Chicago
-    const endDate = date ? new Date(date as string + "T12:00:00Z") : new Date();
+    // Default end date is YESTERDAY so we compare complete days only
+    let endDate: Date;
+    if (date) {
+      endDate = new Date(date as string + "T12:00:00Z");
+    } else {
+      endDate = new Date();
+      const todayStr = endDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+      endDate = new Date(todayStr + "T12:00:00Z");
+      endDate.setDate(endDate.getDate() - 1);
+    }
     const endDateStr = endDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - numDays + 1);
