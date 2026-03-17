@@ -74,7 +74,7 @@ interface Restaurant {
   osat: MetricPair & { responses: number };
   googleRating: MetricPair;
   speedAttainment: MetricPair;
-  staffing: { compliancePct: number; managerCoveragePct: number };
+  labor: { actualHours: number; modelHours: number; variance: number; variancePct: number };
   channelMix: { drive_thru: number; dine_in: number; app: number; delivery_3pd: number };
   prevChannelMix: { drive_thru: number; dine_in: number; app: number; delivery_3pd: number };
   attachmentScore: number | null;
@@ -369,10 +369,15 @@ function ChannelBar({
 // Compliance badge
 // ---------------------------------------------------------------------------
 
-function ComplianceBadge({ pct }: { pct: number }) {
-  const color =
-    pct >= 90 ? "text-green-500" : pct >= 80 ? "text-amber-500" : "text-red-500";
-  return <span className={`text-xs font-medium ${color}`}>{pct.toFixed(0)}%</span>;
+function LaborBadge({ labor }: { labor: Restaurant["labor"] }) {
+  if (labor.modelHours <= 0) return <span className="text-xs text-muted-foreground">--</span>;
+  const pct = labor.variancePct;
+  const color = pct <= 0 ? "text-green-500" : pct <= 10 ? "text-amber-500" : "text-red-500";
+  return (
+    <span className={`text-xs font-medium ${color}`} title={`${labor.actualHours.toFixed(0)}h / ${labor.modelHours.toFixed(0)}h model`}>
+      {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +403,7 @@ type SortCol =
   | "osat"
   | "googleRating"
   | "speedAttainment"
-  | "staffing"
+  | "labor"
   | "attach"
   | "yoy";
 
@@ -420,8 +425,8 @@ function getSortValue(r: Restaurant, col: SortCol): number | string {
       return r.googleRating.previous > 0 ? r.googleRating.pctChange : NO_DATA;
     case "speedAttainment":
       return r.speedAttainment.previous > 0 ? r.speedAttainment.pctChange : NO_DATA;
-    case "staffing":
-      return r.staffing.compliancePct;
+    case "labor":
+      return r.labor.modelHours > 0 ? r.labor.variancePct : NO_DATA;
     case "attach":
       return r.attachmentScore ?? NO_DATA;
     case "yoy":
@@ -898,7 +903,7 @@ export default function ExecutiveSummary() {
                           <SortHeader col="speedAttainment" label="Speed" />
                         </th>
                         <th className="text-right py-2 px-2">
-                          <SortHeader col="staffing" label="Staff%" />
+                          <SortHeader col="labor" label="Labor" />
                         </th>
                         <th className="text-right py-2 px-2">
                           <SortHeader col="attach" label="Attach" />
@@ -951,7 +956,7 @@ export default function ExecutiveSummary() {
                                   <TrendArrow value={r.speedAttainment.pctChange} />
                                 </td>
                                 <td className="text-right py-1.5 px-2">
-                                  <ComplianceBadge pct={r.staffing.compliancePct} />
+                                  <LaborBadge labor={r.labor} />
                                 </td>
                                 <td className="text-right py-1.5 px-2">
                                   <AttachBadge score={r.attachmentScore} />
@@ -996,8 +1001,13 @@ export default function ExecutiveSummary() {
                                             </div>
                                           ))}
                                           <div className="flex justify-between">
-                                            <span className="text-muted-foreground">Mgr Coverage</span>
-                                            <span>{r.staffing.managerCoveragePct.toFixed(0)}%</span>
+                                            <span className="text-muted-foreground">Labor</span>
+                                            <span>
+                                              {r.labor.actualHours.toFixed(1)}h / {r.labor.modelHours.toFixed(1)}h model{" "}
+                                              <span className={r.labor.variance <= 0 ? "text-green-500" : "text-red-500"}>
+                                                ({r.labor.variance > 0 ? "+" : ""}{r.labor.variance.toFixed(1)}h)
+                                              </span>
+                                            </span>
                                           </div>
                                           {r.yoySales && (
                                             <div className="flex justify-between">

@@ -2,11 +2,12 @@ import { Router } from "express";
 import { db, posDb } from "../db";
 import {
   dailySales, restaurants, dailyOsat, posOrders, locationMapping,
-  hmeTimerData, dailyGoogleReviews, hourlyLabor, markets, restaurantMarkets,
+  hmeTimerData, dailyGoogleReviews, hourlyLabor, hourlySales, markets, restaurantMarkets,
   historicalDailySales,
 } from "@shared/schema";
 import { sql, and, gte, lte, eq, desc } from "drizzle-orm";
 import { getAttachmentRatesFromDetail } from "../xenial-webhook";
+import { getStaffingBreakdown } from "../lib/labor-model";
 
 const router = Router();
 
@@ -120,6 +121,7 @@ router.get("/api/executive-summary", async (req, res) => {
       channelCurrent,
       channelPrevious,
       laborRows,
+      hourlySalesRows,
       marketRows,
       restaurantMarketRows,
       locationMappingRows,
@@ -269,14 +271,23 @@ router.get("/api/executive-summary", async (req, res) => {
         .where(and(gte(posOrders.businessDate, prevStartTs), lte(posOrders.businessDate, prevEndTs)))
         .groupBy(posOrders.storeNumber, destChannelExpr()),
 
-      // Hourly Labor — current period
+      // Hourly Labor — current period (with hour for labor model)
       db.select({
         restaurantId: hourlyLabor.restaurantId,
+        hour: hourlyLabor.hour,
         employeeCount: hourlyLabor.employeeCount,
-        positionBreakdown: hourlyLabor.positionBreakdown,
       })
         .from(hourlyLabor)
         .where(and(gte(hourlyLabor.date, startDateStr), lte(hourlyLabor.date, endDateStr))),
+
+      // Hourly Sales — current period (for labor model target calculation)
+      db.select({
+        restaurantId: hourlySales.restaurantId,
+        hour: hourlySales.hour,
+        actualSales: hourlySales.actualSales,
+      })
+        .from(hourlySales)
+        .where(and(gte(hourlySales.salesDate, startTs), lte(hourlySales.salesDate, endTs))),
 
       // Markets
       db.select().from(markets),
@@ -433,26 +444,24 @@ router.get("/api/executive-summary", async (req, res) => {
     const channelMixCurrent = buildChannelMix(channelCurrent);
     const channelMixPrevious = buildChannelMix(channelPrevious);
 
-    // Staffing compliance
-    const staffingByRest: Record<string, { totalHours: number; noManagerHours: number }> = {};
+    // Labor hours vs model hours
+    const laborByRest: Record<string, { actualHours: number; modelHours: number }> = {};
     for (const row of laborRows) {
       const ec = parseFloat(row.employeeCount as string) || 0;
       if (ec <= 0) continue;
-      if (!staffingByRest[row.restaurantId]) staffingByRest[row.restaurantId] = { totalHours: 0, noManagerHours: 0 };
-      staffingByRest[row.restaurantId].totalHours++;
-      const pb = row.positionBreakdown as Record<string, number> | null;
-      if (pb) {
-        const hasManager = Object.keys(pb).some((k) => {
-          const lower = k.toLowerCase();
-          return lower.includes("manager") || lower.includes("supervisor");
-        });
-        if (!hasManager) {
-          staffingByRest[row.restaurantId].noManagerHours++;
-        }
-      } else {
-        // No breakdown data — treat as no manager
-        staffingByRest[row.restaurantId].noManagerHours++;
-      }
+      if (!laborByRest[row.restaurantId]) laborByRest[row.restaurantId] = { actualHours: 0, modelHours: 0 };
+      laborByRest[row.restaurantId].actualHours += ec;
+    }
+    for (const row of hourlySalesRows) {
+      const sales = parseFloat(row.actualSales as string) || 0;
+      if (sales <= 0) continue;
+      const model = getStaffingBreakdown(row.hour, sales);
+      if (!laborByRest[row.restaurantId]) laborByRest[row.restaurantId] = { actualHours: 0, modelHours: 0 };
+      laborByRest[row.restaurantId].modelHours += model.total;
+    }
+    for (const restId of Object.keys(laborByRest)) {
+      laborByRest[restId].actualHours = round1(laborByRest[restId].actualHours);
+      laborByRest[restId].modelHours = round1(laborByRest[restId].modelHours);
     }
 
     // Attachment rates
@@ -493,7 +502,7 @@ router.get("/api/executive-summary", async (req, res) => {
       osat: { current: number; previous: number; pctChange: number; responses: number };
       googleRating: { current: number; previous: number; pctChange: number };
       speedAttainment: { current: number; previous: number; pctChange: number };
-      staffing: { compliancePct: number; managerCoveragePct: number };
+      labor: { actualHours: number; modelHours: number; variance: number; variancePct: number };
       channelMix: ChannelMixPct;
       prevChannelMix: ChannelMixPct;
       attachmentScore: number | null;
@@ -514,11 +523,9 @@ router.get("/api/executive-summary", async (req, res) => {
       const rev = revenueByRest[rest.id] || { current: 0, previous: 0 };
       const checkCurrent = tx.current > 0 ? round1(rev.current / tx.current) : 0;
       const checkPrevious = tx.previous > 0 ? round1(rev.previous / tx.previous) : 0;
-      const staff = staffingByRest[rest.id];
-      const compliancePct = staff && staff.totalHours > 0
-        ? round1(((staff.totalHours - staff.noManagerHours) / staff.totalHours) * 100)
-        : 100;
-      const managerCoveragePct = compliancePct; // same metric — % of hours with manager present
+      const lb = laborByRest[rest.id] || { actualHours: 0, modelHours: 0 };
+      const laborVariance = round1(lb.actualHours - lb.modelHours);
+      const laborVariancePct = lb.modelHours > 0 ? round1(((lb.actualHours - lb.modelHours) / lb.modelHours) * 100) : 0;
 
       const attach = attachByRest[rest.id];
 
@@ -539,7 +546,7 @@ router.get("/api/executive-summary", async (req, res) => {
         osat: { current: round1(o.current), previous: round1(o.previous), pctChange: pctChange(o.current, o.previous), responses: o.responses },
         googleRating: { current: round1(g.current), previous: round1(g.previous), pctChange: pctChange(g.current, g.previous) },
         speedAttainment: { current: sp.current, previous: sp.previous, pctChange: pctChange(sp.current, sp.previous) },
-        staffing: { compliancePct, managerCoveragePct },
+        labor: { actualHours: lb.actualHours, modelHours: lb.modelHours, variance: laborVariance, variancePct: laborVariancePct },
         channelMix: channelMixCurrent[rest.id] || { ...defaultChannel },
         prevChannelMix: channelMixPrevious[rest.id] || { ...defaultChannel },
         attachmentScore: attach?.score ?? null,
@@ -640,9 +647,9 @@ router.get("/api/executive-summary", async (req, res) => {
         outperformers.push({ restaurantId: r.id, restaurant: r.name, metric: "checkAverage", metricLabel: "Check Average", current: r.checkAverage.current, previous: r.checkAverage.previous, pctChange: r.checkAverage.pctChange });
       }
 
-      // Manager coverage
-      if (r.staffing.managerCoveragePct < 85) {
-        alerts.push({ restaurantId: r.id, restaurant: r.name, metric: "managerCoverage", metricLabel: "Manager Coverage", current: r.staffing.managerCoveragePct, previous: 100, pctChange: round1(r.staffing.managerCoveragePct - 100), severity: "medium" });
+      // Labor overstaffing alert (>20% over model)
+      if (r.labor.modelHours > 0 && r.labor.variancePct > 20) {
+        alerts.push({ restaurantId: r.id, restaurant: r.name, metric: "laborVariance", metricLabel: "Labor vs Model", current: r.labor.actualHours, previous: r.labor.modelHours, pctChange: r.labor.variancePct, severity: r.labor.variancePct > 40 ? "high" : "medium" });
       }
     }
 
