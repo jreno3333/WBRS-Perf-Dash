@@ -409,17 +409,17 @@ function getSortValue(r: Restaurant, col: SortCol): number | string {
     case "name":
       return r.name.toLowerCase();
     case "sales":
-      return r.sales.current || NO_DATA;
+      return r.sales.previous > 0 ? r.sales.pctChange : NO_DATA;
     case "transactions":
-      return r.transactions.current || NO_DATA;
+      return r.transactions.previous > 0 ? r.transactions.pctChange : NO_DATA;
     case "checkAverage":
-      return r.checkAverage.current || NO_DATA;
+      return r.checkAverage.previous > 0 ? r.checkAverage.pctChange : NO_DATA;
     case "osat":
-      return r.osat.current || NO_DATA;
+      return r.osat.previous > 0 ? r.osat.pctChange : NO_DATA;
     case "googleRating":
-      return r.googleRating.current || NO_DATA;
+      return r.googleRating.previous > 0 ? r.googleRating.pctChange : NO_DATA;
     case "speedAttainment":
-      return r.speedAttainment.current || NO_DATA;
+      return r.speedAttainment.previous > 0 ? r.speedAttainment.pctChange : NO_DATA;
     case "staffing":
       return r.staffing.compliancePct;
     case "attach":
