@@ -39,6 +39,7 @@ interface SummaryCardsProps {
   checkAverageByRestaurant?: Record<string, CheckAverageData>;
   checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
   attachmentRatesByRestaurant?: Record<string, { categories: Record<string, { attachRate: number }> }>;
+  helperRewardsByRestaurant?: Record<string, number>;
 }
 
 function getExecutionGrade(
@@ -60,7 +61,7 @@ function getExecutionGrade(
   return { grade, color: getGradeColor(grade), score, hasGrade: true, components: [] };
 }
 
-export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, attachmentRatesByRestaurant }: SummaryCardsProps) {
+export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, attachmentRatesByRestaurant, helperRewardsByRestaurant }: SummaryCardsProps) {
   const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
@@ -278,6 +279,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
           dailyYoySalesVariancePct: dailyYoyVar,
           attachmentCategoriesAtTarget: attachCatsAtTarget,
           hourlyScores: restaurantHourlyScores,
+          helperRewardPoints: helperRewardsByRestaurant?.[restaurantId],
         });
 
         const adjustedScore = Math.min(baseScore + bonusResult.cappedBonus, 100);

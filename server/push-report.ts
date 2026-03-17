@@ -10,6 +10,7 @@ import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGr
 import { getAttachmentRatesFromDetail } from "./xenial-webhook";
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
+import { getHelperRewardsForDate } from "./routes/helper-rewards";
 
 // ─── Wrappers that delegate to the shared scoring module ─────────────
 function getExecutionGrade(
@@ -104,6 +105,9 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       const attachData = attachMap.get(restaurantId);
       if (attachData) attachCatsAtTarget = countAttachmentCategoriesAtTarget(attachData.categories);
     } catch (e) { /* POS data may not be available */ }
+
+    // Fetch helper rewards for this date
+    const helperRewardsMap = await getHelperRewardsForDate(dateStr);
 
     const sales = restaurant.actualSales;
     const lastWeekSales = restaurant.actualLastWeekSales;
@@ -225,6 +229,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       dailyYoySalesVariancePct: dailyYoySalesVar,
       attachmentCategoriesAtTarget: attachCatsAtTarget,
       hourlyScores: validScores,
+      helperRewardPoints: helperRewardsMap.get(restaurantId),
     }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
     const overallScore = baseScore > 0 ? Math.min(baseScore + bonusResult.cappedBonus, 100) : 0;

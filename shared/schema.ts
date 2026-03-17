@@ -952,6 +952,28 @@ export const gradingConfig = pgTable("grading_config", {
 
 export type GradingConfig = typeof gradingConfig.$inferSelect;
 
+// Helper rewards — bonus points awarded for helping another unit (entered per unit per day in settings)
+export const helperRewards = pgTable("helper_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  points: integer("points").notNull().default(0),
+  note: text("note"), // Optional description (e.g., "Helped Unit 1237 during lunch rush")
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: text("created_by"),
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("helper_rewards_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
+
+export const insertHelperRewardSchema = createInsertSchema(helperRewards).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertHelperReward = z.infer<typeof insertHelperRewardSchema>;
+export type HelperReward = typeof helperRewards.$inferSelect;
+
 export const DEFAULT_GRADING_CONFIG: GradingConfigData = {
   weights: { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10 },
   salesTiers: [

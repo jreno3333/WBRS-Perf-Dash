@@ -24,6 +24,7 @@ import pollsRouter from "./polls";
 import pushReportRouter, { registerPublicShareRoute } from "./push-report";
 import aiAnalysisRouter from "./ai-analysis";
 import gradingConfigRouter from "./grading-config";
+import helperRewardsRouter from "./helper-rewards";
 
 import { db } from "../db";
 import { users, gradingConfig as gradingConfigTable, DEFAULT_GRADING_CONFIG, type GradingConfigData } from "@shared/schema";
@@ -91,6 +92,7 @@ export async function registerRoutes(
   app.use(pushReportRouter);
   app.use(aiAnalysisRouter);
   app.use(gradingConfigRouter);
+  app.use(helperRewardsRouter);
 
   // Diagnostic: verify server has latest code
   app.get("/api/grading-config/ping", (_req: Request, res: Response) => {

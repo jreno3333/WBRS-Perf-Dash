@@ -10,6 +10,7 @@ import { getTotalRequiredStaff } from "./labor-model";
 import { getAttachmentRatesFromDetail, getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "./xenial-webhook";
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
+import { getHelperRewardsForDate } from "./routes/helper-rewards";
 import { getHolidayContext, getHolidayComparisonContext } from "./holidays";
 
 // Tennessee store names - must match client/src/components/state-breakdown.tsx
@@ -426,6 +427,9 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       attachmentByRestaurant = await getAttachmentRatesFromDetail(targetDate);
     } catch { /* POS data may not be available */ }
 
+    // Fetch helper rewards for this date
+    const helperRewardsMap = await getHelperRewardsForDate(dateStr);
+
     // Fetch YoY data
     const currentDate = new Date(dateStr);
     const priorYearDate = new Date(currentDate);
@@ -531,6 +535,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         dailyYoySalesVariancePct: dailyYoySalesVar,
         attachmentCategoriesAtTarget: attachCatsAtTarget,
         hourlyScores: validScores,
+        helperRewardPoints: helperRewardsMap.get(restaurant.restaurantId),
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
       const overallScore = baseScore > 0 ? Math.min(baseScore + bonusResult.cappedBonus, 100) : 0;

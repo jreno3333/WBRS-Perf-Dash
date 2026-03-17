@@ -10,6 +10,7 @@ import { computeHourlyScore, scoreToGradeLabel as sharedScoreToGradeLabel, getGr
 import { getAttachmentRatesFromDetail } from "./xenial-webhook";
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
+import { getHelperRewardsForDate } from "./routes/helper-rewards";
 
 
 function getExecutionGrade(
@@ -163,6 +164,9 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
       attachmentByRestaurant = await getAttachmentRatesFromDetail(targetDate);
     } catch (e) { /* POS data may not be available */ }
 
+    // Fetch helper rewards for this date
+    const helperRewardsMap = await getHelperRewardsForDate(dateStr);
+
     const summaries: RestaurantSummary[] = [];
     let totalSales = 0;
     let totalLastWeek = 0;
@@ -252,6 +256,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         dailyYoySalesVariancePct: dailyYoySalesVar,
         attachmentCategoriesAtTarget: attachCatsAtTarget,
         hourlyScores: validScores,
+        helperRewardPoints: helperRewardsMap.get(restaurant.restaurantId),
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
       const overallScore = baseScore > 0 ? Math.min(baseScore + bonusResult.cappedBonus, 100) : 0;
