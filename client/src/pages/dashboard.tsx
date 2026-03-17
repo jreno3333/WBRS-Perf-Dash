@@ -220,6 +220,26 @@ export default function Dashboard() {
     staleTime: isToday ? 4 * 60 * 1000 : Infinity,
   });
 
+  // Fetch helper rewards for the selected date
+  const { data: helperRewardsData } = useQuery<{ restaurantId: string; points: number }[]>({
+    queryKey: ["/api/helper-rewards", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/helper-rewards?date=${dateStr}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+  });
+
+  const helperRewardsByRestaurant = useMemo(() => {
+    if (!helperRewardsData) return undefined;
+    const map: Record<string, number> = {};
+    for (const hr of helperRewardsData) {
+      map[hr.restaurantId] = hr.points;
+    }
+    return map;
+  }, [helperRewardsData]);
+
   // Fetch markets data
   const { data: markets } = useQuery<MarketWithRestaurants[]>({
     queryKey: ["/api/markets"],
@@ -463,8 +483,10 @@ export default function Dashboard() {
           case "variance": {
             const aLastWeek = a.actualLastWeekSales ?? a.lastWeekSales;
             const bLastWeek = b.actualLastWeekSales ?? b.lastWeekSales;
-            const aVariance = aLastWeek > 0 ? ((a.actualSales / aLastWeek) - 1) * 100 : 0;
-            const bVariance = bLastWeek > 0 ? ((b.actualSales / bLastWeek) - 1) * 100 : 0;
+            const aCompleted = a.completedSales ?? a.actualSales;
+            const bCompleted = b.completedSales ?? b.actualSales;
+            const aVariance = aLastWeek > 0 ? ((aCompleted / aLastWeek) - 1) * 100 : 0;
+            const bVariance = bLastWeek > 0 ? ((bCompleted / bLastWeek) - 1) * 100 : 0;
             return bVariance - aVariance;
           }
           case "wtd_variance": {
@@ -758,6 +780,7 @@ export default function Dashboard() {
               checkAverageByRestaurant={checkAverageByRestaurant}
               checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
               attachmentRatesByRestaurant={attachmentRatesResponse?.restaurants}
+              helperRewardsByRestaurant={helperRewardsByRestaurant}
             />
 
             {/* Quick Poll */}
@@ -863,6 +886,7 @@ export default function Dashboard() {
                       onNoteAdded={refetchNotes}
                       attachmentCategories={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.categories}
                       overallAttachScore={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.overallAttachScore}
+                      helperRewardPoints={helperRewardsByRestaurant?.[restaurant.restaurantId]}
                     />
                   ))}
                 </div>

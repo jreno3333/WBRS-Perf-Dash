@@ -10,6 +10,7 @@ import { getTotalRequiredStaff } from "./labor-model";
 import { getAttachmentRatesFromDetail, getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange } from "./xenial-webhook";
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
+import { getHelperRewardsForDate } from "./routes/helper-rewards";
 import { getHolidayContext, getHolidayComparisonContext } from "./holidays";
 
 // Tennessee store names - must match client/src/components/state-breakdown.tsx
@@ -358,15 +359,19 @@ export async function sendSalesSummaryReports(force = false): Promise<{ sent: nu
     const yesterdayStr = centralFormatter.format(yesterday);
 
     const reportKey = `sales-summary-${yesterdayStr}`;
-    const alreadySent = await db.select()
-      .from(emailSendLog)
-      .where(and(eq(emailSendLog.reportDate, reportKey), eq(emailSendLog.status, "sent")));
-    const sentEmails = new Set(alreadySent.map(s => s.email));
-    const pendingSubscribers = subscribers.filter(s => !sentEmails.has(s.email));
+    let pendingSubscribers = subscribers;
 
-    if (pendingSubscribers.length === 0) {
-      console.log("[sales-summary] All reports already sent for", yesterdayStr);
-      return result;
+    if (!force) {
+      const alreadySent = await db.select()
+        .from(emailSendLog)
+        .where(and(eq(emailSendLog.reportDate, reportKey), eq(emailSendLog.status, "sent")));
+      const sentEmails = new Set(alreadySent.map(s => s.email));
+      pendingSubscribers = subscribers.filter(s => !sentEmails.has(s.email));
+
+      if (pendingSubscribers.length === 0) {
+        console.log("[sales-summary] All reports already sent for", yesterdayStr);
+        return result;
+      }
     }
 
     const reportHtml = await buildSalesSummaryHtml(yesterdayStr);
@@ -421,6 +426,9 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     try {
       attachmentByRestaurant = await getAttachmentRatesFromDetail(targetDate);
     } catch { /* POS data may not be available */ }
+
+    // Fetch helper rewards for this date
+    const helperRewardsMap = await getHelperRewardsForDate(dateStr);
 
     // Fetch YoY data
     const currentDate = new Date(dateStr);
@@ -527,6 +535,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         dailyYoySalesVariancePct: dailyYoySalesVar,
         attachmentCategoriesAtTarget: attachCatsAtTarget,
         hourlyScores: validScores,
+        helperRewardPoints: helperRewardsMap.get(restaurant.restaurantId),
       }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
       const overallScore = baseScore > 0 ? Math.min(baseScore + bonusResult.cappedBonus, 100) : 0;

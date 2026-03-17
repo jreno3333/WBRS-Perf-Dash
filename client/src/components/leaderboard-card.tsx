@@ -167,6 +167,7 @@ interface LeaderboardCardProps {
   onNoteAdded?: () => void;
   attachmentCategories?: Record<string, { attachRate: number }>;
   overallAttachScore?: number;
+  helperRewardPoints?: number;
 }
 
 function formatTenure(months: number): string {
@@ -366,7 +367,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
   );
 }
 
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore }: LeaderboardCardProps) {
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   const gradingCfg = useGradingConfig();
@@ -383,10 +384,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     return `${sign}${formatCurrency(amount)}`;
   };
 
-  // Display variance uses actual local-timezone sales for accurate store-level comparison
   const displayLastWeek = restaurant.actualLastWeekSales ?? restaurant.lastWeekSales;
+  const comparisonSales = restaurant.completedSales ?? restaurant.actualSales;
   const paceVariance = displayLastWeek > 0 
-    ? ((restaurant.actualSales / displayLastWeek) - 1) * 100 
+    ? ((comparisonSales / displayLastWeek) - 1) * 100 
     : 0;
 
 
@@ -543,6 +544,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       dailyYoySalesVariancePct: dailyYoySalesVar,
       attachmentCategoriesAtTarget: attachCatsAtTarget,
       hourlyScores: hourlyGradeScores,
+      helperRewardPoints,
     });
 
     overallScore = Math.min(baseScore + dailyBonusResult.cappedBonus, 100);

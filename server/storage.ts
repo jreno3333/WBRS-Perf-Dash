@@ -297,6 +297,7 @@ export class DatabaseStorage {
         timezone: restaurant.timezone,
         todaySales: selectedDateSalesAmount,
         actualSales: actualSalesAmount,
+        completedSales: completedSalesAmount,
         lastWeekSales: lastWeekSalesAmount,
         actualLastWeekSales: actualLastWeekAmount,
         forecastSales: forecastSalesAmount,

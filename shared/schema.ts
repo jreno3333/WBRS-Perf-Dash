@@ -169,9 +169,10 @@ export interface RestaurantSales {
   restaurantName: string;
   timezone: string;
   todaySales: number; // Normalized sales for fair ranking (capped at normalized hour)
-  actualSales: number; // Actual current sales (all available hours, matches 7shifts)
+  actualSales: number; // Live total sales including in-progress hour (for display)
+  completedSales: number; // Sales through completed local hours only (for fair variance comparison)
   lastWeekSales: number; // Normalized last week (for ranking comparison)
-  actualLastWeekSales: number; // Full last week sales (all hours, for display)
+  actualLastWeekSales: number; // Last week sales through completed local hours (for fair variance comparison)
   forecastSales: number;
   lastWeekFullDay?: number; // Last week's full day total (partial + remaining hours)
   pacePercentage: number; // How far through the day they are vs last week
@@ -951,6 +952,28 @@ export const gradingConfig = pgTable("grading_config", {
 });
 
 export type GradingConfig = typeof gradingConfig.$inferSelect;
+
+// Helper rewards — bonus points awarded for helping another unit (entered per unit per day in settings)
+export const helperRewards = pgTable("helper_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD format
+  points: integer("points").notNull().default(0),
+  note: text("note"), // Optional description (e.g., "Helped Unit 1237 during lunch rush")
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: text("created_by"),
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("helper_rewards_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
+
+export const insertHelperRewardSchema = createInsertSchema(helperRewards).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertHelperReward = z.infer<typeof insertHelperRewardSchema>;
+export type HelperReward = typeof helperRewards.$inferSelect;
 
 export const DEFAULT_GRADING_CONFIG: GradingConfigData = {
   weights: { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10 },

@@ -34,6 +34,7 @@ export const BONUS_DEFINITIONS = [
   { id: "consistency", label: "Consistency", points: 2, description: "No hour graded below B for the entire day" },
   { id: "yoyGrowth", label: "Sales Growth (YoY)", points: 2, description: "Daily sales above same day last year (any amount)" },
   { id: "theCloser", label: "The Closer", points: 4, description: "Hit 4+ of 6 attachment rate targets for the day (+1 pt per category at target)" },
+  { id: "helperReward", label: "Helper Reward", points: 0, description: "Bonus points for helping another unit (entered by management)" },
 ] as const;
 
 export type BonusId = typeof BONUS_DEFINITIONS[number]["id"];
@@ -268,6 +269,8 @@ export interface DailyBonusInput {
   attachmentCategoriesAtTarget?: number;
   /** Array of hourly grade scores for the day */
   hourlyScores: number[];
+  /** Helper reward points for helping another unit (entered in settings) */
+  helperRewardPoints?: number;
 }
 
 export interface DailyBonusResult {
@@ -313,8 +316,13 @@ export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
     bonuses.push({ ...BONUS_DEFINITIONS[6], points: input.attachmentCategoriesAtTarget });
   }
 
+  // Helper Reward: bonus points for helping another unit (manually entered in settings)
+  if (input.helperRewardPoints && input.helperRewardPoints > 0) {
+    bonuses.push({ ...BONUS_DEFINITIONS[7], points: input.helperRewardPoints });
+  }
+
   const totalBonus = bonuses.reduce((sum, b) => sum + b.points, 0);
-  const cappedBonus = Math.min(totalBonus, BONUS_CAP);
+  const cappedBonus = totalBonus; // No cap — all earned bonus points apply
 
   return { bonuses, totalBonus, cappedBonus };
 }

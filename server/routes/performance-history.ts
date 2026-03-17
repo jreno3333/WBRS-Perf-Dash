@@ -7,6 +7,7 @@ import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
 import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesMultiDay } from "../xenial-webhook";
 import { getActiveGradingConfig } from "./grading-config";
+import { getHelperRewardsForDateRange } from "./helper-rewards";
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get("/api/performance-history/detail/:restaurantId", async (req, res) => 
     const { days = "8" } = req.query;
     const cacheKey = String(days);
     const cached = perfHistoryCache.get(cacheKey);
-    if (!cached || Date.now() - cached.timestamp > CACHE_TTL) {
+    if (!cached) {
       return res.status(404).json({ error: "Data not ready, refresh the page" });
     }
     const restaurant = cached.data.restaurants.find((r: any) => r.restaurantId === restaurantId);
@@ -270,6 +271,11 @@ router.get("/api/performance-history", async (req, res) => {
         }
       }
     }
+
+    // Fetch helper rewards for the date range
+    const helperRewardsMap = dateRange.length > 0
+      ? await getHelperRewardsForDateRange(dateRange[0], dateRange[dateRange.length - 1])
+      : new Map<string, number>();
 
     const getRestaurantStatus = (openDate: string | Date | null | undefined): "training" | "new" | "established" => {
       if (!openDate) return "established";
@@ -650,6 +656,7 @@ router.get("/api/performance-history", async (req, res) => {
           dailyYoySalesVariancePct: dailyYoySalesVar,
           attachmentCategoriesAtTarget: undefined,
           hourlyScores: hourlyRawScores,
+          helperRewardPoints: helperRewardsMap.get(`${dateStr}-${restaurant.id}`),
         }) : { bonuses: [], totalBonus: 0, cappedBonus: 0 };
 
         // Apply bonus points to get final grade (capped at 100)

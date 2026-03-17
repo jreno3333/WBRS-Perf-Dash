@@ -6,7 +6,6 @@ import { sendDailyReports } from "./daily-report";
 import { sendLeaderReports } from "./leader-report";
 import { sendPushReports } from "./push-report";
 import { sendSalesSummaryReports } from "./sales-summary-report";
-import { invalidatePerfHistoryCache } from "./routes/performance-history";
 import { db } from "./db";
 import { dailySales, hourlySales, restaurants, hourlyLabor, hmeTimerData, dailyOsat, hourlyCrew, posOrders, osatData, dailyGoogleReviews, reportSchedules, emailSendLog } from "@shared/schema";
 import { sql, isNotNull, lt, eq, and, like } from "drizzle-orm";
@@ -192,7 +191,7 @@ async function runScheduledSync() {
     // Milestone auto-detection (hourly)
     await runMilestoneCheckIfNeeded();
 
-    invalidatePerfHistoryCache();
+    
   } catch (error) {
     log(`Sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
