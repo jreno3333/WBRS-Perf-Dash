@@ -25,11 +25,16 @@ function round1(n: number): number {
 
 function destChannelExpr() {
   return sql`CASE
-    WHEN LOWER(${posOrders.orderSource}) IN ('app', 'mobile', 'online') THEN 'app'
-    WHEN LOWER(${posOrders.orderSource}) LIKE '%3pd%' OR LOWER(${posOrders.orderSource}) IN ('doordash', 'ubereats', 'grubhub') THEN '3pd'
-    WHEN LOWER(${posOrders.orderSource}) LIKE '%delivery%' THEN 'delivery'
-    WHEN LOWER(${posOrders.orderSource}) IN ('in', 'dine-in') OR LOWER(${posOrders.orderSource}) LIKE '%dine%' THEN 'dine_in'
-    WHEN LOWER(${posOrders.orderSource}) = 'dt3' THEN 'dt3_outside'
+    WHEN LOWER(${posOrders.orderSource}) IN ('app', 'mobile', 'online', 'web') THEN 'app'
+    WHEN LOWER(${posOrders.orderSource}) LIKE '%3pd%'
+      OR LOWER(${posOrders.orderSource}) IN ('doordash', 'ubereats', 'grubhub')
+      OR LOWER(${posOrders.orderSource}) LIKE '%door dash%'
+      OR LOWER(${posOrders.orderSource}) LIKE '%uber eat%'
+      OR LOWER(${posOrders.orderSource}) LIKE '%grub%'
+      THEN '3pd'
+    WHEN LOWER(${posOrders.orderSource}) LIKE '%delivery%' THEN '3pd'
+    WHEN LOWER(${posOrders.orderSource}) IN ('in', 'dine-in', 'kiosk', 'cat', 'pho') OR LOWER(${posOrders.orderSource}) LIKE '%dine%' THEN 'dine_in'
+    WHEN LOWER(${posOrders.orderSource}) IN ('dt3', 'out') THEN 'dt3_outside'
     WHEN LOWER(${posOrders.orderSource}) IN ('dt1', 'dt2', 'drive-thru', 'drive_thru') THEN 'drive_thru'
     WHEN LOWER(${posOrders.orderSource}) = 'pos' THEN 'drive_thru'
     ELSE COALESCE(LOWER(${posOrders.orderSource}), 'unknown')
