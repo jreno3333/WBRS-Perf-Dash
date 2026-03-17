@@ -27,12 +27,12 @@ function isTennesseeStore(restaurantName: string): boolean {
   return TENNESSEE_STORES.some(name => restaurantName.includes(name.split(" - ")[1]));
 }
 
-/** Comp = open > 18 months. Non-comp = open <= 18 months or no openDate. */
+/** Comp = open > 24 months. Non-comp = open <= 24 months or no openDate. */
 function isCompStore(openDate: string | Date | null | undefined): boolean {
   if (!openDate) return true; // assume comp if no date
   const open = new Date(openDate);
   const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - 18);
+  cutoff.setMonth(cutoff.getMonth() - 24);
   return open <= cutoff;
 }
 
@@ -1029,7 +1029,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
 
     <!-- ═══ COMP vs NON-COMP ═══ -->
     <div style="${sectionStyle}">
-      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Comp vs Non-Comp <span style="font-size: 11px; color: #71717a; font-weight: 400;">(18-month threshold)</span></h3>
+      <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Comp vs Non-Comp <span style="font-size: 11px; color: #71717a; font-weight: 400;">(24-month threshold)</span></h3>
       <table>
         <thead>
           <tr style="border-bottom: 2px solid #e4e4e7;">
@@ -1168,8 +1168,8 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     <div style="${sectionStyle}">
       <h3 style="margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #71717a;">Legend</h3>
       <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: #52525b;">
-        <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; color: #a1a1aa; margin-right: 4px;">C</span> Comp (open &gt; 18 months)</div>
-        <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #fef3c7; color: #92400e; margin-right: 4px;">NC</span> Non-Comp (open &le; 18 months)</div>
+        <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; color: #a1a1aa; margin-right: 4px;">C</span> Comp (open &gt; 24 months)</div>
+        <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #fef3c7; color: #92400e; margin-right: 4px;">NC</span> Non-Comp (open &le; 24 months)</div>
         <div><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #dbeafe; color: #1e40af; margin-right: 4px;">NEW</span> New store</div>
       </div>
       <div style="margin-top: 6px; font-size: 10px; color: #a1a1aa;">
