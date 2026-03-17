@@ -40,6 +40,7 @@ import {
   TrendingUp,
   TrendingDown,
   Users,
+  Info,
 } from "lucide-react";
 import {
   BarChart,
@@ -602,16 +603,18 @@ export default function ExecutiveSummary() {
   ];
 
   // Column header helper
-  function SortHeader({ col, label }: { col: SortCol; label: string }) {
+  function SortHeader({ col, label, tooltip }: { col: SortCol; label: string; tooltip?: string }) {
     const active = sortColumn === col;
     return (
       <button
         onClick={() => toggleSort(col)}
+        title={tooltip}
         className={`flex items-center gap-0.5 text-[10px] uppercase tracking-wider font-semibold hover:text-foreground transition-colors ${
           active ? "text-foreground" : "text-muted-foreground"
         }`}
       >
         {label}
+        {tooltip && <Info size={8} className="opacity-40 ml-0.5" />}
         {active ? (
           sortDirection === "asc" ? (
             <ArrowUpRight size={10} />
@@ -920,7 +923,7 @@ export default function ExecutiveSummary() {
                           <SortHeader col="attach" label="Attach" />
                         </th>
                         <th className="text-right py-2 px-2">
-                          <SortHeader col="yoy" label="YoY" />
+                          <SortHeader col="yoy" label="YoY" tooltip="Year-over-Year: compares sales from the selected period to the same days of the week one year ago. A negative % means lower sales than last year." />
                         </th>
                         <th className="w-6" />
                       </tr>
