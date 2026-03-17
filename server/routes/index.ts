@@ -23,6 +23,7 @@ import tickerRouter from "./ticker";
 import pollsRouter from "./polls";
 import pushReportRouter, { registerPublicShareRoute } from "./push-report";
 import aiAnalysisRouter from "./ai-analysis";
+import executiveSummaryRouter from "./executive-summary";
 import gradingConfigRouter from "./grading-config";
 import helperRewardsRouter from "./helper-rewards";
 
@@ -91,6 +92,7 @@ export async function registerRoutes(
   app.use(pollsRouter);
   app.use(pushReportRouter);
   app.use(aiAnalysisRouter);
+  app.use(executiveSummaryRouter);
   app.use(gradingConfigRouter);
   app.use(helperRewardsRouter);
 
