@@ -17,6 +17,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { NavBar } from "@/components/nav-bar";
+import { scoreToGradeLabel, getGradeColor } from "@/lib/grading";
 import { Link } from "wouter";
 import {
   BarChart3,
@@ -375,13 +376,13 @@ function ComplianceBadge({ pct }: { pct: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Attach score badge
+// Attach score badge — uses same A-F grade color scale as rankings page
 // ---------------------------------------------------------------------------
 
 function AttachBadge({ score }: { score: number | null }) {
   if (score == null) return <span className="text-xs text-muted-foreground">--</span>;
-  const color =
-    score >= 70 ? "text-green-500" : score >= 50 ? "text-amber-500" : "text-red-500";
+  const grade = scoreToGradeLabel(score);
+  const color = getGradeColor(grade);
   return <span className={`text-xs font-medium ${color}`}>{score.toFixed(0)}%</span>;
 }
 
@@ -401,28 +402,30 @@ type SortCol =
   | "attach"
   | "yoy";
 
+const NO_DATA = -Infinity;
+
 function getSortValue(r: Restaurant, col: SortCol): number | string {
   switch (col) {
     case "name":
       return r.name.toLowerCase();
     case "sales":
-      return r.sales.current;
+      return r.sales.current || NO_DATA;
     case "transactions":
-      return r.transactions.current;
+      return r.transactions.current || NO_DATA;
     case "checkAverage":
-      return r.checkAverage.current;
+      return r.checkAverage.current || NO_DATA;
     case "osat":
-      return r.osat.current;
+      return r.osat.current || NO_DATA;
     case "googleRating":
-      return r.googleRating.current;
+      return r.googleRating.current || NO_DATA;
     case "speedAttainment":
-      return r.speedAttainment.current;
+      return r.speedAttainment.current || NO_DATA;
     case "staffing":
       return r.staffing.compliancePct;
     case "attach":
-      return r.attachmentScore ?? -1;
+      return r.attachmentScore ?? NO_DATA;
     case "yoy":
-      return r.yoySales?.pctChange ?? -999;
+      return r.yoySales?.pctChange ?? NO_DATA;
     default:
       return 0;
   }
@@ -462,9 +465,12 @@ export default function ExecutiveSummary() {
       if (typeof va === "string" && typeof vb === "string") {
         return sortDirection === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
       }
-      return sortDirection === "asc"
-        ? (va as number) - (vb as number)
-        : (vb as number) - (va as number);
+      const na = va as number;
+      const nb = vb as number;
+      if (na === NO_DATA && nb === NO_DATA) return 0;
+      if (na === NO_DATA) return 1;
+      if (nb === NO_DATA) return -1;
+      return sortDirection === "asc" ? na - nb : nb - na;
     });
     return sorted;
   }, [data, marketFilter, sortColumn, sortDirection]);
