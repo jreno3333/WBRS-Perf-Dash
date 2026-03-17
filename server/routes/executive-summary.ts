@@ -3,6 +3,7 @@ import { db, posDb } from "../db";
 import {
   dailySales, restaurants, dailyOsat, posOrders, locationMapping,
   hmeTimerData, dailyGoogleReviews, hourlyLabor, markets, restaurantMarkets,
+  historicalDailySales,
 } from "@shared/schema";
 import { sql, and, gte, lte, eq, desc } from "drizzle-orm";
 import { getAttachmentRatesFromDetail } from "../xenial-webhook";
@@ -77,6 +78,14 @@ router.get("/api/executive-summary", async (req, res) => {
     const prevStartTs = new Date(prevStartDateStr + "T00:00:00Z");
     const prevEndTs = new Date(prevEndDateStr + "T23:59:59Z");
 
+    // YoY date range — same day-of-week from prior year
+    const yoyEndDate = new Date(endDate);
+    yoyEndDate.setFullYear(yoyEndDate.getFullYear() - 1);
+    const yoyEndDateStr = yoyEndDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const yoyStartDate = new Date(startDate);
+    yoyStartDate.setFullYear(yoyStartDate.getFullYear() - 1);
+    const yoyStartDateStr = yoyStartDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
     // ------------------------------------------------------------------
     // Run all queries in parallel
     // ------------------------------------------------------------------
@@ -101,6 +110,7 @@ router.get("/api/executive-summary", async (req, res) => {
       restaurantMarketRows,
       locationMappingRows,
       attachmentRates,
+      yoySalesRows,
     ] = await Promise.all([
       // Restaurants
       db.select().from(restaurants).where(eq(restaurants.isActive, true)),
@@ -271,6 +281,15 @@ router.get("/api/executive-summary", async (req, res) => {
           return null;
         }
       })(),
+
+      // YoY historical sales — same date range from prior year
+      db.select({
+        restaurantId: historicalDailySales.restaurantId,
+        total: sql<string>`SUM(${historicalDailySales.netSales})`,
+      })
+        .from(historicalDailySales)
+        .where(and(gte(historicalDailySales.date, yoyStartDateStr), lte(historicalDailySales.date, yoyEndDateStr)))
+        .groupBy(historicalDailySales.restaurantId),
     ]);
 
     // ------------------------------------------------------------------
@@ -292,16 +311,22 @@ router.get("/api/executive-summary", async (req, res) => {
       }
     }
 
+    // YoY sales lookup: restaurantId → last year total (in dollars, already stored in dollars)
+    const yoyByRest: Record<string, number> = {};
+    for (const r of yoySalesRows) {
+      yoyByRest[r.restaurantId] = parseFloat(r.total) || 0;
+    }
+
     // ------------------------------------------------------------------
     // Index query results by restaurantId
     // ------------------------------------------------------------------
     type MetricPair = { current: number; previous: number };
 
     const salesByRest: Record<string, MetricPair> = {};
-    for (const r of salesCurrent) salesByRest[r.restaurantId] = { current: parseFloat(r.total) || 0, previous: 0 };
+    for (const r of salesCurrent) salesByRest[r.restaurantId] = { current: (parseFloat(r.total) || 0) / 100, previous: 0 };
     for (const r of salesPrevious) {
       if (!salesByRest[r.restaurantId]) salesByRest[r.restaurantId] = { current: 0, previous: 0 };
-      salesByRest[r.restaurantId].previous = parseFloat(r.total) || 0;
+      salesByRest[r.restaurantId].previous = (parseFloat(r.total) || 0) / 100;
     }
 
     const osatByRest: Record<string, MetricPair & { responses: number }> = {};
@@ -459,6 +484,7 @@ router.get("/api/executive-summary", async (req, res) => {
       prevChannelMix: ChannelMixPct;
       attachmentScore: number | null;
       attachmentCategories: Record<string, { rate: number; benchmark: number; vsTarget: number }> | null;
+      yoySales: { lastYear: number; pctChange: number } | null;
     };
 
     const restaurantResults: RestaurantResult[] = [];
@@ -482,12 +508,18 @@ router.get("/api/executive-summary", async (req, res) => {
 
       const attach = attachByRest[rest.id];
 
+      const yoyLastYear = yoyByRest[rest.id];
+      const currentSalesDollars = round1(s.current);
+      const yoySalesData = yoyLastYear && yoyLastYear > 0
+        ? { lastYear: round1(yoyLastYear), pctChange: pctChange(currentSalesDollars, yoyLastYear) }
+        : null;
+
       restaurantResults.push({
         id: rest.id,
         name: rest.name,
         marketId: mkt?.marketId ?? null,
         marketName: mkt?.marketName ?? null,
-        sales: { current: round1(s.current), previous: round1(s.previous), pctChange: pctChange(s.current, s.previous) },
+        sales: { current: currentSalesDollars, previous: round1(s.previous), pctChange: pctChange(s.current, s.previous) },
         transactions: { current: tx.current, previous: tx.previous, pctChange: pctChange(tx.current, tx.previous) },
         checkAverage: { current: checkCurrent, previous: checkPrevious, pctChange: pctChange(checkCurrent, checkPrevious) },
         osat: { current: round1(o.current), previous: round1(o.previous), pctChange: pctChange(o.current, o.previous), responses: o.responses },
@@ -498,6 +530,7 @@ router.get("/api/executive-summary", async (req, res) => {
         prevChannelMix: channelMixPrevious[rest.id] || { ...defaultChannel },
         attachmentScore: attach?.score ?? null,
         attachmentCategories: attach?.categories ?? null,
+        yoySales: yoySalesData,
       });
     }
 
@@ -625,7 +658,7 @@ router.get("/api/executive-summary", async (req, res) => {
     for (const row of salesDaily) {
       const restId = row.restaurantId;
       if (!dailySalesByRest[restId]) dailySalesByRest[restId] = [];
-      dailySalesByRest[restId].push({ date: row.date, value: parseFloat(row.total) || 0 });
+      dailySalesByRest[restId].push({ date: row.date, value: (parseFloat(row.total) || 0) / 100 });
     }
 
     for (const [restId, days] of Object.entries(dailySalesByRest)) {

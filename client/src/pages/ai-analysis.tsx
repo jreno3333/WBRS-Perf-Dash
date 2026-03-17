@@ -78,6 +78,7 @@ interface Restaurant {
   prevChannelMix: { drive_thru: number; dine_in: number; app: number; delivery_3pd: number };
   attachmentScore: number | null;
   attachmentCategories: Record<string, { rate: number; benchmark: number; vsTarget: number }> | null;
+  yoySales: { lastYear: number; pctChange: number } | null;
 }
 
 interface Alert {
@@ -397,7 +398,8 @@ type SortCol =
   | "googleRating"
   | "speedAttainment"
   | "staffing"
-  | "attach";
+  | "attach"
+  | "yoy";
 
 function getSortValue(r: Restaurant, col: SortCol): number | string {
   switch (col) {
@@ -419,6 +421,8 @@ function getSortValue(r: Restaurant, col: SortCol): number | string {
       return r.staffing.compliancePct;
     case "attach":
       return r.attachmentScore ?? -1;
+    case "yoy":
+      return r.yoySales?.pctChange ?? -999;
     default:
       return 0;
   }
@@ -893,6 +897,9 @@ export default function ExecutiveSummary() {
                         <th className="text-right py-2 px-2">
                           <SortHeader col="attach" label="Attach" />
                         </th>
+                        <th className="text-right py-2 px-2">
+                          <SortHeader col="yoy" label="YoY" />
+                        </th>
                         <th className="w-6" />
                       </tr>
                     </thead>
@@ -943,11 +950,18 @@ export default function ExecutiveSummary() {
                                 <td className="text-right py-1.5 px-2">
                                   <AttachBadge score={r.attachmentScore} />
                                 </td>
+                                <td className="text-right py-1.5 px-2">
+                                  {r.yoySales ? (
+                                    <TrendArrow value={r.yoySales.pctChange} />
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </td>
                                 <td className="w-6" />
                               </tr>
                               <CollapsibleContent asChild>
                                 <tr>
-                                  <td colSpan={10} className="bg-muted/20 px-6 py-3">
+                                  <td colSpan={11} className="bg-muted/20 px-6 py-3">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                                       {/* Raw metric values */}
                                       <div>
@@ -979,6 +993,20 @@ export default function ExecutiveSummary() {
                                             <span className="text-muted-foreground">Mgr Coverage</span>
                                             <span>{r.staffing.managerCoveragePct.toFixed(0)}%</span>
                                           </div>
+                                          {r.yoySales && (
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">YoY Sales</span>
+                                              <span>
+                                                {formatCurrency(r.sales.current)}{" "}
+                                                <span className="text-muted-foreground">
+                                                  (LY: {formatCurrency(r.yoySales.lastYear)})
+                                                </span>{" "}
+                                                <span className={r.yoySales.pctChange >= 0 ? "text-green-500" : "text-red-500"}>
+                                                  {r.yoySales.pctChange > 0 ? "+" : ""}{r.yoySales.pctChange.toFixed(1)}%
+                                                </span>
+                                              </span>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
 
