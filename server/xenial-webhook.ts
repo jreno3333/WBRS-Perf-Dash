@@ -3,6 +3,21 @@ import { posOrders, locationMapping, restaurants } from "@shared/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
 import { countAttachmentCategoriesAtTarget, ATTACHMENT_BENCHMARKS as SCORING_BENCHMARKS } from "./lib/scoring";
 
+const VALID_TIMEZONES = new Set(['America/Chicago', 'America/New_York', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix']);
+
+function getUtcBoundsForLocalDate(dateStr: string, tz: string) {
+  const offsetHours = tz === 'America/New_York' ? 5 : tz === 'America/Chicago' ? 6 : tz === 'America/Denver' ? 7 : tz === 'America/Los_Angeles' ? 8 : 6;
+  const paddedStart = new Date(`${dateStr}T00:00:00.000Z`);
+  paddedStart.setUTCHours(paddedStart.getUTCHours() + offsetHours - 1);
+  const paddedEnd = new Date(`${dateStr}T23:59:59.999Z`);
+  paddedEnd.setUTCHours(paddedEnd.getUTCHours() + offsetHours + 1);
+  return { paddedStart, paddedEnd };
+}
+
+function sanitizeTz(tz: string): string {
+  return VALID_TIMEZONES.has(tz) ? tz : 'America/Chicago';
+}
+
 let _storeMapCache: { data: Map<string, { id: string; name: string; timezone: string }>; timestamp: number } | null = null;
 const STORE_MAP_TTL = 120_000;
 
@@ -138,46 +153,64 @@ export async function processXenialOrder(payload: XenialWebhookPayload): Promise
 }
 
 export async function getPosOrdersSummary(targetDate: Date): Promise<Map<string, { orders: number; total: number }>> {
-  const startOfDay = new Date(targetDate);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(targetDate);
-  endOfDay.setUTCHours(23, 59, 59, 999);
+  const dateStr = targetDate.toISOString().split('T')[0];
 
-  const results = await posDb
-    .select({
-      storeNumber: posOrders.storeNumber,
-      orderCount: sql<number>`count(*)::int`,
-      totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
-    })
-    .from(posOrders)
-    .where(
-      and(
-        gte(posOrders.businessDate, startOfDay),
-        lt(posOrders.businessDate, endOfDay)
-      )
-    )
-    .groupBy(posOrders.storeNumber);
+  const fullStoreMap = await getCachedStoreMap();
+  const storeToTz = new Map<string, string>();
+  fullStoreMap.forEach((info, storeNum) => {
+    storeToTz.set(storeNum, info.timezone);
+  });
+
+  const timezoneSet = new Set<string>();
+  storeToTz.forEach((tz) => timezoneSet.add(tz));
 
   const summary = new Map<string, { orders: number; total: number }>();
-  for (const row of results) {
-    summary.set(row.storeNumber, {
-      orders: row.orderCount,
-      total: Number(row.totalSales) || 0,
+
+  for (const tz of timezoneSet) {
+    const safeTz = sanitizeTz(tz);
+    const storesInTz: string[] = [];
+    storeToTz.forEach((storeTz, storeNum) => {
+      if (storeTz === tz) storesInTz.push(storeNum);
     });
+    if (storesInTz.length === 0) continue;
+
+    const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
+    const results = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        orderCount: sql<number>`count(*)::int`,
+        totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.orderClosedAt, paddedStart),
+          lt(posOrders.orderClosedAt, paddedEnd),
+          sql`${localDateExpr} = ${dateStr}::date`,
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber);
+
+    for (const row of results) {
+      summary.set(row.storeNumber, {
+        orders: row.orderCount,
+        total: Number(row.totalSales) || 0,
+      });
+    }
   }
 
   return summary;
 }
 
 export async function getHourlyPosSales(storeNumber: string, targetDate: Date, timezone: string = 'America/Chicago'): Promise<Map<number, number>> {
-  const startOfDay = new Date(targetDate);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(targetDate);
-  endOfDay.setUTCHours(23, 59, 59, 999);
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const safeTz = sanitizeTz(timezone);
+  const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
 
-  const tzLiteral = sql.raw(`'${timezone}'`);
+  const tzLiteral = sql.raw(`'${safeTz}'`);
+  const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
   const results = await posDb
     .select({
       hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`,
@@ -187,8 +220,9 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date, t
     .where(
       and(
         eq(posOrders.storeNumber, storeNumber),
-        gte(posOrders.businessDate, startOfDay),
-        lt(posOrders.businessDate, endOfDay)
+        gte(posOrders.orderClosedAt, paddedStart),
+        lt(posOrders.orderClosedAt, paddedEnd),
+        sql`${localDateExpr} = ${dateStr}::date`
       )
     )
     .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})`);
@@ -204,39 +238,49 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date, t
 // Get POS sales aggregated by restaurant ID (using location_mapping to convert store numbers)
 export async function getPosSalesByRestaurant(targetDate: Date): Promise<Map<string, number>> {
   const dateStr = targetDate.toISOString().split('T')[0];
-  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
-  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // First, get location mappings from main database
-  const mappings = await db.select().from(locationMapping);
-  const storeToRestaurantId = new Map<string, string>();
-  for (const mapping of mappings) {
-    if (mapping.restaurantId) {
-      storeToRestaurantId.set(mapping.xenialStoreNumber, mapping.restaurantId);
-    }
-  }
+  const fullStoreMap = await getCachedStoreMap();
+  const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
+  fullStoreMap.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, timezone: info.timezone });
+  });
 
-  // Query POS orders from posDb (may be separate database)
-  const results = await posDb
-    .select({
-      storeNumber: posOrders.storeNumber,
-      totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
-    })
-    .from(posOrders)
-    .where(
-      and(
-        gte(posOrders.businessDate, startOfDay),
-        lt(posOrders.businessDate, endOfDay)
-      )
-    )
-    .groupBy(posOrders.storeNumber);
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
 
-  // Map store numbers to restaurant IDs in application code
   const salesByRestaurant = new Map<string, number>();
-  for (const row of results) {
-    const restaurantId = storeToRestaurantId.get(row.storeNumber);
-    if (restaurantId) {
-      salesByRestaurant.set(restaurantId, Number(row.totalSales) || 0);
+
+  for (const tz of timezoneSet) {
+    const safeTz = sanitizeTz(tz);
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
+    const results = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        totalSales: sql<number>`sum(${posOrders.orderTotal}::numeric)`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.orderClosedAt, paddedStart),
+          lt(posOrders.orderClosedAt, paddedEnd),
+          sql`${localDateExpr} = ${dateStr}::date`,
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
+        )
+      )
+      .groupBy(posOrders.storeNumber);
+
+    for (const row of results) {
+      const restaurantInfo = storeToRestaurant.get(row.storeNumber);
+      if (restaurantInfo) {
+        salesByRestaurant.set(restaurantInfo.id, Number(row.totalSales) || 0);
+      }
     }
   }
 
@@ -245,8 +289,8 @@ export async function getPosSalesByRestaurant(targetDate: Date): Promise<Map<str
 
 export async function getHourlyPosSalesByRestaurant(restaurantId: string, targetDate: Date, timezone: string = 'America/Chicago'): Promise<Map<number, number>> {
   const dateStr = targetDate.toISOString().split('T')[0];
-  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
-  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+  const safeTz = sanitizeTz(timezone);
+  const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
 
   const mapping = await db.select()
     .from(locationMapping)
@@ -259,7 +303,8 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
 
   const storeNumber = mapping[0].xenialStoreNumber;
 
-  const tzLiteral = sql.raw(`'${timezone}'`);
+  const tzLiteral = sql.raw(`'${safeTz}'`);
+  const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
   const results = await posDb
     .select({
       hour: sql<number>`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})::int`,
@@ -269,8 +314,9 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
     .where(
       and(
         eq(posOrders.storeNumber, storeNumber),
-        gte(posOrders.businessDate, startOfDay),
-        lt(posOrders.businessDate, endOfDay)
+        gte(posOrders.orderClosedAt, paddedStart),
+        lt(posOrders.orderClosedAt, paddedEnd),
+        sql`${localDateExpr} = ${dateStr}::date`
       )
     )
     .groupBy(sql`extract(hour from (${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tzLiteral})`);
@@ -288,9 +334,6 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
 // (e.g., store "1237" matches restaurant "1237 - Athens")
 export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string, Map<number, number>>> {
   const dateStr = targetDate.toISOString().split('T')[0];
-  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
-  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
-
   const fullStoreMap = await getCachedStoreMap();
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
   fullStoreMap.forEach((info, storeNum) => {
@@ -303,9 +346,8 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
   
   const allHourlySales = new Map<string, Map<number, number>>();
   
-  // Query POS data for each timezone separately to ensure correct hour bucketing
   for (const tz of timezones) {
-    // Get store numbers that use this timezone
+    const safeTz = sanitizeTz(tz);
     const storesInTz: string[] = [];
     storeToRestaurant.forEach((info, storeNum) => {
       if (info.timezone === tz) {
@@ -315,9 +357,9 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
     
     if (storesInTz.length === 0) continue;
     
-    // Query POS orders for stores in this timezone, converting to their local time
-    // Use sql.raw for the timezone literal since it's a known safe value from our database
-    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::int`);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
     const posResults = await posDb
       .select({
         storeNumber: posOrders.storeNumber,
@@ -327,8 +369,9 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
       .from(posOrders)
       .where(
         and(
-          gte(posOrders.businessDate, startOfDay),
-          lt(posOrders.businessDate, endOfDay),
+          gte(posOrders.orderClosedAt, paddedStart),
+          lt(posOrders.orderClosedAt, paddedEnd),
+          sql`${localDateExpr} = ${dateStr}::date`,
           sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
         )
       )
@@ -483,9 +526,6 @@ export async function getAllHourlyPosOrderCountRange(
  */
 export async function getCheckAverageByRestaurant(targetDate: Date): Promise<Map<string, { totalOrders: number; totalSales: number; checkAverage: number; hourly: Map<number, { orders: number; sales: number; avg: number }> }>> {
   const dateStr = targetDate.toISOString().split('T')[0];
-  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
-  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
-
   const allRestaurants = await db.select().from(restaurants);
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
   for (const restaurant of allRestaurants) {
@@ -501,13 +541,16 @@ export async function getCheckAverageByRestaurant(targetDate: Date): Promise<Map
   const result = new Map<string, { totalOrders: number; totalSales: number; checkAverage: number; hourly: Map<number, { orders: number; sales: number; avg: number }> }>();
 
   for (const tz of timezoneSet) {
+    const safeTz = sanitizeTz(tz);
     const storesInTz: string[] = [];
     storeToRestaurant.forEach((info, storeNum) => {
       if (info.timezone === tz) storesInTz.push(storeNum);
     });
     if (storesInTz.length === 0) continue;
 
-    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::int`);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
     const posResults = await posDb
       .select({
         storeNumber: posOrders.storeNumber,
@@ -518,8 +561,9 @@ export async function getCheckAverageByRestaurant(targetDate: Date): Promise<Map
       .from(posOrders)
       .where(
         and(
-          gte(posOrders.businessDate, startOfDay),
-          lt(posOrders.businessDate, endOfDay),
+          gte(posOrders.orderClosedAt, paddedStart),
+          lt(posOrders.orderClosedAt, paddedEnd),
+          sql`${localDateExpr} = ${dateStr}::date`,
           sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
         )
       )
@@ -663,8 +707,6 @@ export async function getCheckAverageTrend(endDate: Date, days: number = 7): Pro
  */
 export async function getDestinationBreakdownByRestaurant(targetDate: Date): Promise<Map<string, Map<number, Record<string, number>>>> {
   const dateStr = targetDate.toISOString().split('T')[0];
-  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
-  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
   const allRestaurants = await db.select().from(restaurants);
   const storeToRestaurant = new Map<string, { id: string; timezone: string }>();
@@ -678,17 +720,19 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
   const timezoneSet = new Set<string>();
   storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
 
-  // restaurantId → hour → { destination: count }
   const result = new Map<string, Map<number, Record<string, number>>>();
 
   for (const tz of timezoneSet) {
+    const safeTz = sanitizeTz(tz);
     const storesInTz: string[] = [];
     storeToRestaurant.forEach((info, storeNum) => {
       if (info.timezone === tz) storesInTz.push(storeNum);
     });
     if (storesInTz.length === 0) continue;
 
-    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${tz}')::int`);
+    const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
+    const hourExpr = sql.raw(`extract(hour from (order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::int`);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
     const destExpr = sql`LOWER(${posOrders.orderSource})`;
 
     const posResults = await posDb
@@ -701,8 +745,9 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
       .from(posOrders)
       .where(
         and(
-          gte(posOrders.businessDate, startOfDay),
-          lt(posOrders.businessDate, endOfDay),
+          gte(posOrders.orderClosedAt, paddedStart),
+          lt(posOrders.orderClosedAt, paddedEnd),
+          sql`${localDateExpr} = ${dateStr}::date`,
           sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`
         )
       )
@@ -1173,34 +1218,45 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
   overallAttachScore: number;
 }>> {
   const dateStr = targetDate.toISOString().split('T')[0];
-  const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
-  const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
 
-  // Get restaurant mappings
-  const allRestaurants = await db.select().from(restaurants);
-  const storeToRestaurant = new Map<string, { id: string; name: string }>();
-  for (const restaurant of allRestaurants) {
-    const match = restaurant.name.match(/^(\d{4})\s*-/);
-    if (match) {
-      storeToRestaurant.set(match[1], { id: restaurant.id, name: restaurant.name });
-    }
+  const fullStoreMap = await getCachedStoreMap();
+  const storeToRestaurant = new Map<string, { id: string; name: string; timezone: string }>();
+  fullStoreMap.forEach((info, storeNum) => {
+    storeToRestaurant.set(storeNum, { id: info.id, name: info.name, timezone: info.timezone });
+  });
+
+  const timezoneSet = new Set<string>();
+  storeToRestaurant.forEach((info) => timezoneSet.add(info.timezone));
+
+  const orders: { storeNumber: string; orderTotal: string | null; rawJson: unknown }[] = [];
+  for (const tz of timezoneSet) {
+    const safeTz = sanitizeTz(tz);
+    const storesInTz: string[] = [];
+    storeToRestaurant.forEach((info, storeNum) => {
+      if (info.timezone === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
+    const tzOrders = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        orderTotal: posOrders.orderTotal,
+        rawJson: posOrders.rawJson,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.orderClosedAt, paddedStart),
+          lt(posOrders.orderClosedAt, paddedEnd),
+          sql`${localDateExpr} = ${dateStr}::date`,
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`,
+          sql`${posOrders.rawJson} IS NOT NULL`
+        )
+      );
+    orders.push(...tzOrders);
   }
-
-  // Fetch all orders with raw_json for the target date
-  const orders = await posDb
-    .select({
-      storeNumber: posOrders.storeNumber,
-      orderTotal: posOrders.orderTotal,
-      rawJson: posOrders.rawJson,
-    })
-    .from(posOrders)
-    .where(
-      and(
-        gte(posOrders.businessDate, startOfDay),
-        lt(posOrders.businessDate, endOfDay),
-        sql`${posOrders.rawJson} IS NOT NULL`
-      )
-    );
 
   // Group orders by restaurant and process items
   const restaurantData = new Map<string, {
@@ -1315,23 +1371,42 @@ async function getAttachmentForSingleDay(dateStr: string, storeToRestaurant: Map
     return _attachmentDayCache.get(dateStr)!;
   }
 
-  const dayStart = new Date(dateStr + 'T00:00:00.000Z');
-  const dayEnd = new Date(dateStr + 'T23:59:59.999Z');
+  const fullStoreMap = await getCachedStoreMap();
+  const timezoneForStore = new Map<string, string>();
+  fullStoreMap.forEach((info, storeNum) => {
+    timezoneForStore.set(storeNum, info.timezone);
+  });
+  const timezoneSet = new Set<string>(timezoneForStore.values());
 
-  const orders = await posDb
-    .select({
-      storeNumber: posOrders.storeNumber,
-      orderTotal: posOrders.orderTotal,
-      rawJson: posOrders.rawJson,
-    })
-    .from(posOrders)
-    .where(
-      and(
-        gte(posOrders.businessDate, dayStart),
-        lt(posOrders.businessDate, dayEnd),
-        sql`${posOrders.rawJson} IS NOT NULL`
-      )
-    );
+  const orders: { storeNumber: string; orderTotal: string | null; rawJson: unknown }[] = [];
+  for (const tz of timezoneSet) {
+    const safeTz = sanitizeTz(tz);
+    const storesInTz: string[] = [];
+    timezoneForStore.forEach((storeTz, storeNum) => {
+      if (storeTz === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const { paddedStart, paddedEnd } = getUtcBoundsForLocalDate(dateStr, safeTz);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
+    const tzOrders = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        orderTotal: posOrders.orderTotal,
+        rawJson: posOrders.rawJson,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.orderClosedAt, paddedStart),
+          lt(posOrders.orderClosedAt, paddedEnd),
+          sql`${localDateExpr} = ${dateStr}::date`,
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`,
+          sql`${posOrders.rawJson} IS NOT NULL`
+        )
+      );
+    orders.push(...tzOrders);
+  }
 
   const categories = Object.keys(ATTACHMENT_CATEGORIES);
   const restaurantData = new Map<string, { totalOrders: number; categoryHits: Record<string, number> }>();
@@ -1409,35 +1484,54 @@ export async function getAttachmentRatesMultiDay(dates: string[]): Promise<Map<s
     storeToRestaurant.set(storeNum, { id: info.id, name: info.name });
   });
 
+  const dateSet = new Set(dates);
+  const timezoneForStore = new Map<string, string>();
+  storeMap.forEach((info, storeNum) => {
+    timezoneForStore.set(storeNum, info.timezone);
+  });
+  const timezoneSet = new Set<string>(timezoneForStore.values());
+
   const earliest = dates.reduce((a, b) => a < b ? a : b);
   const latest = dates.reduce((a, b) => a > b ? a : b);
-  const dayStart = new Date(earliest + 'T00:00:00.000Z');
-  const dayEnd = new Date(latest + 'T23:59:59.999Z');
-  const dateSet = new Set(dates);
 
-  const orders = await posDb
-    .select({
-      storeNumber: posOrders.storeNumber,
-      orderTotal: posOrders.orderTotal,
-      rawJson: posOrders.rawJson,
-      businessDate: posOrders.businessDate,
-    })
-    .from(posOrders)
-    .where(
-      and(
-        gte(posOrders.businessDate, dayStart),
-        lt(posOrders.businessDate, dayEnd),
-        sql`${posOrders.rawJson} IS NOT NULL`
-      )
-    );
+  const orders: { storeNumber: string; orderTotal: string | null; rawJson: unknown; localDate: string }[] = [];
+  for (const tz of timezoneSet) {
+    const safeTz = sanitizeTz(tz);
+    const storesInTz: string[] = [];
+    timezoneForStore.forEach((storeTz, storeNum) => {
+      if (storeTz === tz) storesInTz.push(storeNum);
+    });
+    if (storesInTz.length === 0) continue;
+
+    const { paddedStart: rangeStart } = getUtcBoundsForLocalDate(earliest, safeTz);
+    const { paddedEnd: rangeEnd } = getUtcBoundsForLocalDate(latest, safeTz);
+    const localDateExpr = sql.raw(`((order_closed_at AT TIME ZONE 'UTC') AT TIME ZONE '${safeTz}')::date`);
+    const tzOrders = await posDb
+      .select({
+        storeNumber: posOrders.storeNumber,
+        orderTotal: posOrders.orderTotal,
+        rawJson: posOrders.rawJson,
+        localDate: sql<string>`to_char(${localDateExpr}, 'YYYY-MM-DD')`,
+      })
+      .from(posOrders)
+      .where(
+        and(
+          gte(posOrders.orderClosedAt, rangeStart),
+          lt(posOrders.orderClosedAt, rangeEnd),
+          sql`${localDateExpr} >= ${earliest}::date`,
+          sql`${localDateExpr} <= ${latest}::date`,
+          sql`${posOrders.storeNumber} = ANY(ARRAY[${sql.raw(storesInTz.map(s => `'${s}'`).join(','))}])`,
+          sql`${posOrders.rawJson} IS NOT NULL`
+        )
+      );
+    orders.push(...tzOrders);
+  }
 
   const categories = Object.keys(ATTACHMENT_CATEGORIES);
   const restaurantData = new Map<string, { totalOrders: number; totalSales: number; categoryHits: Record<string, number> }>();
 
   for (const order of orders) {
-    const orderDateStr = order.businessDate instanceof Date
-      ? order.businessDate.toISOString().split('T')[0]
-      : String(order.businessDate).split('T')[0];
+    const orderDateStr = order.localDate;
     if (!dateSet.has(orderDateStr)) continue;
 
     const restaurantInfo = storeToRestaurant.get(order.storeNumber);
