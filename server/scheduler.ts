@@ -251,6 +251,10 @@ async function hasReportBeenSentToday(reportPrefix: string, reportDate: string):
 }
 
 async function sendDailyReportsIfNeeded() {
+  if (process.env.REPLIT_DEPLOYMENT !== '1') {
+    return;
+  }
+
   const now = new Date();
   const { hour: centralHour, minute: centralMinute, date: centralDate } = getCentralTime(now);
 
