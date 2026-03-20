@@ -605,6 +605,11 @@ export default function ExecutiveSummary() {
     return map;
   }, [data]);
 
+  const selectedMarketRollup = useMemo(() => {
+    if (!data || !marketFilter) return null;
+    return data.marketRollups.find((m) => m.marketId === marketFilter) ?? null;
+  }, [data, marketFilter]);
+
   // KPI card config
   const kpiConfig = [
     { key: "sales" as const, label: "Total Sales", icon: DollarSign, format: formatCurrency },
@@ -702,37 +707,115 @@ export default function ExecutiveSummary() {
         {data && (
           <>
             {/* ================================================================
-                2. COMPANY-WIDE PULSE
+                2. PULSE — Company-Wide + Market (when filtered)
             ================================================================ */}
-            <section>
-              <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
-                Company-Wide Pulse
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                {kpiConfig.map(({ key, label, icon: Icon, format }) => {
-                  const m = data.companyPulse[key];
-                  return (
-                    <Card key={key} className="relative overflow-hidden">
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <Icon className="h-4 w-4 text-muted-foreground" />
-                          <TrendArrow value={m.pctChange} size="xs" />
-                        </div>
-                        <div className="text-lg font-bold leading-tight">
-                          {format(m.current)}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">
-                          {label}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">
-                          prev: {format(m.previous)}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </section>
+            {selectedMarketRollup ? (
+              <section className="space-y-1" data-testid="pulse-comparison">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
+                      {selectedMarketRollup.marketName} Pulse
+                      <span className="ml-1.5 text-[10px] font-normal normal-case opacity-60">
+                        ({selectedMarketRollup.restaurantCount} units)
+                      </span>
+                    </h2>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {kpiConfig.map(({ key, label, icon: Icon, format }) => {
+                        const mkt = selectedMarketRollup[key];
+                        const co = data.companyPulse[key];
+                        const diff = key === "sales" || key === "transactions"
+                          ? null
+                          : mkt.current - co.current;
+                        return (
+                          <Card key={key} className="relative overflow-hidden border-primary/30">
+                            <CardContent className="p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <Icon className="h-4 w-4 text-muted-foreground" />
+                                <TrendArrow value={mkt.pctChange} size="xs" />
+                              </div>
+                              <div className="text-lg font-bold leading-tight">
+                                {format(mkt.current)}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                {label}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">
+                                prev: {format(mkt.previous)}
+                              </div>
+                              {diff !== null && (
+                                <div className={`text-[10px] mt-0.5 ${diff > 0 ? "text-emerald-400" : diff < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                                  vs co: {diff > 0 ? "+" : ""}{diff.toFixed(1)}{key === "osat" || key === "speedAttainment" ? "pp" : key === "checkAverage" ? "" : key === "googleRating" ? "" : ""}
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider opacity-60">
+                      Company-Wide Pulse
+                    </h2>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {kpiConfig.map(({ key, label, icon: Icon, format }) => {
+                        const m = data.companyPulse[key];
+                        return (
+                          <Card key={key} className="relative overflow-hidden opacity-70">
+                            <CardContent className="p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <Icon className="h-4 w-4 text-muted-foreground" />
+                                <TrendArrow value={m.pctChange} size="xs" />
+                              </div>
+                              <div className="text-lg font-bold leading-tight">
+                                {format(m.current)}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                {label}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">
+                                prev: {format(m.previous)}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <section>
+                <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
+                  Company-Wide Pulse
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {kpiConfig.map(({ key, label, icon: Icon, format }) => {
+                    const m = data.companyPulse[key];
+                    return (
+                      <Card key={key} className="relative overflow-hidden">
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                            <TrendArrow value={m.pctChange} size="xs" />
+                          </div>
+                          <div className="text-lg font-bold leading-tight">
+                            {format(m.current)}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            {label}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            prev: {format(m.previous)}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {/* ================================================================
                 3. ATTENTION REQUIRED
