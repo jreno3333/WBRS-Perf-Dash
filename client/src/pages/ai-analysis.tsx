@@ -350,29 +350,42 @@ function ChannelBar({
   ];
 
   return (
-    <div
-      className="flex rounded overflow-hidden cursor-pointer"
-      style={{ height: showPct ? 20 : height }}
-      onClick={(e) => { e.stopPropagation(); setShowPct((v) => !v); }}
-    >
-      {segments.map((s) => {
-        const pct = (s.val / total) * 100;
-        if (pct < 0.5) return null;
-        return (
-          <div
-            key={s.key}
-            title={`${CHANNEL_LABELS[s.key]}: ${pct.toFixed(1)}%`}
-            style={{ width: `${pct}%`, backgroundColor: CHANNEL_COLORS[s.key] }}
-            className="transition-all flex items-center justify-center overflow-hidden"
-          >
-            {showPct && pct >= 8 && (
-              <span className="text-[9px] font-bold text-white drop-shadow-sm leading-none">
-                {pct.toFixed(0)}%
-              </span>
-            )}
-          </div>
-        );
-      })}
+    <div onClick={(e) => { e.stopPropagation(); setShowPct((v) => !v); }} className="cursor-pointer">
+      <div className="flex rounded overflow-hidden" style={{ height: showPct ? 20 : height }}>
+        {segments.map((s) => {
+          const pct = (s.val / total) * 100;
+          if (pct < 0.5) return null;
+          return (
+            <div
+              key={s.key}
+              title={`${CHANNEL_LABELS[s.key]}: ${pct.toFixed(1)}%`}
+              style={{ width: `${pct}%`, backgroundColor: CHANNEL_COLORS[s.key] }}
+              className="transition-all flex items-center justify-center overflow-hidden"
+            >
+              {showPct && pct >= 15 && (
+                <span className="text-[9px] font-bold text-white drop-shadow-sm leading-none">
+                  {pct.toFixed(0)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {showPct && (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+          {segments.map((s) => {
+            const pct = (s.val / total) * 100;
+            if (pct < 0.5) return null;
+            return (
+              <div key={s.key} className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-sm" style={{ backgroundColor: CHANNEL_COLORS[s.key] }} />
+                <span className="text-[9px] text-muted-foreground">{CHANNEL_LABELS[s.key]}</span>
+                <span className="text-[9px] font-medium">{pct.toFixed(1)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
