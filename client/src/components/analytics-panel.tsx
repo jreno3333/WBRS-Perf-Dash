@@ -293,7 +293,7 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
             {weeklyForecast && (
               <div>
                 <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                  <BarChart3 className="w-3 h-3" /> WEEKLY FORECAST
+                  <BarChart3 className="w-3 h-3" /> WEEKLY PROJECTED
                 </h4>
                 <p className="text-[10px] text-muted-foreground mb-2">Sat-Fri business week. Green = actual, amber = partial day, gray = projected from last week.</p>
                 <div className="grid grid-cols-7 gap-1">

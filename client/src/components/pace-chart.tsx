@@ -138,7 +138,7 @@ export function PaceChart({ data, restaurantName }: PaceChartProps) {
               <Area
                 type="monotone"
                 dataKey="forecastSales"
-                name="Forecast"
+                name="Projected"
                 stroke="hsl(142, 71%, 45%)"
                 strokeWidth={2}
                 fill="url(#forecastGradient)"

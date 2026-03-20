@@ -735,10 +735,10 @@ export default function Dashboard() {
                           )}
                         </div>
 
-                        {/* Today / Forecast column */}
+                        {/* Today / Projected column */}
                         <div>
                           <p className="text-muted-foreground mb-0.5">
-                            Today {hasForecast ? '(Fcst)' : ''}
+                            Today {hasForecast ? '(Proj)' : ''}
                           </p>
                           <p className="font-semibold tabular-nums">
                             {fmt(hasForecast ? s.forecast : s.today)}
