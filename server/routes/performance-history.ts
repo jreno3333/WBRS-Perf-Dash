@@ -8,6 +8,7 @@ import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeT
 import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesMultiDay } from "../xenial-webhook";
 import { getActiveGradingConfig } from "./grading-config";
 import { getHelperRewardsForDateRange } from "./helper-rewards";
+import { onPerfCacheInvalidate } from "../lib/perf-cache";
 
 const router = Router();
 
@@ -17,6 +18,8 @@ const CACHE_TTL = 5 * 60 * 1000;
 export function invalidatePerfHistoryCache() {
   perfHistoryCache.clear();
 }
+
+onPerfCacheInvalidate(() => perfHistoryCache.clear());
 
 router.get("/api/performance-history/detail/:restaurantId", async (req, res) => {
   try {

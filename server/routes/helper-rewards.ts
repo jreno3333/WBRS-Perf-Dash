@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { helperRewards } from "@shared/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
+import { invalidatePerfCache } from "../lib/perf-cache";
 
 const router = Router();
 
@@ -57,6 +58,7 @@ router.post("/api/helper-rewards", async (req, res) => {
           eq(helperRewards.restaurantId, restaurantId),
           eq(helperRewards.date, date),
         ));
+      invalidatePerfCache();
       return res.json({ deleted: true });
     }
 
@@ -72,6 +74,7 @@ router.post("/api/helper-rewards", async (req, res) => {
         .set({ points, note, createdBy: req.session?.userId || "unknown" })
         .where(eq(helperRewards.id, existing[0].id))
         .returning();
+      invalidatePerfCache();
       return res.json(updated);
     }
 
@@ -82,6 +85,7 @@ router.post("/api/helper-rewards", async (req, res) => {
       note,
       createdBy: req.session?.userId || "unknown",
     }).returning();
+    invalidatePerfCache();
     return res.json(inserted);
   } catch (error) {
     console.error("[helper-rewards] POST error:", error);
@@ -93,6 +97,7 @@ router.post("/api/helper-rewards", async (req, res) => {
 router.delete("/api/helper-rewards/:id", async (req, res) => {
   try {
     await db.delete(helperRewards).where(eq(helperRewards.id, req.params.id));
+    invalidatePerfCache();
     return res.json({ deleted: true });
   } catch (error) {
     console.error("[helper-rewards] DELETE error:", error);
