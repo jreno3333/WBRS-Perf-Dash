@@ -389,6 +389,9 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   const paceVariance = displayLastWeek > 0 
     ? ((comparisonSales / displayLastWeek) - 1) * 100 
     : 0;
+  const displayDayVariance = displayLastWeek > 0
+    ? ((restaurant.actualSales / displayLastWeek) - 1) * 100
+    : 0;
 
 
   // Pre-compute values for the sales grid
@@ -959,10 +962,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     </td>
                     <td className="text-muted-foreground pl-1 pt-0.5">{formatCurrency(displayLastWeek)}</td>
                     <td
-                      className={`font-medium pl-1 pt-0.5 ${paceVariance >= 0 ? "text-green-500" : "text-red-500"}`}
+                      className={`font-medium pl-1 pt-0.5 ${displayDayVariance >= 0 ? "text-green-500" : "text-red-500"}`}
                       data-testid={`badge-pace-${restaurant.restaurantId}`}
                     >
-                      {formatPercentage(paceVariance)}
+                      {formatPercentage(displayDayVariance)}
                     </td>
                     <td className={`pl-2 pt-0.5 ${!isDayComplete ? "font-semibold" : "text-muted-foreground"}`}>
                       {!isDayComplete ? formatCurrency(restaurant.forecastSales) : "—"}
@@ -1658,7 +1661,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
             <div className="h-2 bg-muted rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
-                  paceVariance >= 0 ? "bg-green-500" : "bg-red-500"
+                  displayDayVariance >= 0 ? "bg-green-500" : "bg-red-500"
                 }`}
                 style={{
                   width: `${Math.min(100, (restaurant.actualSales / Math.max(displayLastWeek, 1)) * 100)}%`
