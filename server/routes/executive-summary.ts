@@ -158,10 +158,10 @@ router.get("/api/executive-summary", async (req, res) => {
         .from(dailySales)
         .where(and(gte(dailySales.salesDate, startTs), lte(dailySales.salesDate, endTs))),
 
-      // OSAT — current period
+      // OSAT — current period (response-weighted: five_star / total_responses)
       db.select({
         restaurantId: dailyOsat.restaurantId,
-        avgOsat: sql<string>`AVG(${dailyOsat.osatPercent})`,
+        avgOsat: sql<string>`CASE WHEN SUM(${dailyOsat.totalResponses}) > 0 THEN ROUND(SUM(${dailyOsat.fiveStarCount})::numeric / SUM(${dailyOsat.totalResponses})::numeric * 100, 2) ELSE 0 END`,
         totalResponses: sql<string>`SUM(${dailyOsat.totalResponses})`,
         totalFiveStars: sql<string>`SUM(${dailyOsat.fiveStarCount})`,
       })
@@ -169,10 +169,10 @@ router.get("/api/executive-summary", async (req, res) => {
         .where(and(gte(dailyOsat.date, startDateStr), lte(dailyOsat.date, endDateStr)))
         .groupBy(dailyOsat.restaurantId),
 
-      // OSAT — previous period
+      // OSAT — previous period (response-weighted: five_star / total_responses)
       db.select({
         restaurantId: dailyOsat.restaurantId,
-        avgOsat: sql<string>`AVG(${dailyOsat.osatPercent})`,
+        avgOsat: sql<string>`CASE WHEN SUM(${dailyOsat.totalResponses}) > 0 THEN ROUND(SUM(${dailyOsat.fiveStarCount})::numeric / SUM(${dailyOsat.totalResponses})::numeric * 100, 2) ELSE 0 END`,
         totalResponses: sql<string>`SUM(${dailyOsat.totalResponses})`,
         totalFiveStars: sql<string>`SUM(${dailyOsat.fiveStarCount})`,
       })
@@ -354,17 +354,22 @@ router.get("/api/executive-summary", async (req, res) => {
       salesByRest[r.restaurantId].previous = (parseFloat(r.total) || 0) / 100;
     }
 
-    const osatByRest: Record<string, MetricPair & { responses: number }> = {};
+    const osatByRest: Record<string, MetricPair & { responses: number; prevResponses: number; fiveStars: number; prevFiveStars: number }> = {};
     for (const r of osatCurrent) {
       osatByRest[r.restaurantId] = {
         current: parseFloat(r.avgOsat) || 0,
         previous: 0,
         responses: parseInt(r.totalResponses) || 0,
+        prevResponses: 0,
+        fiveStars: parseInt(r.totalFiveStars) || 0,
+        prevFiveStars: 0,
       };
     }
     for (const r of osatPrevious) {
-      if (!osatByRest[r.restaurantId]) osatByRest[r.restaurantId] = { current: 0, previous: 0, responses: 0 };
+      if (!osatByRest[r.restaurantId]) osatByRest[r.restaurantId] = { current: 0, previous: 0, responses: 0, prevResponses: 0, fiveStars: 0, prevFiveStars: 0 };
       osatByRest[r.restaurantId].previous = parseFloat(r.avgOsat) || 0;
+      osatByRest[r.restaurantId].prevResponses = parseInt(r.totalResponses) || 0;
+      osatByRest[r.restaurantId].prevFiveStars = parseInt(r.totalFiveStars) || 0;
     }
 
     const googleByRest: Record<string, MetricPair> = {};
@@ -580,11 +585,23 @@ router.get("/api/executive-summary", async (req, res) => {
     const companyCheckCur = companyTx.current > 0 ? round1(companySales.current / companyTx.current) : 0;
     const companyCheckPrev = companyTx.previous > 0 ? round1(companySales.previous / companyTx.previous) : 0;
 
+    // Response-weighted OSAT for company
+    let coOsatCurFS = 0, coOsatCurR = 0, coOsatPrevFS = 0, coOsatPrevR = 0;
+    for (const r of restaurantResults) {
+      const o = osatByRest[r.id];
+      if (o) {
+        coOsatCurFS += o.fiveStars; coOsatCurR += o.responses;
+        coOsatPrevFS += o.prevFiveStars; coOsatPrevR += o.prevResponses;
+      }
+    }
+    const coOsatCur = coOsatCurR > 0 ? round1(coOsatCurFS / coOsatCurR * 100) : 0;
+    const coOsatPrev = coOsatPrevR > 0 ? round1(coOsatPrevFS / coOsatPrevR * 100) : 0;
+
     const companyPulse = {
       sales: companySales,
       transactions: companyTx,
       checkAverage: { current: companyCheckCur, previous: companyCheckPrev, pctChange: pctChange(companyCheckCur, companyCheckPrev) },
-      osat: avgMetric((r) => r.osat),
+      osat: { current: coOsatCur, previous: coOsatPrev, pctChange: pctChange(coOsatCur, coOsatPrev) },
       googleRating: avgMetric((r) => r.googleRating),
       speedAttainment: avgMetric((r) => r.speedAttainment),
     };
@@ -793,6 +810,21 @@ router.get("/api/executive-summary", async (req, res) => {
         return { current: c, previous: p, pctChange: pctChange(c, p) };
       }
 
+      // Response-weighted OSAT for market: sum five-stars / sum responses
+      let mktOsatCurFiveStars = 0, mktOsatCurResponses = 0;
+      let mktOsatPrevFiveStars = 0, mktOsatPrevResponses = 0;
+      for (const r of rests) {
+        const o = osatByRest[r.id];
+        if (o) {
+          mktOsatCurFiveStars += o.fiveStars;
+          mktOsatCurResponses += o.responses;
+          mktOsatPrevFiveStars += o.prevFiveStars;
+          mktOsatPrevResponses += o.prevResponses;
+        }
+      }
+      const mktOsatCur = mktOsatCurResponses > 0 ? round1(mktOsatCurFiveStars / mktOsatCurResponses * 100) : 0;
+      const mktOsatPrev = mktOsatPrevResponses > 0 ? round1(mktOsatPrevFiveStars / mktOsatPrevResponses * 100) : 0;
+
       marketRollups.push({
         marketId: mktId,
         marketName: mktName,
@@ -800,7 +832,7 @@ router.get("/api/executive-summary", async (req, res) => {
         sales: { current: round1(mktSalesCur), previous: round1(mktSalesPrev), pctChange: pctChange(mktSalesCur, mktSalesPrev) },
         transactions: { current: mktTxCur, previous: mktTxPrev, pctChange: pctChange(mktTxCur, mktTxPrev) },
         checkAverage: { current: mktCheckCur, previous: mktCheckPrev, pctChange: pctChange(mktCheckCur, mktCheckPrev) },
-        osat: mktAvg((r) => r.osat),
+        osat: { current: mktOsatCur, previous: mktOsatPrev, pctChange: pctChange(mktOsatCur, mktOsatPrev) },
         googleRating: mktAvg((r) => r.googleRating),
         speedAttainment: mktAvg((r) => r.speedAttainment),
       });
