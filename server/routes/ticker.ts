@@ -39,8 +39,23 @@ function fmtDollars(val: number): string {
 
 // ─── Helper: Format hour in a store's local timezone ────────────────────────
 
+function getLocalHour(timezone: string): number {
+  const now = new Date();
+  return parseInt(new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hour12: false }).format(now));
+}
+
+function fmtHourDirect(localHour: number, timezone: string): string {
+  const now = new Date();
+  const period = localHour >= 12 ? "PM" : "AM";
+  const displayHour = localHour === 0 ? 12 : localHour > 12 ? localHour - 12 : localHour;
+  const tzAbbr = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    timeZoneName: "short",
+  }).formatToParts(now).find(p => p.type === "timeZoneName")?.value || "";
+  return `${displayHour}:00 ${period} ${tzAbbr}`;
+}
+
 function fmtHourLocal(centralHour: number, timezone: string): string {
-  // Build a date at the given Central hour today
   const { date: dateStr } = getCentralTime();
   const isDST = (() => {
     const now = new Date();
@@ -48,10 +63,9 @@ function fmtHourLocal(centralHour: number, timezone: string): string {
     const jul = new Date(now.getFullYear(), 6, 1);
     return now.getTimezoneOffset() !== Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
   })();
-  const offset = isDST ? "-05:00" : "-06:00"; // Central offset
+  const offset = isDST ? "-05:00" : "-06:00";
   const dt = new Date(`${dateStr}T${centralHour.toString().padStart(2, "0")}:00:00${offset}`);
 
-  // Format in the restaurant's local timezone
   const formatted = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     hour: "numeric",
@@ -59,7 +73,6 @@ function fmtHourLocal(centralHour: number, timezone: string): string {
     hour12: true,
   }).format(dt);
 
-  // Add short timezone abbreviation (e.g., "CT", "ET")
   const tzAbbr = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     timeZoneName: "short",
@@ -306,45 +319,45 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
   // so the dollar figures match what the dashboard displays.
 
   if (types.hourlyRecord) {
-    // Get cumulative sales through prevHour for each restaurant today.
-    // For each restaurant, sum the latest-scraped actual_sales for hours 0..prevHour.
-    const todayCumResult = await db.execute(sql`
-      SELECT restaurant_id, SUM(actual_sales::numeric) AS cum_sales
-      FROM (
-        SELECT DISTINCT ON (restaurant_id, hour) restaurant_id, actual_sales
-        FROM hourly_sales
-        WHERE hour <= ${prevHour} AND sales_date::date = ${dateStr}::date
-        ORDER BY restaurant_id, hour, scraped_at DESC NULLS LAST
-      ) sub
-      GROUP BY restaurant_id
-    `);
-    const todayCum = (todayCumResult.rows || []) as { restaurant_id: string; cum_sales: string }[];
+    // hourly_sales.hour is stored in each restaurant's LOCAL timezone.
+    // We must use each store's local prevHour (not Central) to query and label correctly.
+    for (const restaurant of allRestaurants) {
+      const tz = restaurant.timezone || "America/Chicago";
+      const localHour = getLocalHour(tz);
+      const localPrevHour = localHour === 0 ? 23 : localHour - 1;
+      if (localPrevHour < 0) continue;
 
-    for (const cumData of todayCum) {
-      const restaurant = restaurantMap.get(cumData.restaurant_id);
-      if (!restaurant) continue;
-      const sales = parseFloat(cumData.cum_sales);
+      const todayCumResult = await db.execute(sql`
+        SELECT SUM(actual_sales::numeric) AS cum_sales
+        FROM (
+          SELECT DISTINCT ON (hour) actual_sales
+          FROM hourly_sales
+          WHERE restaurant_id = ${restaurant.id}
+            AND hour <= ${localPrevHour}
+            AND sales_date::date = ${dateStr}::date
+          ORDER BY hour, scraped_at DESC NULLS LAST
+        ) sub
+      `);
+      const cumRow = (todayCumResult.rows?.[0] || {}) as { cum_sales: string };
+      const sales = parseFloat(cumRow.cum_sales || "0");
       if (sales <= 0) continue;
       const name = restaurant.unitNumber || restaurant.name;
 
-      // 4-week rolling best cumulative sales through this hour for THIS store
       const historicalResult = await db.execute(sql`
         SELECT sales_date::date AS sd, SUM(actual_sales::numeric) AS cum_sales
         FROM (
           SELECT DISTINCT ON (sales_date::date, hour) sales_date, hour, actual_sales
           FROM hourly_sales
-          WHERE restaurant_id = ${cumData.restaurant_id}
-            AND hour <= ${prevHour}
+          WHERE restaurant_id = ${restaurant.id}
+            AND hour <= ${localPrevHour}
             AND sales_date::date = ANY(ARRAY[${sql.join(fourWeekDates.map(d => sql`${d}::date`), sql`, `)}])
           ORDER BY sales_date::date, hour, scraped_at DESC NULLS LAST
         ) sub
         GROUP BY sales_date::date
       `);
       const historicalForStore = (historicalResult.rows || []) as { sd: string; cum_sales: string }[];
-
       const best4Week = Math.max(0, ...historicalForStore.map(h => parseFloat(h.cum_sales)));
 
-      // All-time company record cumulative through this hour (any store, any day)
       const companyRecordResult = await db.execute(sql`
         SELECT MAX(cum_sales) AS max_sales
         FROM (
@@ -352,30 +365,27 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
           FROM (
             SELECT DISTINCT ON (restaurant_id, sales_date::date, hour) restaurant_id, sales_date, hour, actual_sales
             FROM hourly_sales
-            WHERE hour <= ${prevHour} AND sales_date::date < ${dateStr}::date
+            WHERE hour <= ${localPrevHour} AND sales_date::date < ${dateStr}::date
             ORDER BY restaurant_id, sales_date::date, hour, scraped_at DESC NULLS LAST
           ) sub
           GROUP BY restaurant_id, sales_date::date
         ) day_totals
       `);
       const companyRecord = (companyRecordResult.rows?.[0] || {}) as { max_sales: string };
-
       const allTimeBest = parseFloat(companyRecord?.max_sales || "0");
 
-      const localTime = fmtHourLocal(prevHour, restaurant.timezone || "America/Chicago");
+      const localTime = fmtHourDirect(localPrevHour, tz);
 
       if (allTimeBest > 0 && sales > allTimeBest) {
-        // NEW COMPANY RECORD
         milestones.push({
           msg: `NEW COMPANY RECORD! ${name} just posted ${fmtDollars(sales)} at ${localTime} - beating the previous record of ${fmtDollars(allTimeBest)}!`,
           priority: "urgent",
         });
       } else if (best4Week > 0 && sales > best4Week) {
-        // Beat their own 4-week cumulative best through this hour
         const pctAbove = Math.round(((sales - best4Week) / best4Week) * 100);
         if (pctAbove >= 20) {
           const amountOver = sales - best4Week;
-          const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
+          const dayName = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" }).format(new Date());
           milestones.push({
             msg: `Great job ${name}! ${fmtDollars(sales)} at ${localTime} - ${fmtDollars(amountOver)} more than your best ${dayName} at this hour in 4 weeks (+${pctAbove}%)!`,
             priority: "high",
@@ -388,31 +398,26 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
   // ── 2. Daily Sales Record (cumulative so far) ───────────────────────────
 
   if (types.dailySalesRecord && centralHour >= 12) {
-    // Only check after noon so there's meaningful data
-    // Use DISTINCT ON to get only the latest-scraped row per restaurant/hour
-    const todayAllResult = await db.execute(sql`
-      SELECT DISTINCT ON (restaurant_id, hour) restaurant_id, hour, actual_sales
-      FROM hourly_sales
-      WHERE sales_date::date = ${dateStr}::date
-        AND hour <= ${prevHour}
-      ORDER BY restaurant_id, hour, scraped_at DESC NULLS LAST
-    `);
-    const todayAll = (todayAllResult.rows || []) as { restaurant_id: string; hour: number; actual_sales: string }[];
+    for (const restaurant of allRestaurants) {
+      const tz = restaurant.timezone || "America/Chicago";
+      const localHour = getLocalHour(tz);
+      const localPrevHour = localHour === 0 ? 23 : localHour - 1;
 
-    // Sum today's sales by restaurant
-    const todaySalesByStore: Record<string, number> = {};
-    for (const h of todayAll) {
-      todaySalesByStore[h.restaurant_id] = (todaySalesByStore[h.restaurant_id] || 0) + parseFloat(h.actual_sales);
-    }
-
-    for (const [rid, todayTotal] of Object.entries(todaySalesByStore)) {
+      const todayResult = await db.execute(sql`
+        SELECT COALESCE(SUM(actual_sales::numeric), 0) AS total
+        FROM (
+          SELECT DISTINCT ON (hour) actual_sales
+          FROM hourly_sales
+          WHERE restaurant_id = ${restaurant.id}
+            AND sales_date::date = ${dateStr}::date
+            AND hour <= ${localPrevHour}
+          ORDER BY hour, scraped_at DESC NULLS LAST
+        ) sub
+      `);
+      const todayTotal = parseFloat((todayResult.rows?.[0] as any)?.total || "0");
       if (todayTotal <= 0) continue;
-      const restaurant = restaurantMap.get(rid);
-      if (!restaurant) continue;
       const name = restaurant.unitNumber || restaurant.name;
 
-      // Get same-day-of-week totals for last 4 weeks (through same hour for fair comparison)
-      // Use a subquery with DISTINCT ON to deduplicate before summing
       const historicalTotals: number[] = [];
       for (const histDate of fourWeekDates) {
         const histResult = await db.execute(sql`
@@ -420,24 +425,22 @@ export async function checkMilestones(): Promise<{ milestones: string[]; count: 
           FROM (
             SELECT DISTINCT ON (hour) actual_sales
             FROM hourly_sales
-            WHERE restaurant_id = ${rid}
+            WHERE restaurant_id = ${restaurant.id}
               AND sales_date::date = ${histDate}::date
-              AND hour <= ${prevHour}
+              AND hour <= ${localPrevHour}
             ORDER BY hour, scraped_at DESC NULLS LAST
           ) sub
         `);
-        const result = (histResult.rows?.[0] || {}) as { total: string };
-        historicalTotals.push(parseFloat(result?.total || "0"));
+        historicalTotals.push(parseFloat((histResult.rows?.[0] as any)?.total || "0"));
       }
 
       const best4WeekDaily = Math.max(0, ...historicalTotals);
 
       if (best4WeekDaily > 0 && todayTotal > best4WeekDaily * 1.05) {
         const pctAbove = Math.round(((todayTotal - best4WeekDaily) / best4WeekDaily) * 100);
-        // Get the day-of-week name for a clearer message
-        const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "long" }).format(new Date());
+        const dayName = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" }).format(new Date());
         milestones.push({
-          msg: `${name} is outpacing their best ${dayName} in 4 weeks! ${fmtDollars(todayTotal)} through ${fmtHourLocal(prevHour, restaurant.timezone || "America/Chicago")} - ${pctAbove}% above the previous best.`,
+          msg: `${name} is outpacing their best ${dayName} in 4 weeks! ${fmtDollars(todayTotal)} through ${fmtHourDirect(localPrevHour, tz)} - ${pctAbove}% above the previous best.`,
           priority: "high",
         });
       }
