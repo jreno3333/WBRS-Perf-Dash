@@ -480,12 +480,13 @@ export class SevenShiftsAPI {
     }
 
     // Fetch users filtered by each operator role ID
+    // Note: 7shifts API doesn't allow location_id + role_id together, so query by role_id only
     const operatorUserIds = new Set<number>();
     for (const roleId of operatorRoleIds) {
       try {
         let cursor: string | null = null;
         do {
-          let url = `/v2/company/${this.companyId}/users?location_id=${locationId}&role_id=${roleId}&limit=100`;
+          let url = `/v2/company/${this.companyId}/users?role_id=${roleId}&limit=100`;
           if (cursor) {
             url += `&cursor=${cursor}`;
           }
