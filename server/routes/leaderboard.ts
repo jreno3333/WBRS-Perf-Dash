@@ -321,11 +321,13 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
       ? aggregateThroughHour(normalBaselineDateStr, hourCutoff)
       : null;
 
-    // Forecast: today actual + remaining hours from normal baseline (not holiday)
-    // Use normal baseline remaining hours for a more stable forecast when available
-    let forecastSales = todayProgress;
+    // Forecast: today actual (including in-progress hour) + future-only hours from baseline
+    // Uses all actual sales accumulated so far, not just completed-hour sales,
+    // so the projection updates smoothly as orders come in during the current hour.
+    const todayAllActual = aggregateFullDay(selectedDateStr);
+    const maxCurrentHour = isToday ? Math.max(...currentHours) : 23;
+    let forecastSales = isToday ? todayAllActual : todayProgress;
     if (isToday) {
-      // Add remaining hours from the normal baseline day if available, otherwise from LW
       const forecastSourceDate = normalBaselineDateStr || lastWeekDateStr;
       const sourceData = salesMap[forecastSourceDate];
       if (sourceData) {
@@ -333,7 +335,7 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
           const rData = sourceData[r.id];
           if (!rData) continue;
           for (const [h, s] of Object.entries(rData)) {
-            if (parseInt(h) > hourCutoff) forecastSales += s;
+            if (parseInt(h) > maxCurrentHour) forecastSales += s;
           }
         }
       }

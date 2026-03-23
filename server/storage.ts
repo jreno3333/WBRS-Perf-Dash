@@ -195,11 +195,15 @@ export class DatabaseStorage {
       }
 
       let lastWeekRemainingHoursSales = 0;
+      let lastWeekFutureOnlyHoursSales = 0;
       if (isToday) {
         if (posLastWeekSalesForRestaurant && posLastWeekSalesForRestaurant.size > 0) {
           posLastWeekSalesForRestaurant.forEach((sales, hour) => {
             if (hour > restaurantCompletedHour) {
               lastWeekRemainingHoursSales += sales;
+            }
+            if (hour > restaurantCurrentHour) {
+              lastWeekFutureOnlyHoursSales += sales;
             }
           });
         } else {
@@ -207,25 +211,29 @@ export class DatabaseStorage {
           if (lastWeekAllHoursForForecast.length > 0) {
             for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
               const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
-              lastWeekRemainingHoursSales += parseFloat(lastWeekHour?.actualSales || '0');
+              const amt = parseFloat(lastWeekHour?.actualSales || '0');
+              lastWeekRemainingHoursSales += amt;
+              if (hour > restaurantCurrentHour) {
+                lastWeekFutureOnlyHoursSales += amt;
+              }
             }
           } else if (lastWeekDailySalesMap.has(restaurant.id)) {
             const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
             const remainingProgress = (24 - restaurantCompletedHour - 1) / 24;
             lastWeekRemainingHoursSales = dailyTotal * remainingProgress;
+            const futureProgress = (24 - restaurantCurrentHour - 1) / 24;
+            lastWeekFutureOnlyHoursSales = dailyTotal * futureProgress;
           }
         }
       }
       const rawPaceRatio = actualLastWeekAmount > 0 ? completedSalesAmount / actualLastWeekAmount : 1;
-      // Dampen the pace ratio early in the day to avoid volatile projections.
-      // Typical restaurant operating hours are ~6 AM to 10 PM (16 hours).
-      // Early in the day, blend toward 1.0 (assume same as last week);
-      // as more hours complete, trust the actual pace ratio more.
       const operatingHours = 16;
       const dayProgress = isToday ? Math.min((restaurantCompletedHour + 1) / operatingHours, 1) : 1;
       const paceRatio = 1 + (rawPaceRatio - 1) * dayProgress;
       const lastWeekFullDayAmount = actualLastWeekAmount + lastWeekRemainingHoursSales;
-      const forecastSalesAmount = completedSalesAmount + lastWeekRemainingHoursSales * paceRatio;
+      const forecastSalesAmount = isToday
+        ? actualSalesAmount + lastWeekFutureOnlyHoursSales * paceRatio
+        : completedSalesAmount + lastWeekRemainingHoursSales * paceRatio;
 
       const completedHours = Math.max(0, normalizedHourCutoff + 1);
       const pacePercentage = (completedHours / 24) * 100;
