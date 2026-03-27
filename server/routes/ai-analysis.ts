@@ -1848,7 +1848,7 @@ function buildTemplates(): QueryTemplate[] {
     {
       id: "attachment_rates",
       keywords: ["attachment", "upsell", "cheese", "bacon", "dessert", "shake", "sauce", "whatasize", "add-on", "addon", "modifier"],
-      description: "Attachment/upsell rates (cheese, bacon, desserts, etc.)",
+      description: "Attachment/upsell rates (cheese, bacon, shakes & malts, etc.)",
       execute: async (params) => {
         // Use the last day of the range for the attachment analysis
         const targetDate = new Date(params.endDate + "T12:00:00Z");

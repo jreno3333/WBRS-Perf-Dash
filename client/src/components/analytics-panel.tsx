@@ -506,7 +506,7 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                   </h4>
                   <p className="text-[10px] text-muted-foreground mb-2">
                     {attachmentRates?.source === "pos_detail"
-                      ? "Real add-on rates from POS order items. % of orders containing cheese, bacon, jalapeños, dipping sauces, or desserts. Score 100 = at benchmark."
+                      ? "Real add-on rates from POS order items. % of orders containing cheese, bacon, jalapeños, dipping sauces, shakes & malts, or whatasize. Score 100 = at benchmark."
                       : "Estimated add-on attachment rates per order. Score 100 = at benchmark."}
                   </p>
 
@@ -537,14 +537,17 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                       <span>Restaurant</span>
                       <div className="flex items-center gap-1">
                         {categories.map(cat => (
-                          <span key={cat} className="w-10 text-center truncate">{attachmentRates.categoryLabels[cat].slice(0, 5)}</span>
+                          <span key={cat} className="w-12 text-center truncate">{attachmentRates.categoryLabels[cat].slice(0, 5)}</span>
                         ))}
                         <span className="w-10 text-center">Score</span>
                       </div>
                     </div>
                     {(showAllAttachments ? restaurants : restaurants.slice(0, 5)).map(r => {
                       const displayName = (r.restaurantName || r.id).replace(/^\d+\s*-\s*/, '');
-                      const catsAtTarget = categories.filter(cat => r.categories[cat]?.vsTarget >= 0).length;
+                      const catsAtTarget = categories.filter(cat => {
+                        const d = r.categories[cat];
+                        return d && d.attachRate >= d.benchmark;
+                      }).length;
                       return (
                         <div key={r.id} className="flex items-center justify-between text-xs">
                           {catsAtTarget >= 4 ? (
@@ -562,7 +565,7 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                               </PopoverTrigger>
                               <PopoverContent side="top" className="w-auto max-w-[280px] p-2 text-xs">
                                 <div className="font-medium">The Closer</div>
-                                <div className="text-muted-foreground">{`Hit ${catsAtTarget}/6 attachment rate targets today. Earned +${catsAtTarget} bonus points. The Closer badge is awarded when a unit meets or exceeds the target on 4 or more of the 6 upsell categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize) — proving the team is closing the sale on every order.`}</div>
+                                <div className="text-muted-foreground">{`Hit ${catsAtTarget}/6 attachment rate targets today. Earned +${catsAtTarget} bonus points. The Closer badge is awarded when a unit meets or exceeds the target on 4 or more of the 6 upsell categories (cheese, bacon, jalapeños, dipping sauces, shakes & malts, whatasize) — proving the team is closing the sale on every order.`}</div>
                               </PopoverContent>
                             </Popover>
                           ) : (
@@ -573,15 +576,15 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                           <div className="flex items-center gap-1">
                             {categories.map(cat => {
                               const data = r.categories[cat];
-                              if (!data) return <span key={cat} className="w-10 text-center text-muted-foreground">--</span>;
+                              if (!data) return <span key={cat} className="w-12 text-center text-muted-foreground">--</span>;
                               return (
                                 <span
                                   key={cat}
-                                  className={`w-10 text-center text-[10px] font-medium ${
-                                    data.vsTarget >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'
+                                  className={`w-12 text-center text-[10px] font-medium ${
+                                    data.attachRate >= data.benchmark ? 'text-green-600 dark:text-green-400' : 'text-red-500'
                                   }`}
                                 >
-                                  {data.attachRate.toFixed(0)}%
+                                  {data.attachRate.toFixed(1)}%
                                 </span>
                               );
                             })}

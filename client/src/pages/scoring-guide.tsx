@@ -276,7 +276,7 @@ export default function ScoringGuidePage() {
               <strong>YoY Growth</strong> is available only for units with uploaded historical sales data for the same date last year. Any positive growth above last year earns the bonus.
             </p>
             <p className="text-xs text-muted-foreground">
-              <strong>The Closer</strong> rewards upsell execution. Each of the 6 attachment categories (cheese, bacon, jalapeños, dipping sauces, desserts, whatasize) earns +1 point when the unit hits or exceeds the category target for the day. You must hit at least 4 of 6 targets to qualify. Points scale with performance: 4/6 = +4, 5/6 = +5, 6/6 = +6.
+              <strong>The Closer</strong> rewards upsell execution. Each of the 6 attachment categories (cheese, bacon, jalapeños, dipping sauces, shakes & malts, whatasize) earns +1 point when the unit hits or exceeds the category target for the day. You must hit at least 4 of 6 targets to qualify. Points scale with performance: 4/6 = +4, 5/6 = +5, 6/6 = +6.
             </p>
           </CardContent>
         </Card>
