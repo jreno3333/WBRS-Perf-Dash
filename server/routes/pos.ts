@@ -338,7 +338,7 @@ router.get("/api/pos/check-average-trend", async (req, res) => {
 
 // Attachment rate analysis from REAL item-level POS data
 // Parses raw_json items from Xenial orders and classifies add-ons into
-// cheese, bacon, jalapeños, dipping sauces, and desserts
+// cheese, bacon, jalapeños, dipping sauces, shakes & malts, and whatasize
 router.get("/api/pos/attachment-rates", async (req, res) => {
   try {
     const { date } = req.query;
@@ -350,7 +350,7 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
       bacon: 'Bacon',
       jalapenos: 'Jalapeños',
       dipping_sauces: 'Dipping Sauces',
-      desserts: 'Desserts',
+      shakes_malts: 'Shakes & Malts',
       whatasize: 'Whatasize',
     };
 
@@ -359,7 +359,7 @@ router.get("/api/pos/attachment-rates", async (req, res) => {
       bacon: { min: 8, max: 35, benchmark: ATTACHMENT_BENCHMARKS.bacon },
       jalapenos: { min: 5, max: 25, benchmark: ATTACHMENT_BENCHMARKS.jalapenos },
       dipping_sauces: { min: 15, max: 50, benchmark: ATTACHMENT_BENCHMARKS.dipping_sauces },
-      desserts: { min: 8, max: 35, benchmark: ATTACHMENT_BENCHMARKS.desserts },
+      shakes_malts: { min: 5, max: 30, benchmark: ATTACHMENT_BENCHMARKS.shakes_malts },
       whatasize: { min: 10, max: 45, benchmark: ATTACHMENT_BENCHMARKS.whatasize },
     };
 

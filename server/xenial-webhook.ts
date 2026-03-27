@@ -912,7 +912,7 @@ export function validateWebhookToken(authHeader: string | undefined): boolean {
  * Child items (modifiers) are checked as well.
  *
  * For Whataburger menus, "attachments" are add-on items that increase check average:
- *   cheese, bacon, jalapeños, dipping sauces, and desserts (shakes/pies/cookies/brownies).
+ *   cheese, bacon, jalapeños, dipping sauces, shakes & malts, and whatasize.
  */
 
 interface AttachmentCategory {
@@ -1015,21 +1015,14 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
       /\bCHEESE\s*SAUCE\b/i,  // Already counted in cheese
     ],
   },
-  desserts: {
+  shakes_malts: {
     namePatterns: [
       /\bSHAKE\b/i,
       /\bMALT\b/i,
-      /\bPIE\b/i,
-      /\bCOOKIE\b/i,
-      /\bBROWNIE\b/i,
-      /\bCINNAMON\b/i,
-      /\bSUNDAE\b/i,
-      /\bICE\s*CREAM\b/i,
-      /\bDESSERT/i,
-      /\bAPPLE\s*PIE\b/i,
     ],
     majorCategoryPatterns: [
-      /\bDESSERT/i,
+      /\bSHAKE/i,
+      /\bMALT/i,
     ],
   },
   whatasize: {
@@ -1068,7 +1061,7 @@ const ATTACHMENT_BENCHMARKS: Record<string, { min: number; max: number; benchmar
   bacon: { min: 8, max: 35, benchmark: SCORING_BENCHMARKS.bacon },
   jalapenos: { min: 5, max: 25, benchmark: SCORING_BENCHMARKS.jalapenos },
   dipping_sauces: { min: 15, max: 50, benchmark: SCORING_BENCHMARKS.dipping_sauces },
-  desserts: { min: 8, max: 35, benchmark: SCORING_BENCHMARKS.desserts },
+  shakes_malts: { min: 5, max: 30, benchmark: SCORING_BENCHMARKS.shakes_malts },
   whatasize: { min: 10, max: 45, benchmark: SCORING_BENCHMARKS.whatasize },
 };
 
@@ -1077,7 +1070,7 @@ const ATTACHMENT_LABELS: Record<string, string> = {
   bacon: 'Bacon',
   jalapenos: 'Jalapeños',
   dipping_sauces: 'Dipping Sauces',
-  desserts: 'Desserts',
+  shakes_malts: 'Shakes & Malts',
   whatasize: 'Whatasize',
 };
 

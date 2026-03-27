@@ -682,10 +682,10 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
 
     const categoryLabels: Record<string, string> = {
       cheese: 'Cheese', bacon: 'Bacon', jalapenos: 'Jalapeños',
-      dipping_sauces: 'Dipping Sauces', desserts: 'Desserts', whatasize: 'Whatasize',
+      dipping_sauces: 'Dipping Sauces', shakes_malts: 'Shakes & Malts', whatasize: 'Whatasize',
     };
     const benchmarks: Record<string, number> = {
-      cheese: 30, bacon: 20, jalapenos: 15, dipping_sauces: 35, desserts: 20, whatasize: 30,
+      cheese: 30, bacon: 15, jalapenos: 10, dipping_sauces: 30, shakes_malts: 15, whatasize: 15,
     };
 
     agenda += "  ┌──────────────────┬──────────┬──────────┬──────────┐\n";
@@ -817,7 +817,7 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
     const belowTargetCats = Object.entries(attachment.categories).filter(([, cat]) => cat.vsTarget < -5);
     if (belowTargetCats.length > 0) {
       const catNames = belowTargetCats.map(([key]) => {
-        const labels: Record<string, string> = { cheese: 'Cheese', bacon: 'Bacon', jalapenos: 'Jalapeños', dipping_sauces: 'Dipping Sauces', desserts: 'Desserts', whatasize: 'Whatasize' };
+        const labels: Record<string, string> = { cheese: 'Cheese', bacon: 'Bacon', jalapenos: 'Jalapeños', dipping_sauces: 'Dipping Sauces', shakes_malts: 'Shakes & Malts', whatasize: 'Whatasize' };
         return labels[key] || key;
       }).join(", ");
       agenda += `  ${actionNum}. [ ] Improve upsell/attachment for: ${catNames} — coach suggestive selling during pre-shift\n`;

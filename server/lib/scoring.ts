@@ -55,7 +55,7 @@ export const ATTACHMENT_BENCHMARKS: Record<string, number> = {
   bacon: 15,
   jalapenos: 10,
   dipping_sauces: 30,
-  desserts: 20,
+  shakes_malts: 15,
   whatasize: 15,
 };
 
