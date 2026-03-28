@@ -13,7 +13,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/", icon: Trophy, label: "Rankings", testId: "nav-leaderboard" },
   { href: "/dashboard-view", icon: Grid3X3, label: "Daily AI", testId: "nav-dashboard-view" },
-  { href: "/history", icon: TrendingUp, label: "Trends", testId: "nav-history" },
+  { href: "/history", icon: TrendingUp, label: "Weekly", testId: "nav-history" },
   { href: "/crew", icon: Users, label: "People", testId: "nav-crew" },
   { href: "/map", icon: MapPin, label: "Map", testId: "nav-map" },
   { href: "https://mwbrealtime.wbrssystem.com", icon: Radio, label: "Real Time", testId: "nav-realtime", external: true },
