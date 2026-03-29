@@ -5,7 +5,7 @@ import {
   hmeTimerData, dailyGoogleReviews, hourlyLabor, hourlySales, markets, restaurantMarkets,
   historicalDailySales,
 } from "@shared/schema";
-import { sql, and, gte, lte, eq, desc } from "drizzle-orm";
+import { sql, and, gte, lte, lt, eq, desc } from "drizzle-orm";
 import { getAttachmentRatesFromDetail } from "../xenial-webhook";
 import { getStaffingBreakdown } from "../lib/labor-model";
 
