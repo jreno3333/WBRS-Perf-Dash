@@ -132,24 +132,28 @@ router.get("/api/executive-summary", async (req, res) => {
       // Restaurants
       db.select().from(restaurants).where(eq(restaurants.isActive, true)),
 
-      // Sales — current period (from POS orders)
+      // Sales — current period (from POS orders, Central timezone boundaries)
       posDb.select({
         storeNumber: posOrders.storeNumber,
         total: sql<string>`SUM(${posOrders.orderTotal})`,
       })
         .from(posOrders)
-        .where(and(gte(posOrders.orderClosedAt, sql`${startDateStr}::date::timestamptz`),
-                   lte(posOrders.orderClosedAt, sql`(${endDateStr}::date + interval '1 day')::timestamptz`)))
+        .where(and(
+          gte(posOrders.orderClosedAt, sql`(${startDateStr}::timestamp AT TIME ZONE 'America/Chicago')`),
+          lt(posOrders.orderClosedAt, sql`((${endDateStr}::date + interval '1 day')::timestamp AT TIME ZONE 'America/Chicago')`)
+        ))
         .groupBy(posOrders.storeNumber),
 
-      // Sales — previous period (from POS orders)
+      // Sales — previous period (from POS orders, Central timezone boundaries)
       posDb.select({
         storeNumber: posOrders.storeNumber,
         total: sql<string>`SUM(${posOrders.orderTotal})`,
       })
         .from(posOrders)
-        .where(and(gte(posOrders.orderClosedAt, sql`${prevStartDateStr}::date::timestamptz`),
-                   lte(posOrders.orderClosedAt, sql`(${prevEndDateStr}::date + interval '1 day')::timestamptz`)))
+        .where(and(
+          gte(posOrders.orderClosedAt, sql`(${prevStartDateStr}::timestamp AT TIME ZONE 'America/Chicago')`),
+          lt(posOrders.orderClosedAt, sql`((${prevEndDateStr}::date + interval '1 day')::timestamp AT TIME ZONE 'America/Chicago')`)
+        ))
         .groupBy(posOrders.storeNumber),
 
       // Sales — daily breakdown (for anomaly detection) — placeholder, replaced by posDailyRows
@@ -313,15 +317,17 @@ router.get("/api/executive-summary", async (req, res) => {
         .where(and(gte(historicalDailySales.date, yoyStartDateStr), lte(historicalDailySales.date, yoyEndDateStr)))
         .groupBy(historicalDailySales.restaurantId),
 
-      // POS daily breakdown (for anomaly detection — more reliable than 7shifts daily_sales)
+      // POS daily breakdown (for anomaly detection)
       posDb.select({
         storeNumber: posOrders.storeNumber,
         date: sql<string>`(${posOrders.orderClosedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date::text`,
         total: sql<string>`SUM(${posOrders.orderTotal})`,
       })
         .from(posOrders)
-        .where(and(gte(posOrders.orderClosedAt, sql`${startDateStr}::date::timestamptz`), 
-                   lte(posOrders.orderClosedAt, sql`(${endDateStr}::date + interval '1 day')::timestamptz`)))
+        .where(and(
+          gte(posOrders.orderClosedAt, sql`(${startDateStr}::timestamp AT TIME ZONE 'America/Chicago')`),
+          lt(posOrders.orderClosedAt, sql`((${endDateStr}::date + interval '1 day')::timestamp AT TIME ZONE 'America/Chicago')`)
+        ))
         .groupBy(posOrders.storeNumber, sql`(${posOrders.orderClosedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date`),
     ]);
 

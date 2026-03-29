@@ -606,8 +606,8 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
       })
         .from(posOrders)
         .where(and(
-          gte(posOrders.orderClosedAt, sql`${todayStr}::date::timestamptz`),
-          lte(posOrders.orderClosedAt, sql`(${todayStr}::date + interval '1 day')::timestamptz`)
+          gte(posOrders.orderClosedAt, sql`(${todayStr}::timestamp AT TIME ZONE 'America/Chicago')`),
+          lt(posOrders.orderClosedAt, sql`((${todayStr}::date + interval '1 day')::timestamp AT TIME ZONE 'America/Chicago')`)
         ))
         .groupBy(posOrders.storeNumber),
       db.select().from(locationMapping),
