@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, posDb, pool } from "../db";
-import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, dailySales, locationMapping } from "@shared/schema";
+import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, locationMapping } from "@shared/schema";
 import { eq, and, gte, lte, lt, sql } from "drizzle-orm";
 import { computeHourlyScore, scoreToGradeLabel, type HourlyScoreInput } from "../lib/scoring";
 import { getActiveGradingConfig } from "./grading-config";
@@ -586,7 +586,7 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     const todayStart = new Date(todayStr + "T00:00:00");
     const todayEnd = new Date(todayStr + "T23:59:59");
 
-    const [salesData, laborData, hmeData, lwSalesData, allRestaurants, allDailySales] = await Promise.all([
+    const [salesData, laborData, hmeData, lwSalesData, allRestaurants, posSalesRows, locationMappingRows] = await Promise.all([
       db.select().from(hourlySales).where(
         sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${todayStr}`
       ),
@@ -600,9 +600,17 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
         sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') = ${lwStr}`
       ),
       db.select().from(restaurants).where(eq(restaurants.isActive, true)),
-      db.select().from(dailySales).where(
-        and(gte(dailySales.salesDate, todayStart), lte(dailySales.salesDate, todayEnd))
-      ),
+      posDb.select({
+        storeNumber: posOrders.storeNumber,
+        total: sql<string>`SUM(${posOrders.orderTotal})`,
+      })
+        .from(posOrders)
+        .where(and(
+          gte(posOrders.orderClosedAt, sql`${todayStr}::date::timestamptz`),
+          lte(posOrders.orderClosedAt, sql`(${todayStr}::date + interval '1 day')::timestamptz`)
+        ))
+        .groupBy(posOrders.storeNumber),
+      db.select().from(locationMapping),
     ]);
 
     const laborByKey = new Map<string, typeof laborData[0]>();
@@ -617,9 +625,15 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     }
 
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
+    const storeToRestaurantMap = new Map<string, string>();
+    for (const lm of locationMappingRows) {
+      storeToRestaurantMap.set(lm.xenialStoreNumber, lm.restaurantId);
+    }
     const dailySalesByRestaurant = new Map<string, number>();
-    for (const d of allDailySales) {
-      dailySalesByRestaurant.set(d.restaurantId, (parseFloat(d.totalSales || "0") / 100));
+    for (const row of posSalesRows) {
+      const restId = storeToRestaurantMap.get(row.storeNumber);
+      if (!restId) continue;
+      dailySalesByRestaurant.set(restId, (dailySalesByRestaurant.get(restId) || 0) + (parseFloat(row.total) || 0));
     }
 
     interface SuppressedSalesResult {
@@ -704,7 +718,7 @@ router.get("/api/analytics/suppressed-sales", async (req, res) => {
     results.sort((a, b) => b.estimatedLostSales - a.estimatedLostSales);
 
     const companyTotal = results.reduce((s, r) => s + r.estimatedLostSales, 0);
-    const companyTotalSales = allDailySales.reduce((s, d) => s + (parseFloat(d.totalSales || "0") / 100), 0);
+    const companyTotalSales = Array.from(dailySalesByRestaurant.values()).reduce((s, v) => s + v, 0);
     const companyLostPercent = companyTotalSales > 0 ? Math.round((companyTotal / companyTotalSales) * 1000) / 10 : 0;
 
     // Persist snapshot for historical review and future rollups

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
 import {
-  dailySales, restaurants, dailyOsat, posOrders, locationMapping,
+  restaurants, dailyOsat, posOrders, locationMapping,
   hmeTimerData, dailyGoogleReviews, hourlyLabor, hourlySales, markets, restaurantMarkets,
   historicalDailySales,
 } from "@shared/schema";
@@ -108,7 +108,7 @@ router.get("/api/executive-summary", async (req, res) => {
       restaurantList,
       salesCurrent,
       salesPrevious,
-      salesDaily,
+      _salesDailyUnused,
       osatCurrent,
       osatPrevious,
       osatDaily,
@@ -132,32 +132,28 @@ router.get("/api/executive-summary", async (req, res) => {
       // Restaurants
       db.select().from(restaurants).where(eq(restaurants.isActive, true)),
 
-      // Sales — current period
-      db.select({
-        restaurantId: dailySales.restaurantId,
-        total: sql<string>`SUM(${dailySales.totalSales})`,
+      // Sales — current period (from POS orders)
+      posDb.select({
+        storeNumber: posOrders.storeNumber,
+        total: sql<string>`SUM(${posOrders.orderTotal})`,
       })
-        .from(dailySales)
-        .where(and(gte(dailySales.salesDate, startTs), lte(dailySales.salesDate, endTs)))
-        .groupBy(dailySales.restaurantId),
+        .from(posOrders)
+        .where(and(gte(posOrders.orderClosedAt, sql`${startDateStr}::date::timestamptz`),
+                   lte(posOrders.orderClosedAt, sql`(${endDateStr}::date + interval '1 day')::timestamptz`)))
+        .groupBy(posOrders.storeNumber),
 
-      // Sales — previous period
-      db.select({
-        restaurantId: dailySales.restaurantId,
-        total: sql<string>`SUM(${dailySales.totalSales})`,
+      // Sales — previous period (from POS orders)
+      posDb.select({
+        storeNumber: posOrders.storeNumber,
+        total: sql<string>`SUM(${posOrders.orderTotal})`,
       })
-        .from(dailySales)
-        .where(and(gte(dailySales.salesDate, prevStartTs), lte(dailySales.salesDate, prevEndTs)))
-        .groupBy(dailySales.restaurantId),
+        .from(posOrders)
+        .where(and(gte(posOrders.orderClosedAt, sql`${prevStartDateStr}::date::timestamptz`),
+                   lte(posOrders.orderClosedAt, sql`(${prevEndDateStr}::date + interval '1 day')::timestamptz`)))
+        .groupBy(posOrders.storeNumber),
 
-      // Sales — daily breakdown (for anomaly detection)
-      db.select({
-        restaurantId: dailySales.restaurantId,
-        date: sql<string>`${dailySales.salesDate}::date::text`,
-        total: sql<string>`${dailySales.totalSales}`,
-      })
-        .from(dailySales)
-        .where(and(gte(dailySales.salesDate, startTs), lte(dailySales.salesDate, endTs))),
+      // Sales — daily breakdown (for anomaly detection) — placeholder, replaced by posDailyRows
+      Promise.resolve([] as { restaurantId: string; date: string; total: string }[]),
 
       // OSAT — current period (response-weighted: five_star / total_responses)
       db.select({
@@ -359,11 +355,17 @@ router.get("/api/executive-summary", async (req, res) => {
     // ------------------------------------------------------------------
     type MetricPair = { current: number; previous: number };
 
-    const salesByRest7s: Record<string, MetricPair> = {};
-    for (const r of salesCurrent) salesByRest7s[r.restaurantId] = { current: (parseFloat(r.total) || 0) / 100, previous: 0 };
+    const salesByRestPos: Record<string, MetricPair> = {};
+    for (const r of salesCurrent) {
+      const restId = storeToRestaurant.get(r.storeNumber);
+      if (!restId) continue;
+      salesByRestPos[restId] = { current: (salesByRestPos[restId]?.current || 0) + (parseFloat(r.total) || 0), previous: salesByRestPos[restId]?.previous || 0 };
+    }
     for (const r of salesPrevious) {
-      if (!salesByRest7s[r.restaurantId]) salesByRest7s[r.restaurantId] = { current: 0, previous: 0 };
-      salesByRest7s[r.restaurantId].previous = (parseFloat(r.total) || 0) / 100;
+      const restId = storeToRestaurant.get(r.storeNumber);
+      if (!restId) continue;
+      if (!salesByRestPos[restId]) salesByRestPos[restId] = { current: 0, previous: 0 };
+      salesByRestPos[restId].previous += parseFloat(r.total) || 0;
     }
 
     const osatByRest: Record<string, MetricPair & { responses: number; prevResponses: number; fiveStars: number; prevFiveStars: number }> = {};
@@ -427,13 +429,12 @@ router.get("/api/executive-summary", async (req, res) => {
       revenueByRest[restId].previous += rev;
     }
 
-    // Merged sales: prefer POS revenue (real-time), fall back to 7shifts daily_sales
     const salesByRest: Record<string, MetricPair> = {};
     for (const rest of restaurantList) {
       const pos = revenueByRest[rest.id];
-      const s7 = salesByRest7s[rest.id];
-      const current = (pos && pos.current > 0) ? pos.current : (s7?.current || 0);
-      const previous = (pos && pos.previous > 0) ? pos.previous : (s7?.previous || 0);
+      const posDirect = salesByRestPos[rest.id];
+      const current = pos?.current || posDirect?.current || 0;
+      const previous = pos?.previous || posDirect?.previous || 0;
       if (current > 0 || previous > 0) {
         salesByRest[rest.id] = { current, previous };
       }
@@ -725,25 +726,8 @@ router.get("/api/executive-summary", async (req, res) => {
     }
 
     const dailySalesByRest: Record<string, { date: string; value: number }[]> = {};
-    // Start with 7shifts data
-    for (const row of salesDaily) {
-      const restId = row.restaurantId;
-      if (!dailySalesByRest[restId]) dailySalesByRest[restId] = [];
-      dailySalesByRest[restId].push({ date: row.date, value: (parseFloat(row.total) || 0) / 100 });
-    }
-    // Override with POS data where available (more reliable)
     for (const [restId, posDays] of Object.entries(posDailyByRest)) {
-      const existing = dailySalesByRest[restId] || [];
-      const existingDates = new Set(existing.map(d => d.date));
-      for (const [date, value] of Object.entries(posDays)) {
-        if (existingDates.has(date)) {
-          const entry = existing.find(d => d.date === date);
-          if (entry) entry.value = value;
-        } else {
-          existing.push({ date, value });
-        }
-      }
-      dailySalesByRest[restId] = existing;
+      dailySalesByRest[restId] = Object.entries(posDays).map(([date, value]) => ({ date, value }));
     }
 
     for (const [restId, days] of Object.entries(dailySalesByRest)) {

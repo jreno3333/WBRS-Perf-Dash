@@ -7,7 +7,6 @@ import {
   type DailyWeather,
   type HourlyLabor,
   restaurants,
-  dailySales,
   dailyWeather,
   hourlySales,
   hourlyLabor,
@@ -84,12 +83,11 @@ export class DatabaseStorage {
     const lastWeekStart = new Date(`${lastWeekStr}T00:00:00.000Z`);
     const lastWeekEnd = new Date(`${lastWeekStr}T23:59:59.999Z`);
 
-    const [allHourlySales, allHourlyLabor, posHourlySales, posLastWeekHourlySales, allDailySales] = await Promise.all([
+    const [allHourlySales, allHourlyLabor, posHourlySales, posLastWeekHourlySales] = await Promise.all([
       db.select().from(hourlySales).where(and(gte(hourlySales.salesDate, lastWeekStart), lte(hourlySales.salesDate, selectedDateEnd))),
       db.select().from(hourlyLabor).where(eq(hourlyLabor.date, selectedDateStr)),
       getAllHourlyPosSales(selectedDate),
       getAllHourlyPosSales(lastWeek),
-      db.select().from(dailySales).where(and(gte(dailySales.salesDate, lastWeekStart), lte(dailySales.salesDate, lastWeekEnd))),
     ]);
 
     const laborByKey = new Map<string, HourlyLabor>();
@@ -97,13 +95,6 @@ export class DatabaseStorage {
       const dateStr = l.date.split('T')[0];
       const key = `${l.restaurantId}-${dateStr}-${l.hour}`;
       laborByKey.set(key, l);
-    });
-    const lastWeekDailySalesMap = new Map<string, number>();
-    allDailySales.forEach(d => {
-      const saleDate = new Date(d.salesDate).toISOString().split('T')[0];
-      if (saleDate === lastWeekStr) {
-        lastWeekDailySalesMap.set(d.restaurantId, parseFloat(d.totalSales || '0') / 100);
-      }
     });
 
     const selectedDateHourly = deduplicateHourly(allHourlySales.filter(s => {
@@ -184,14 +175,6 @@ export class DatabaseStorage {
         actualLastWeekAmount = lastWeekHoursForComparison.reduce(
           (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
         );
-
-        if (lastWeekSalesAmount === 0 && lastWeekDailySalesMap.has(restaurant.id)) {
-          const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
-          const dayProgress = (normalizedHourCutoff + 1) / 24;
-          lastWeekSalesAmount = dailyTotal * dayProgress;
-          const displayProgress = (restaurantCompletedHour + 1) / 24;
-          actualLastWeekAmount = dailyTotal * displayProgress;
-        }
       }
 
       let lastWeekRemainingHoursSales = 0;
@@ -217,12 +200,6 @@ export class DatabaseStorage {
                 lastWeekFutureOnlyHoursSales += amt;
               }
             }
-          } else if (lastWeekDailySalesMap.has(restaurant.id)) {
-            const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
-            const remainingProgress = (24 - restaurantCompletedHour - 1) / 24;
-            lastWeekRemainingHoursSales = dailyTotal * remainingProgress;
-            const futureProgress = (24 - restaurantCurrentHour - 1) / 24;
-            lastWeekFutureOnlyHoursSales = dailyTotal * futureProgress;
           }
         }
       }
@@ -276,10 +253,6 @@ export class DatabaseStorage {
                 : parseFloat(lastWeekHour?.actualSales || '0');
               remainingForecastSales += forecastValue;
             }
-          } else if (lastWeekDailySalesMap.has(restaurant.id)) {
-            const dailyTotal = lastWeekDailySalesMap.get(restaurant.id) || 0;
-            const remainingProgress = (24 - normalizedHourCutoff - 1) / 24;
-            remainingForecastSales = dailyTotal * remainingProgress;
           }
         }
 
@@ -581,20 +554,6 @@ export class DatabaseStorage {
       return saleDate === lastWeekStr;
     }));
 
-    // Fallback daily sales for last week
-    const lastWeekStartTs = new Date(`${lastWeekStr}T00:00:00.000Z`);
-    const lastWeekEndTs = new Date(`${lastWeekStr}T23:59:59.999Z`);
-    const lastWeekDailyData = await db.select().from(dailySales).where(
-      and(
-        gte(dailySales.salesDate, lastWeekStartTs),
-        lte(dailySales.salesDate, lastWeekEndTs)
-      )
-    );
-    const lastWeekDailyMap = new Map<string, number>();
-    for (const d of lastWeekDailyData) {
-      lastWeekDailyMap.set(d.restaurantId, parseFloat(String(d.totalSales)) / 100);
-    }
-
     // Fetch supplementary data for selected date only
     const allHmeData = await db.select().from(hmeTimerData).where(sql`${hmeTimerData.date} LIKE ${selectedDateStr + '%'}`);
     const allHourlyLaborData = await db.select().from(hourlyLabor).where(sql`${hourlyLabor.date} LIKE ${selectedDateStr + '%'}`);
@@ -745,20 +704,6 @@ export class DatabaseStorage {
           lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
         });
 
-        if (restaurantLastWeekHourly.length === 0 && lastWeekDailyMap.has(restaurant.id)) {
-          const dailyTotal = lastWeekDailyMap.get(restaurant.id) || 0;
-          const hourlyDistribution: Record<number, number> = {
-            5: 0.01, 6: 0.02, 7: 0.03, 8: 0.04, 9: 0.05, 10: 0.06,
-            11: 0.09, 12: 0.11, 13: 0.09, 14: 0.06, 15: 0.05, 16: 0.05,
-            17: 0.07, 18: 0.08, 19: 0.07, 20: 0.05, 21: 0.04, 22: 0.02, 23: 0.01
-          };
-          for (let h = 0; h < 24; h++) {
-            const pct = hourlyDistribution[h] || 0;
-            if (pct > 0) {
-              lastWeekByHour.set(h, Math.round(dailyTotal * pct));
-            }
-          }
-        }
       }
 
       for (let h = 0; h < 24; h++) {

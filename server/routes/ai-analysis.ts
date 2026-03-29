@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, posDb } from "../db";
-import { hourlySales, restaurants, dailyOsat, osatData, posOrders, locationMapping, dailySales, dailyLabor, hourlyLabor, hmeTimerData, dailyWeather, dailyGoogleReviews, hourlyCrew, employees, historicalDailySales, osatCategoryIssues } from "@shared/schema";
+import { hourlySales, restaurants, dailyOsat, osatData, posOrders, locationMapping, dailyLabor, hourlyLabor, hmeTimerData, dailyWeather, dailyGoogleReviews, hourlyCrew, employees, historicalDailySales, osatCategoryIssues } from "@shared/schema";
 import { sql, and, gte, lte, lt, eq, desc, asc, inArray } from "drizzle-orm";
 import { getAttachmentRatesFromDetail } from "../xenial-webhook";
 
