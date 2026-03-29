@@ -127,6 +127,7 @@ router.get("/api/executive-summary", async (req, res) => {
       locationMappingRows,
       attachmentRates,
       yoySalesRows,
+      posDailyRows,
     ] = await Promise.all([
       // Restaurants
       db.select().from(restaurants).where(eq(restaurants.isActive, true)),
@@ -315,6 +316,17 @@ router.get("/api/executive-summary", async (req, res) => {
         .from(historicalDailySales)
         .where(and(gte(historicalDailySales.date, yoyStartDateStr), lte(historicalDailySales.date, yoyEndDateStr)))
         .groupBy(historicalDailySales.restaurantId),
+
+      // POS daily breakdown (for anomaly detection — more reliable than 7shifts daily_sales)
+      posDb.select({
+        storeNumber: posOrders.storeNumber,
+        date: sql<string>`(${posOrders.orderClosedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date::text`,
+        total: sql<string>`SUM(${posOrders.orderTotal})`,
+      })
+        .from(posOrders)
+        .where(and(gte(posOrders.orderClosedAt, sql`${startDateStr}::date::timestamptz`), 
+                   lte(posOrders.orderClosedAt, sql`(${endDateStr}::date + interval '1 day')::timestamptz`)))
+        .groupBy(posOrders.storeNumber, sql`(${posOrders.orderClosedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date`),
     ]);
 
     // ------------------------------------------------------------------
@@ -347,11 +359,11 @@ router.get("/api/executive-summary", async (req, res) => {
     // ------------------------------------------------------------------
     type MetricPair = { current: number; previous: number };
 
-    const salesByRest: Record<string, MetricPair> = {};
-    for (const r of salesCurrent) salesByRest[r.restaurantId] = { current: (parseFloat(r.total) || 0) / 100, previous: 0 };
+    const salesByRest7s: Record<string, MetricPair> = {};
+    for (const r of salesCurrent) salesByRest7s[r.restaurantId] = { current: (parseFloat(r.total) || 0) / 100, previous: 0 };
     for (const r of salesPrevious) {
-      if (!salesByRest[r.restaurantId]) salesByRest[r.restaurantId] = { current: 0, previous: 0 };
-      salesByRest[r.restaurantId].previous = (parseFloat(r.total) || 0) / 100;
+      if (!salesByRest7s[r.restaurantId]) salesByRest7s[r.restaurantId] = { current: 0, previous: 0 };
+      salesByRest7s[r.restaurantId].previous = (parseFloat(r.total) || 0) / 100;
     }
 
     const osatByRest: Record<string, MetricPair & { responses: number; prevResponses: number; fiveStars: number; prevFiveStars: number }> = {};
@@ -413,6 +425,18 @@ router.get("/api/executive-summary", async (req, res) => {
       if (!revenueByRest[restId]) revenueByRest[restId] = { current: 0, previous: 0 };
       txByRest[restId].previous += count;
       revenueByRest[restId].previous += rev;
+    }
+
+    // Merged sales: prefer POS revenue (real-time), fall back to 7shifts daily_sales
+    const salesByRest: Record<string, MetricPair> = {};
+    for (const rest of restaurantList) {
+      const pos = revenueByRest[rest.id];
+      const s7 = salesByRest7s[rest.id];
+      const current = (pos && pos.current > 0) ? pos.current : (s7?.current || 0);
+      const previous = (pos && pos.previous > 0) ? pos.previous : (s7?.previous || 0);
+      if (current > 0 || previous > 0) {
+        salesByRest[rest.id] = { current, previous };
+      }
     }
 
     // Channel mix — map store numbers → restaurantId, compute % of total
@@ -691,12 +715,35 @@ router.get("/api/executive-summary", async (req, res) => {
 
     const anomalies: AnomalyEntry[] = [];
 
-    // Group daily sales by restaurant
+    // Group daily sales by restaurant — prefer POS data, fall back to 7shifts
+    const posDailyByRest: Record<string, Record<string, number>> = {};
+    for (const row of posDailyRows) {
+      const restId = storeToRestaurant.get(row.storeNumber);
+      if (!restId) continue;
+      if (!posDailyByRest[restId]) posDailyByRest[restId] = {};
+      posDailyByRest[restId][row.date] = (posDailyByRest[restId][row.date] || 0) + (parseFloat(row.total) || 0);
+    }
+
     const dailySalesByRest: Record<string, { date: string; value: number }[]> = {};
+    // Start with 7shifts data
     for (const row of salesDaily) {
       const restId = row.restaurantId;
       if (!dailySalesByRest[restId]) dailySalesByRest[restId] = [];
       dailySalesByRest[restId].push({ date: row.date, value: (parseFloat(row.total) || 0) / 100 });
+    }
+    // Override with POS data where available (more reliable)
+    for (const [restId, posDays] of Object.entries(posDailyByRest)) {
+      const existing = dailySalesByRest[restId] || [];
+      const existingDates = new Set(existing.map(d => d.date));
+      for (const [date, value] of Object.entries(posDays)) {
+        if (existingDates.has(date)) {
+          const entry = existing.find(d => d.date === date);
+          if (entry) entry.value = value;
+        } else {
+          existing.push({ date, value });
+        }
+      }
+      dailySalesByRest[restId] = existing;
     }
 
     for (const [restId, days] of Object.entries(dailySalesByRest)) {
