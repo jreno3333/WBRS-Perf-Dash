@@ -203,10 +203,15 @@ export class DatabaseStorage {
           }
         }
       }
-      const rawPaceRatio = actualLastWeekAmount > 0 ? completedSalesAmount / actualLastWeekAmount : 1;
+      const peakStartHour = 10;
       const operatingHours = 16;
-      const dayProgress = isToday ? Math.min((restaurantCompletedHour + 1) / operatingHours, 1) : 1;
-      const paceRatio = 1 + (rawPaceRatio - 1) * dayProgress;
+      const completedHoursCount = restaurantCompletedHour + 1;
+      const isPeakData = restaurantCompletedHour >= peakStartHour;
+      const rawPaceRatio = actualLastWeekAmount > 0 ? completedSalesAmount / actualLastWeekAmount : 1;
+      const dayProgress = isToday ? Math.min(completedHoursCount / operatingHours, 1) : 1;
+      const earlyDayMaxDeviation = isPeakData ? 0.5 : 0.15;
+      const clampedDeviation = Math.max(-earlyDayMaxDeviation, Math.min(earlyDayMaxDeviation, (rawPaceRatio - 1) * dayProgress));
+      const paceRatio = 1 + clampedDeviation;
       const lastWeekFullDayAmount = actualLastWeekAmount + lastWeekRemainingHoursSales;
       const forecastSalesAmount = isToday
         ? actualSalesAmount + lastWeekFutureOnlyHoursSales * paceRatio
