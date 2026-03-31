@@ -864,6 +864,17 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <span className="font-medium">{overallAttachScore}</span>
                   </BadgeWithTooltip>
                 )}
+                {attachmentCategories?.banana_pudding && attachmentCategories.banana_pudding.attachRate >= 5 && (
+                  <BadgeWithTooltip
+                    className="flex-shrink-0 text-xs px-1.5 gap-1 border-0 bg-yellow-400/20 text-yellow-700 dark:text-yellow-300"
+                    data-testid={`badge-banana-${restaurant.restaurantId}`}
+                    tooltipTitle="Gone Bananas! 🍌"
+                    tooltipDetail={`Banana Pudding Shake attach rate: ${attachmentCategories.banana_pudding.attachRate.toFixed(1)}% (target: 5%). This unit is crushing the LTO!`}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span className="font-medium">🍌 Gone Bananas</span>
+                  </BadgeWithTooltip>
+                )}
                 {/* Revenue Port Badges */}
                 {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
                   <div className="hidden sm:flex items-center gap-1">

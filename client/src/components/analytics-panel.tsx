@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronUp, Calendar, TrendingUp, TrendingDown, BarChart3, Users, AlertTriangle, Clock, Activity, ShoppingBag } from "lucide-react";
+import { ChevronDown, ChevronUp, Calendar, BarChart3, AlertTriangle, Activity, ShoppingBag } from "lucide-react";
 import { useState } from "react";
 import { formatCurrency } from "@/lib/grading";
 
@@ -49,34 +49,6 @@ interface WeeklyForecastData {
   }[];
 }
 
-interface ConsistencyData {
-  companyAvgConsistency: number;
-  restaurants: {
-    restaurantId: string;
-    restaurantName: string;
-    consistencyScore: number;
-    avgGrade: number;
-    avgGradeLabel: string;
-    gradeStdDev: number;
-    dfCount: number;
-    dfPercent: number;
-    totalGradedHours: number;
-    daysAnalyzed: number;
-  }[];
-}
-
-interface ComplianceData {
-  period: { start: string; end: string; days: number };
-  restaurants: {
-    restaurantId: string;
-    restaurantName: string;
-    compliancePercent: number;
-    actualHoursDeployed: number;
-    callInRate: number;
-    underHours: number;
-    totalHours: number;
-  }[];
-}
 
 interface SuppressedData {
   date: string;
@@ -101,17 +73,6 @@ const formatCompactCurrency = (amount: number) => {
   return `$${Math.round(amount)}`;
 };
 
-function getConsistencyColor(score: number): string {
-  if (score >= 75) return "text-green-600 dark:text-green-400";
-  if (score >= 50) return "text-amber-600 dark:text-amber-400";
-  return "text-red-600 dark:text-red-400";
-}
-
-function getComplianceColor(pct: number): string {
-  if (pct >= 90 && pct <= 110) return "text-green-600 dark:text-green-400";
-  if (pct >= 75) return "text-amber-600 dark:text-amber-400";
-  return "text-red-600 dark:text-red-400";
-}
 
 interface AttachmentRateData {
   date: string;
@@ -129,8 +90,6 @@ interface AttachmentRateData {
 
 export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: AnalyticsPanelProps) {
   const [expanded, setExpanded] = useState(false);
-  const [showAllConsistency, setShowAllConsistency] = useState(false);
-  const [showAllCompliance, setShowAllCompliance] = useState(false);
   const [showAllSuppressed, setShowAllSuppressed] = useState(false);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
 
@@ -139,26 +98,6 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
     queryKey: ["/api/analytics/anniversaries"],
     queryFn: async () => {
       const res = await fetch("/api/analytics/anniversaries?days=30");
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
-    staleTime: 10 * 60 * 1000,
-  });
-
-  const { data: consistency } = useQuery<ConsistencyData>({
-    queryKey: ["/api/analytics/consistency"],
-    queryFn: async () => {
-      const res = await fetch("/api/analytics/consistency?days=14");
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
-    staleTime: 10 * 60 * 1000,
-  });
-
-  const { data: compliance } = useQuery<ComplianceData>({
-    queryKey: ["/api/analytics/schedule-compliance"],
-    queryFn: async () => {
-      const res = await fetch("/api/analytics/schedule-compliance?days=7");
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -201,9 +140,6 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
 
   const upcomingAnniversaries = anniversaries?.anniversaries?.filter(a => a.daysUntil <= 7) || [];
   const hasSuppressed = suppressed && suppressed.companyTotalSuppressed > 0;
-  const avgCompliance = compliance?.restaurants.length
-    ? Math.round(compliance.restaurants.reduce((sum, r) => sum + r.compliancePercent, 0) / compliance.restaurants.length)
-    : null;
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
@@ -233,17 +169,6 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                     </BadgeWithTooltip>
                   );
                 })()}
-                {avgCompliance !== null && (
-                  <BadgeWithTooltip
-                    variant="outline"
-                    className={`text-xs ${getComplianceColor(avgCompliance)}`}
-                    tooltipTitle={`Schedule Compliance: ${avgCompliance}%`}
-                    tooltipDetail="7-day avg of actual vs. scheduled hours across all units. 90-110% is on target; below 90% = understaffed, above 110% = overstaffed."
-                  >
-                    <Clock className="w-3 h-3" />
-                    SCH: {avgCompliance}%
-                  </BadgeWithTooltip>
-                )}
                 {hasSuppressed && (
                   <BadgeWithTooltip
                     className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0"
@@ -333,105 +258,6 @@ export function AnalyticsPanel({ dateStr, isToday, checkAverageByRestaurant }: A
                 </div>
               </div>
             )}
-
-            {/* Consistency + Schedule Compliance side by side */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Consistency Metric */}
-              {consistency && consistency.restaurants.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                    <Activity className="w-3 h-3" /> CONSISTENCY (14-DAY)
-                  </h4>
-                  <p className="text-[10px] text-muted-foreground mb-2">
-                    Score 0-100: how stable are hourly execution grades? 60% weight on low grade variance + 40% on low D/F rate. Green 75+, amber 50-74, red &lt;50.
-                  </p>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
-                      <span>Restaurant</span>
-                      <div className="flex items-center gap-2">
-                        <span className="w-8 text-center">Score</span>
-                        <span className="w-6 text-center">Avg</span>
-                        <span className="w-14 text-right">D/F hrs</span>
-                      </div>
-                    </div>
-                    {(showAllConsistency ? consistency.restaurants : consistency.restaurants.slice(0, 5)).map(r => (
-                      <div key={r.restaurantId} className="flex items-center justify-between text-xs">
-                        <span className="truncate mr-2">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold w-8 text-center ${getConsistencyColor(r.consistencyScore)}`}>
-                            {r.consistencyScore}
-                          </span>
-                          <span className="text-muted-foreground text-[10px] w-6 text-center">
-                            {r.avgGradeLabel}
-                          </span>
-                          <span className={`text-[10px] w-14 text-right ${r.dfPercent > 5 ? 'text-red-500' : r.dfPercent > 0 ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                            {r.dfPercent > 0 ? `${r.dfPercent}%` : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {consistency.restaurants.length > 5 && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowAllConsistency(!showAllConsistency); }}
-                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-1"
-                      >
-                        {showAllConsistency ? 'Show less' : `Show all ${consistency.restaurants.length} restaurants`}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Schedule Compliance */}
-              {compliance && compliance.restaurants.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> SCHEDULE COMPLIANCE (7-DAY)
-                  </h4>
-                  <p className="text-[10px] text-muted-foreground mb-2">
-                    Labor hours deployed vs scheduled. 90-110% is on target (green). "No-shows" = time slots where attendance was 25%+ below schedule.
-                  </p>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1 px-0.5">
-                      <span>Restaurant</span>
-                      <div className="flex items-center gap-2">
-                        <span className="w-12 text-center">Staff Fill</span>
-                        <span className="w-12 text-center">Hrs</span>
-                        <span className="w-16 text-right">No-shows</span>
-                      </div>
-                    </div>
-                    {(showAllCompliance ? compliance.restaurants : compliance.restaurants.slice(0, 5)).map(r => (
-                      <div key={r.restaurantId} className="flex items-center justify-between text-xs">
-                        <span className="truncate mr-2">{r.restaurantName.replace(/^\d+\s*-\s*/, '')}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold w-12 text-center ${getComplianceColor(r.compliancePercent)}`}>
-                            {r.compliancePercent}%
-                          </span>
-                          <span className="text-muted-foreground text-[10px] w-12 text-center">
-                            {r.actualHoursDeployed?.toLocaleString() ?? '—'}
-                          </span>
-                          {r.callInRate > 0 ? (
-                            <span className="text-red-500 text-[10px] w-16 text-right" title={`${r.callInRate}% of time slots had attendance 25%+ below schedule`}>
-                              {r.callInRate}% of hrs
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-[10px] w-16 text-right">—</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {compliance.restaurants.length > 5 && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowAllCompliance(!showAllCompliance); }}
-                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline w-full text-center mt-1"
-                      >
-                        {showAllCompliance ? 'Show less' : `Show all ${compliance.restaurants.length} restaurants`}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Suppressed Sales */}
             {hasSuppressed && (

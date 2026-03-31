@@ -42,6 +42,8 @@ Preferred communication style: Simple, everyday language.
 - **Same Store Sales (SSS)**: Company-level sales only count units open over 24 months, with a filter for SSS-eligible stores.
 - **Forecast Eligibility**: All active (non-training) units are included in company-level forecast/projected rollups immediately. New units without prior-week data contribute their actual sales to projections.
 - **Year-over-Year (YoY) Sales Comparison**: Allows upload of historical daily sales CSVs for YoY comparisons, matching the same day of the week from the prior year. Displays projected YoY for individual units and aggregated SSS YoY.
+- **Attachment Rate Tracking**: Tracks 6 core upsell categories (cheese, bacon, jalapeños, dipping sauces, shakes & malts, whatasize) with benchmarks. Banana Pudding Shake is tracked as a separate promotional category (5% target) without affecting the composite upsell score; units hitting target get a "Gone Bananas 🍌" badge.
+- **Sandbox Panel**: Contains Weekly Projected forecast, Suppressed Sales analysis, and Attachment Rates (Upsell). Consistency and Schedule Compliance sections have been removed.
 
 ## External Dependencies
 

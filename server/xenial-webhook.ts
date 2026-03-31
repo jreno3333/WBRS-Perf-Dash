@@ -1025,6 +1025,16 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
       /\bMALT/i,
     ],
   },
+  banana_pudding: {
+    namePatterns: [
+      /\bBANANA\s*PUDDING\b/i,
+      /\bBANANA\s*PUD\b/i,
+      /\bBAN\s*PUD\b/i,
+      /\bBANANA\b.*\bPUDDING\b/i,
+      /\bBANANA\b.*\bSHAKE\b/i,
+      /\bBP\s*SHAKE\b/i,
+    ],
+  },
   whatasize: {
     namePatterns: [
       /\bWHATASIZE\b/i,
@@ -1062,6 +1072,7 @@ const ATTACHMENT_BENCHMARKS: Record<string, { min: number; max: number; benchmar
   jalapenos: { min: 5, max: 25, benchmark: SCORING_BENCHMARKS.jalapenos },
   dipping_sauces: { min: 15, max: 50, benchmark: SCORING_BENCHMARKS.dipping_sauces },
   shakes_malts: { min: 5, max: 30, benchmark: SCORING_BENCHMARKS.shakes_malts },
+  banana_pudding: { min: 1, max: 15, benchmark: 5 },
   whatasize: { min: 10, max: 45, benchmark: SCORING_BENCHMARKS.whatasize },
 };
 
@@ -1071,6 +1082,7 @@ const ATTACHMENT_LABELS: Record<string, string> = {
   jalapenos: 'Jalapeños',
   dipping_sauces: 'Dipping Sauces',
   shakes_malts: 'Shakes & Malts',
+  banana_pudding: 'Banana Pudding',
   whatasize: 'Whatasize',
 };
 
@@ -1260,6 +1272,8 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
   }>();
 
   const categories = Object.keys(ATTACHMENT_CATEGORIES);
+  const PROMO_CATEGORIES = new Set(['banana_pudding']);
+  const coreCategories = categories.filter(c => !PROMO_CATEGORIES.has(c));
 
   for (const order of orders) {
     const restaurantInfo = storeToRestaurant.get(order.storeNumber);
@@ -1331,11 +1345,13 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
 
     for (const cat of categories) {
       const hits = entry.categoryHits[cat];
-      const attachRate = Math.round((hits / entry.totalOrders) * 1000) / 10; // one decimal
+      const attachRate = Math.round((hits / entry.totalOrders) * 1000) / 10;
       const benchmark = ATTACHMENT_BENCHMARKS[cat].benchmark;
       const vsTarget = Math.round((attachRate - benchmark) * 10) / 10;
       const catScore = Math.min(100, Math.max(0, (attachRate / benchmark) * 100));
-      totalScore += catScore;
+      if (!PROMO_CATEGORIES.has(cat)) {
+        totalScore += catScore;
+      }
 
       catData[cat] = {
         attachRate,
@@ -1350,7 +1366,7 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
       totalOrders: entry.totalOrders,
       checkAverage: Math.round(checkAverage * 100) / 100,
       categories: catData,
-      overallAttachScore: Math.round(totalScore / categories.length),
+      overallAttachScore: Math.round(totalScore / coreCategories.length),
     });
   });
 
@@ -1521,6 +1537,8 @@ export async function getAttachmentRatesMultiDay(dates: string[]): Promise<Map<s
   }
 
   const categories = Object.keys(ATTACHMENT_CATEGORIES);
+  const PROMO_CATS = new Set(['banana_pudding']);
+  const coreCats = categories.filter(c => !PROMO_CATS.has(c));
   const restaurantData = new Map<string, { totalOrders: number; totalSales: number; categoryHits: Record<string, number> }>();
 
   for (const order of orders) {
@@ -1581,11 +1599,13 @@ export async function getAttachmentRatesMultiDay(dates: string[]): Promise<Map<s
       const benchmark = ATTACHMENT_BENCHMARKS[cat].benchmark;
       const vsTarget = Math.round((attachRate - benchmark) * 10) / 10;
       const catScore = Math.min(100, Math.max(0, (attachRate / benchmark) * 100));
-      totalScore += catScore;
+      if (!PROMO_CATS.has(cat)) {
+        totalScore += catScore;
+      }
       catData[cat] = { attachRate, estimatedUnits: hits, benchmark, vsTarget };
     }
     result.set(compositeKey, {
-      overallAttachScore: Math.round(totalScore / categories.length),
+      overallAttachScore: Math.round(totalScore / coreCats.length),
       categoriesAtTarget: countAttachmentCategoriesAtTarget(catData),
       totalOrders: entry.totalOrders,
     });
