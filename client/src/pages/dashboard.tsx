@@ -61,7 +61,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "new_unit" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "check_avg">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "check_avg">("sales");
   const gradingCfg = useGradingConfig();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -455,8 +455,6 @@ export default function Dashboard() {
       // Then, apply sort-based filters
       .filter((r) => {
         switch (sortBy) {
-          case "new_unit":
-            return r.status === "new";
           case "missing_manager":
             return hasMissingManager(r.restaurantId);
           case "dt_time":
@@ -521,6 +519,11 @@ export default function Dashboard() {
             const bCA = checkAverageByRestaurant?.[b.restaurantId]?.checkAverage ?? 0;
             return bCA - aCA;
           }
+          case "banana_pudding": {
+            const aBP = attachmentRatesResponse?.restaurants?.[a.restaurantId]?.categories?.banana_pudding?.attachRate ?? -1;
+            const bBP = attachmentRatesResponse?.restaurants?.[b.restaurantId]?.categories?.banana_pudding?.attachRate ?? -1;
+            return bBP - aBP;
+          }
           case "yoy": {
             const aYoy = yoyBulkData?.data?.[a.restaurantId];
             const bYoy = yoyBulkData?.data?.[b.restaurantId];
@@ -534,7 +537,7 @@ export default function Dashboard() {
             return b.actualSales - a.actualSales;
         }
       });
-  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap, checkAverageByRestaurant]);
+  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap, checkAverageByRestaurant, attachmentRatesResponse]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -852,7 +855,7 @@ export default function Dashboard() {
                           <SelectItem value="variance">% vs LW Day</SelectItem>
                           <SelectItem value="wtd_variance">% vs LW WTD</SelectItem>
                           <SelectItem value="yoy">% vs LY</SelectItem>
-                          <SelectItem value="new_unit">New Units</SelectItem>
+                          <SelectItem value="banana_pudding">🍌 BP Shake</SelectItem>
                           <SelectItem value="missing_manager">Missing Mgr</SelectItem>
                           <SelectItem value="dt_time">DT Time</SelectItem>
                           <SelectItem value="xscore">Exc Score</SelectItem>
