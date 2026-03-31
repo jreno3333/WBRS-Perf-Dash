@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, posDb } from "../db";
 import { posOrders, restaurants } from "@shared/schema";
 import { desc, sql, gte, lt, and } from "drizzle-orm";
-import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant, getCheckAverageTrend, getAttachmentRatesFromDetail } from "../xenial-webhook";
+import { processXenialOrder, validateWebhookToken, seedLocationMappings, getPosOrdersSummary, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant, getCheckAverageTrend, getAttachmentRatesFromDetail, getHourlyBananaPuddingRates } from "../xenial-webhook";
 import { ATTACHMENT_BENCHMARKS } from "../lib/scoring";
 
 const router = Router();
