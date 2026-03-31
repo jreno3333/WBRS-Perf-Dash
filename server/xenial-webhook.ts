@@ -1029,10 +1029,11 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
     namePatterns: [
       /\bBANANA\s*PUDDING\b/i,
       /\bBANANA\s*PUD\b/i,
-      /\bBAN\s*PUD\b/i,
+      /\bBAN\s*PUD/i,
       /\bBANANA\b.*\bPUDDING\b/i,
       /\bBANANA\b.*\bSHAKE\b/i,
       /\bBP\s*SHAKE\b/i,
+      /\bBAN\s+PUDDNG\b/i,
     ],
   },
   whatasize: {
