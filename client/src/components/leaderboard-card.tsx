@@ -809,61 +809,6 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     </BadgeWithTooltip>
                   );
                 })()}
-                {/* Check Average Badge with 7-day trend */}
-                {checkAverage && checkAverage.totalOrders > 0 && (
-                  <BadgeWithTooltip
-                    className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0"
-                    data-testid={`badge-check-avg-${restaurant.restaurantId}`}
-                    tooltipContent={
-                      <div>
-                        <div className="font-medium">Check Average</div>
-                        <div className="text-muted-foreground">{checkAverage.totalOrders} orders today</div>
-                        <div className="text-muted-foreground">Total: ${checkAverage.totalSales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
-                        {checkAvgTrend && (
-                          <div className="mt-1 pt-1 border-t border-border/50">
-                            <div className="font-medium text-[10px] mb-0.5">7-Day Rolling Avg: ${checkAvgTrend.avg7d.toFixed(2)}</div>
-                            <div className="flex gap-1 flex-wrap">
-                              {checkAvgTrend.daily.map(d => (
-                                <div key={d.date} className="text-center">
-                                  <div className="text-[8px] text-muted-foreground">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
-                                  <div className="text-[9px] font-medium">${d.avg.toFixed(0)}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <div className={`text-[10px] mt-0.5 font-medium ${checkAvgTrend.trend === 'up' ? 'text-green-600' : checkAvgTrend.trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}>
-                              {checkAvgTrend.trend === 'up' ? 'Trending Up' : checkAvgTrend.trend === 'down' ? 'Trending Down' : 'Stable'}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    }
-                  >
-                    <Receipt className="w-3 h-3" />
-                    <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
-                    {checkAvgTrend && checkAvgTrend.trend !== 'flat' && (
-                      checkAvgTrend.trend === 'up'
-                        ? <TrendingUp className="w-2.5 h-2.5 text-green-500" />
-                        : <TrendingDown className="w-2.5 h-2.5 text-red-500" />
-                    )}
-                  </BadgeWithTooltip>
-                )}
-                {overallAttachScore !== undefined && (
-                  <BadgeWithTooltip
-                    className={`flex-shrink-0 text-xs px-1.5 gap-1 border-0 ${
-                      overallAttachScore >= 90
-                        ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                        : overallAttachScore >= 70
-                          ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
-                          : 'bg-red-500/10 text-red-500'
-                    }`}
-                    data-testid={`badge-upsell-${restaurant.restaurantId}`}
-                    tooltipTitle="Upsell Score"
-                    tooltipDetail="Composite score based on attachment rates across all upsell categories (cheese, bacon, jalapeños, dipping sauces, shakes & malts, whatasize). 90+ is green (at target), 70-89 is yellow, below 70 is red."
-                  >
-                    <Target className="w-3 h-3" />
-                    <span className="font-medium">{overallAttachScore}</span>
-                  </BadgeWithTooltip>
-                )}
                 {attachmentCategories?.banana_pudding && attachmentCategories.banana_pudding.attachRate >= 5 && (
                   <BadgeWithTooltip
                     className="flex-shrink-0 text-xs px-1.5 gap-1 border-0 bg-yellow-400/20 text-yellow-700 dark:text-yellow-300"
@@ -871,8 +816,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     tooltipTitle="Gone Bananas! 🍌"
                     tooltipDetail={`Banana Pudding Shake attach rate: ${attachmentCategories.banana_pudding.attachRate.toFixed(1)}% (target: 5%). This unit is crushing the LTO!`}
                   >
-                    <Sparkles className="w-3 h-3" />
-                    <span className="font-medium">🍌 Gone Bananas</span>
+                    <span className="font-medium">🍌 {attachmentCategories.banana_pudding.attachRate.toFixed(1)}%</span>
                   </BadgeWithTooltip>
                 )}
                 {/* Revenue Port Badges */}
