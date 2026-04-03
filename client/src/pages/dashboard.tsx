@@ -68,10 +68,13 @@ export default function Dashboard() {
   const centralToday = getCentralDate();
   const isToday = format(centralToday, "yyyy-MM-dd") === dateStr;
 
-  // Auto-refresh every 5 minutes when viewing today's data
+  // Auto-refresh every 5 minutes for live sales data when viewing today
   const refetchInterval = isToday ? 5 * 60 * 1000 : false;
+  // Slower refresh (15 min) for data that changes less frequently (crew, trends, check avg)
+  const slowRefetchInterval = isToday ? 15 * 60 * 1000 : false;
 
   const secondaryStaleTime = isToday ? 4 * 60 * 1000 : Infinity;
+  const slowStaleTime = isToday ? 14 * 60 * 1000 : Infinity;
 
   const { data: leaderboardData, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard", dateStr],
@@ -105,8 +108,8 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: hasLeaderboard,
-    refetchInterval,
-    staleTime: secondaryStaleTime,
+    refetchInterval: slowRefetchInterval,
+    staleTime: slowStaleTime,
   });
   const crewSummary = crewSummaryResponse?.summary;
 
@@ -125,8 +128,8 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: hasLeaderboard,
-    refetchInterval,
-    staleTime: secondaryStaleTime,
+    refetchInterval: slowRefetchInterval,
+    staleTime: slowStaleTime,
   });
   const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
 
@@ -164,7 +167,8 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: hasLeaderboard,
-    staleTime: secondaryStaleTime,
+    refetchInterval: slowRefetchInterval,
+    staleTime: slowStaleTime,
   });
   const checkAvgTrendByRestaurant = checkAvgTrendResponse?.restaurants;
 
@@ -323,8 +327,8 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: hasLeaderboard,
-    refetchInterval,
-    staleTime: secondaryStaleTime,
+    refetchInterval: slowRefetchInterval,
+    staleTime: slowStaleTime,
   });
 
   interface TwoWeekTrendData {
@@ -342,8 +346,8 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: hasLeaderboard,
-    refetchInterval,
-    staleTime: secondaryStaleTime,
+    refetchInterval: slowRefetchInterval,
+    staleTime: slowStaleTime,
   });
 
   const { data: consistencyData } = useQuery<{

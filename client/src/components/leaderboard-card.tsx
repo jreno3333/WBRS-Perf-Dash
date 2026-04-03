@@ -1112,22 +1112,15 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   // Fall back to normalizedHour if not available (for backward compatibility)
   const localGradeCutoff = restaurant.localCurrentHour ?? restaurant.normalizedHour;
   const normalizedCutoff = restaurant.normalizedHour;
-  
-  // Create a map of existing hourly data
-  const hourlyDataMap = new Map<number, HourlySalesData>();
-  (hourlyData || []).forEach(item => {
-    hourlyDataMap.set(item.hour, item);
-  });
-  
-  // Generate all 24 hours (0-23)
-  const allHours: HourlySalesData[] = [];
-  for (let h = 0; h < 24; h++) {
-    const existing = hourlyDataMap.get(h);
-    if (existing) {
-      allHours.push(existing);
-    } else {
-      // Create placeholder for missing hour
-      allHours.push({
+
+  // Memoize the 24-hour array so it is only rebuilt when hourlyData changes
+  const allHours = useMemo(() => {
+    const map = new Map<number, HourlySalesData>();
+    (hourlyData || []).forEach(item => map.set(item.hour, item));
+    const hours: HourlySalesData[] = [];
+    for (let h = 0; h < 24; h++) {
+      const existing = map.get(h);
+      hours.push(existing ?? ({
         hour: h,
         todaySales: 0,
         lastWeekSales: 0,
@@ -1136,93 +1129,93 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         projectedLabor: 0,
         actualLabor: 0,
         label: h === 0 ? '12am' : h === 12 ? '12pm' : h > 12 ? `${h-12}pm` : `${h}am`,
-      } as HourlySalesData);
+      } as HourlySalesData));
     }
-  }
-  
+    return hours;
+  }, [hourlyData]);
+
   const activeHours = allHours;
 
-  // Compute peak hourly sales for rate badge
-  const peakHourData = allHours.reduce<{ sales: number; hour: number }>(
-    (best, h) => (h.todaySales > best.sales ? { sales: h.todaySales, hour: h.hour } : best),
-    { sales: 0, hour: 0 }
-  );
-  const hourlyRateTier = getHourlyRateTier(peakHourData.sales);
-
-  const maxSales = Math.max(
-    ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
-    1
-  );
+  // Memoize peak/max values used for bar chart scaling
+  const { peakHourData, hourlyRateTier, maxSales } = useMemo(() => {
+    const peak = allHours.reduce<{ sales: number; hour: number }>(
+      (best, h) => (h.todaySales > best.sales ? { sales: h.todaySales, hour: h.hour } : best),
+      { sales: 0, hour: 0 }
+    );
+    return {
+      peakHourData: peak,
+      hourlyRateTier: getHourlyRateTier(peak.sales),
+      maxSales: Math.max(...allHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)), 1),
+    };
+  }, [allHours]);
   
-  // Calculate overall execution grade from completed hourly grades only (using restaurant's local hour)
-  // Only grade hours that have actual sales - no sales = no grade
-  const gradedHours = activeHours
-    .filter(hour => hour.hour <= localGradeCutoff) // Only completed hours for this restaurant
-    .filter(hour => hour.todaySales && hour.todaySales > 0); // No sales = no grade
+  // Memoize the full grade computation — O(n×24) work only re-runs when hourly data or config changes
+  const { gradedHours, hourlyGradeScores, overallScore, overallGrade, dailyBonusResult } = useMemo(() => {
+    const gradedHours = allHours
+      .filter(hour => hour.hour <= localGradeCutoff)
+      .filter(hour => hour.todaySales && hour.todaySales > 0);
 
-  const hourlyGradeScores = gradedHours
-    .map(hour => {
-      const hasComparableSales = hour.lastWeekSales > 0; // Only compare if LW had sales
-      const salesVariancePct = hasComparableSales
-        ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
-        : 0;
-      const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-      // Exclude operator from labor hours (not production/non-production)
-      const positions = hour.positionBreakdown || {};
-      const operatorHrs = positions['_operatorScheduled'] || 0;
-      const rawEmployeeCount = Number(hour.employeeCount) || 0;
-      const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
-      const staffingDiff = actualStaff - staffing.total;
-      // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
-      const hasValidStaffing = rawEmployeeCount >= 1;
-      const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
-      const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-      const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
-      return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
-    }).filter(score => score > 0);
+    const hourlyGradeScores = gradedHours
+      .map(hour => {
+        const hasComparableSales = hour.lastWeekSales > 0;
+        const salesVariancePct = hasComparableSales
+          ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+          : 0;
+        const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+        const positions = hour.positionBreakdown || {};
+        const operatorHrs = positions['_operatorScheduled'] || 0;
+        const rawEmployeeCount = Number(hour.employeeCount) || 0;
+        const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+        const staffingDiff = actualStaff - staffing.total;
+        const hasValidStaffing = rawEmployeeCount >= 1;
+        const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+        const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+        return gradeInfo.hasGrade ? gradeInfo.score : 0;
+      }).filter(score => score > 0);
 
-  // Overall grade = average of raw hourly scores + daily bonus points
-  let overallScore = 0;
-  let dailyBonusResult: ReturnType<typeof computeDailyBonuses> | null = null;
-  if (hourlyGradeScores.length > 0) {
-    const baseScore = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
+    let overallScore = 0;
+    let dailyBonusResult: ReturnType<typeof computeDailyBonuses> | null = null;
+    if (hourlyGradeScores.length > 0) {
+      const baseScore = hourlyGradeScores.reduce((a, b) => a + b, 0) / hourlyGradeScores.length;
 
-    // Compute daily-level aggregates for bonus evaluation
-    const dailyTotalSales = gradedHours.reduce((s, h) => s + h.todaySales, 0);
-    const dailyTotalLWSales = gradedHours.reduce((s, h) => s + h.lastWeekSales, 0);
-    const dailySalesVar = dailyTotalLWSales > 0 ? ((dailyTotalSales - dailyTotalLWSales) / dailyTotalLWSales) * 100 : undefined;
-    const dailyTotalTxn = gradedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
-    const dailyTotalLWTxn = gradedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
-    const dailyTxnVar = dailyTotalLWTxn > 0 ? ((dailyTotalTxn - dailyTotalLWTxn) / dailyTotalLWTxn) * 100 : undefined;
-    const osatHoursForBonus = gradedHours.filter(h => h.osatPercent !== undefined && (h.osatResponses ?? 0) > 0);
-    const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
-    const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
+      const dailyTotalSales = gradedHours.reduce((s, h) => s + h.todaySales, 0);
+      const dailyTotalLWSales = gradedHours.reduce((s, h) => s + h.lastWeekSales, 0);
+      const dailySalesVar = dailyTotalLWSales > 0 ? ((dailyTotalSales - dailyTotalLWSales) / dailyTotalLWSales) * 100 : undefined;
+      const dailyTotalTxn = gradedHours.reduce((s, h) => s + (h.transactionCount || 0), 0);
+      const dailyTotalLWTxn = gradedHours.reduce((s, h) => s + (h.lastWeekTransactionCount || 0), 0);
+      const dailyTxnVar = dailyTotalLWTxn > 0 ? ((dailyTotalTxn - dailyTotalLWTxn) / dailyTotalLWTxn) * 100 : undefined;
+      const osatHoursForBonus = gradedHours.filter(h => h.osatPercent !== undefined && (h.osatResponses ?? 0) > 0);
+      const dailyOsatResponses = osatHoursForBonus.reduce((s, h) => s + (h.osatResponses ?? 0), 0);
+      const dailyOsatPct = dailyOsatResponses > 0 ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses : undefined;
 
-    // YoY variance — use the same DOW-matched yoyData prop as the display
-    const yoyPriorSales = yoyData?.priorNetSales ?? 0;
-    const dailyYoySalesVar = yoyPriorSales > 0 && isSSS
-      ? ((dailyTotalSales - yoyPriorSales) / yoyPriorSales) * 100
-      : undefined;
+      const yoyPriorSales = yoyData?.priorNetSales ?? 0;
+      const dailyYoySalesVar = yoyPriorSales > 0 && isSSS
+        ? ((dailyTotalSales - yoyPriorSales) / yoyPriorSales) * 100
+        : undefined;
 
-    const attachCatsAtTarget = attachmentCategories ? countAttachmentCategoriesAtTarget(attachmentCategories) : undefined;
-    dailyBonusResult = computeDailyBonuses({
-      dailyOsatPercent: dailyOsatPct,
-      dailySurveyCount: dailyOsatResponses,
-      dailySalesVariancePct: dailySalesVar,
-      dailyTransactionVariancePct: dailyTxnVar,
-      dailyYoySalesVariancePct: dailyYoySalesVar,
-      attachmentCategoriesAtTarget: attachCatsAtTarget,
-      hourlyScores: hourlyGradeScores,
-      helperRewardPoints,
-    });
+      const attachCatsAtTarget = attachmentCategories ? countAttachmentCategoriesAtTarget(attachmentCategories) : undefined;
+      dailyBonusResult = computeDailyBonuses({
+        dailyOsatPercent: dailyOsatPct,
+        dailySurveyCount: dailyOsatResponses,
+        dailySalesVariancePct: dailySalesVar,
+        dailyTransactionVariancePct: dailyTxnVar,
+        dailyYoySalesVariancePct: dailyYoySalesVar,
+        attachmentCategoriesAtTarget: attachCatsAtTarget,
+        hourlyScores: hourlyGradeScores,
+        helperRewardPoints,
+      });
 
-    overallScore = Math.min(baseScore + dailyBonusResult.cappedBonus, 100);
-  }
-  const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
+      overallScore = Math.min(baseScore + dailyBonusResult.cappedBonus, 100);
+    }
+    const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
 
-  // Calculate daypart grades from completed hourly grades
-  const daypartGrades = DAYPARTS.map(dp => {
-    const dpScores = activeHours
+    return { gradedHours, hourlyGradeScores, overallScore, overallGrade, dailyBonusResult };
+  }, [allHours, localGradeCutoff, gradingCfg, yoyData, isSSS, attachmentCategories, helperRewardPoints]);
+
+  // Memoize daypart grades — depends on the same inputs as overall grade
+  const daypartGrades = useMemo(() => DAYPARTS.map(dp => {
+    const dpScores = allHours
       .filter(hour => hour.hour >= dp.startHour && hour.hour <= dp.endHour)
       .filter(hour => hour.hour <= localGradeCutoff)
       .filter(hour => hour.todaySales && hour.todaySales > 0)
@@ -1241,20 +1234,21 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
         const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
-        return gradeInfo.hasGrade ? gradeInfo.score : 0; // Use raw score (not midpoint)
+        return gradeInfo.hasGrade ? gradeInfo.score : 0;
       }).filter(s => s > 0);
 
     if (dpScores.length === 0) return { ...dp, grade: null, score: 0 };
     const avg = dpScores.reduce((a, b) => a + b, 0) / dpScores.length;
     const gradeResult = scoreToGrade(avg);
     return { ...dp, grade: gradeResult.grade, score: avg };
-  }).filter(dp => dp.grade !== null);
+  }).filter(dp => dp.grade !== null), [allHours, localGradeCutoff, gradingCfg]);
 
-  // Build demand curve lookup for 15-min interval display
-  const demandCurveMap = new Map<number, DemandCurveHour>();
-  if (demandCurveHours) {
-    demandCurveHours.forEach(h => demandCurveMap.set(h.hour, h));
-  }
+  // Memoize demand curve lookup map
+  const demandCurveMap = useMemo(() => {
+    const map = new Map<number, DemandCurveHour>();
+    if (demandCurveHours) demandCurveHours.forEach(h => map.set(h.hour, h));
+    return map;
+  }, [demandCurveHours]);
 
   // No in-progress hour needed since we only show completed hours now
 

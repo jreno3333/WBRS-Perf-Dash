@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
@@ -65,7 +65,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
-  const activeRestaurants = restaurants.filter(r => r.status !== "training");
+  const activeRestaurants = useMemo(() => restaurants.filter(r => r.status !== "training"), [restaurants]);
   
   // Include all active restaurants in forecast/projected totals (no 14-day exclusion).
   // New units without prior-week data contribute their actual sales to projections.
@@ -132,184 +132,178 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     ? ((weeklyEowForecast / weeklyPriorWeekFull) - 1) * 100
     : 0;
 
-  // Calculate overall execution score across all restaurants
-  const allHourlyScores: number[] = [];
-  const restaurantGrades: Record<string, string> = {}; // Store each restaurant's overall grade
-  const restaurantAdjustedScores: number[] = []; // Per-restaurant scores with daily bonuses (matches email report)
-  
-  // Track scores by hour for trend calculation
-  const scoresByHour: Record<number, number[]> = {};
-  
-  // Track overall staffing, speed, and OSAT metrics
-  let staffingProperCount = 0;
-  let staffingOverCount = 0;
-  let staffingUnderCount = 0;
-  let speedGreenCount = 0;
-  let speedYellowCount = 0;
-  let speedRedCount = 0;
-  let totalSpeedHours = 0;
-  let totalStaffingHours = 0;
-  let osatGoodCount = 0;
-  let osatCautionCount = 0;
-  let osatPoorCount = 0;
-  let totalOsatHours = 0;
-  let totalOsatResponses = 0;
-  
-  if (hourlyByRestaurant) {
-    for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
-      // Skip training units
-      const restaurant = activeRestaurants.find(r => r.restaurantId === restaurantId);
-      if (!restaurant) continue;
-      
-      // Use restaurant's local hour cutoff to only count completed hours
-      // This matches the leaderboard card logic for consistent grading
-      const localGradeCutoff = restaurant.localCurrentHour ?? restaurant.normalizedHour;
-      
-      const restaurantHourlyScores: number[] = [];
-      let restTotalSales = 0;
-      let restTotalLWSales = 0;
-      let restTotalTxn = 0;
-      let restTotalLWTxn = 0;
-      let restOsatWeightedSum = 0;
-      let restOsatResponses = 0;
-      let restLastYearDailySales: number | undefined;
-      for (const hour of hours) {
-        // Only include completed hours (matching leaderboard card behavior)
-        if (hour.hour > localGradeCutoff) continue;
-        // No sales today = no grade (don't penalize hours without transactions)
-        if (!hour.todaySales || hour.todaySales === 0) continue;
-        
-        const hasComparableSales = hour.lastWeekSales > 0; // Only compare if LW had sales
-        const salesVariancePct = hasComparableSales 
-          ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
-          : 0;
-        const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-        // Exclude operator from labor hours (matching leaderboard card logic)
-        const positions = hour.positionBreakdown || {};
-        const operatorHrs = positions['_operatorScheduled'] || 0;
-        const rawEmployeeCount = Number(hour.employeeCount) || 0;
-        const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
-        const staffingDiff = actualStaff - staffing.total;
-        const hasValidStaffing = rawEmployeeCount >= 1;
-        
-        // Track staffing metrics (only if valid staffing data)
-        if (hasValidStaffing) {
-          totalStaffingHours++;
-          if (Math.abs(staffingDiff) <= 1) {
-            staffingProperCount++;
-          } else if (staffingDiff > 1) {
-            staffingOverCount++;
-          } else {
-            staffingUnderCount++;
+  // Memoize the O(n×24) grade computation — only reruns when hourly data or config changes
+  const {
+    scoresByHour,
+    staffingProperPct,
+    speedGreenPct,
+    osatGoodPct,
+    gradeCounts,
+    dfHourCount,
+    overallXScore,
+    overallGrade,
+    gradeColor,
+  } = useMemo(() => {
+    const allHourlyScores: number[] = [];
+    const restaurantGrades: Record<string, string> = {};
+    const restaurantAdjustedScores: number[] = [];
+    const scoresByHour: Record<number, number[]> = {};
+
+    let staffingProperCount = 0;
+    let staffingOverCount = 0;
+    let staffingUnderCount = 0;
+    let speedGreenCount = 0;
+    let speedYellowCount = 0;
+    let speedRedCount = 0;
+    let totalSpeedHours = 0;
+    let totalStaffingHours = 0;
+    let osatGoodCount = 0;
+    let osatCautionCount = 0;
+    let osatPoorCount = 0;
+    let totalOsatHours = 0;
+    let totalOsatResponses = 0;
+
+    if (hourlyByRestaurant) {
+      for (const [restaurantId, hours] of Object.entries(hourlyByRestaurant)) {
+        const restaurant = activeRestaurants.find(r => r.restaurantId === restaurantId);
+        if (!restaurant) continue;
+
+        const localGradeCutoff = restaurant.localCurrentHour ?? restaurant.normalizedHour;
+
+        const restaurantHourlyScores: number[] = [];
+        let restTotalSales = 0;
+        let restTotalLWSales = 0;
+        let restTotalTxn = 0;
+        let restTotalLWTxn = 0;
+        let restOsatWeightedSum = 0;
+        let restOsatResponses = 0;
+        let restLastYearDailySales: number | undefined;
+        for (const hour of hours) {
+          if (hour.hour > localGradeCutoff) continue;
+          if (!hour.todaySales || hour.todaySales === 0) continue;
+
+          const hasComparableSales = hour.lastWeekSales > 0;
+          const salesVariancePct = hasComparableSales
+            ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+            : 0;
+          const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+          const positions = hour.positionBreakdown || {};
+          const operatorHrs = positions['_operatorScheduled'] || 0;
+          const rawEmployeeCount = Number(hour.employeeCount) || 0;
+          const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+          const staffingDiff = actualStaff - staffing.total;
+          const hasValidStaffing = rawEmployeeCount >= 1;
+
+          if (hasValidStaffing) {
+            totalStaffingHours++;
+            if (Math.abs(staffingDiff) <= 1) {
+              staffingProperCount++;
+            } else if (staffingDiff > 1) {
+              staffingOverCount++;
+            } else {
+              staffingUnderCount++;
+            }
+          }
+
+          const speedAtt = hour.speedAttainment;
+          if (speedAtt !== undefined && speedAtt >= 0) {
+            totalSpeedHours++;
+            if (speedAtt >= 70) {
+              speedGreenCount++;
+            } else if (speedAtt >= 50) {
+              speedYellowCount++;
+            } else {
+              speedRedCount++;
+            }
+          }
+
+          if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
+            totalOsatHours++;
+            totalOsatResponses += hour.osatResponses;
+            if (hour.osatPercent >= 85) {
+              osatGoodCount++;
+            } else if (hour.osatPercent >= 80) {
+              osatCautionCount++;
+            } else {
+              osatPoorCount++;
+            }
+          }
+
+          const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+          const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+          const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, gradingCfg);
+          if (gradeInfo.hasGrade) {
+            if (gradeInfo.score > 0) {
+              allHourlyScores.push(gradeInfo.score);
+              restaurantHourlyScores.push(gradeInfo.score);
+              if (!scoresByHour[hour.hour]) scoresByHour[hour.hour] = [];
+              scoresByHour[hour.hour].push(gradeInfo.score);
+            }
+          }
+
+          restTotalSales += hour.todaySales;
+          restTotalLWSales += hour.lastWeekSales;
+          restTotalTxn += (hour.transactionCount ?? 0);
+          restTotalLWTxn += (hour.lastWeekTransactionCount ?? 0);
+          if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
+            restOsatWeightedSum += hour.osatPercent * hour.osatResponses;
+            restOsatResponses += hour.osatResponses;
+          }
+          if (hour.lastYearDailySales !== undefined && hour.lastYearDailySales > 0) {
+            restLastYearDailySales = hour.lastYearDailySales;
           }
         }
-        
-        // Track speed metrics using attainment (% of cars under 6 min)
-        const speedAtt = hour.speedAttainment;
-        if (speedAtt !== undefined && speedAtt >= 0) {
-          totalSpeedHours++;
-          if (speedAtt >= 70) {
-            speedGreenCount++;
-          } else if (speedAtt >= 50) {
-            speedYellowCount++;
-          } else {
-            speedRedCount++;
-          }
+
+        if (restaurantHourlyScores.length > 0) {
+          const baseScore = restaurantHourlyScores.reduce((a, b) => a + b, 0) / restaurantHourlyScores.length;
+
+          const dailySalesVar = restTotalLWSales > 0 ? ((restTotalSales - restTotalLWSales) / restTotalLWSales) * 100 : undefined;
+          const dailyTxnVar = restTotalLWTxn > 0 ? ((restTotalTxn - restTotalLWTxn) / restTotalLWTxn) * 100 : undefined;
+          const dailyOsatPct = restOsatResponses > 0 ? restOsatWeightedSum / restOsatResponses : undefined;
+          const dailyYoyVar = restLastYearDailySales && restLastYearDailySales > 0
+            ? ((restTotalSales - restLastYearDailySales) / restLastYearDailySales) * 100
+            : undefined;
+
+          const attachData = attachmentRatesByRestaurant?.[restaurantId];
+          const attachCatsAtTarget = attachData ? countAttachmentCategoriesAtTarget(attachData.categories) : undefined;
+          const bonusResult = computeDailyBonuses({
+            dailyOsatPercent: dailyOsatPct,
+            dailySurveyCount: restOsatResponses,
+            dailySalesVariancePct: dailySalesVar,
+            dailyTransactionVariancePct: dailyTxnVar,
+            dailyYoySalesVariancePct: dailyYoyVar,
+            attachmentCategoriesAtTarget: attachCatsAtTarget,
+            hourlyScores: restaurantHourlyScores,
+            helperRewardPoints: helperRewardsByRestaurant?.[restaurantId],
+          });
+
+          const adjustedScore = Math.min(baseScore + bonusResult.cappedBonus, 100);
+          restaurantGrades[restaurantId] = scoreToGradeLabel(adjustedScore);
+          restaurantAdjustedScores.push(adjustedScore);
         }
-
-        // Track OSAT metrics (only if customer satisfaction data exists)
-        if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
-          totalOsatHours++;
-          totalOsatResponses += hour.osatResponses;
-          if (hour.osatPercent >= 85) {
-            osatGoodCount++;
-          } else if (hour.osatPercent >= 80) {
-            osatCautionCount++;
-          } else {
-            osatPoorCount++;
-          }
-        }
-
-        const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
-        const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, gradingCfg);
-        if (gradeInfo.hasGrade) {
-          if (gradeInfo.score > 0) {
-            allHourlyScores.push(gradeInfo.score);
-            restaurantHourlyScores.push(gradeInfo.score);
-            // Track by hour for trend calculation
-            if (!scoresByHour[hour.hour]) scoresByHour[hour.hour] = [];
-            scoresByHour[hour.hour].push(gradeInfo.score);
-          }
-        }
-
-        // Accumulate daily metrics for bonus computation
-        restTotalSales += hour.todaySales;
-        restTotalLWSales += hour.lastWeekSales;
-        restTotalTxn += (hour.transactionCount ?? 0);
-        restTotalLWTxn += (hour.lastWeekTransactionCount ?? 0);
-        if (hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0) {
-          restOsatWeightedSum += hour.osatPercent * hour.osatResponses;
-          restOsatResponses += hour.osatResponses;
-        }
-        if (hour.lastYearDailySales !== undefined && hour.lastYearDailySales > 0) {
-          restLastYearDailySales = hour.lastYearDailySales;
-        }
-      }
-
-      // Calculate this restaurant's overall grade (with daily bonuses, matching email report)
-      if (restaurantHourlyScores.length > 0) {
-        const baseScore = restaurantHourlyScores.reduce((a, b) => a + b, 0) / restaurantHourlyScores.length;
-
-        // Compute daily bonuses (same methodology as daily-report.ts)
-        const dailySalesVar = restTotalLWSales > 0 ? ((restTotalSales - restTotalLWSales) / restTotalLWSales) * 100 : undefined;
-        const dailyTxnVar = restTotalLWTxn > 0 ? ((restTotalTxn - restTotalLWTxn) / restTotalLWTxn) * 100 : undefined;
-        const dailyOsatPct = restOsatResponses > 0 ? restOsatWeightedSum / restOsatResponses : undefined;
-        const dailyYoyVar = restLastYearDailySales && restLastYearDailySales > 0
-          ? ((restTotalSales - restLastYearDailySales) / restLastYearDailySales) * 100
-          : undefined;
-
-        const attachData = attachmentRatesByRestaurant?.[restaurantId];
-        const attachCatsAtTarget = attachData ? countAttachmentCategoriesAtTarget(attachData.categories) : undefined;
-        const bonusResult = computeDailyBonuses({
-          dailyOsatPercent: dailyOsatPct,
-          dailySurveyCount: restOsatResponses,
-          dailySalesVariancePct: dailySalesVar,
-          dailyTransactionVariancePct: dailyTxnVar,
-          dailyYoySalesVariancePct: dailyYoyVar,
-          attachmentCategoriesAtTarget: attachCatsAtTarget,
-          hourlyScores: restaurantHourlyScores,
-          helperRewardPoints: helperRewardsByRestaurant?.[restaurantId],
-        });
-
-        const adjustedScore = Math.min(baseScore + bonusResult.cappedBonus, 100);
-        restaurantGrades[restaurantId] = scoreToGradeLabel(adjustedScore);
-        restaurantAdjustedScores.push(adjustedScore);
       }
     }
-  }
-  
-  // Calculate staffing, speed, and OSAT percentages
-  const staffingProperPct = totalStaffingHours > 0 ? Math.round((staffingProperCount / totalStaffingHours) * 100) : 0;
-  const speedGreenPct = totalSpeedHours > 0 ? Math.round((speedGreenCount / totalSpeedHours) * 100) : 0;
-  const osatGoodPct = totalOsatHours > 0 ? Math.round((osatGoodCount / totalOsatHours) * 100) : 0;
-  
-  // Count stores by execution grade (group by letter family)
-  const gradeCounts = { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
-  Object.values(restaurantGrades).forEach(grade => {
-    const family = grade.startsWith('A') ? 'A' : grade.startsWith('B') ? 'B' : grade.startsWith('C') ? 'C' : grade.startsWith('D') ? 'D' : 'F';
-    gradeCounts[family as keyof typeof gradeCounts]++;
-  });
-  
-  // Count D/F hourly scores (score < 60 = F grade)
-  const dfHourCount = allHourlyScores.filter(s => s < 60).length;
 
-  // Use per-restaurant bonus-adjusted scores for overall grade (matches email report methodology)
-  const overallXScore = restaurantAdjustedScores.length > 0
-    ? restaurantAdjustedScores.reduce((a, b) => a + b, 0) / restaurantAdjustedScores.length
-    : (allHourlyScores.length > 0 ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length : 0);
-  const overallGrade = scoreToGradeLabel(overallXScore);
-  const gradeColor = getGradeColor(overallGrade);
+    const staffingProperPct = totalStaffingHours > 0 ? Math.round((staffingProperCount / totalStaffingHours) * 100) : 0;
+    const speedGreenPct = totalSpeedHours > 0 ? Math.round((speedGreenCount / totalSpeedHours) * 100) : 0;
+    const osatGoodPct = totalOsatHours > 0 ? Math.round((osatGoodCount / totalOsatHours) * 100) : 0;
+
+    const gradeCounts = { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
+    Object.values(restaurantGrades).forEach(grade => {
+      const family = grade.startsWith('A') ? 'A' : grade.startsWith('B') ? 'B' : grade.startsWith('C') ? 'C' : grade.startsWith('D') ? 'D' : 'F';
+      gradeCounts[family as keyof typeof gradeCounts]++;
+    });
+
+    const dfHourCount = allHourlyScores.filter(s => s < 60).length;
+
+    const overallXScore = restaurantAdjustedScores.length > 0
+      ? restaurantAdjustedScores.reduce((a, b) => a + b, 0) / restaurantAdjustedScores.length
+      : (allHourlyScores.length > 0 ? allHourlyScores.reduce((a, b) => a + b, 0) / allHourlyScores.length : 0);
+    const overallGrade = scoreToGradeLabel(overallXScore);
+    const gradeColor = getGradeColor(overallGrade);
+
+    return { scoresByHour, staffingProperPct, speedGreenPct, osatGoodPct, gradeCounts, dfHourCount, overallXScore, overallGrade, gradeColor };
+  }, [hourlyByRestaurant, activeRestaurants, gradingCfg, attachmentRatesByRestaurant, helperRewardsByRestaurant]);
 
   // Calculate projected daily: sum of all restaurant forecast sales
   // Each restaurant's forecastSales = actual + LW remaining hours (same methodology)
