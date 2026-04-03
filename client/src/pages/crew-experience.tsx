@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Link } from "wouter";
 import { Users, ChevronUp, ChevronDown, RefreshCw, CalendarIcon, Award, Trophy, Star, Search, ArrowRight, CheckCircle, AlertTriangle, X, ArrowUpDown } from "lucide-react";
 import { NavBar } from "@/components/nav-bar";
+import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 interface CrewMember {
@@ -174,6 +175,7 @@ function formatDollars(amount: number): string {
 }
 
 export default function CrewExperiencePage() {
+  const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [expandedRestaurants, setExpandedRestaurants] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
@@ -245,15 +247,28 @@ export default function CrewExperiencePage() {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      await fetch("/api/crew/sync-employees", { method: "POST" });
-      await fetch("/api/crew/sync", { 
+      const empRes = await fetch("/api/crew/sync-employees", { method: "POST" });
+      if (!empRes.ok) {
+        const msg = await empRes.text();
+        throw new Error(msg || `Employee sync failed (${empRes.status})`);
+      }
+      const empData = await empRes.json();
+
+      const crewRes = await fetch("/api/crew/sync", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: dateStr }),
       });
+      if (!crewRes.ok) {
+        const msg = await crewRes.text();
+        throw new Error(msg || `Crew sync failed (${crewRes.status})`);
+      }
+
       await refetch();
+      toast({ title: "Sync complete", description: `${empData.count || 0} employees synced` });
     } catch (e) {
       console.error("Sync failed:", e);
+      toast({ title: "Sync failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
     } finally {
       setIsSyncing(false);
     }
