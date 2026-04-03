@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useState, memo, useMemo } from "react";
 import { Link } from "wouter";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
@@ -373,9 +373,667 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
   );
 }
 
+interface ExpandedCardContentProps {
+  restaurant: RestaurantSales;
+  activeHours: HourlySalesData[];
+  localGradeCutoff: number;
+  normalizedCutoff: number;
+  maxSales: number;
+  daypartGrades: { id: string; label: string; shortLabel: string; startHour: number; endHour: number; color: string; bgColor: string; grade: string | null; score: number }[];
+  demandCurveMap: Map<number, DemandCurveHour>;
+  destinationsByHour?: Record<number, Record<string, number>>;
+  hourlyData?: HourlySalesData[];
+  hourlyCrewData?: HourlyCrewData[];
+  checkAverage?: CheckAverageData;
+  checkAvgTrend?: CheckAvgTrendData;
+  overallAttachScore?: number;
+  weeklyData?: WeeklyRestaurantData;
+  gradingCfg?: GradingConfigData;
+}
+
+const ExpandedCardContent = memo(function ExpandedCardContent({
+  restaurant,
+  activeHours,
+  localGradeCutoff,
+  normalizedCutoff,
+  maxSales,
+  daypartGrades,
+  demandCurveMap,
+  destinationsByHour,
+  hourlyData,
+  hourlyCrewData,
+  checkAverage,
+  checkAvgTrend,
+  overallAttachScore,
+  weeklyData,
+  gradingCfg,
+}: ExpandedCardContentProps) {
+  const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
+
+  const getTooltipAlign = (hourIndex: number) => {
+    const total = activeHours.length;
+    if (hourIndex <= 1) return 'left-0';
+    if (hourIndex >= total - 2) return 'right-0';
+    return 'left-1/2 -translate-x-1/2';
+  };
+
+  return (
+    <>
+      {(checkAverage || overallAttachScore !== undefined) && (
+        <div className="mt-2 pt-2 border-t border-border/30 flex flex-wrap items-center gap-1.5">
+          {checkAverage && checkAverage.totalOrders > 0 && (
+            <BadgeWithTooltip
+              className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0"
+              data-testid={`badge-check-avg-${restaurant.restaurantId}`}
+              tooltipContent={
+                <div>
+                  <div className="font-medium">Check Average</div>
+                  <div className="text-muted-foreground">{checkAverage.totalOrders} orders today</div>
+                  <div className="text-muted-foreground">Total: ${checkAverage.totalSales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+                  {checkAvgTrend && (
+                    <div className="mt-1 pt-1 border-t border-border/50">
+                      <div className="font-medium text-[10px] mb-0.5">7-Day Rolling Avg: ${checkAvgTrend.avg7d.toFixed(2)}</div>
+                      <div className="flex gap-1 flex-wrap">
+                        {checkAvgTrend.daily.map(d => (
+                          <div key={d.date} className="text-center">
+                            <div className="text-[8px] text-muted-foreground">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
+                            <div className="text-[9px] font-medium">${d.avg.toFixed(0)}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className={`text-[10px] mt-0.5 font-medium ${checkAvgTrend.trend === 'up' ? 'text-green-600' : checkAvgTrend.trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                        {checkAvgTrend.trend === 'up' ? 'Trending Up' : checkAvgTrend.trend === 'down' ? 'Trending Down' : 'Stable'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              }
+            >
+              <Receipt className="w-3 h-3" />
+              <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
+              {checkAvgTrend && checkAvgTrend.trend !== 'flat' && (
+                checkAvgTrend.trend === 'up'
+                  ? <TrendingUp className="w-2.5 h-2.5 text-green-500" />
+                  : <TrendingDown className="w-2.5 h-2.5 text-red-500" />
+              )}
+            </BadgeWithTooltip>
+          )}
+          {overallAttachScore !== undefined && (
+            <BadgeWithTooltip
+              className={`flex-shrink-0 text-xs px-1.5 gap-1 border-0 ${
+                overallAttachScore >= 90
+                  ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                  : overallAttachScore >= 70
+                    ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                    : 'bg-red-500/10 text-red-500'
+              }`}
+              data-testid={`badge-upsell-${restaurant.restaurantId}`}
+              tooltipTitle="Upsell Score"
+              tooltipDetail="Composite score based on attachment rates across all upsell categories (cheese, bacon, jalapeños, dipping sauces, shakes & malts, whatasize). 90+ is green (at target), 70-89 is yellow, below 70 is red."
+            >
+              <Target className="w-3 h-3" />
+              <span className="font-medium">{overallAttachScore}</span>
+            </BadgeWithTooltip>
+          )}
+        </div>
+      )}
+
+      {activeHours.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border/30">
+          <div className="flex justify-between text-xs text-muted-foreground mb-2">
+            <span>Hourly Sales</span>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-sm bg-green-500" />
+                Above
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-sm bg-red-500" />
+                Below
+              </span>
+              {activeHours.some(h => h.speedAttainment !== undefined) && (
+                <span className="flex items-center gap-1">
+                  <div className="w-3 h-0.5 bg-cyan-500" />
+                  SOS
+                </span>
+              )}
+              {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
+                <span className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  OSAT
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-0.5 mb-0.5">
+            {activeHours.map((hour) => {
+              const isCompleted = hour.hour <= localGradeCutoff;
+              const hasComparableSales = hour.lastWeekSales > 0;
+              const salesVariancePct = hasComparableSales
+                ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+                : 0;
+              const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+              const positions = hour.positionBreakdown || {};
+              const operatorHrs = positions['_operatorScheduled'] || 0;
+              const rawEmployeeCount = Number(hour.employeeCount) || 0;
+              const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+              const staffingDiff = actualStaff - staffing.total;
+              const hasValidStaffing = rawEmployeeCount >= 1;
+              const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+              const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+              const hasSales = hour.todaySales && hour.todaySales > 0;
+              return (
+                <div key={`grade-${hour.hour}`} className="flex-1 text-center">
+                  {isCompleted && hasSales ? (
+                    <span className={`text-[10px] font-bold ${gradeInfo.color}`}>{gradeInfo.grade}</span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">-</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {activeHours.some(h => {
+            const dest = destinationsByHour?.[h.hour];
+            return dest && (dest['dt3'] || 0) >= 1;
+          }) && (
+            <div className="flex gap-0.5 mb-0.5">
+              {activeHours.map((hour) => {
+                const isCompleted = hour.hour <= localGradeCutoff;
+                const dt3Count = isCompleted ? (destinationsByHour?.[hour.hour]?.['dt3'] || 0) : 0;
+                const isActive = dt3Count >= 1;
+                return (
+                  <div key={`oot-${hour.hour}`} className="flex-1 text-center">
+                    {isActive ? (
+                      <span className="text-[9px] font-bold text-violet-500">OOT</span>
+                    ) : (
+                      <span className="text-[9px]">&nbsp;</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div
+            className="relative flex items-end gap-0.5 h-12"
+            data-testid={`hourly-chart-${restaurant.restaurantId}`}
+            onMouseLeave={() => setHoveredHourIndex(null)}
+          >
+            {activeHours.map((hour, hourIndex) => {
+              const isCompleted = hour.hour <= localGradeCutoff;
+              const hasComparableSales = hour.lastWeekSales > 0;
+              const salesVariancePct = hasComparableSales
+                ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+                : 0;
+              const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
+              const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
+              const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+              const positions = hour.positionBreakdown || {};
+              const operatorHrs = positions['_operatorScheduled'] || 0;
+              const rawEmployeeCount = Number(hour.employeeCount) || 0;
+              const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+              const staffingDiff = actualStaff - staffing.total;
+              const hasValidStaffing = rawEmployeeCount >= 1;
+              const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+              const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+              const isHovered = hoveredHourIndex === hourIndex;
+
+              return (
+                <div
+                  key={hour.hour}
+                  className="flex-1 flex items-end relative h-full cursor-pointer"
+                  onMouseEnter={() => setHoveredHourIndex(hourIndex)}
+                  onMouseLeave={() => setHoveredHourIndex(null)}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex);
+                  }}
+                >
+                  {(() => {
+                    const barColor = salesVariancePct >= -5
+                      ? "bg-green-500 dark:bg-green-400"
+                      : "bg-red-500 dark:bg-red-400";
+                    const dcHour = demandCurveMap.get(hour.hour);
+                    if (dcHour && dcHour.quarters.length === 4 && dcHour.totalOrders > 0) {
+                      const maxQ = Math.max(...dcHour.quarters.map(q => q.orders), 1);
+                      return (
+                        <div
+                          className="w-full flex items-end gap-px"
+                          style={{ height: `${barHeightPx}px` }}
+                        >
+                          {dcHour.quarters.map((q, qi) => (
+                            <div
+                              key={qi}
+                              className={`flex-1 rounded-t-[1px] ${barColor}`}
+                              style={{
+                                height: `${Math.max(2, (q.orders / maxQ) * barHeightPx)}px`,
+                                opacity: q.orders > 0 ? 1 : 0.3
+                              }}
+                            />
+                          ))}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        className={`w-full rounded-t-sm transition-all ${barColor}`}
+                        style={{ height: `${barHeightPx}px` }}
+                      />
+                    );
+                  })()}
+                  <div className={`absolute bottom-full mb-1 ${getTooltipAlign(hourIndex)} bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{hour.label}</span>
+                      {isCompleted && hour.todaySales > 0 && <span className={gradeInfo.color}>{gradeInfo.grade}</span>}
+                      {!isCompleted && <span className="text-muted-foreground">pending</span>}
+                      <span className={salesVariancePct >= -5 ? "text-green-500" : "text-red-500"}>
+                        ${hour.todaySales.toLocaleString()}
+                      </span>
+                      <span className="text-muted-foreground">LW ${hour.lastWeekSales.toLocaleString()}</span>
+                      {isCompleted && hour.speedAttainment !== undefined && (
+                        <span className={
+                          hour.speedAttainment < 50 ? "text-red-500" :
+                          hour.speedAttainment < 70 ? "text-yellow-500" :
+                          "text-green-500"
+                        }>
+                          {hour.speedAttainment}%
+                        </span>
+                      )}
+                      {isCompleted && (() => {
+                        const destHour = destinationsByHour?.[hour.hour];
+                        if (!destHour) return null;
+                        const dt3Count = destHour['dt3'] || 0;
+                        if (dt3Count === 0) return null;
+                        const isActive = dt3Count >= 1;
+                        return (
+                          <span className={isActive ? "text-violet-500 font-medium" : "text-muted-foreground"}>
+                            OOT:{dt3Count}
+                          </span>
+                        );
+                      })()}
+                      {isCompleted && hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0 && (
+                        <span className={
+                          hour.osatPercent >= 85 ? "text-green-500" :
+                          hour.osatPercent >= 80 ? "text-amber-600 dark:text-amber-400" :
+                          "text-red-500"
+                        }>
+                          OSAT {Math.round(hour.osatPercent)}% ({hour.osatResponses})
+                        </span>
+                      )}
+                      {isCompleted && (() => {
+                        const hourCA = checkAverage?.hourly?.[hour.hour];
+                        if (!hourCA || hourCA.orders === 0) return null;
+                        return <span className="text-teal-600 dark:text-teal-400">${hourCA.avg.toFixed(2)} ({hourCA.orders})</span>;
+                      })()}
+                    </div>
+                    {isCompleted && (() => {
+                      const dcHour = demandCurveMap.get(hour.hour);
+                      if (!dcHour || dcHour.quarters.every(q => q.orders === 0)) return null;
+                      const h12 = hour.hour === 0 ? 12 : hour.hour > 12 ? hour.hour - 12 : hour.hour;
+                      const ampm = hour.hour < 12 ? 'am' : 'pm';
+                      return (
+                        <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground border-t border-border/50 pt-0.5">
+                          {dcHour.quarters.map((q, qi) => {
+                            const min = qi * 15;
+                            return (
+                              <span key={qi} className={q.orders > 0 ? "text-foreground" : ""}>
+                                {h12}:{min.toString().padStart(2, '0')}{ampm} <span className="font-medium">{q.orders}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            })}
+            {activeHours.some(h => h.speedAttainment !== undefined) && (
+              <svg
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                <polyline
+                  fill="none"
+                  stroke="rgb(6, 182, 212)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  points={activeHours
+                    .map((hour, idx) => {
+                      const att = hour.speedAttainment;
+                      if (att === undefined) return null;
+                      const x = ((idx + 0.5) / activeHours.length) * 100;
+                      const y = (1 - att / 100) * 100;
+                      return `${x},${y}`;
+                    })
+                    .filter(Boolean)
+                    .join(' ')}
+                />
+              </svg>
+            )}
+            {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
+              <div className="absolute inset-0 w-full h-full pointer-events-none flex">
+                {activeHours.map((hour, idx) => {
+                  const hasOsat = hour.osatResponses && hour.osatResponses > 0;
+                  const osatPct = hour.osatPercent || 0;
+                  const fillColor = osatPct >= 85 ? "bg-green-500" : osatPct >= 80 ? "bg-yellow-500" : "bg-red-500";
+                  const borderColor = osatPct >= 85 ? "border-green-700" : osatPct >= 80 ? "border-yellow-700" : "border-red-700";
+                  return (
+                    <div key={`osat-${hour.hour}`} className="flex-1 flex justify-center">
+                      {hasOsat && (
+                        <div
+                          className={`w-3 h-3 rounded-full ${fillColor} border-2 ${borderColor} mt-1`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+            <span>{activeHours[0]?.label || ""}</span>
+            <span>{(() => {
+              const lastHour = activeHours[activeHours.length - 1]?.hour;
+              if (lastHour === undefined) return "";
+              const nextHour = (lastHour + 1) % 24;
+              return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
+            })()}</span>
+          </div>
+          <div className="flex mt-0.5">
+            {DAYPARTS.map(dp => {
+              const spanHours = dp.endHour - dp.startHour + 1;
+              const widthPercent = (spanHours / 24) * 100;
+              const dpGrade = daypartGrades.find(dg => dg.id === dp.id);
+              let dpSales = 0;
+              let dpLastWeekSales = 0;
+              if (hourlyData) {
+                for (let h = dp.startHour; h <= dp.endHour; h++) {
+                  const hourData = hourlyData.find(hd => hd.hour === h);
+                  if (hourData) {
+                    dpSales += hourData.todaySales || 0;
+                    dpLastWeekSales += hourData.lastWeekSales || 0;
+                  }
+                }
+              }
+              const dpVariance = dpLastWeekSales > 0
+                ? ((dpSales - dpLastWeekSales) / dpLastWeekSales) * 100
+                : 0;
+              return (
+                <div key={dp.id} style={{ width: `${widthPercent}%` }} className="text-center px-px">
+                  <div className={`h-1 rounded-sm ${dp.bgColor}`} style={{ opacity: dpGrade?.grade ? 1 : 0.3 }} />
+                  <div className="text-[8px] leading-tight mt-px flex items-center justify-center gap-0.5">
+                    <span className={`font-medium ${dp.color}`}>{dp.shortLabel}</span>
+                    {dpGrade?.grade && (
+                      <span className={`font-bold ${dpGetGradeColor(dpGrade.grade)}`}>{dpGrade.grade}</span>
+                    )}
+                  </div>
+                  {dpSales > 0 && (
+                    <div className="text-[7px] leading-none font-medium">
+                      <span className="text-muted-foreground">${Math.round(dpSales).toLocaleString()}</span>
+                      {dpLastWeekSales > 0 && (
+                        <span className={`ml-0.5 ${dpVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
+                          {dpVariance >= 0 ? "+" : ""}{Math.round(dpVariance)}%
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <div className="flex justify-between text-xs text-muted-foreground mb-2">
+              <span>Labor Hours Deployed</span>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-sm bg-green-500" />
+                  Right-sized
+                </span>
+                <span className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-sm bg-red-500" />
+                  Overstaffed
+                </span>
+                <span className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-sm bg-yellow-500" />
+                  Understaffed
+                </span>
+                <span className="flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 text-orange-500" />
+                  No Mgr
+                </span>
+              </div>
+            </div>
+            <div
+              className="flex items-end gap-0.5 h-10"
+              data-testid={`staffing-chart-${restaurant.restaurantId}`}
+              onMouseLeave={() => setHoveredHourIndex(null)}
+            >
+              {activeHours.map((hour, hourIndex) => {
+                const positions = hour.positionBreakdown || {};
+                const operatorHours = positions['_operatorScheduled'] || 0;
+                const laborHours = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHours);
+                const sales = hour.todaySales || 0;
+                const staffingDetails = getStaffingBreakdown(hour.hour, sales);
+                const recommendedHours = staffingDetails.total;
+                const staffingDiff = laborHours - recommendedHours;
+                const isRightSized = Math.abs(staffingDiff) <= 1;
+                const isOverstaffed = staffingDiff > 1;
+                const isUnderstaffed = staffingDiff < -1;
+                const hasNoData = laborHours === 0 && sales === 0 && operatorHours === 0;
+                const maxDisplayHours = 15;
+                const displayHours = Math.min(laborHours, maxDisplayHours);
+                const barHeightPx = hasNoData ? 0 : Math.max(3, (displayHours / maxDisplayHours) * 40);
+                const targetDisplayHours = Math.min(recommendedHours, maxDisplayHours);
+                const targetLineHeightPx = (targetDisplayHours / maxDisplayHours) * 40;
+                const barColor = isRightSized
+                  ? "bg-green-500 dark:bg-green-400"
+                  : isOverstaffed
+                    ? "bg-red-500 dark:bg-red-400"
+                    : "bg-yellow-500 dark:bg-yellow-400";
+                const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
+                const hasManager = positionKeys.some(p => p.includes("manager"));
+                const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
+                const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
+                const missingLeadership = !hasManager && !hasShiftSupervisor && !hasOperatorScheduled && laborHours > 0;
+                const isHovered = hoveredHourIndex === hourIndex;
+
+                return (
+                  <div
+                    key={`staff-${hour.hour}`}
+                    className="flex-1 flex items-end relative h-full cursor-pointer"
+                    onMouseEnter={() => setHoveredHourIndex(hourIndex)}
+                    onMouseLeave={() => setHoveredHourIndex(null)}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex);
+                    }}
+                  >
+                    {hasNoData ? (
+                      <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
+                    ) : (
+                      <>
+                        {(() => {
+                          const qb = hour.quarterBreakdown;
+                          if (qb && (qb.q0 > 0 || qb.q1 > 0 || qb.q2 > 0 || qb.q3 > 0)) {
+                            const maxQ = Math.max(qb.q0, qb.q1, qb.q2, qb.q3, 0.01);
+                            return (
+                              <div
+                                className="w-full flex items-end gap-px"
+                                style={{ height: `${barHeightPx}px` }}
+                              >
+                                {[qb.q0, qb.q1, qb.q2, qb.q3].map((qVal, qi) => (
+                                  <div
+                                    key={qi}
+                                    className={`flex-1 rounded-t-[1px] ${barColor}`}
+                                    style={{
+                                      height: `${Math.max(1, (qVal / maxQ) * barHeightPx)}px`,
+                                      opacity: qVal > 0 ? 1 : 0.3
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div
+                              className={`w-full rounded-t-sm transition-all ${barColor}`}
+                              style={{ height: `${barHeightPx}px` }}
+                            />
+                          );
+                        })()}
+                        <div
+                          className="absolute w-full border-t-2 border-slate-800 dark:border-slate-200 pointer-events-none"
+                          style={{ bottom: `${targetLineHeightPx}px` }}
+                        />
+                        {missingLeadership && (
+                          <div className="absolute -top-1 left-1/2 -translate-x-1/2">
+                            <AlertTriangle className="w-3 h-3 text-orange-500 animate-pulse" />
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div className={`absolute bottom-full mb-1 ${getTooltipAlign(hourIndex)} bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{hour.label}</span>
+                          {missingLeadership && (
+                            <span className="text-orange-500 flex items-center gap-0.5">
+                              <AlertTriangle className="w-3 h-3" />
+                            </span>
+                          )}
+                          <span className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
+                            {laborHours.toFixed(1)}h/{recommendedHours}h
+                          </span>
+                          {(() => {
+                            const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
+                            if (!crewHour || crewHour.experienceScore === 0) return null;
+                            const score = crewHour.experienceScore;
+                            const color = score >= 75 ? "text-green-600" : score >= 50 ? "text-amber-600" : "text-red-600";
+                            const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
+                            const parts: string[] = [];
+                            if (veteran > 0) parts.push(`${veteran}V`);
+                            if (experienced > 0) parts.push(`${experienced}E`);
+                            if (developing > 0) parts.push(`${developing}D`);
+                            if (trainee > 0) parts.push(`${trainee}T`);
+                            return (
+                              <span className={color}>
+                                XP:{score} {parts.length > 0 && <span className="opacity-75">{parts.join('/')}</span>}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                        {(() => {
+                          const leaders = hour.leaders || [];
+                          if (leaders.length > 0) {
+                            return (
+                              <div className="text-muted-foreground text-[10px]">
+                                {leaders.map((l, i) => (
+                                  <span key={i}>
+                                    {i > 0 && ', '}
+                                    <span className="font-medium">{l.firstName}</span>
+                                    <span className="opacity-70"> ({l.position.includes('Manager') ? 'MGR' : l.position.includes('Supervisor') ? 'SS' : 'OP'})</span>
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          }
+                          const posKeys = Object.keys(positions)
+                            .filter(k => !k.startsWith('_') && positions[k] > 0);
+                          if (posKeys.length === 0) return null;
+                          return (
+                            <div className="text-muted-foreground text-[10px]">
+                              {posKeys.slice(0, 5).join(', ')}{posKeys.length > 5 ? '...' : ''}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {(() => {
+              const totals = activeHours.reduce((acc, hour) => {
+                const positions = hour.positionBreakdown || {};
+                const operatorHrs = positions['_operatorScheduled'] || 0;
+                const laborHrs = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
+                const sales = hour.todaySales || 0;
+                const hasData = laborHrs > 0 || sales > 0 || operatorHrs > 0;
+                if (hasData) {
+                  const staffingDetails = getStaffingBreakdown(hour.hour, sales);
+                  acc.totalDeployed += laborHrs;
+                  acc.totalTarget += staffingDetails.total;
+                  acc.hoursWithData++;
+                }
+                acc.totalLaborDollars += (hour.actualLabor || 0);
+                return acc;
+              }, { totalDeployed: 0, totalTarget: 0, hoursWithData: 0, totalLaborDollars: 0 });
+
+              const staffingDiff = totals.totalDeployed - totals.totalTarget;
+              const isOverstaffed = staffingDiff > 0;
+              const isUnderstaffed = staffingDiff < 0;
+              if (totals.hoursWithData === 0) return null;
+
+              const dayLaborPct = restaurant.actualSales > 0
+                ? (totals.totalLaborDollars / restaurant.actualSales) * 100
+                : 0;
+              const wtdLaborPct = weeklyData && weeklyData.currentWeek > 0 && weeklyData.wtdLaborCost
+                ? (weeklyData.wtdLaborCost / weeklyData.currentWeek) * 100
+                : 0;
+              const laborTarget = restaurant.laborTarget || 25;
+
+              return (
+                <div className="mt-2 flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">
+                    Day Total: {totals.totalDeployed.toFixed(1)} labor hrs / {totals.totalTarget} target
+                  </span>
+                  <div className="flex items-center gap-3">
+                    {totals.totalLaborDollars > 0 && (
+                      <span className="text-muted-foreground">
+                        LC%{' '}
+                        <span className={`font-medium ${dayLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
+                          Day {dayLaborPct.toFixed(1)}%
+                        </span>
+                        {wtdLaborPct > 0 && (
+                          <>
+                            {' '}
+                            <span className={`font-medium ${wtdLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
+                              WTD {wtdLaborPct.toFixed(1)}%
+                            </span>
+                          </>
+                        )}
+                      </span>
+                    )}
+                    <span className={`font-medium ${
+                      isOverstaffed ? "text-red-500" :
+                      isUnderstaffed ? "text-yellow-500" :
+                      "text-green-500"
+                    }`} data-testid={`staffing-total-${restaurant.restaurantId}`}>
+                      {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` :
+                       isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` :
+                       "Right-sized"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+    </>
+  );
+});
+
 export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints, twoWeekTrend }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   const gradingCfg = useGradingConfig();
 
   // formatCurrency is imported from @/lib/grading (module-level singleton)
@@ -491,13 +1149,6 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   );
   const hourlyRateTier = getHourlyRateTier(peakHourData.sales);
 
-  // Compute tooltip alignment so edge-of-chart tooltips don't overflow
-  const getTooltipAlign = (hourIndex: number) => {
-    const total = activeHours.length;
-    if (hourIndex <= 1) return 'left-0';
-    if (hourIndex >= total - 2) return 'right-0';
-    return 'left-1/2 -translate-x-1/2';
-  };
   const maxSales = Math.max(
     ...activeHours.map(h => Math.max(h.todaySales, h.lastWeekSales, h.forecastSales)),
     1
@@ -1042,667 +1693,26 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
           </div>
         </div>
 
-        {isExpanded && (checkAverage || overallAttachScore !== undefined) && (
-          <div className="mt-2 pt-2 border-t border-border/30 flex flex-wrap items-center gap-1.5">
-            {checkAverage && checkAverage.totalOrders > 0 && (
-              <BadgeWithTooltip
-                className="flex-shrink-0 text-xs px-1.5 gap-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0"
-                data-testid={`badge-check-avg-${restaurant.restaurantId}`}
-                tooltipContent={
-                  <div>
-                    <div className="font-medium">Check Average</div>
-                    <div className="text-muted-foreground">{checkAverage.totalOrders} orders today</div>
-                    <div className="text-muted-foreground">Total: ${checkAverage.totalSales.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
-                    {checkAvgTrend && (
-                      <div className="mt-1 pt-1 border-t border-border/50">
-                        <div className="font-medium text-[10px] mb-0.5">7-Day Rolling Avg: ${checkAvgTrend.avg7d.toFixed(2)}</div>
-                        <div className="flex gap-1 flex-wrap">
-                          {checkAvgTrend.daily.map(d => (
-                            <div key={d.date} className="text-center">
-                              <div className="text-[8px] text-muted-foreground">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
-                              <div className="text-[9px] font-medium">${d.avg.toFixed(0)}</div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className={`text-[10px] mt-0.5 font-medium ${checkAvgTrend.trend === 'up' ? 'text-green-600' : checkAvgTrend.trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}>
-                          {checkAvgTrend.trend === 'up' ? 'Trending Up' : checkAvgTrend.trend === 'down' ? 'Trending Down' : 'Stable'}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                }
-              >
-                <Receipt className="w-3 h-3" />
-                <span className="font-medium">${checkAverage.checkAverage.toFixed(2)}</span>
-                {checkAvgTrend && checkAvgTrend.trend !== 'flat' && (
-                  checkAvgTrend.trend === 'up'
-                    ? <TrendingUp className="w-2.5 h-2.5 text-green-500" />
-                    : <TrendingDown className="w-2.5 h-2.5 text-red-500" />
-                )}
-              </BadgeWithTooltip>
-            )}
-            {overallAttachScore !== undefined && (
-              <BadgeWithTooltip
-                className={`flex-shrink-0 text-xs px-1.5 gap-1 border-0 ${
-                  overallAttachScore >= 90
-                    ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                    : overallAttachScore >= 70
-                      ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
-                      : 'bg-red-500/10 text-red-500'
-                }`}
-                data-testid={`badge-upsell-${restaurant.restaurantId}`}
-                tooltipTitle="Upsell Score"
-                tooltipDetail="Composite score based on attachment rates across all upsell categories (cheese, bacon, jalapeños, dipping sauces, shakes & malts, whatasize). 90+ is green (at target), 70-89 is yellow, below 70 is red."
-              >
-                <Target className="w-3 h-3" />
-                <span className="font-medium">{overallAttachScore}</span>
-              </BadgeWithTooltip>
-            )}
-          </div>
+        {isExpanded && (
+          <ExpandedCardContent
+            restaurant={restaurant}
+            activeHours={activeHours}
+            localGradeCutoff={localGradeCutoff}
+            normalizedCutoff={normalizedCutoff}
+            maxSales={maxSales}
+            daypartGrades={daypartGrades}
+            demandCurveMap={demandCurveMap}
+            destinationsByHour={destinationsByHour}
+            hourlyData={hourlyData}
+            hourlyCrewData={hourlyCrewData}
+            checkAverage={checkAverage}
+            checkAvgTrend={checkAvgTrend}
+            overallAttachScore={overallAttachScore}
+            weeklyData={weeklyData}
+            gradingCfg={gradingCfg}
+          />
         )}
 
-        {isExpanded && activeHours.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-border/30">
-            <div className="flex justify-between text-xs text-muted-foreground mb-2">
-              <span>Hourly Sales</span>
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-sm bg-green-500" />
-                  Above
-                </span>
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-sm bg-red-500" />
-                  Below
-                </span>
-                {activeHours.some(h => h.speedAttainment !== undefined) && (
-                  <span className="flex items-center gap-1">
-                    <div className="w-3 h-0.5 bg-cyan-500" />
-                    SOS
-                  </span>
-                )}
-                {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    OSAT
-                  </span>
-                )}
-              </div>
-            </div>
-            {/* Execution Grades Row - only show grades for completed hours (using restaurant's local hour) */}
-            <div className="flex gap-0.5 mb-0.5">
-              {activeHours.map((hour) => {
-                const isCompleted = hour.hour <= localGradeCutoff;
-                const hasComparableSales = hour.lastWeekSales > 0;
-                const salesVariancePct = hasComparableSales
-                  ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
-                  : 0;
-                const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-                // Exclude operator from labor hours (not production/non-production)
-                const positions = hour.positionBreakdown || {};
-                const operatorHrs = positions['_operatorScheduled'] || 0;
-                const rawEmployeeCount = Number(hour.employeeCount) || 0;
-                const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
-                const staffingDiff = actualStaff - staffing.total;
-                // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
-                const hasValidStaffing = rawEmployeeCount >= 1;
-                const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
-                const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
-
-                // No sales = no grade displayed
-                const hasSales = hour.todaySales && hour.todaySales > 0;
-
-                return (
-                  <div
-                    key={`grade-${hour.hour}`}
-                    className="flex-1 text-center"
-                  >
-                    {isCompleted && hasSales ? (
-                      <span className={`text-[10px] font-bold ${gradeInfo.color}`}>
-                        {gradeInfo.grade}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground">-</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {/* Full Lane B row — visible under grades when dt3 >= 1 for any hour */}
-            {activeHours.some(h => {
-              const dest = destinationsByHour?.[h.hour];
-              return dest && (dest['dt3'] || 0) >= 1;
-            }) && (
-              <div className="flex gap-0.5 mb-0.5">
-                {activeHours.map((hour) => {
-                  const isCompleted = hour.hour <= localGradeCutoff;
-                  const dt3Count = isCompleted ? (destinationsByHour?.[hour.hour]?.['dt3'] || 0) : 0;
-                  const isActive = dt3Count >= 1;
-                  return (
-                    <div key={`oot-${hour.hour}`} className="flex-1 text-center">
-                      {isActive ? (
-                        <span className="text-[9px] font-bold text-violet-500">OOT</span>
-                      ) : (
-                        <span className="text-[9px]">&nbsp;</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div 
-              className="relative flex items-end gap-0.5 h-12" 
-              data-testid={`hourly-chart-${restaurant.restaurantId}`}
-              onMouseLeave={() => setHoveredHourIndex(null)}
-            >
-              {activeHours.map((hour, hourIndex) => {
-                const isCompleted = hour.hour <= localGradeCutoff;
-                const hasComparableSales = hour.lastWeekSales > 0;
-                const salesVariancePct = hasComparableSales 
-                  ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100 
-                  : 0;
-                const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
-                const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
-                const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-                // Exclude operator from labor hours (not production/non-production)
-                const positions = hour.positionBreakdown || {};
-                const operatorHrs = positions['_operatorScheduled'] || 0;
-                const rawEmployeeCount = Number(hour.employeeCount) || 0;
-                const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
-                const staffingDiff = actualStaff - staffing.total;
-                // Exclude staffing from grade when employee count is near-zero (indicates missing/incomplete data)
-                const hasValidStaffing = rawEmployeeCount >= 1;
-                const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
-                const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
-                const isHovered = hoveredHourIndex === hourIndex;
-                
-                return (
-                  <div
-                    key={hour.hour}
-                    className="flex-1 flex items-end relative h-full cursor-pointer"
-                    onMouseEnter={() => setHoveredHourIndex(hourIndex)}
-                    onMouseLeave={() => setHoveredHourIndex(null)}
-                    onTouchStart={(e) => {
-                      e.preventDefault();
-                      setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex);
-                    }}
-                  >
-                    {(() => {
-                      const barColor = salesVariancePct >= -5
-                        ? "bg-green-500 dark:bg-green-400"
-                        : "bg-red-500 dark:bg-red-400";
-                      const dcHour = demandCurveMap.get(hour.hour);
-                      if (dcHour && dcHour.quarters.length === 4 && dcHour.totalOrders > 0) {
-                        const maxQ = Math.max(...dcHour.quarters.map(q => q.orders), 1);
-                        return (
-                          <div
-                            className="w-full flex items-end gap-px"
-                            style={{ height: `${barHeightPx}px` }}
-                          >
-                            {dcHour.quarters.map((q, qi) => (
-                              <div
-                                key={qi}
-                                className={`flex-1 rounded-t-[1px] ${barColor}`}
-                                style={{
-                                  height: `${Math.max(2, (q.orders / maxQ) * barHeightPx)}px`,
-                                  opacity: q.orders > 0 ? 1 : 0.3
-                                }}
-                              />
-                            ))}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div
-                          className={`w-full rounded-t-sm transition-all ${barColor}`}
-                          style={{ height: `${barHeightPx}px` }}
-                        />
-                      );
-                    })()}
-                    <div className={`absolute bottom-full mb-1 ${getTooltipAlign(hourIndex)} bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none whitespace-nowrap z-10 transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{hour.label}</span>
-                        {isCompleted && hour.todaySales > 0 && <span className={gradeInfo.color}>{gradeInfo.grade}</span>}
-                        {!isCompleted && <span className="text-muted-foreground">pending</span>}
-                        <span className={salesVariancePct >= -5 ? "text-green-500" : "text-red-500"}>
-                          ${hour.todaySales.toLocaleString()}
-                        </span>
-                        <span className="text-muted-foreground">LW ${hour.lastWeekSales.toLocaleString()}</span>
-                        {isCompleted && hour.speedAttainment !== undefined && (
-                          <span className={
-                            hour.speedAttainment < 50 ? "text-red-500" :
-                            hour.speedAttainment < 70 ? "text-yellow-500" :
-                            "text-green-500"
-                          }>
-                            {hour.speedAttainment}%
-                          </span>
-                        )}
-                        {/* Full Lane B indicator — dt3 order count */}
-                        {isCompleted && (() => {
-                          const destHour = destinationsByHour?.[hour.hour];
-                          if (!destHour) return null;
-                          const dt3Count = destHour['dt3'] || 0;
-                          if (dt3Count === 0) return null;
-                          const isActive = dt3Count >= 1;
-                          return (
-                            <span className={isActive ? "text-violet-500 font-medium" : "text-muted-foreground"}>
-                              OOT:{dt3Count}
-                            </span>
-                          );
-                        })()}
-                        {isCompleted && hour.osatPercent !== undefined && hour.osatResponses !== undefined && hour.osatResponses > 0 && (
-                          <span className={
-                            hour.osatPercent >= 85 ? "text-green-500" :
-                            hour.osatPercent >= 80 ? "text-amber-600 dark:text-amber-400" :
-                            "text-red-500"
-                          }>
-                            OSAT {Math.round(hour.osatPercent)}% ({hour.osatResponses})
-                          </span>
-                        )}
-                        {isCompleted && (() => {
-                          const hourCA = checkAverage?.hourly?.[hour.hour];
-                          if (!hourCA || hourCA.orders === 0) return null;
-                          return <span className="text-teal-600 dark:text-teal-400">${hourCA.avg.toFixed(2)} ({hourCA.orders})</span>;
-                        })()}
-                      </div>
-                      {/* 15-minute interval breakdown */}
-                      {isCompleted && (() => {
-                        const dcHour = demandCurveMap.get(hour.hour);
-                        if (!dcHour || dcHour.quarters.every(q => q.orders === 0)) return null;
-                        const h12 = hour.hour === 0 ? 12 : hour.hour > 12 ? hour.hour - 12 : hour.hour;
-                        const ampm = hour.hour < 12 ? 'am' : 'pm';
-                        return (
-                          <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground border-t border-border/50 pt-0.5">
-                            {dcHour.quarters.map((q, qi) => {
-                              const min = qi * 15;
-                              return (
-                                <span key={qi} className={q.orders > 0 ? "text-foreground" : ""}>
-                                  {h12}:{min.toString().padStart(2, '0')}{ampm} <span className="font-medium">{q.orders}</span>
-                                </span>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                );
-              })}
-              {/* SOS Line Overlay - speed attainment */}
-              {activeHours.some(h => h.speedAttainment !== undefined) && (
-                <svg 
-                  className="absolute inset-0 w-full h-full pointer-events-none" 
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                >
-                  <polyline
-                    fill="none"
-                    stroke="rgb(6, 182, 212)"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                    points={activeHours
-                      .map((hour, idx) => {
-                        const att = hour.speedAttainment;
-                        if (att === undefined) return null;
-                        const x = ((idx + 0.5) / activeHours.length) * 100;
-                        // Scale: 0-100% attainment maps to chart height (higher = better = higher on chart)
-                        const y = (1 - att / 100) * 100;
-                        return `${x},${y}`;
-                      })
-                      .filter(Boolean)
-                      .join(' ')}
-                  />
-                </svg>
-              )}
-              {/* OSAT Dots Overlay - colored dots on hours with survey responses */}
-              {activeHours.some(h => h.osatResponses && h.osatResponses > 0) && (
-                <div className="absolute inset-0 w-full h-full pointer-events-none flex">
-                  {activeHours.map((hour, idx) => {
-                    const hasOsat = hour.osatResponses && hour.osatResponses > 0;
-                    const osatPct = hour.osatPercent || 0;
-                    const fillColor = osatPct >= 85 ? "bg-green-500" : osatPct >= 80 ? "bg-yellow-500" : "bg-red-500";
-                    const borderColor = osatPct >= 85 ? "border-green-700" : osatPct >= 80 ? "border-yellow-700" : "border-red-700";
-                    return (
-                      <div key={`osat-${hour.hour}`} className="flex-1 flex justify-center">
-                        {hasOsat && (
-                          <div 
-                            className={`w-3 h-3 rounded-full ${fillColor} border-2 ${borderColor} mt-1`}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-              <span>{activeHours[0]?.label || ""}</span>
-              <span>{(() => {
-                const lastHour = activeHours[activeHours.length - 1]?.hour;
-                if (lastHour === undefined) return "";
-                const nextHour = (lastHour + 1) % 24;
-                return nextHour === 0 ? "12am" : nextHour < 12 ? `${nextHour}am` : nextHour === 12 ? "12pm" : `${nextHour - 12}pm`;
-              })()}</span>
-            </div>
-            {/* Daypart brackets with grades + sales & variance */}
-            <div className="flex mt-0.5">
-              {DAYPARTS.map(dp => {
-                const spanHours = dp.endHour - dp.startHour + 1;
-                const widthPercent = (spanHours / 24) * 100;
-                const dpGrade = daypartGrades.find(dg => dg.id === dp.id);
-                // Calculate daypart sales and last week variance from hourly data
-                let dpSales = 0;
-                let dpLastWeekSales = 0;
-                if (hourlyData) {
-                  for (let h = dp.startHour; h <= dp.endHour; h++) {
-                    const hourData = hourlyData.find(hd => hd.hour === h);
-                    if (hourData) {
-                      dpSales += hourData.todaySales || 0;
-                      dpLastWeekSales += hourData.lastWeekSales || 0;
-                    }
-                  }
-                }
-                const dpVariance = dpLastWeekSales > 0
-                  ? ((dpSales - dpLastWeekSales) / dpLastWeekSales) * 100
-                  : 0;
-                return (
-                  <div key={dp.id} style={{ width: `${widthPercent}%` }} className="text-center px-px">
-                    <div className={`h-1 rounded-sm ${dp.bgColor}`} style={{ opacity: dpGrade?.grade ? 1 : 0.3 }} />
-                    <div className="text-[8px] leading-tight mt-px flex items-center justify-center gap-0.5">
-                      <span className={`font-medium ${dp.color}`}>{dp.shortLabel}</span>
-                      {dpGrade?.grade && (
-                        <span className={`font-bold ${dpGetGradeColor(dpGrade.grade)}`}>{dpGrade.grade}</span>
-                      )}
-                    </div>
-                    {dpSales > 0 && (
-                      <div className="text-[7px] leading-none font-medium">
-                        <span className="text-muted-foreground">${Math.round(dpSales).toLocaleString()}</span>
-                        {dpLastWeekSales > 0 && (
-                          <span className={`ml-0.5 ${dpVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
-                            {dpVariance >= 0 ? "+" : ""}{Math.round(dpVariance)}%
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Staffing Chart - Labor Hours Deployed vs Recommended */}
-            <div className="mt-3 pt-3 border-t border-border/50">
-              <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                <span>Labor Hours Deployed</span>
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-green-500" />
-                    Right-sized
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-red-500" />
-                    Overstaffed
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-yellow-500" />
-                    Understaffed
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3 text-orange-500" />
-                    No Mgr
-                  </span>
-                </div>
-              </div>
-              <div 
-                className="flex items-end gap-0.5 h-10" 
-                data-testid={`staffing-chart-${restaurant.restaurantId}`}
-                onMouseLeave={() => setHoveredHourIndex(null)}
-              >
-                {activeHours.map((hour, hourIndex) => {
-                  // Exclude _operatorScheduled from labor hours (they are neither production nor non-production)
-                  const positions = hour.positionBreakdown || {};
-                  const operatorHours = positions['_operatorScheduled'] || 0;
-                  const laborHours = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHours);
-                  const sales = hour.todaySales || 0;
-                  
-                  // Labor deployment model: Non-production + Production staff
-                  // Uses different ramp-up charts for breakfast (6am-11am) vs non-breakfast
-                  const staffingDetails = getStaffingBreakdown(hour.hour, sales);
-                  const recommendedHours = staffingDetails.total;
-                  
-                  // Staffing status: Green ±1 hr, Red >1 over, Yellow >1 under
-                  const staffingDiff = laborHours - recommendedHours;
-                  const isRightSized = Math.abs(staffingDiff) <= 1;
-                  const isOverstaffed = staffingDiff > 1;
-                  const isUnderstaffed = staffingDiff < -1;
-                  
-                  const hasNoData = laborHours === 0 && sales === 0 && operatorHours === 0;
-                  
-                  // Bar height based on labor hours (cap at 15 for display)
-                  const maxDisplayHours = 15;
-                  const displayHours = Math.min(laborHours, maxDisplayHours);
-                  const barHeightPx = hasNoData ? 0 : Math.max(3, (displayHours / maxDisplayHours) * 40);
-                  
-                  // Target line position (cap at same max for consistency)
-                  const targetDisplayHours = Math.min(recommendedHours, maxDisplayHours);
-                  const targetLineHeightPx = (targetDisplayHours / maxDisplayHours) * 40;
-                  
-                  // Bar color: green (right-sized), red (>2 over), yellow (>2 under)
-                  const barColor = isRightSized 
-                    ? "bg-green-500 dark:bg-green-400" 
-                    : isOverstaffed 
-                      ? "bg-red-500 dark:bg-red-400" 
-                      : "bg-yellow-500 dark:bg-yellow-400";
-                  
-                  // Check for missing manager/shift supervisor
-                  // Operators don't punch in but are considered leaders if scheduled
-                  const positionKeys = Object.keys(positions).map(k => k.toLowerCase());
-                  const hasManager = positionKeys.some(p => p.includes("manager"));
-                  const hasShiftSupervisor = positionKeys.some(p => p.includes("shift supervisor") || p.includes("supervisor"));
-                  const hasOperatorScheduled = positions['_operatorScheduled'] === 1;
-                  const missingLeadership = !hasManager && !hasShiftSupervisor && !hasOperatorScheduled && laborHours > 0;
-                  
-                  const isHovered = hoveredHourIndex === hourIndex;
-                  
-                  return (
-                    <div
-                      key={`staff-${hour.hour}`}
-                      className="flex-1 flex items-end relative h-full cursor-pointer"
-                      onMouseEnter={() => setHoveredHourIndex(hourIndex)}
-                      onMouseLeave={() => setHoveredHourIndex(null)}
-                      onTouchStart={(e) => {
-                        e.preventDefault();
-                        setHoveredHourIndex(hoveredHourIndex === hourIndex ? null : hourIndex);
-                      }}
-                    >
-                      {hasNoData ? (
-                        <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-sm" />
-                      ) : (
-                        <>
-                          {/* Staffing bar — split into 15-min sub-bars when quarter data is available */}
-                          {(() => {
-                            const qb = hour.quarterBreakdown;
-                            if (qb && (qb.q0 > 0 || qb.q1 > 0 || qb.q2 > 0 || qb.q3 > 0)) {
-                              const maxQ = Math.max(qb.q0, qb.q1, qb.q2, qb.q3, 0.01);
-                              // Each quarter's max possible is 0.25h per person; scale relative to total bar height
-                              return (
-                                <div
-                                  className="w-full flex items-end gap-px"
-                                  style={{ height: `${barHeightPx}px` }}
-                                >
-                                  {[qb.q0, qb.q1, qb.q2, qb.q3].map((qVal, qi) => (
-                                    <div
-                                      key={qi}
-                                      className={`flex-1 rounded-t-[1px] ${barColor}`}
-                                      style={{
-                                        height: `${Math.max(1, (qVal / maxQ) * barHeightPx)}px`,
-                                        opacity: qVal > 0 ? 1 : 0.3
-                                      }}
-                                    />
-                                  ))}
-                                </div>
-                              );
-                            }
-                            return (
-                              <div
-                                className={`w-full rounded-t-sm transition-all ${barColor}`}
-                                style={{ height: `${barHeightPx}px` }}
-                              />
-                            );
-                          })()}
-                          {/* Target line showing recommended staffing level */}
-                          <div
-                            className="absolute w-full border-t-2 border-slate-800 dark:border-slate-200 pointer-events-none"
-                            style={{ bottom: `${targetLineHeightPx}px` }}
-                          />
-                          {/* Hazard indicator for missing manager/supervisor */}
-                          {missingLeadership && (
-                            <div className="absolute -top-1 left-1/2 -translate-x-1/2">
-                              <AlertTriangle className="w-3 h-3 text-orange-500 animate-pulse" />
-                            </div>
-                          )}
-                        </>
-                      )}
-                      <div className={`absolute bottom-full mb-1 ${getTooltipAlign(hourIndex)} bg-popover border shadow-md rounded px-2 py-1 text-xs pointer-events-none z-10 whitespace-nowrap transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{hour.label}</span>
-                            {missingLeadership && (
-                              <span className="text-orange-500 flex items-center gap-0.5">
-                                <AlertTriangle className="w-3 h-3" />
-                              </span>
-                            )}
-                            <span className={isRightSized ? "text-green-600" : isOverstaffed ? "text-red-600" : "text-yellow-600"}>
-                              {laborHours.toFixed(1)}h/{recommendedHours}h
-                            </span>
-                            {/* Crew experience score + tenure mix breakdown */}
-                            {(() => {
-                              const crewHour = hourlyCrewData?.find(c => c.hour === hour.hour);
-                              if (!crewHour || crewHour.experienceScore === 0) return null;
-                              const score = crewHour.experienceScore;
-                              const color = score >= 75 ? "text-green-600" : score >= 50 ? "text-amber-600" : "text-red-600";
-                              const { trainee = 0, developing = 0, experienced = 0, veteran = 0 } = crewHour.tenureMix || {};
-                              const parts: string[] = [];
-                              if (veteran > 0) parts.push(`${veteran}V`);
-                              if (experienced > 0) parts.push(`${experienced}E`);
-                              if (developing > 0) parts.push(`${developing}D`);
-                              if (trainee > 0) parts.push(`${trainee}T`);
-                              return (
-                                <span className={color}>
-                                  XP:{score} {parts.length > 0 && <span className="opacity-75">{parts.join('/')}</span>}
-                                </span>
-                              );
-                            })()}
-                          </div>
-                          {/* Leaders list - show managers, shift supervisors, operators by name */}
-                          {(() => {
-                            const leaders = hour.leaders || [];
-                            if (leaders.length > 0) {
-                              return (
-                                <div className="text-muted-foreground text-[10px]">
-                                  {leaders.map((l, i) => (
-                                    <span key={i}>
-                                      {i > 0 && ', '}
-                                      <span className="font-medium">{l.firstName}</span>
-                                      <span className="opacity-70"> ({l.position.includes('Manager') ? 'MGR' : l.position.includes('Supervisor') ? 'SS' : 'OP'})</span>
-                                    </span>
-                                  ))}
-                                </div>
-                              );
-                            }
-                            // Fallback to position breakdown if no leaders data
-                            const posKeys = Object.keys(positions)
-                              .filter(k => !k.startsWith('_') && positions[k] > 0);
-                            if (posKeys.length === 0) return null;
-                            return (
-                              <div className="text-muted-foreground text-[10px]">
-                                {posKeys.slice(0, 5).join(', ')}{posKeys.length > 5 ? '...' : ''}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              
-              {/* Total Staffing Summary for the Day */}
-              {(() => {
-                const totals = activeHours.reduce((acc, hour) => {
-                  // Exclude operator from labor hours calculation
-                  const positions = hour.positionBreakdown || {};
-                  const operatorHrs = positions['_operatorScheduled'] || 0;
-                  const laborHrs = Math.max(0, (Number(hour.employeeCount) || 0) - operatorHrs);
-                  const sales = hour.todaySales || 0;
-                  const hasData = laborHrs > 0 || sales > 0 || operatorHrs > 0;
-
-                  if (hasData) {
-                    const staffingDetails = getStaffingBreakdown(hour.hour, sales);
-                    acc.totalDeployed += laborHrs;
-                    acc.totalTarget += staffingDetails.total;
-                    acc.hoursWithData++;
-                  }
-                  acc.totalLaborDollars += (hour.actualLabor || 0);
-                  return acc;
-                }, { totalDeployed: 0, totalTarget: 0, hoursWithData: 0, totalLaborDollars: 0 });
-
-                const staffingDiff = totals.totalDeployed - totals.totalTarget;
-                const isOverstaffed = staffingDiff > 0;
-                const isUnderstaffed = staffingDiff < 0;
-
-                if (totals.hoursWithData === 0) return null;
-
-                // Day labor cost % = actual labor dollars / actual sales
-                const dayLaborPct = restaurant.actualSales > 0
-                  ? (totals.totalLaborDollars / restaurant.actualSales) * 100
-                  : 0;
-                // WTD labor cost % = wtd labor dollars / wtd sales
-                const wtdLaborPct = weeklyData && weeklyData.currentWeek > 0 && weeklyData.wtdLaborCost
-                  ? (weeklyData.wtdLaborCost / weeklyData.currentWeek) * 100
-                  : 0;
-                const laborTarget = restaurant.laborTarget || 25;
-
-                return (
-                  <div className="mt-2 flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">
-                      Day Total: {totals.totalDeployed.toFixed(1)} labor hrs / {totals.totalTarget} target
-                    </span>
-                    <div className="flex items-center gap-3">
-                      {totals.totalLaborDollars > 0 && (
-                        <span className="text-muted-foreground">
-                          LC%{' '}
-                          <span className={`font-medium ${dayLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
-                            Day {dayLaborPct.toFixed(1)}%
-                          </span>
-                          {wtdLaborPct > 0 && (
-                            <>
-                              {' '}
-                              <span className={`font-medium ${wtdLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
-                                WTD {wtdLaborPct.toFixed(1)}%
-                              </span>
-                            </>
-                          )}
-                        </span>
-                      )}
-                      <span className={`font-medium ${
-                        isOverstaffed ? "text-red-500" :
-                        isUnderstaffed ? "text-yellow-500" :
-                        "text-green-500"
-                      }`} data-testid={`staffing-total-${restaurant.restaurantId}`}>
-                        {isOverstaffed ? `+${staffingDiff.toFixed(1)} overstaffed` :
-                         isUnderstaffed ? `${staffingDiff.toFixed(1)} understaffed` :
-                         "Right-sized"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        )}
 
         {isExpanded && activeHours.length === 0 && (
           <div className="mt-4">

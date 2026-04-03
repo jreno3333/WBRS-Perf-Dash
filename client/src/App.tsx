@@ -11,7 +11,6 @@ import { Loader2, BarChart3 } from "lucide-react";
 // Only the matched route's JS is downloaded, reducing initial bundle size.
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
-const MapPage = lazy(() => import("@/pages/map"));
 const HMETest = lazy(() => import("@/pages/hme-test"));
 const HeatmapPage = lazy(() => import("@/pages/heatmap"));
 const CrewExperiencePage = lazy(() => import("@/pages/crew-experience"));
@@ -72,7 +71,6 @@ function ProtectedRoutes() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/settings" component={SettingsPage} />
-        <Route path="/map" component={MapPage} />
         <Route path="/hme-test" component={HMETest} />
         <Route path="/dashboard-view" component={HeatmapPage} />
         <Route path="/crew" component={CrewExperiencePage} />

@@ -4,7 +4,6 @@ import { db } from "../db";
 import { hourlySales, hourlyLabor, hourlyCrew, restaurants, markets, restaurantMarkets, dailyOsat, hmeTimerData, osatData as osatDataTable } from "@shared/schema";
 import { sql, and, gte, lte, eq } from "drizzle-orm";
 import { fetchWeather, fetchHistoricalWeather, CurrentWeather, HistoricalWeather } from "../utils/weather";
-import { delay } from "../utils/db-helpers";
 import { getHolidayContext, getHolidayComparisonContext, getAllHolidaysForYear, getNormalBaselineDate } from "../holidays";
 import { getDailyDriveThruSummary } from "../scraper/hme-api";
 import { getOsatForDate } from "../scraper/qualtrics-api";
@@ -526,94 +525,6 @@ router.get("/api/hourly-heatmap", async (req, res) => {
   }
 });
 
-// Get map data with restaurant locations and weather
-router.get("/api/map-data", async (req, res) => {
-  try {
-    const { date } = req.query;
-    let targetDate: Date;
-    if (date) {
-      targetDate = new Date(date as string);
-    } else {
-      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-      targetDate = new Date(`${todayStr}T12:00:00Z`);
-    }
-    const leaderboard = await storage.getLeaderboard(targetDate);
-    const restaurantList = await storage.getRestaurants();
-
-    const leaderboardMap = new Map(
-      leaderboard.restaurants.map(r => [r.restaurantId, r])
-    );
-
-    const validRestaurants = restaurantList.filter(r => r.latitude && r.longitude);
-    const mapData: any[] = [];
-
-    for (const restaurant of validRestaurants) {
-      const salesData = leaderboardMap.get(restaurant.id);
-
-      let status: "training" | "new" | "established" = "established";
-      if (restaurant.openDate) {
-        const openDate = new Date(restaurant.openDate);
-        const now = new Date();
-        if (openDate > now) {
-          status = "training";
-        } else {
-          const daysSinceOpen = Math.floor((now.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysSinceOpen <= 120) {
-            status = "new";
-          }
-        }
-      }
-
-      const todaySales = salesData?.actualSales || 0;
-      const lastWeekSales = salesData?.actualLastWeekSales || 0;
-      const isAheadOfPace = todaySales >= lastWeekSales;
-
-      mapData.push({
-        id: restaurant.id,
-        name: restaurant.name,
-        unitNumber: restaurant.unitNumber || "",
-        address: restaurant.address || "",
-        latitude: parseFloat(restaurant.latitude as string),
-        longitude: parseFloat(restaurant.longitude as string),
-        todaySales,
-        lastWeekSales,
-        isAheadOfPace,
-        status,
-        weather: null,
-      });
-    }
-
-    const batchSize = 5;
-    for (let i = 0; i < mapData.length; i += batchSize) {
-      const batch = mapData.slice(i, i + batchSize);
-      const weatherResults = await Promise.all(
-        batch.map(r => fetchWeather(r.latitude, r.longitude))
-      );
-
-      for (let j = 0; j < batch.length; j++) {
-        mapData[i + j].weather = weatherResults[j];
-      }
-
-      if (i + batchSize < mapData.length) {
-        await delay(100);
-      }
-    }
-
-    const holidayContext = getHolidayContext(targetDate);
-    const comparison = getHolidayComparisonContext(targetDate);
-
-    res.json({
-      restaurants: mapData,
-      holidays: {
-        ...holidayContext,
-        comparison
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching map data:", error);
-    res.status(500).json({ error: "Failed to fetch map data" });
-  }
-});
 
 // Get weekly sales totals (Sat-Fri business week) per restaurant
 // Returns current week total + prior week total for apples-to-apples trend comparison

@@ -15,7 +15,7 @@ Preferred communication style: Simple, everyday language.
 - **Styling**: Tailwind CSS with shadcn/ui (New York style)
 - **Charts**: Recharts
 - **Build Tool**: Vite
-- **UI/UX Decisions**: Interactive map with performance indicators, holiday context display, settings/admin page for unit management, and badges on leaderboards for metrics like drive-thru speed, Google Reviews, OSAT, and People Tenure.
+- **UI/UX Decisions**: Holiday context display, settings/admin page for unit management, and badges on leaderboards for metrics like drive-thru speed, Google Reviews, OSAT, and People Tenure.
 
 ### Backend
 - **Runtime**: Node.js with Express 5

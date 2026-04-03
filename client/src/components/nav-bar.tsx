@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Trophy, Grid3X3, TrendingUp, Users, MapPin, Radio } from "lucide-react";
+import { Trophy, Grid3X3, TrendingUp, Users, Radio } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 type NavItem = {
@@ -15,7 +15,6 @@ const navItems: NavItem[] = [
   { href: "/dashboard-view", icon: Grid3X3, label: "Daily AI", testId: "nav-dashboard-view" },
   { href: "/history", icon: TrendingUp, label: "Weekly", testId: "nav-history" },
   { href: "/crew", icon: Users, label: "People", testId: "nav-crew" },
-  { href: "/map", icon: MapPin, label: "Map", testId: "nav-map" },
   { href: "https://mwbrealtime.wbrssystem.com", icon: Radio, label: "Real Time", testId: "nav-realtime", external: true },
 ];
 

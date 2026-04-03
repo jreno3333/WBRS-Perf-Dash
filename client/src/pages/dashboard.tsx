@@ -71,6 +71,8 @@ export default function Dashboard() {
   // Auto-refresh every 5 minutes when viewing today's data
   const refetchInterval = isToday ? 5 * 60 * 1000 : false;
 
+  const secondaryStaleTime = isToday ? 4 * 60 * 1000 : Infinity;
+
   const { data: leaderboardData, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard", dateStr],
     queryFn: async () => {
@@ -81,6 +83,8 @@ export default function Dashboard() {
     refetchInterval,
   });
 
+  const hasLeaderboard = !!leaderboardData;
+
   const { data: hourlyByRestaurant } = useQuery<Record<string, HourlySalesData[]>>({
     queryKey: ["/api/hourly-by-restaurant", dateStr],
     queryFn: async () => {
@@ -88,11 +92,11 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    staleTime: secondaryStaleTime,
   });
 
-  // Fetch crew summary data for all restaurants
   const { data: crewSummaryResponse } = useQuery<{ date: string; summary: Record<string, { avgScore: number; avgCrewCount: number; avgTenureMonths: number }> }>({
     queryKey: ["/api/crew/summary", dateStr],
     queryFn: async () => {
@@ -100,8 +104,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    staleTime: secondaryStaleTime,
   });
   const crewSummary = crewSummaryResponse?.summary;
 
@@ -119,8 +124,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    staleTime: secondaryStaleTime,
   });
   const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
 
@@ -138,8 +144,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    staleTime: secondaryStaleTime,
   });
   const checkAverageByRestaurant = checkAverageResponse?.restaurants;
 
@@ -156,7 +163,8 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    enabled: hasLeaderboard,
+    staleTime: secondaryStaleTime,
   });
   const checkAvgTrendByRestaurant = checkAvgTrendResponse?.restaurants;
 
@@ -178,6 +186,8 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
+    staleTime: secondaryStaleTime,
   });
   const notesByRestaurant = useMemo(() => {
     const map: Record<string, RestaurantNote[]> = {};
@@ -201,8 +211,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    staleTime: secondaryStaleTime,
   });
   const destinationsByRestaurant = destinationResponse?.restaurants;
 
@@ -216,8 +227,9 @@ export default function Dashboard() {
       if (!res.ok) return { restaurants: {} };
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    staleTime: secondaryStaleTime,
   });
 
   // Fetch helper rewards for the selected date
@@ -228,7 +240,8 @@ export default function Dashboard() {
       if (!res.ok) return [];
       return res.json();
     },
-    staleTime: isToday ? 4 * 60 * 1000 : Infinity,
+    enabled: hasLeaderboard,
+    staleTime: secondaryStaleTime,
   });
 
   const helperRewardsByRestaurant = useMemo(() => {
@@ -240,12 +253,11 @@ export default function Dashboard() {
     return map;
   }, [helperRewardsData]);
 
-  // Fetch markets data
   const { data: markets } = useQuery<MarketWithRestaurants[]>({
     queryKey: ["/api/markets"],
+    staleTime: Infinity,
   });
 
-  // Fetch holiday data (no need to refresh frequently)
   const { data: holidayData } = useQuery<{
     todayHoliday: { name: string; date: string; dayOfWeek: string } | null;
     lastWeekHoliday: { name: string; date: string; dayOfWeek: string; isLastWeekComparisonDay?: boolean } | null;
@@ -261,6 +273,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    staleTime: Infinity,
   });
 
   // Fetch holiday sales comparison (3-way: today vs holiday vs normal baseline)
@@ -287,7 +300,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
+    staleTime: secondaryStaleTime,
   });
 
   // Fetch weekly sales data (Sat-Fri business week)
@@ -307,7 +322,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
+    staleTime: secondaryStaleTime,
   });
 
   interface TwoWeekTrendData {
@@ -324,10 +341,11 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
     refetchInterval,
+    staleTime: secondaryStaleTime,
   });
 
-  // Fetch consistency scores for all restaurants (14-day window)
   const { data: consistencyData } = useQuery<{
     companyAvgConsistency: number;
     restaurants: { restaurantId: string; consistencyScore: number }[];
@@ -338,6 +356,8 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
+    staleTime: secondaryStaleTime,
   });
   const consistencyByRestaurant = useMemo(
     () => consistencyData?.restaurants?.reduce((acc, r) => {
@@ -364,6 +384,8 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    enabled: hasLeaderboard,
+    staleTime: secondaryStaleTime,
   });
   const demandCurvesByRestaurant = useMemo(
     () => demandCurvesData?.restaurants?.reduce((acc, r) => {
@@ -383,6 +405,8 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch YoY data");
       return res.json();
     },
+    enabled: hasLeaderboard,
+    staleTime: secondaryStaleTime,
   });
 
   const formatDate = (date: Date) => {
@@ -488,7 +512,6 @@ export default function Dashboard() {
       })
       // Then sort
       .sort((a, b) => {
-        // Training units always go to the bottom
         if (a.status === "training" && b.status !== "training") return 1;
         if (a.status !== "training" && b.status === "training") return -1;
 
@@ -553,7 +576,8 @@ export default function Dashboard() {
           default:
             return b.actualSales - a.actualSales;
         }
-      });
+      })
+      .map((r, i) => ({ ...r, rank: i + 1 }));
   }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap, checkAverageByRestaurant, attachmentRatesResponse]);
 
   return (
@@ -886,10 +910,10 @@ export default function Dashboard() {
                 </div>
 
                 <div className="space-y-2">
-                  {sortedRestaurants.map((restaurant, index) => (
+                  {sortedRestaurants.map((restaurant) => (
                     <LeaderboardCard
                       key={restaurant.restaurantId}
-                      restaurant={{...restaurant, rank: index + 1}}
+                      restaurant={restaurant}
                       hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
                       crewSummary={crewSummary?.[restaurant.restaurantId]}
                       hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
