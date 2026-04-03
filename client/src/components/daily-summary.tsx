@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, memo } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +39,7 @@ import {
   Zap,
   Star,
 } from "lucide-react";
-import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, GradingConfigData } from "@shared/schema";
+import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, GradingConfigData, RestaurantSales } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor, gradeToMidpoint, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 import type { DailyBonusResult } from "@/lib/grading";
@@ -1151,7 +1151,7 @@ function AggregatedSummaryCard({ summary, icon }: { summary: AggregatedSummary; 
   );
 }
 
-export function DailySummary({
+export const DailySummary = memo(function DailySummary({
   restaurants,
   hourlyByRestaurant,
   markets,
@@ -1556,4 +1556,4 @@ export function DailySummary({
       </Card>
     </Collapsible>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useState, memo, useMemo } from "react";
 // Card/Badge imports removed - using plain divs
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
 import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt } from "lucide-react";
@@ -232,23 +232,25 @@ function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAtta
 
 export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: MarketBreakdownProps) {
   const gradingCfg = useGradingConfig();
-  const activeRestaurants = restaurants.filter(r => r.status !== "training");
+  const activeRestaurants = useMemo(() => restaurants.filter(r => r.status !== "training"), [restaurants]);
 
-  const marketStats = markets.map(market => {
+  const marketStats = useMemo(() => markets.map(market => {
     const marketRestaurantIds = market.restaurantIds || [];
-    const marketRestaurants = activeRestaurants.filter(r => marketRestaurantIds.includes(r.restaurantId));
-    
+    // Use a Set for O(1) lookups instead of O(n) Array.includes per restaurant
+    const marketIdSet = new Set(marketRestaurantIds);
+    const marketRestaurants = activeRestaurants.filter(r => marketIdSet.has(r.restaurantId));
+
     const todaySales = marketRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
     const lastWeekSales = marketRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
     const aheadCount = marketRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
     const variance = lastWeekSales > 0 ? ((todaySales / lastWeekSales) - 1) * 100 : 0;
-    
+
     const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant, gradingCfg);
     const crewScore = calculateMarketCrewScore(marketRestaurantIds, crewSummary);
     const osat = calculateMarketOsat(marketRestaurants);
     const speed = calculateMarketSpeed(marketRestaurants);
     const checkAvg = calculateMarketCheckAvg(marketRestaurantIds, checkAverageByRestaurant, checkAvgTrendByRestaurant);
-    
+
     let weeklyCurrent = 0, weeklyPrior = 0, weeklyEowForecast = 0, weeklyPriorFull = 0;
     if (weeklySalesData?.restaurants) {
       for (const r of marketRestaurants) {
@@ -281,7 +283,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
       weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance, eowForecast: weeklyEowForecast, priorFull: weeklyPriorFull, eowVariance: weeklyEowVariance },
       checkAvg,
     };
-  }).filter(m => m.totalCount > 0);
+  }).filter(m => m.totalCount > 0), [markets, activeRestaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant]);
 
   const getGradeBadgeColor = (grade: string) => {
     if (grade.startsWith('A')) return 'text-green-500 bg-green-500/20 border-green-500/50';
