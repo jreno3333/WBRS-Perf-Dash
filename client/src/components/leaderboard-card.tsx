@@ -168,6 +168,12 @@ interface LeaderboardCardProps {
   attachmentCategories?: Record<string, { attachRate: number }>;
   overallAttachScore?: number;
   helperRewardPoints?: number;
+  twoWeekTrend?: TwoWeekTrendData;
+}
+
+interface TwoWeekTrendData {
+  trailing: number;
+  prior: number;
 }
 
 function formatTenure(months: number): string {
@@ -367,7 +373,7 @@ function NotesSection({ restaurantId, dateStr, notes, onNoteAdded }: {
   );
 }
 
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints }: LeaderboardCardProps) {
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints, twoWeekTrend }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   const gradingCfg = useGradingConfig();
@@ -432,6 +438,15 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     ? ((weeklyData.eowForecast / weeklyData.priorWeekFull) - 1) * 100
     : 0;
   const showEow = !!(weeklyData && weeklyData.eowForecast > weeklyData.currentWeek);
+
+  // 2-week trend variances
+  const twoWkVar = twoWeekTrend && twoWeekTrend.prior > 0
+    ? ((twoWeekTrend.trailing / twoWeekTrend.prior) - 1) * 100
+    : 0;
+  const twoWkDollar = twoWeekTrend
+    ? twoWeekTrend.trailing - twoWeekTrend.prior
+    : 0;
+  const showTwoWk = !!(twoWeekTrend && twoWeekTrend.trailing > 0);
 
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
   // Generate all 24 hours, filling in zeros for missing hours
@@ -984,6 +999,29 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         <td />
                       </tr>
                     </>
+                  )}
+                  {/* 2-Week Trend row */}
+                  {showTwoWk && (
+                    <tr>
+                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">2WK</td>
+                      <td
+                        className="font-semibold pl-1 pt-0.5"
+                        data-testid={`text-two-week-sales-${restaurant.restaurantId}`}
+                      >
+                        {formatCurrency(twoWeekTrend!.trailing)}
+                      </td>
+                      <td className="text-muted-foreground pl-1 pt-0.5">
+                        {twoWeekTrend!.prior > 0 ? formatCurrency(twoWeekTrend!.prior) : ""}
+                      </td>
+                      <td
+                        className={`font-medium pl-1 pt-0.5 ${twoWkVar >= 0 ? "text-green-500" : "text-red-500"}`}
+                        data-testid={`badge-two-week-var-${restaurant.restaurantId}`}
+                      >
+                        {twoWeekTrend!.prior > 0 ? formatPercentage(twoWkVar) : ""}
+                      </td>
+                      <td className="pl-2 pt-0.5 text-muted-foreground">—</td>
+                      <td />
+                    </tr>
                   )}
                 </tbody>
               </table>

@@ -310,6 +310,23 @@ export default function Dashboard() {
     refetchInterval,
   });
 
+  interface TwoWeekTrendData {
+    trailingStart: string;
+    trailingEnd: string;
+    priorStart: string;
+    priorEnd: string;
+    restaurants: Record<string, { trailing: number; prior: number }>;
+  }
+  const { data: twoWeekTrendData } = useQuery<TwoWeekTrendData>({
+    queryKey: ["/api/two-week-trend", dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/two-week-trend?date=${dateStr}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval,
+  });
+
   // Fetch consistency scores for all restaurants (14-day window)
   const { data: consistencyData } = useQuery<{
     companyAvgConsistency: number;
@@ -890,6 +907,7 @@ export default function Dashboard() {
                       attachmentCategories={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.categories}
                       overallAttachScore={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.overallAttachScore}
                       helperRewardPoints={helperRewardsByRestaurant?.[restaurant.restaurantId]}
+                      twoWeekTrend={twoWeekTrendData?.restaurants?.[restaurant.restaurantId]}
                     />
                   ))}
                 </div>

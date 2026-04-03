@@ -903,4 +903,107 @@ router.get("/api/weekly-sales", async (req, res) => {
   }
 });
 
+// 2-week rolling trend: trailing 14-day sales vs prior 14-day sales per restaurant
+router.get("/api/two-week-trend", async (req, res) => {
+  try {
+    const now = new Date();
+    const realTodayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+
+    const { date } = req.query;
+    const todayStr = date ? String(date) : realTodayStr;
+
+    const endDate = new Date(`${todayStr}T12:00:00Z`);
+
+    const trailingStart = new Date(endDate);
+    trailingStart.setUTCDate(trailingStart.getUTCDate() - 13);
+    const trailingStartStr = trailingStart.toISOString().split('T')[0];
+
+    const priorEnd = new Date(trailingStart);
+    priorEnd.setUTCDate(priorEnd.getUTCDate() - 1);
+    const priorEndStr = priorEnd.toISOString().split('T')[0];
+
+    const priorStart = new Date(priorEnd);
+    priorStart.setUTCDate(priorStart.getUTCDate() - 13);
+    const priorStartStr = priorStart.toISOString().split('T')[0];
+
+    const trailingDates: string[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(trailingStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      trailingDates.push(d.toISOString().split('T')[0]);
+    }
+
+    const priorDates: string[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(priorStart);
+      d.setUTCDate(d.getUTCDate() + i);
+      priorDates.push(d.toISOString().split('T')[0]);
+    }
+
+    const allDates = [...trailingDates, ...priorDates];
+
+    const salesRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      salesDate: hourlySales.salesDate,
+      actualSales: hourlySales.actualSales,
+    }).from(hourlySales).where(
+      and(
+        gte(hourlySales.salesDate, new Date(`${priorStartStr}T00:00:00Z`)),
+        lte(hourlySales.salesDate, new Date(`${todayStr}T23:59:59Z`))
+      )
+    );
+
+    const salesByRestaurantDate: Record<string, Record<string, number>> = {};
+    for (const row of salesRows) {
+      const ds = new Date(row.salesDate).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      if (!salesByRestaurantDate[row.restaurantId]) salesByRestaurantDate[row.restaurantId] = {};
+      if (!salesByRestaurantDate[row.restaurantId][ds]) salesByRestaurantDate[row.restaurantId][ds] = 0;
+      salesByRestaurantDate[row.restaurantId][ds] += parseFloat(row.actualSales as string) || 0;
+    }
+
+    for (const dateStr of allDates) {
+      const targetDate = new Date(`${dateStr}T12:00:00Z`);
+      const posSales = await getAllHourlyPosSales(targetDate);
+      posSales.forEach((hourlyMap, restaurantId) => {
+        if (!salesByRestaurantDate[restaurantId]) salesByRestaurantDate[restaurantId] = {};
+        salesByRestaurantDate[restaurantId][dateStr] = 0;
+        hourlyMap.forEach((sales) => {
+          salesByRestaurantDate[restaurantId][dateStr] += sales;
+        });
+      });
+    }
+
+    const allRestaurants = await storage.getRestaurants();
+    const twoWeekData: Record<string, { trailing: number; prior: number }> = {};
+
+    for (const r of allRestaurants) {
+      let trailing = 0;
+      for (const d of trailingDates) {
+        trailing += salesByRestaurantDate[r.id]?.[d] || 0;
+      }
+
+      let prior = 0;
+      for (const d of priorDates) {
+        prior += salesByRestaurantDate[r.id]?.[d] || 0;
+      }
+
+      twoWeekData[r.id] = {
+        trailing: Math.round(trailing),
+        prior: Math.round(prior),
+      };
+    }
+
+    res.json({
+      trailingStart: trailingStartStr,
+      trailingEnd: todayStr,
+      priorStart: priorStartStr,
+      priorEnd: priorEndStr,
+      restaurants: twoWeekData,
+    });
+  } catch (error) {
+    console.error("Error fetching two-week trend:", error);
+    res.status(500).json({ error: "Failed to fetch two-week trend" });
+  }
+});
+
 export default router;
