@@ -527,12 +527,14 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       const attachData = attachmentByRestaurant.get(restaurant.restaurantId);
       const attachCatsAtTarget = attachData ? countAttachmentCategoriesAtTarget(attachData.categories) : undefined;
 
+      const storeIsComp = isCompStore(restaurantMap.get(restaurant.restaurantId)?.openDate ?? null);
+
       const bonusResult = baseScore > 0 ? computeDailyBonuses({
         dailyOsatPercent: dailyOsatPct,
         dailySurveyCount: dailyOsatResponses,
         dailySalesVariancePct: dailySalesVar,
         dailyTransactionVariancePct: dailyTxnVar,
-        dailyYoySalesVariancePct: dailyYoySalesVar,
+        dailyYoySalesVariancePct: storeIsComp ? dailyYoySalesVar : undefined,
         attachmentCategoriesAtTarget: attachCatsAtTarget,
         hourlyScores: validScores,
         helperRewardPoints: helperRewardsMap.get(restaurant.restaurantId),

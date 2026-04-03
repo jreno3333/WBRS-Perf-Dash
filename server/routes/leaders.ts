@@ -347,9 +347,14 @@ router.get("/api/leaders", async (req, res) => {
             dailySurveyCount: totalOsatResponses,
             dailySalesVariancePct: hasComparableSales ? salesVariancePct : undefined,
             dailyTransactionVariancePct: txnVariancePct,
-            dailyYoySalesVariancePct: dailyYoySalesVar,
+            dailyYoySalesVariancePct: (() => {
+              const r = allRestaurants.find(r => r.id === day.restaurantId);
+              if (!r?.openDate) return dailyYoySalesVar;
+              const months = (Date.now() - new Date(r.openDate).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+              return months > 24 ? dailyYoySalesVar : undefined;
+            })(),
             attachmentCategoriesAtTarget: attachCatsAtTarget,
-            hourlyScores: [gradeResult.score], // day-level aggregate (consistency needs per-hour data)
+            hourlyScores: [gradeResult.score],
             helperRewardPoints: helperRewardsMap.get(`${dayDate}-${day.restaurantId}`),
           });
           const finalScore = Math.min(gradeResult.score + bonusResult.cappedBonus, 100);

@@ -95,6 +95,14 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     const restaurant = leaderboard.restaurants.find(r => r.restaurantId === restaurantId);
     if (!restaurant) return null;
 
+    const [restRecord] = await db.select({ openDate: restaurants.openDate }).from(restaurants).where(eq(restaurants.id, restaurantId)).limit(1);
+    const storeIsComp = (() => {
+      const od = restRecord?.openDate;
+      if (!od) return true;
+      const open = new Date(od);
+      return (Date.now() - open.getTime()) / (1000 * 60 * 60 * 24 * 30.44) > 24;
+    })();
+
     const hourlyData: HourlySalesData[] = hourlyDataByRestaurant[restaurantId] || [];
     const completedHours = hourlyData.filter(h => h.hour <= 23 && h.todaySales > 0);
 
@@ -226,7 +234,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
       dailySurveyCount: dailyOsatResponses,
       dailySalesVariancePct: dailySalesVar,
       dailyTransactionVariancePct: dailyTxnVar,
-      dailyYoySalesVariancePct: dailyYoySalesVar,
+      dailyYoySalesVariancePct: storeIsComp ? dailyYoySalesVar : undefined,
       attachmentCategoriesAtTarget: attachCatsAtTarget,
       hourlyScores: validScores,
       helperRewardPoints: helperRewardsMap.get(restaurantId),

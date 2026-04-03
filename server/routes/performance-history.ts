@@ -656,7 +656,11 @@ router.get("/api/performance-history", async (req, res) => {
           dailySurveyCount: osatResponses,
           dailySalesVariancePct: dailySalesVarForBonus,
           dailyTransactionVariancePct: dailyTxnVariance,
-          dailyYoySalesVariancePct: dailyYoySalesVar,
+          dailyYoySalesVariancePct: (() => {
+            if (!restaurant.openDate) return dailyYoySalesVar;
+            const months = (Date.now() - new Date(restaurant.openDate).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+            return months > 24 ? dailyYoySalesVar : undefined;
+          })(),
           attachmentCategoriesAtTarget: undefined,
           hourlyScores: hourlyRawScores,
           helperRewardPoints: helperRewardsMap.get(`${dateStr}-${restaurant.id}`),

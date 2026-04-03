@@ -1,6 +1,6 @@
 import { getBaseUrl } from "./base-url";
 import { db } from "./db";
-import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes } from "@shared/schema";
+import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes, restaurants } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
@@ -158,6 +158,16 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
     const activeRestaurants = leaderboard.restaurants.filter(r => r.status !== 'training');
     if (activeRestaurants.length === 0) return null;
 
+    // Fetch restaurant open dates for comp check
+    const allRestaurants = await db.select({ id: restaurants.id, openDate: restaurants.openDate }).from(restaurants);
+    const restaurantOpenDates = new Map(allRestaurants.map(r => [r.id, r.openDate]));
+    const isCompStore = (rid: string) => {
+      const od = restaurantOpenDates.get(rid);
+      if (!od) return true;
+      const open = new Date(od);
+      return (Date.now() - open.getTime()) / (1000 * 60 * 60 * 24 * 30.44) > 24;
+    };
+
     // Fetch attachment rates for The Closer bonus
     let attachmentByRestaurant: Map<string, { categories: Record<string, { attachRate: number }> }> = new Map();
     try {
@@ -253,7 +263,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
         dailySurveyCount: dailyOsatResponses,
         dailySalesVariancePct: dailySalesVar,
         dailyTransactionVariancePct: dailyTxnVar,
-        dailyYoySalesVariancePct: dailyYoySalesVar,
+        dailyYoySalesVariancePct: isCompStore(restaurant.restaurantId) ? dailyYoySalesVar : undefined,
         attachmentCategoriesAtTarget: attachCatsAtTarget,
         hourlyScores: validScores,
         helperRewardPoints: helperRewardsMap.get(restaurant.restaurantId),

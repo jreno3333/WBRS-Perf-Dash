@@ -389,7 +389,12 @@ router.get("/api/people/leader-detail", async (req, res) => {
         dailySurveyCount: osatResponses,
         dailySalesVariancePct: hasComparableSales ? dailySalesVariancePct : undefined,
         dailyTransactionVariancePct: undefined,
-        dailyYoySalesVariancePct: dailyYoySalesVar,
+        dailyYoySalesVariancePct: (() => {
+          const r = allRestaurants.find(r => r.id === dayData.restaurantId);
+          if (!r?.openDate) return dailyYoySalesVar;
+          const months = (Date.now() - new Date(r.openDate).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+          return months > 24 ? dailyYoySalesVar : undefined;
+        })(),
         attachmentCategoriesAtTarget: undefined,
         hourlyScores: [dailyResult.score],
         helperRewardPoints: helperRewardsMap.get(`${dateKey}-${dayData.restaurantId}`),
