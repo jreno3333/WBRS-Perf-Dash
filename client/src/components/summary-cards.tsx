@@ -143,6 +143,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     overallXScore,
     overallGrade,
     gradeColor,
+    gradedHourCount,
   } = useMemo(() => {
     const allHourlyScores: number[] = [];
     const restaurantGrades: Record<string, string> = {};
@@ -302,7 +303,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     const overallGrade = scoreToGradeLabel(overallXScore);
     const gradeColor = getGradeColor(overallGrade);
 
-    return { scoresByHour, staffingProperPct, speedGreenPct, osatGoodPct, gradeCounts, dfHourCount, overallXScore, overallGrade, gradeColor };
+    return { scoresByHour, staffingProperPct, speedGreenPct, osatGoodPct, gradeCounts, dfHourCount, overallXScore, overallGrade, gradeColor, gradedHourCount: allHourlyScores.length };
   }, [hourlyByRestaurant, activeRestaurants, gradingCfg, attachmentRatesByRestaurant, helperRewardsByRestaurant]);
 
   // Calculate projected daily: sum of all restaurant forecast sales
@@ -451,7 +452,7 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                 {overallGrade}
               </span>
               <span className="text-xs text-muted-foreground">
-                {allHourlyScores.length} hrs
+                {gradedHourCount} hrs
               </span>
             </div>
             {dailyOsatTotals.totalResponses > 0 && (

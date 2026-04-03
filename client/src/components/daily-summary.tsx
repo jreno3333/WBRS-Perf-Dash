@@ -39,7 +39,7 @@ import {
   Zap,
   Star,
 } from "lucide-react";
-import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, GradingConfigData } from "@shared/schema";
+import type { LeaderboardData, HourlySalesData, MarketWithRestaurants, GradingConfigData, RestaurantSales } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, GRADE_WEIGHTS, computeExecutionScore, scoreToGradeLabel, getGradeColor, gradeToMidpoint, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 import type { DailyBonusResult } from "@/lib/grading";

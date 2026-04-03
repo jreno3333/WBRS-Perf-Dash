@@ -1,5 +1,6 @@
 import { APP_VERSION } from "@/lib/version";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -86,8 +87,6 @@ export default function Dashboard() {
     refetchInterval,
   });
 
-  const hasLeaderboard = !!leaderboardData;
-
   const { data: hourlyByRestaurant } = useQuery<Record<string, HourlySalesData[]>>({
     queryKey: ["/api/hourly-by-restaurant", dateStr],
     queryFn: async () => {
@@ -95,7 +94,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval,
     staleTime: secondaryStaleTime,
   });
@@ -107,7 +106,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval: slowRefetchInterval,
     staleTime: slowStaleTime,
   });
@@ -127,7 +126,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval: slowRefetchInterval,
     staleTime: slowStaleTime,
   });
@@ -147,7 +146,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval,
     staleTime: secondaryStaleTime,
   });
@@ -166,7 +165,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval: slowRefetchInterval,
     staleTime: slowStaleTime,
   });
@@ -190,7 +189,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     staleTime: secondaryStaleTime,
   });
   const notesByRestaurant = useMemo(() => {
@@ -215,7 +214,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval,
     staleTime: secondaryStaleTime,
   });
@@ -231,7 +230,7 @@ export default function Dashboard() {
       if (!res.ok) return { restaurants: {} };
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval,
     staleTime: secondaryStaleTime,
   });
@@ -244,7 +243,7 @@ export default function Dashboard() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     staleTime: secondaryStaleTime,
   });
 
@@ -304,7 +303,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval,
     staleTime: secondaryStaleTime,
   });
@@ -326,7 +325,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval: slowRefetchInterval,
     staleTime: slowStaleTime,
   });
@@ -345,7 +344,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     refetchInterval: slowRefetchInterval,
     staleTime: slowStaleTime,
   });
@@ -360,7 +359,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     staleTime: secondaryStaleTime,
   });
   const consistencyByRestaurant = useMemo(
@@ -388,7 +387,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     staleTime: secondaryStaleTime,
   });
   const demandCurvesByRestaurant = useMemo(
@@ -409,7 +408,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch YoY data");
       return res.json();
     },
-    enabled: hasLeaderboard,
+
     staleTime: secondaryStaleTime,
   });
 
@@ -583,6 +582,16 @@ export default function Dashboard() {
       })
       .map((r, i) => ({ ...r, rank: i + 1 }));
   }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap, checkAverageByRestaurant, attachmentRatesResponse]);
+
+  // Virtual scrolling: only mount cards that are near the viewport.
+  // With 100+ units this cuts initial mount cost from O(n) to O(viewport/cardHeight).
+  const listRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useWindowVirtualizer({
+    count: sortedRestaurants.length,
+    estimateSize: () => 108, // ~100px card + 8px gap (pb-2)
+    overscan: 5,             // render 5 extra items above/below for smooth scroll
+    scrollMargin: listRef.current?.offsetTop ?? 0,
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -913,31 +922,51 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  {sortedRestaurants.map((restaurant) => (
-                    <LeaderboardCard
-                      key={restaurant.restaurantId}
-                      restaurant={restaurant}
-                      hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
-                      crewSummary={crewSummary?.[restaurant.restaurantId]}
-                      hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
-                      checkAverage={checkAverageByRestaurant?.[restaurant.restaurantId]}
-                      checkAvgTrend={checkAvgTrendByRestaurant?.[restaurant.restaurantId]}
-                      consistencyScore={consistencyByRestaurant?.[restaurant.restaurantId]}
-                      demandCurveHours={demandCurvesByRestaurant?.[restaurant.restaurantId]}
-                      destinationsByHour={destinationsByRestaurant?.[restaurant.restaurantId]}
-                      isToday={isToday}
-                      yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
-                      weeklyData={weeklySalesData?.restaurants?.[restaurant.restaurantId]}
-                      notes={notesByRestaurant[restaurant.restaurantId]}
-                      dateStr={dateStr}
-                      onNoteAdded={refetchNotes}
-                      attachmentCategories={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.categories}
-                      overallAttachScore={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.overallAttachScore}
-                      helperRewardPoints={helperRewardsByRestaurant?.[restaurant.restaurantId]}
-                      twoWeekTrend={twoWeekTrendData?.restaurants?.[restaurant.restaurantId]}
-                    />
-                  ))}
+                {/* Virtualised card list — only mounts cards near the viewport */}
+                <div
+                  ref={listRef}
+                  style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualItem) => {
+                    const restaurant = sortedRestaurants[virtualItem.index];
+                    return (
+                      <div
+                        key={virtualItem.key}
+                        data-index={virtualItem.index}
+                        ref={virtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualItem.start - virtualizer.options.scrollMargin}px)`,
+                          paddingBottom: "8px",
+                        }}
+                      >
+                        <LeaderboardCard
+                          restaurant={restaurant}
+                          hourlyData={hourlyByRestaurant?.[restaurant.restaurantId]}
+                          crewSummary={crewSummary?.[restaurant.restaurantId]}
+                          hourlyCrewData={hourlyCrewByRestaurant?.[restaurant.restaurantId]}
+                          checkAverage={checkAverageByRestaurant?.[restaurant.restaurantId]}
+                          checkAvgTrend={checkAvgTrendByRestaurant?.[restaurant.restaurantId]}
+                          consistencyScore={consistencyByRestaurant?.[restaurant.restaurantId]}
+                          demandCurveHours={demandCurvesByRestaurant?.[restaurant.restaurantId]}
+                          destinationsByHour={destinationsByRestaurant?.[restaurant.restaurantId]}
+                          isToday={isToday}
+                          yoyData={yoyBulkData?.data?.[restaurant.restaurantId]}
+                          weeklyData={weeklySalesData?.restaurants?.[restaurant.restaurantId]}
+                          notes={notesByRestaurant[restaurant.restaurantId]}
+                          dateStr={dateStr}
+                          onNoteAdded={refetchNotes}
+                          attachmentCategories={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.categories}
+                          overallAttachScore={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.overallAttachScore}
+                          helperRewardPoints={helperRewardsByRestaurant?.[restaurant.restaurantId]}
+                          twoWeekTrend={twoWeekTrendData?.restaurants?.[restaurant.restaurantId]}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {leaderboardData.restaurants.length === 0 && (
