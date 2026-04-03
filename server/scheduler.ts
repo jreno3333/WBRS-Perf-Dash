@@ -540,6 +540,15 @@ async function syncYesterdayIfNeeded() {
       } catch (crewError) {
         log(`Yesterday crew sync error: ${crewError instanceof Error ? crewError.message : 'Unknown error'}`);
       }
+
+      // Sync employee roster daily to keep headcounts current
+      try {
+        const { syncEmployees } = await import("./scraper/7shifts-api");
+        const empResult = await syncEmployees();
+        log(`Daily employee sync: ${empResult.count} active employees synced`);
+      } catch (empError) {
+        log(`Daily employee sync error: ${empError instanceof Error ? empError.message : 'Unknown error'}`);
+      }
       
       lastYesterdaySync = todayCentral;
     } catch (error) {
