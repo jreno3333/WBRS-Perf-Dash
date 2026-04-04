@@ -713,16 +713,14 @@ router.get("/api/weekly-sales", async (req, res) => {
         : 23;
 
       // --- WTD: actual sales Sat through selected day ---
+      // Use ALL POS hours for today (no cutoff) to match actualSales on the daily card
       let currentWeekTotal = 0;
       for (const d of currentWeekDates) {
-        if (d === todayStr && isLiveToday) {
-          currentWeekTotal += sumDateSales(r.id, d, restaurantHourCutoff);
-        } else {
-          currentWeekTotal += sumDateSales(r.id, d);
-        }
+        currentWeekTotal += sumDateSales(r.id, d);
       }
 
       // --- Prior week (apples-to-apples mirror of WTD) ---
+      // For the matching day in prior week, cap at the same completed hour so comparison is fair
       let priorWeekTotal = 0;
       for (let i = 0; i < currentWeekDates.length; i++) {
         const d = priorWeekDates[i];
