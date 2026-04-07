@@ -412,7 +412,7 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
       agenda += "  │ Day           │ Grade │ Sales    │ Variance │ Speed │\n";
       agenda += "  ├───────────────┼───────┼──────────┼──────────┼───────┤\n";
       weekend.perDay.forEach(day => {
-        const dayLabel = formatDate(day.day).padEnd(13);
+        const dayLabel = (day.day.match(/^\d{4}-\d{2}-\d{2}$/) ? formatDate(day.day) : day.day).padEnd(13);
         const gradeStr = day.avgGradeLabel.padEnd(3);
         const salesStr = formatCurrency(day.totalSales).padStart(8);
         const varStr = ((day.avgSalesVariance >= 0 ? "+" : "") + day.avgSalesVariance.toFixed(1) + "%").padStart(8);
@@ -866,7 +866,7 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange, weekendDat
     queryFn: async () => {
       const params = new URLSearchParams({ days: String(numDays) });
       if (endDate) params.set("date", endDate);
-      const res = await fetch(`/api/leaders?${params}`);
+      const res = await fetch(`/api/leaders?${params}`, { credentials: "include" });
       if (!res.ok) return null;
       return res.json();
     },
@@ -879,7 +879,7 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange, weekendDat
     queryFn: async () => {
       const params = new URLSearchParams();
       if (endDate) params.set("date", endDate);
-      const res = await fetch(`/api/pos/attachment-rates?${params}`);
+      const res = await fetch(`/api/pos/attachment-rates?${params}`, { credentials: "include" });
       if (!res.ok) return null;
       return res.json();
     },
@@ -890,7 +890,7 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange, weekendDat
   const { data: anniversaryData } = useQuery({
     queryKey: ["/api/analytics/anniversaries", 7],
     queryFn: async () => {
-      const res = await fetch("/api/analytics/anniversaries?days=7");
+      const res = await fetch("/api/analytics/anniversaries?days=7", { credentials: "include" });
       if (!res.ok) return null;
       return res.json();
     },
