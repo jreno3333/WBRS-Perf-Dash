@@ -5,6 +5,21 @@ import { countAttachmentCategoriesAtTarget, ATTACHMENT_BENCHMARKS as SCORING_BEN
 
 const VALID_TIMEZONES = new Set(['America/Chicago', 'America/New_York', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix']);
 
+const POS_EXCLUSIONS: { storeNumber: string; beforeDate: string; beforeHour: number }[] = [
+  { storeNumber: '1729', beforeDate: '2026-04-09', beforeHour: 11 },
+];
+
+function isPosExcluded(storeNumber: string, localDate: string, hour: number): boolean {
+  for (const ex of POS_EXCLUSIONS) {
+    if (storeNumber !== ex.storeNumber) continue;
+    if (localDate < ex.beforeDate) return true;
+    if (localDate === ex.beforeDate && hour < ex.beforeHour) return true;
+  }
+  return false;
+}
+
+
+
 function getUtcBoundsForLocalDate(dateStr: string, tz: string) {
   const offsetHours = tz === 'America/New_York' ? 5 : tz === 'America/Chicago' ? 6 : tz === 'America/Denver' ? 7 : tz === 'America/Los_Angeles' ? 8 : 6;
   const paddedStart = new Date(`${dateStr}T00:00:00.000Z`);
@@ -194,6 +209,7 @@ export async function getPosOrdersSummary(targetDate: Date): Promise<Map<string,
       .groupBy(posOrders.storeNumber);
 
     for (const row of results) {
+      if (isPosExcluded(row.storeNumber, dateStr, 0)) continue;
       summary.set(row.storeNumber, {
         orders: row.orderCount,
         total: Number(row.totalSales) || 0,
@@ -229,6 +245,7 @@ export async function getHourlyPosSales(storeNumber: string, targetDate: Date, t
 
   const hourlyData = new Map<number, number>();
   for (const row of results) {
+    if (isPosExcluded(storeNumber, dateStr, row.hour)) continue;
     hourlyData.set(row.hour, Number(row.totalSales) || 0);
   }
 
@@ -277,6 +294,7 @@ export async function getPosSalesByRestaurant(targetDate: Date): Promise<Map<str
       .groupBy(posOrders.storeNumber);
 
     for (const row of results) {
+      if (isPosExcluded(row.storeNumber, dateStr, 0)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (restaurantInfo) {
         salesByRestaurant.set(restaurantInfo.id, Number(row.totalSales) || 0);
@@ -323,6 +341,7 @@ export async function getHourlyPosSalesByRestaurant(restaurantId: string, target
 
   const hourlyData = new Map<number, number>();
   for (const row of results) {
+    if (isPosExcluded(storeNumber, dateStr, row.hour)) continue;
     hourlyData.set(row.hour, Number(row.totalSales) || 0);
   }
 
@@ -378,6 +397,7 @@ export async function getAllHourlyPosSales(targetDate: Date): Promise<Map<string
       .groupBy(posOrders.storeNumber, sql`${hourExpr}`);
     
     for (const row of posResults) {
+      if (isPosExcluded(row.storeNumber, dateStr, row.hour)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (restaurantInfo) {
         if (!allHourlySales.has(restaurantInfo.id)) {
@@ -445,6 +465,7 @@ export async function getAllHourlyPosSalesRange(
       .groupBy(posOrders.storeNumber, sql`${dateExpr}`, sql`${hourExpr}`);
 
     for (const row of posResults) {
+      if (isPosExcluded(row.storeNumber, row.localDate, row.hour)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (restaurantInfo) {
         const key = `${restaurantInfo.id}-${row.localDate}-${row.hour}`;
@@ -509,6 +530,7 @@ export async function getAllHourlyPosOrderCountRange(
       .groupBy(posOrders.storeNumber, sql`${dateExpr}`, sql`${hourExpr}`);
 
     for (const row of posResults) {
+      if (isPosExcluded(row.storeNumber, row.localDate, row.hour)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (restaurantInfo) {
         const key = `${restaurantInfo.id}-${row.localDate}-${row.hour}`;
@@ -570,6 +592,7 @@ export async function getCheckAverageByRestaurant(targetDate: Date): Promise<Map
       .groupBy(posOrders.storeNumber, sql`${hourExpr}`);
 
     for (const row of posResults) {
+      if (isPosExcluded(row.storeNumber, dateStr, row.hour)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (!restaurantInfo) continue;
       const rid = restaurantInfo.id;
@@ -648,6 +671,7 @@ export async function getCheckAverageTrend(endDate: Date, days: number = 7): Pro
       .groupBy(posOrders.storeNumber, sql`${dateExpr}`);
 
     for (const row of posResults) {
+      if (isPosExcluded(row.storeNumber, row.localDate, 0)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (!restaurantInfo) continue;
       const rid = restaurantInfo.id;
@@ -754,6 +778,7 @@ export async function getDestinationBreakdownByRestaurant(targetDate: Date): Pro
       .groupBy(posOrders.storeNumber, sql`${hourExpr}`, sql`${destExpr}`);
 
     for (const row of posResults) {
+      if (isPosExcluded(row.storeNumber, dateStr, row.hour)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (!restaurantInfo) continue;
       const rid = restaurantInfo.id;
@@ -824,6 +849,7 @@ export async function getOotHoursByDateRange(startDateStr: string, endDateStr: s
       .groupBy(posOrders.storeNumber, sql`${dateExpr}`, sql`${hourExpr}`);
 
     for (const row of posResults) {
+      if (isPosExcluded(row.storeNumber, row.dateStr, row.hour)) continue;
       const restaurantInfo = storeToRestaurant.get(row.storeNumber);
       if (!restaurantInfo || row.orderCount < 1) continue;
       result.add(`${restaurantInfo.id}-${row.dateStr}-${row.hour}`);
@@ -1277,6 +1303,7 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
   const coreCategories = categories.filter(c => !PROMO_CATEGORIES.has(c));
 
   for (const order of orders) {
+    if (isPosExcluded(order.storeNumber, dateStr, 0)) continue;
     const restaurantInfo = storeToRestaurant.get(order.storeNumber);
     if (!restaurantInfo) continue;
     const rid = restaurantInfo.id;
@@ -1545,6 +1572,7 @@ export async function getAttachmentRatesMultiDay(dates: string[]): Promise<Map<s
   for (const order of orders) {
     const orderDateStr = order.localDate;
     if (!dateSet.has(orderDateStr)) continue;
+    if (isPosExcluded(order.storeNumber, orderDateStr, 0)) continue;
 
     const restaurantInfo = storeToRestaurant.get(order.storeNumber);
     if (!restaurantInfo) continue;
