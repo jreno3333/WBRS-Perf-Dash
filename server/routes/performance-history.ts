@@ -44,15 +44,28 @@ router.get("/api/performance-history/detail/:restaurantId", async (req, res) => 
 // Performance History endpoint - returns daily grades over a date range
 router.get("/api/performance-history", async (req, res) => {
   try {
-    const { days = "7", startDate, endDate } = req.query;
+    const { days = "7", startDate, endDate, restaurantId: filterRestaurantId } = req.query;
 
     const cacheKey = String(days);
     const cached = perfHistoryCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      let restaurants = cached.data.restaurants;
+
+      if (filterRestaurantId && filterRestaurantId !== "all") {
+        const match = restaurants.find((r: any) => r.restaurantId === filterRestaurantId);
+        restaurants = match ? [match] : [];
+        console.log(`[perf-history] Served single unit from cache (${cacheKey}, ${filterRestaurantId})`);
+        return res.json({
+          dateRange: cached.data.dateRange,
+          weekendDates: cached.data.weekendDates,
+          restaurants,
+        });
+      }
+
       const slim = {
         dateRange: cached.data.dateRange,
         weekendDates: cached.data.weekendDates,
-        restaurants: cached.data.restaurants.map((r: any) => ({
+        restaurants: restaurants.map((r: any) => ({
           restaurantId: r.restaurantId,
           restaurantName: r.restaurantName,
           state: r.state,
@@ -1058,6 +1071,17 @@ router.get("/api/performance-history", async (req, res) => {
     };
 
     perfHistoryCache.set(cacheKey, { data: fullData, timestamp: Date.now() });
+
+    if (filterRestaurantId && filterRestaurantId !== "all") {
+      const match = fullData.restaurants.find((r: any) => r.restaurantId === filterRestaurantId);
+      res.json({
+        dateRange: fullData.dateRange,
+        weekendDates: fullData.weekendDates,
+        restaurants: match ? [match] : [],
+      });
+      console.log(`[perf-history] Computed & cached in ${Date.now() - t0}ms, returned single unit ${filterRestaurantId}`);
+      return;
+    }
 
     const slim = {
       dateRange: fullData.dateRange,

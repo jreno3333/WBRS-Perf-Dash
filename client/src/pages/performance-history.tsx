@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1327,8 +1327,14 @@ function RestaurantCardDetail({ restaurant, detail, isLoadingDetail, dateRange, 
   );
 }
 
-function RestaurantCard({ restaurant, dateRange, weekendDates, daysParam }: { restaurant: RestaurantHistory; dateRange: string[]; weekendDates?: string[]; daysParam: string }) {
-  const [isOpen, setIsOpen] = useState(false);
+function RestaurantCard({ restaurant, dateRange, weekendDates, daysParam, autoExpand }: { restaurant: RestaurantHistory; dateRange: string[]; weekendDates?: string[]; daysParam: string; autoExpand?: boolean }) {
+  const [isOpen, setIsOpen] = useState(!!autoExpand);
+
+  useEffect(() => {
+    if (autoExpand) setIsOpen(true);
+  }, [autoExpand]);
+
+  const hasInlineDetail = !!(restaurant as any).dailyGrades;
 
   const { data: detail, isLoading: isLoadingDetail } = useQuery<RestaurantDetail>({
     queryKey: ["/api/performance-history/detail", restaurant.restaurantId, daysParam],
@@ -1337,10 +1343,11 @@ function RestaurantCard({ restaurant, dateRange, weekendDates, daysParam }: { re
       if (!res.ok) throw new Error("Failed to fetch detail");
       return res.json();
     },
-    enabled: isOpen,
+    enabled: isOpen && !hasInlineDetail,
     staleTime: 5 * 60 * 1000,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+    initialData: hasInlineDetail ? restaurant as unknown as RestaurantDetail : undefined,
   });
 
   return (
@@ -1428,11 +1435,28 @@ export default function PerformanceHistoryPage() {
   const [dateRange, setDateRange] = useState("8");
   const [selectedState, setSelectedState] = useState<string>("all");
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
+  const [selectedUnit, setSelectedUnit] = useState<string>("all");
+
+  const { data: restaurantList } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/restaurants"],
+    queryFn: async () => {
+      const res = await fetch("/api/restaurants", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch restaurants");
+      return res.json();
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams({ days: dateRange });
+    if (selectedUnit !== "all") params.set("restaurantId", selectedUnit);
+    return `/api/performance-history?${params.toString()}`;
+  }, [dateRange, selectedUnit]);
 
   const { data, isLoading, error } = useQuery<PerformanceHistoryData>({
-    queryKey: ["/api/performance-history", dateRange],
+    queryKey: ["/api/performance-history", dateRange, selectedUnit],
     queryFn: async () => {
-      const res = await fetch(`/api/performance-history?days=${dateRange}`, { credentials: "include" });
+      const res = await fetch(apiUrl, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch performance history");
       return res.json();
     },
@@ -1462,6 +1486,13 @@ export default function PerformanceHistoryPage() {
     return Array.from(new Set(data.restaurants.map((r) => r.marketName).filter(Boolean))).sort() as string[];
   }, [data]);
 
+  const sortedUnits = useMemo(() => {
+    if (!restaurantList) return [];
+    return [...restaurantList]
+      .filter(r => !r.name.toLowerCase().includes('training') && !r.name.toLowerCase().includes('development'))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [restaurantList]);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b sticky top-0 bg-background z-50">
@@ -1490,32 +1521,49 @@ export default function PerformanceHistoryPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={selectedState} onValueChange={setSelectedState}>
-                <SelectTrigger className="w-[130px]" data-testid="select-state">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  <SelectValue placeholder="State" />
+              <Select value={selectedUnit} onValueChange={(v) => { setSelectedUnit(v); if (v !== "all") { setSelectedState("all"); setSelectedMarket("all"); } }}>
+                <SelectTrigger className="w-[180px]" data-testid="select-unit">
+                  <Building2 className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All States</SelectItem>
-                  {states.map((state) => (
-                    <SelectItem key={state} value={state}>{state}</SelectItem>
+                  <SelectItem value="all">All Units</SelectItem>
+                  {sortedUnits.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
 
-              {markets.length > 0 && (
-                <Select value={selectedMarket} onValueChange={setSelectedMarket}>
-                  <SelectTrigger className="w-[130px]" data-testid="select-market">
-                    <Building2 className="w-4 h-4 mr-2" />
-                    <SelectValue placeholder="Market" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Markets</SelectItem>
-                    {markets.map((market) => (
-                      <SelectItem key={market} value={market}>{market}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {selectedUnit === "all" && (
+                <>
+                  <Select value={selectedState} onValueChange={setSelectedState}>
+                    <SelectTrigger className="w-[130px]" data-testid="select-state">
+                      <MapPin className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All States</SelectItem>
+                      {states.map((state) => (
+                        <SelectItem key={state} value={state}>{state}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {markets.length > 0 && (
+                    <Select value={selectedMarket} onValueChange={setSelectedMarket}>
+                      <SelectTrigger className="w-[130px]" data-testid="select-market">
+                        <MapPin className="w-4 h-4 mr-2" />
+                        <SelectValue placeholder="Market" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Markets</SelectItem>
+                        {markets.map((market) => (
+                          <SelectItem key={market} value={market}>{market}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </>
               )}
 
               <NavBar />
@@ -1585,7 +1633,7 @@ export default function PerformanceHistoryPage() {
               ) : (
                 <div>
                   {filteredRestaurants.map((restaurant) => (
-                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendDates} daysParam={dateRange} />
+                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendDates} daysParam={dateRange} autoExpand={selectedUnit !== "all"} />
                   ))}
                 </div>
               )}
