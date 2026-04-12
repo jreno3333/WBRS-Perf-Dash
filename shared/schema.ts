@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, integer, boolean, jsonb, uniqueIndex, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, integer, boolean, jsonb, uniqueIndex, index, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -89,7 +89,12 @@ export const hourlySales = pgTable("hourly_sales", {
   employeeCount: decimal("employee_count", { precision: 10, scale: 2 }),
   positionBreakdown: jsonb("position_breakdown").$type<Record<string, number>>(),
   scrapedAt: timestamp("scraped_at").defaultNow(),
-});
+}, (table) => ({
+  restaurantDateIdx: index("hourly_sales_restaurant_date_idx")
+    .on(table.restaurantId, table.salesDate),
+  salesDateIdx: index("hourly_sales_date_idx")
+    .on(table.salesDate),
+}));
 
 // Hourly labor data from 7shifts - stored separately to keep sales tables clean
 export const hourlyLabor = pgTable("hourly_labor", {

@@ -23,6 +23,41 @@ import { getHourlyOsatForDate } from "./scraper/qualtrics-api";
 import { getCurrentHourInTimezone, getTodayInTimezone, getNormalizedHourCutoff } from "./utils/dates";
 import { deduplicateHourly } from "./utils/db-helpers";
 
+type ParsedHourlySales = Omit<import("@shared/schema").HourlySales, 'actualSales' | 'projectedSales' | 'pastActualSales' | 'projectedLabor' | 'actualLabor' | 'employeeCount'> & {
+  _actualSales: number;
+  _projectedSales: number;
+  _pastActualSales: number;
+  _projectedLabor: number;
+  _actualLabor: number;
+  _employeeCount: number;
+  actualSales: string;
+  projectedSales: string | null;
+  pastActualSales: string | null;
+  projectedLabor: string | null;
+  actualLabor: string | null;
+  employeeCount: string | null;
+};
+
+function parseHourlySalesRows(rows: import("@shared/schema").HourlySales[]): ParsedHourlySales[] {
+  return rows.map(r => ({
+    ...r,
+    _actualSales: parseFloat(r.actualSales || '0'),
+    _projectedSales: parseFloat(r.projectedSales || '0'),
+    _pastActualSales: parseFloat(r.pastActualSales || '0'),
+    _projectedLabor: parseFloat(r.projectedLabor || '0'),
+    _actualLabor: parseFloat(r.actualLabor || '0'),
+    _employeeCount: Number(r.employeeCount) || 0,
+  }));
+}
+
+function buildHourMap(rows: ParsedHourlySales[]): Map<number, ParsedHourlySales> {
+  const map = new Map<number, ParsedHourlySales>();
+  for (const r of rows) {
+    map.set(r.hour, r);
+  }
+  return map;
+}
+
 export class DatabaseStorage {
   private _restaurantCache: { data: Restaurant[]; timestamp: number } | null = null;
   private _restaurantCacheTTL = 60_000;
@@ -46,6 +81,9 @@ export class DatabaseStorage {
   }
 
   async getRestaurant(id: string): Promise<Restaurant | undefined> {
+    const cached = await this.getRestaurants();
+    const found = cached.find(r => r.id === id);
+    if (found) return found;
     const result = await db.select().from(restaurants).where(eq(restaurants.id, id));
     return result[0];
   }
@@ -97,22 +135,22 @@ export class DatabaseStorage {
       laborByKey.set(key, l);
     });
 
-    const selectedDateHourly = deduplicateHourly(allHourlySales.filter(s => {
+    const selectedDateHourly = parseHourlySalesRows(deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
-    }));
+    })));
 
-    const lastWeekHourly = deduplicateHourly(allHourlySales.filter(s => {
+    const lastWeekHourly = parseHourlySalesRows(deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
-    }));
+    })));
 
-    const selectedByRestaurant = new Map<string, typeof selectedDateHourly>();
+    const selectedByRestaurant = new Map<string, ParsedHourlySales[]>();
     for (const s of selectedDateHourly) {
       if (!selectedByRestaurant.has(s.restaurantId)) selectedByRestaurant.set(s.restaurantId, []);
       selectedByRestaurant.get(s.restaurantId)!.push(s);
     }
-    const lastWeekByRestaurant = new Map<string, typeof lastWeekHourly>();
+    const lastWeekByRestaurant = new Map<string, ParsedHourlySales[]>();
     for (const s of lastWeekHourly) {
       if (!lastWeekByRestaurant.has(s.restaurantId)) lastWeekByRestaurant.set(s.restaurantId, []);
       lastWeekByRestaurant.get(s.restaurantId)!.push(s);
@@ -148,10 +186,10 @@ export class DatabaseStorage {
         });
       } else if (!isToday) {
         selectedDateSalesAmount = selectedDateRestaurantHours.reduce(
-          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+          (sum, s) => sum + s._actualSales, 0
         );
         actualSalesAmount = allSelectedDateHours.reduce(
-          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+          (sum, s) => sum + s._actualSales, 0
         );
         completedSalesAmount = actualSalesAmount;
       }
@@ -170,10 +208,10 @@ export class DatabaseStorage {
         });
       } else {
         lastWeekSalesAmount = lastWeekRestaurantHours.reduce(
-          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+          (sum, s) => sum + s._actualSales, 0
         );
         actualLastWeekAmount = lastWeekHoursForComparison.reduce(
-          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+          (sum, s) => sum + s._actualSales, 0
         );
       }
 
@@ -192,9 +230,10 @@ export class DatabaseStorage {
         } else {
           const lastWeekAllHoursForForecast = allLastWeekHours;
           if (lastWeekAllHoursForForecast.length > 0) {
+            const lwHourMap = buildHourMap(lastWeekAllHoursForForecast);
             for (let hour = restaurantCompletedHour + 1; hour < 24; hour++) {
-              const lastWeekHour = lastWeekAllHoursForForecast.find(s => s.hour === hour);
-              const amt = parseFloat(lastWeekHour?.actualSales || '0');
+              const lastWeekHour = lwHourMap.get(hour);
+              const amt = lastWeekHour?._actualSales || 0;
               lastWeekRemainingHoursSales += amt;
               if (hour > restaurantCurrentHour) {
                 lastWeekFutureOnlyHoursSales += amt;
@@ -250,12 +289,14 @@ export class DatabaseStorage {
           });
         } else {
           if (allLastWeekHours.length > 0) {
+            const todayHourMap = buildHourMap(allSelectedDateHours);
+            const lwHourMap2 = buildHourMap(allLastWeekHours);
             for (let hour = normalizedHourCutoff + 1; hour < 24; hour++) {
-              const todayHour = allSelectedDateHours.find(s => s.hour === hour);
-              const lastWeekHour = allLastWeekHours.find(s => s.hour === hour);
-              const forecastValue = parseFloat(todayHour?.projectedSales || '0') > 0
-                ? parseFloat(todayHour?.projectedSales || '0')
-                : parseFloat(lastWeekHour?.actualSales || '0');
+              const todayHour = todayHourMap.get(hour);
+              const lastWeekHour = lwHourMap2.get(hour);
+              const forecastValue = (todayHour?._projectedSales || 0) > 0
+                ? todayHour!._projectedSales
+                : (lastWeekHour?._actualSales || 0);
               remainingForecastSales += forecastValue;
             }
           }
@@ -264,7 +305,7 @@ export class DatabaseStorage {
         projectedEndOfDaySales = selectedDateSalesAmount + remainingForecastSales;
       } else {
         projectedEndOfDaySales = allSelectedDateHours.reduce(
-          (sum, s) => sum + parseFloat(s.actualSales || '0'), 0
+          (sum, s) => sum + s._actualSales, 0
         );
       }
 
@@ -357,21 +398,24 @@ export class DatabaseStorage {
     lastWeek.setDate(lastWeek.getDate() - 7);
     const lastWeekStr = lastWeek.toISOString().split('T')[0];
 
-    // OPTIMIZED: Filter at DB level
     const rangeStart = new Date(`${lastWeekStr}T00:00:00.000Z`);
     const rangeEnd = new Date(`${selectedDateStr}T23:59:59.999Z`);
 
-    const allHourlySales = await db.select().from(hourlySales).where(
-      and(
-        gte(hourlySales.salesDate, rangeStart),
-        lte(hourlySales.salesDate, rangeEnd)
-      )
-    );
+    const dbFilters = [
+      gte(hourlySales.salesDate, rangeStart),
+      lte(hourlySales.salesDate, rangeEnd),
+    ];
+    if (restaurantId !== "all") {
+      dbFilters.push(eq(hourlySales.restaurantId, restaurantId));
+    }
 
-    // Only fetch labor for selected date
-    const allHourlyLabor = await db.select().from(hourlyLabor).where(
-      eq(hourlyLabor.date, selectedDateStr)
-    );
+    const allHourlySales = await db.select().from(hourlySales).where(and(...dbFilters));
+
+    const laborFilters = [eq(hourlyLabor.date, selectedDateStr)];
+    if (restaurantId !== "all") {
+      laborFilters.push(eq(hourlyLabor.restaurantId, restaurantId));
+    }
+    const allHourlyLabor = await db.select().from(hourlyLabor).where(and(...laborFilters));
     const laborByKey = new Map<string, HourlyLabor>();
     allHourlyLabor.forEach(l => {
       const dateStr = l.date.split('T')[0];
@@ -379,15 +423,15 @@ export class DatabaseStorage {
       laborByKey.set(key, l);
     });
 
-    const selectedDateHourly = deduplicateHourly(allHourlySales.filter(s => {
+    const selectedDateHourly = parseHourlySalesRows(deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
-    }));
+    })));
 
-    const lastWeekHourly = deduplicateHourly(allHourlySales.filter(s => {
+    const lastWeekHourly = parseHourlySalesRows(deduplicateHourly(allHourlySales.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
-    }));
+    })));
 
     const selectedDateLabor = allHourlyLabor.filter(l => l.date.split('T')[0] === selectedDateStr);
 
@@ -430,24 +474,24 @@ export class DatabaseStorage {
         if (posLastWeekSales.size === 0) {
           lastWeekHourly.forEach(s => {
             const current = lastWeekByHour.get(s.hour) || 0;
-            lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+            lastWeekByHour.set(s.hour, current + s._actualSales);
           });
         }
 
         lastWeekHourly.forEach(s => {
           const currentForecast = forecastByHour.get(s.hour) || 0;
-          forecastByHour.set(s.hour, currentForecast + parseFloat(s.actualSales || '0'));
+          forecastByHour.set(s.hour, currentForecast + s._actualSales);
         });
       } else {
         selectedDateHourly.forEach(s => {
           const current = selectedByHour.get(s.hour) || 0;
-          selectedByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+          selectedByHour.set(s.hour, current + s._actualSales);
           const currentForecast = forecastByHour.get(s.hour) || 0;
-          forecastByHour.set(s.hour, currentForecast + parseFloat(s.projectedSales || '0'));
+          forecastByHour.set(s.hour, currentForecast + s._projectedSales);
         });
         lastWeekHourly.forEach(s => {
           const current = lastWeekByHour.get(s.hour) || 0;
-          lastWeekByHour.set(s.hour, current + parseFloat(s.actualSales || '0'));
+          lastWeekByHour.set(s.hour, current + s._actualSales);
         });
       }
 
@@ -458,11 +502,11 @@ export class DatabaseStorage {
         actualLaborByHour.set(l.hour, currentActualLabor + parseFloat(l.actualLabor || '0'));
       });
     } else {
-      selectedDateHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
-        selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
-        forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
+      selectedDateHourly.forEach(s => {
+        selectedByHour.set(s.hour, s._actualSales);
+        forecastByHour.set(s.hour, s._projectedSales);
       });
-      selectedDateLabor.filter(l => l.restaurantId === restaurantId).forEach(l => {
+      selectedDateLabor.forEach(l => {
         laborByHourMap.set(l.hour, parseFloat(l.projectedLabor || '0'));
         actualLaborByHour.set(l.hour, parseFloat(l.actualLabor || '0'));
         employeeCountByHour.set(l.hour, Number(l.employeeCount) || 0);
@@ -470,8 +514,8 @@ export class DatabaseStorage {
           positionByHour.set(l.hour, l.positionBreakdown as Record<string, number>);
         }
       });
-      lastWeekHourly.filter(s => s.restaurantId === restaurantId).forEach(s => {
-        lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+      lastWeekHourly.forEach(s => {
+        lastWeekByHour.set(s.hour, s._actualSales);
       });
     }
 
@@ -542,22 +586,22 @@ export class DatabaseStorage {
     const rangeStart = new Date(`${lastWeekStr}T00:00:00.000Z`);
     const rangeEnd = new Date(`${selectedDateStr}T23:59:59.999Z`);
 
-    const allHourlySales = await db.select().from(hourlySales).where(
+    const allHourlySalesRaw = await db.select().from(hourlySales).where(
       and(
         gte(hourlySales.salesDate, rangeStart),
         lte(hourlySales.salesDate, rangeEnd)
       )
     );
 
-    const selectedDateHourly = deduplicateHourly(allHourlySales.filter(s => {
+    const selectedDateHourly = parseHourlySalesRows(deduplicateHourly(allHourlySalesRaw.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === selectedDateStr;
-    }));
+    })));
 
-    const lastWeekHourly = deduplicateHourly(allHourlySales.filter(s => {
+    const lastWeekHourly = parseHourlySalesRows(deduplicateHourly(allHourlySalesRaw.filter(s => {
       const saleDate = new Date(s.salesDate).toISOString().split('T')[0];
       return saleDate === lastWeekStr;
-    }));
+    })));
 
     // Fetch supplementary data for selected date only
     const allHmeData = await db.select().from(hmeTimerData).where(sql`${hmeTimerData.date} LIKE ${selectedDateStr + '%'}`);
@@ -650,7 +694,7 @@ export class DatabaseStorage {
         }
       } else {
         restaurantSelectedHourly.forEach(s => {
-          selectedByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+          selectedByHour.set(s.hour, s._actualSales);
         });
         if (posSalesForRestaurant && posSalesForRestaurant.size > 0) {
           posSalesForRestaurant.forEach((sales, hour) => {
@@ -660,7 +704,7 @@ export class DatabaseStorage {
       }
 
       restaurantSelectedHourly.forEach(s => {
-        forecastByHour.set(s.hour, parseFloat(s.projectedSales || '0'));
+        forecastByHour.set(s.hour, s._projectedSales);
       });
       const quarterByHour: Map<number, { q0: number; q1: number; q2: number; q3: number }> = new Map();
       restaurantLaborData.forEach(l => {
@@ -706,7 +750,7 @@ export class DatabaseStorage {
         });
       } else {
         restaurantLastWeekHourly.forEach(s => {
-          lastWeekByHour.set(s.hour, parseFloat(s.actualSales || '0'));
+          lastWeekByHour.set(s.hour, s._actualSales);
         });
 
       }
