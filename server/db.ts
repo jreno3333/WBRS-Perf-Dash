@@ -52,9 +52,11 @@ console.log(`[db] POS DB separate: ${posDbIsSeparate ? 'yes' : 'no (same as main
 
 export async function ensureFeatureTables() {
   try {
-    const migrationPath = join(process.cwd(), 'migrations', '0003_feature_tables.sql');
-    const migrationSql = readFileSync(migrationPath, 'utf-8');
-    await pool.query(migrationSql);
+    const migrationsDir = join(process.cwd(), 'migrations');
+    const featureTablesSql = readFileSync(join(migrationsDir, '0003_feature_tables.sql'), 'utf-8');
+    const indexesSql = readFileSync(join(migrationsDir, '0004_hourly_sales_indexes.sql'), 'utf-8');
+    await pool.query(featureTablesSql);
+    await pool.query(indexesSql);
     console.log("[db] Feature tables (ticker, polls, milestones, grading_config, daily_google_reviews, helper_rewards) ready");
   } catch (error) {
     console.error("[db] Failed to ensure feature tables:", error);
