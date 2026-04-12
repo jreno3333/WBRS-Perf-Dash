@@ -582,7 +582,6 @@ export class DatabaseStorage {
 
     const restaurantList = await this.getRestaurants();
 
-    // OPTIMIZED: Filter at DB level
     const rangeStart = new Date(`${lastWeekStr}T00:00:00.000Z`);
     const rangeEnd = new Date(`${selectedDateStr}T23:59:59.999Z`);
 
