@@ -1435,7 +1435,7 @@ export default function PerformanceHistoryPage() {
   const [dateRange, setDateRange] = useState("8");
   const [selectedState, setSelectedState] = useState<string>("all");
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [selectedUnit, setSelectedUnit] = useState<string>("all");
+  const [selectedUnit, setSelectedUnit] = useState<string>("none");
 
   const { data: restaurantList } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/restaurants"],
@@ -1449,7 +1449,7 @@ export default function PerformanceHistoryPage() {
 
   const apiUrl = useMemo(() => {
     const params = new URLSearchParams({ days: dateRange });
-    if (selectedUnit !== "all") params.set("restaurantId", selectedUnit);
+    if (selectedUnit !== "none" && selectedUnit !== "all") params.set("restaurantId", selectedUnit);
     return `/api/performance-history?${params.toString()}`;
   }, [dateRange, selectedUnit]);
 
@@ -1460,6 +1460,7 @@ export default function PerformanceHistoryPage() {
       if (!res.ok) throw new Error("Failed to fetch performance history");
       return res.json();
     },
+    enabled: selectedUnit !== "none",
   });
 
   const filteredRestaurants = useMemo(() => {
@@ -1522,11 +1523,12 @@ export default function PerformanceHistoryPage() {
               </Select>
 
               <Select value={selectedUnit} onValueChange={(v) => { setSelectedUnit(v); if (v !== "all") { setSelectedState("all"); setSelectedMarket("all"); } }}>
-                <SelectTrigger className="w-[180px]" data-testid="select-unit">
+                <SelectTrigger className="w-[200px]" data-testid="select-unit">
                   <Building2 className="w-4 h-4 mr-2" />
-                  <SelectValue placeholder="Unit" />
+                  <SelectValue placeholder="Select a unit..." />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Select a unit...</SelectItem>
                   <SelectItem value="all">All Units</SelectItem>
                   {sortedUnits.map((r) => (
                     <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
@@ -1573,6 +1575,18 @@ export default function PerformanceHistoryPage() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {selectedUnit === "none" && (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="text-lg font-semibold mb-2">Select a Unit</h3>
+              <p className="text-muted-foreground">
+                Choose a restaurant from the dropdown above to view its performance history, or select "All Units" to compare across locations.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {isLoading && (
           <div className="space-y-3" data-testid="skeleton-loading">
             {Array.from({ length: 8 }).map((_, i) => (
