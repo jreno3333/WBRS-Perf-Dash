@@ -463,7 +463,9 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
       if (sales === 0 && lastWeekSales === 0) continue;
 
       const salesVsLW = lastWeekSales > 0 ? ((sales - lastWeekSales) / lastWeekSales) * 100 : 0;
-      const lastYearSales = yoyMap.get(restaurant.restaurantId);
+      const restRecordForComp = restaurantMap.get(restaurant.restaurantId);
+      const storeIsCompEarly = isCompStore(restRecordForComp?.openDate ?? null);
+      const lastYearSales = storeIsCompEarly ? yoyMap.get(restaurant.restaurantId) : undefined;
       const salesVsLY = lastYearSales && lastYearSales > 0
         ? ((sales - lastYearSales) / lastYearSales) * 100
         : undefined;

@@ -565,7 +565,9 @@ router.get("/api/executive-summary", async (req, res) => {
 
       const attach = attachByRest[rest.id];
 
-      const yoyLastYear = yoyByRest[rest.id];
+      const restOpenDate = rest.openDate;
+      const restIsComp = restOpenDate ? new Date(restOpenDate) <= new Date(new Date().setMonth(new Date().getMonth() - 24)) : true;
+      const yoyLastYear = restIsComp ? yoyByRest[rest.id] : undefined;
       const currentSalesDollars = round1(s.current);
       const yoySalesData = yoyLastYear && yoyLastYear > 0
         ? { lastYear: round1(yoyLastYear), pctChange: pctChange(currentSalesDollars, yoyLastYear) }
