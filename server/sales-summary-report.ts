@@ -29,7 +29,7 @@ function isTennesseeStore(restaurantName: string): boolean {
 
 /** Comp = open > 24 months. Non-comp = open <= 24 months or no openDate. */
 function isCompStore(openDate: string | Date | null | undefined): boolean {
-  if (!openDate) return true; // assume comp if no date
+  if (!openDate) return false; // no openDate → treat as non-comp (safe default — don't award YoY badge to stores with unknown open date)
   const open = new Date(openDate);
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - 24);
@@ -522,14 +522,14 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         ? osatHoursForBonus.reduce((s, h) => s + (h.osatPercent ?? 0) * (h.osatResponses ?? 0), 0) / dailyOsatResponses
         : undefined;
 
-      const lastYearDaily = completedHours[0]?.lastYearDailySales;
+      const storeIsComp = isCompStore(restaurantMap.get(restaurant.restaurantId)?.openDate ?? null);
+
+      const lastYearDaily = storeIsComp ? completedHours[0]?.lastYearDailySales : undefined;
       const dailyYoySalesVar = lastYearDaily && lastYearDaily > 0
         ? ((dailyTotalSales - lastYearDaily) / lastYearDaily) * 100 : undefined;
 
       const attachData = attachmentByRestaurant.get(restaurant.restaurantId);
       const attachCatsAtTarget = attachData ? countAttachmentCategoriesAtTarget(attachData.categories) : undefined;
-
-      const storeIsComp = isCompStore(restaurantMap.get(restaurant.restaurantId)?.openDate ?? null);
 
       const bonusResult = baseScore > 0 ? computeDailyBonuses({
         dailyOsatPercent: dailyOsatPct,

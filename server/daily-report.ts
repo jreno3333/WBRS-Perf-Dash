@@ -163,7 +163,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
     const restaurantOpenDates = new Map(allRestaurants.map(r => [r.id, r.openDate]));
     const isCompStore = (rid: string) => {
       const od = restaurantOpenDates.get(rid);
-      if (!od) return true;
+      if (!od) return false;
       const open = new Date(od);
       return (Date.now() - open.getTime()) / (1000 * 60 * 60 * 24 * 30.44) > 24;
     };

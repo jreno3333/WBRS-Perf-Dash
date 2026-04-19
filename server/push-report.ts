@@ -98,7 +98,7 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     const [restRecord] = await db.select({ openDate: restaurants.openDate }).from(restaurants).where(eq(restaurants.id, restaurantId)).limit(1);
     const storeIsComp = (() => {
       const od = restRecord?.openDate;
-      if (!od) return true;
+      if (!od) return false;
       const open = new Date(od);
       return (Date.now() - open.getTime()) / (1000 * 60 * 60 * 24 * 30.44) > 24;
     })();
