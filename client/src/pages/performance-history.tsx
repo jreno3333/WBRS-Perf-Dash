@@ -37,7 +37,20 @@ import {
   Copy,
   Check,
   Printer,
+  MessageSquare,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+  Bar,
+  ComposedChart,
+} from "recharts";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DaypartGrade {
@@ -1197,6 +1210,147 @@ function WeekendScorecardSection({ weekend, restaurant }: { weekend: WeekendData
   );
 }
 
+interface SpeedHistoryPoint {
+  date: string;
+  avgRating: number | null;
+  pct: number | null;
+  responses: number;
+}
+
+interface SpeedHistoryResponse {
+  restaurantId: string;
+  source: "dt" | "generic";
+  days: number;
+  series: SpeedHistoryPoint[];
+}
+
+function FeedbackSpeedTrendCard({ restaurantId }: { restaurantId: string }) {
+  const [range, setRange] = useState<"7" | "30">("7");
+
+  const { data, isLoading } = useQuery<SpeedHistoryResponse>({
+    queryKey: ["/api/osat/speed-history", restaurantId, range],
+    queryFn: async () => {
+      const res = await fetch(`/api/osat/speed-history/${restaurantId}?days=${range}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch speed history");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const sourceLabel = data?.source === "generic" ? "Speed of Service (in-store)" : "DT Speed of Service";
+
+  const chartData = (data?.series || []).map((p) => {
+    const d = new Date(`${p.date}T12:00:00Z`);
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    return {
+      date: p.date,
+      label,
+      pct: p.pct,
+      responses: p.responses,
+    };
+  });
+
+  const totalResponses = chartData.reduce((s, p) => s + p.responses, 0);
+  const daysWithData = chartData.filter((p) => p.pct !== null);
+  const avgPct = daysWithData.length
+    ? daysWithData.reduce((s, p) => s + (p.pct || 0), 0) / daysWithData.length
+    : null;
+
+  return (
+    <Card data-testid={`card-feedback-speed-trend-${restaurantId}`}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm">{sourceLabel} Trend</CardTitle>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant={range === "7" ? "default" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => setRange("7")}
+              data-testid={`button-speed-trend-7-${restaurantId}`}
+            >
+              7d
+            </Button>
+            <Button
+              size="sm"
+              variant={range === "30" ? "default" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => setRange("30")}
+              data-testid={`button-speed-trend-30-${restaurantId}`}
+            >
+              30d
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1">
+          <span data-testid={`text-speed-trend-avg-${restaurantId}`}>
+            Avg: {avgPct !== null ? `${avgPct.toFixed(0)}%` : "—"}
+          </span>
+          <span data-testid={`text-speed-trend-responses-${restaurantId}`}>
+            {totalResponses} response{totalResponses === 1 ? "" : "s"} over {chartData.length} day{chartData.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="h-48 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+          </div>
+        ) : totalResponses === 0 ? (
+          <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+            No customer-feedback responses in this range
+          </div>
+        ) : (
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis
+                  yAxisId="left"
+                  domain={[0, 100]}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 11 }}
+                  allowDecimals={false}
+                />
+                <RechartsTooltip
+                  contentStyle={{ fontSize: 12, backgroundColor: "hsl(var(--popover))", border: "1px solid hsl(var(--border))" }}
+                  formatter={(value, name) => {
+                    const label = String(name);
+                    if (value === null || value === undefined) return ["—", label];
+                    if (label === "Score") return [`${Number(value).toFixed(0)}%`, label];
+                    return [String(value), label];
+                  }}
+                />
+                <ReferenceLine yAxisId="left" y={80} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                <Bar yAxisId="right" dataKey="responses" name="Responses" fill="hsl(var(--muted-foreground))" opacity={0.35} />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="pct"
+                  name="Score"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  connectNulls
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function RestaurantCardDetail({ restaurant, detail, isLoadingDetail, dateRange, weekendDates }: {
   restaurant: RestaurantHistory;
   detail?: RestaurantDetail;
@@ -1319,6 +1473,8 @@ function RestaurantCardDetail({ restaurant, detail, isLoadingDetail, dateRange, 
           </div>
         </div>
       </div>
+
+      <FeedbackSpeedTrendCard restaurantId={r.restaurantId} />
 
       {detail.weekend && (
         <WeekendScorecardSection weekend={detail.weekend} restaurant={detail} />
