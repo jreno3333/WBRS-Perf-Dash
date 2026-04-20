@@ -126,6 +126,22 @@ router.get("/api/leaderboard", async (req, res) => {
           totalResponses: osat.totalResponses,
           fiveStarCount: osat.fiveStarCount,
         };
+
+        // Customer-feedback speed badge: store 1682 (Cumberland Avenue) has no
+        // drive-thru, so it falls back to the generic Speed of Service question.
+        // All other stores use the DT Speed of Service question.
+        const restaurant = restaurantMap.get(r.restaurantId);
+        const useGeneric = restaurant?.unitNumber === '1682';
+        const source: 'dt' | 'generic' = useGeneric ? 'generic' : 'dt';
+        const avg = useGeneric ? osat.genericSpeedAvg : osat.dtSpeedAvg;
+        const responses = useGeneric ? osat.genericSpeedResponses : osat.dtSpeedResponses;
+        r.feedbackSpeed = avg !== null && responses > 0
+          ? { avgRating: avg, responses, source }
+          : { avgRating: 0, responses: 0, source };
+      } else {
+        const restaurant = restaurantMap.get(r.restaurantId);
+        const useGeneric = restaurant?.unitNumber === '1682';
+        r.feedbackSpeed = { avgRating: 0, responses: 0, source: useGeneric ? 'generic' : 'dt' };
       }
     }
 

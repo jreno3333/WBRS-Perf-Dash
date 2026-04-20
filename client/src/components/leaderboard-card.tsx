@@ -1430,6 +1430,70 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <span className="font-medium">{restaurant.osat.osatPercent.toFixed(0)}%</span>
                   </BadgeWithTooltip>
                 )}
+                {/* Customer-feedback Speed of Service Badge (Qualtrics survey) */}
+                {restaurant.feedbackSpeed && (() => {
+                  const fs = restaurant.feedbackSpeed;
+                  const isGeneric = fs.source === 'generic';
+                  const sourceLabel = isGeneric ? 'Speed of Service (in-store)' : 'DT Speed of Service';
+                  const questionLabel = isGeneric ? 'generic Speed of Service question' : 'DT Speed of Service question';
+                  const hasData = fs.responses > 0;
+
+                  if (!hasData) {
+                    return (
+                      <BadgeWithTooltip
+                        className="bg-muted text-muted-foreground border-0 flex-shrink-0 text-xs px-1.5 gap-1"
+                        data-testid={`badge-feedback-speed-${restaurant.restaurantId}`}
+                        tooltipContent={
+                          <div>
+                            <div className="font-medium">{sourceLabel}</div>
+                            <div className="text-muted-foreground">No survey responses today</div>
+                            <div className="text-muted-foreground">Source: {questionLabel}</div>
+                          </div>
+                        }
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        <span>—</span>
+                      </BadgeWithTooltip>
+                    );
+                  }
+
+                  // Convert 1-5 average to a 0-100% score so it reads like the HME badge.
+                  // Guests who skipped this question are already excluded from `responses`,
+                  // so they do not drag the average down.
+                  const rating = fs.avgRating;
+                  const pct = (rating / 5) * 100;
+                  const ratingColor = pct >= 90
+                    ? "bg-green-500/10 text-green-500"
+                    : pct >= 80
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "bg-red-500/10 text-red-500";
+                  const isRed = pct < 80;
+
+                  return (
+                    <BadgeWithTooltip
+                      className={`${ratingColor} border-0 flex-shrink-0 text-xs px-1.5 gap-1 ${isRed ? 'animate-pulse' : ''}`}
+                      data-testid={`badge-feedback-speed-${restaurant.restaurantId}`}
+                      tooltipContent={
+                        <div>
+                          <div className="font-medium">{sourceLabel}</div>
+                          <div className="text-muted-foreground">
+                            Guest score: {pct.toFixed(0)}% ({rating.toFixed(2)} / 5.0)
+                          </div>
+                          <div className="text-muted-foreground">
+                            {fs.responses} response{fs.responses === 1 ? '' : 's'} today
+                            <span className="block text-[10px]">
+                              (skipped questions are not counted)
+                            </span>
+                          </div>
+                          <div className="text-muted-foreground">Source: {questionLabel}</div>
+                        </div>
+                      }
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      <span>{pct.toFixed(0)}%</span>
+                    </BadgeWithTooltip>
+                  );
+                })()}
                 {/* Drive-Thru SOS Badge */}
                 {restaurant.driveThru && (() => {
                   const carCount = restaurant.driveThru.carCount || 0;

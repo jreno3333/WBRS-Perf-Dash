@@ -4,6 +4,8 @@ import { eq, and, sql } from "drizzle-orm";
 import AdmZip from "adm-zip";
 
 // Category field mappings from Qualtrics survey
+//   QID1319640443_10 = generic "Speed of Service" (asked of dine-in / take-out respondents)
+//   QID1319640443_14 = "DT Speed of Service" — drive-thru speed (asked of drive-thru respondents only)
 const CATEGORY_FIELDS = {
   orderAccuracy: 'QID1319640443_3',
   foodQuality: 'QID1319640443_8',
@@ -424,7 +426,7 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
     }
   }
   
-  const aggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
+  const aggregated: Record<string, { totalResponses: number; fiveStarCount: number; dtSpeedSum: number; dtSpeedCount: number; genericSpeedSum: number; genericSpeedCount: number }> = {};
   const hourlyAggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   
   // Log date distribution and first record for debugging
@@ -577,7 +579,7 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
     
     const dailyKey = `${restaurant.id}|${dateStr}`;
     if (!aggregated[dailyKey]) {
-      aggregated[dailyKey] = { totalResponses: 0, fiveStarCount: 0 };
+      aggregated[dailyKey] = { totalResponses: 0, fiveStarCount: 0, dtSpeedSum: 0, dtSpeedCount: 0, genericSpeedSum: 0, genericSpeedCount: 0 };
     }
     aggregated[dailyKey].totalResponses++;
     if (rating === 5) {
@@ -595,6 +597,20 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
     
     // Parse and save category ratings for this survey response
     const categoryRatings = parseCategoryRatings(record);
+
+    // Aggregate per-day customer-feedback speed metrics
+    // QID1319640443_14 (DT Speed of Service) is asked of drive-thru respondents
+    // QID1319640443_10 (generic Speed of Service) is asked of dine-in / take-out respondents
+    const dtSpeedRating = categoryRatings.driveThruWaitTime;
+    if (dtSpeedRating !== null && dtSpeedRating !== undefined) {
+      aggregated[dailyKey].dtSpeedSum += dtSpeedRating;
+      aggregated[dailyKey].dtSpeedCount++;
+    }
+    const genericSpeedRating = categoryRatings.speedOfService;
+    if (genericSpeedRating !== null && genericSpeedRating !== undefined) {
+      aggregated[dailyKey].genericSpeedSum += genericSpeedRating;
+      aggregated[dailyKey].genericSpeedCount++;
+    }
     const hasLowRating = Object.values(categoryRatings).some(r => r !== null && r < 3);
     const hasAnyRating = Object.values(categoryRatings).some(r => r !== null);
     
@@ -633,6 +649,9 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
       ? ((data.fiveStarCount / data.totalResponses) * 100).toFixed(2)
       : null;
     
+    const dtSpeedSumStr = data.dtSpeedSum.toFixed(2);
+    const genericSpeedSumStr = data.genericSpeedSum.toFixed(2);
+
     try {
       await db.insert(dailyOsat).values({
         restaurantId,
@@ -640,12 +659,20 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
         totalResponses: data.totalResponses,
         fiveStarCount: data.fiveStarCount,
         osatPercent,
+        dtSpeedSum: dtSpeedSumStr,
+        dtSpeedCount: data.dtSpeedCount,
+        genericSpeedSum: genericSpeedSumStr,
+        genericSpeedCount: data.genericSpeedCount,
       }).onConflictDoUpdate({
         target: [dailyOsat.restaurantId, dailyOsat.date],
         set: {
           totalResponses: data.totalResponses,
           fiveStarCount: data.fiveStarCount,
           osatPercent,
+          dtSpeedSum: dtSpeedSumStr,
+          dtSpeedCount: data.dtSpeedCount,
+          genericSpeedSum: genericSpeedSumStr,
+          genericSpeedCount: data.genericSpeedCount,
           syncedAt: sql`now()`,
         },
       });
@@ -689,19 +716,38 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
   return { synced, errors: errors.slice(0, 10) };
 }
 
-export async function getOsatForDate(date: string): Promise<Record<string, { osatPercent: number; totalResponses: number; fiveStarCount: number }>> {
+export interface DailyOsatSummary {
+  osatPercent: number;
+  totalResponses: number;
+  fiveStarCount: number;
+  dtSpeedAvg: number | null;
+  dtSpeedResponses: number;
+  genericSpeedAvg: number | null;
+  genericSpeedResponses: number;
+}
+
+export async function getOsatForDate(date: string): Promise<Record<string, DailyOsatSummary>> {
   const records = await db.select().from(dailyOsat).where(eq(dailyOsat.date, date));
-  
-  const result: Record<string, { osatPercent: number; totalResponses: number; fiveStarCount: number }> = {};
-  
+
+  const result: Record<string, DailyOsatSummary> = {};
+
   for (const record of records) {
+    const dtSum = record.dtSpeedSum ? parseFloat(record.dtSpeedSum) : 0;
+    const dtCount = record.dtSpeedCount || 0;
+    const genericSum = record.genericSpeedSum ? parseFloat(record.genericSpeedSum) : 0;
+    const genericCount = record.genericSpeedCount || 0;
+
     result[record.restaurantId] = {
       osatPercent: record.osatPercent ? parseFloat(record.osatPercent) : 0,
       totalResponses: record.totalResponses,
       fiveStarCount: record.fiveStarCount,
+      dtSpeedAvg: dtCount > 0 ? dtSum / dtCount : null,
+      dtSpeedResponses: dtCount,
+      genericSpeedAvg: genericCount > 0 ? genericSum / genericCount : null,
+      genericSpeedResponses: genericCount,
     };
   }
-  
+
   return result;
 }
 

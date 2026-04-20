@@ -221,6 +221,12 @@ export interface RestaurantSales {
     totalResponses: number;
     fiveStarCount: number;
   } | null;
+  // Customer-feedback speed-of-service metric (Qualtrics survey, daily aggregate, 1-5 scale)
+  feedbackSpeed?: {
+    avgRating: number; // 1.0-5.0 average rating
+    responses: number; // Number of survey responses contributing
+    source: 'dt' | 'generic'; // Which Qualtrics question was used
+  } | null;
 }
 
 export interface HourlySalesData {
@@ -598,6 +604,12 @@ export const dailyOsat = pgTable("daily_osat", {
   totalResponses: integer("total_responses").notNull().default(0),
   fiveStarCount: integer("five_star_count").notNull().default(0),
   osatPercent: decimal("osat_percent", { precision: 5, scale: 2 }), // (fiveStarCount / totalResponses) * 100
+  // DT Speed of Service (Qualtrics QID1319640443_14) — drive-thru-only respondents
+  dtSpeedSum: decimal("dt_speed_sum", { precision: 10, scale: 2 }).notNull().default("0"),
+  dtSpeedCount: integer("dt_speed_count").notNull().default(0),
+  // Generic Speed of Service (Qualtrics QID1319640443_10) — non-drive-thru respondents
+  genericSpeedSum: decimal("generic_speed_sum", { precision: 10, scale: 2 }).notNull().default("0"),
+  genericSpeedCount: integer("generic_speed_count").notNull().default(0),
   syncedAt: timestamp("synced_at").defaultNow(),
 }, (table) => ({
   uniqueRestaurantDate: uniqueIndex("daily_osat_restaurant_date_idx")

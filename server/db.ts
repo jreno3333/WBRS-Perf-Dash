@@ -55,9 +55,11 @@ export async function ensureFeatureTables() {
     const migrationsDir = join(process.cwd(), 'migrations');
     const featureTablesSql = readFileSync(join(migrationsDir, '0003_feature_tables.sql'), 'utf-8');
     const indexesSql = readFileSync(join(migrationsDir, '0004_hourly_sales_indexes.sql'), 'utf-8');
+    const dailyOsatSpeedSql = readFileSync(join(migrationsDir, '0005_daily_osat_speed_columns.sql'), 'utf-8');
     await pool.query(featureTablesSql);
     await pool.query(indexesSql);
-    console.log("[db] Feature tables (ticker, polls, milestones, grading_config, daily_google_reviews, helper_rewards) ready");
+    await pool.query(dailyOsatSpeedSql);
+    console.log("[db] Feature tables (ticker, polls, milestones, grading_config, daily_google_reviews, helper_rewards, daily_osat speed columns) ready");
   } catch (error) {
     console.error("[db] Failed to ensure feature tables:", error);
   }
