@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
+import { Info, TrendingUp, TrendingDown, Receipt, MessageSquare } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -93,6 +93,22 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const dailyOsatPercent = dailyOsatTotals.totalResponses > 0 
     ? (dailyOsatTotals.fiveStarCount / dailyOsatTotals.totalResponses) * 100 
     : 0;
+
+  // Aggregate customer-feedback Speed (DT or generic depending on store)
+  const dailyFeedbackSpeed = activeRestaurants.reduce(
+    (acc, r) => {
+      const fs = r.feedbackSpeed;
+      if (fs && fs.responses > 0) {
+        acc.weighted += fs.avgRating * fs.responses;
+        acc.responses += fs.responses;
+      }
+      return acc;
+    },
+    { weighted: 0, responses: 0 }
+  );
+  const dailyFeedbackSpeedAvg = dailyFeedbackSpeed.responses > 0
+    ? dailyFeedbackSpeed.weighted / dailyFeedbackSpeed.responses
+    : null;
   
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
   const totalLastWeekSales = forecastEligible.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
@@ -459,6 +475,16 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
               <p className={`text-xs mt-1 ${dailyOsatPercent >= 85 ? 'text-green-500' : dailyOsatPercent >= 80 ? 'text-yellow-500' : 'text-red-500'}`}>
                 OSAT {Math.round(dailyOsatPercent)}%
                 <span className="text-muted-foreground ml-1">({dailyOsatTotals.totalResponses})</span>
+              </p>
+            )}
+            {dailyFeedbackSpeedAvg !== null && (
+              <p
+                className={`text-xs mt-0.5 flex items-center gap-1 ${dailyFeedbackSpeedAvg >= 4.5 ? 'text-green-500' : dailyFeedbackSpeedAvg >= 4.0 ? 'text-amber-500' : 'text-red-500'}`}
+                data-testid="text-execution-feedback-speed"
+              >
+                <MessageSquare className="w-3 h-3" />
+                Speed {dailyFeedbackSpeedAvg.toFixed(1)}
+                <span className="text-muted-foreground ml-1">({dailyFeedbackSpeed.responses})</span>
               </p>
             )}
             {companyCheckAvg > 0 && (

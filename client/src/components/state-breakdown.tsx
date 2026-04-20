@@ -2,7 +2,7 @@ import { useState, memo } from "react";
 // Card imports removed - using plain divs for cleaner styling
 // Badge import removed - using inline styles
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt, MessageSquare } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
@@ -152,6 +152,33 @@ function calculateStateOsat(restaurants: RestaurantSales[]): { osatPercent: numb
   };
 }
 
+// Calculate aggregate customer-feedback Speed of Service for a state
+function calculateStateFeedbackSpeed(stateRestaurants: RestaurantSales[]): { avgRating: number | undefined; responses: number; sourceMix: { dt: number; generic: number } } {
+  let weightedSum = 0;
+  let responses = 0;
+  let dtCount = 0;
+  let genCount = 0;
+  for (const r of stateRestaurants) {
+    const fs = r.feedbackSpeed;
+    if (fs && fs.responses > 0) {
+      weightedSum += fs.avgRating * fs.responses;
+      responses += fs.responses;
+      if (fs.source === 'generic') genCount += fs.responses; else dtCount += fs.responses;
+    }
+  }
+  return {
+    avgRating: responses > 0 ? weightedSum / responses : undefined,
+    responses,
+    sourceMix: { dt: dtCount, generic: genCount },
+  };
+}
+
+function getFeedbackSpeedColor(rating: number): string {
+  if (rating >= 4.5) return 'bg-green-500/10 text-green-500';
+  if (rating >= 4.0) return 'bg-amber-500/10 text-amber-500';
+  return 'bg-red-500/10 text-red-500';
+}
+
 function getOsatColor(percent: number): string {
   if (percent >= 85) return 'bg-green-500/10 text-green-500';
   if (percent >= 80) return 'bg-yellow-500/10 text-yellow-500';
@@ -293,6 +320,10 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
   const alabamaOsat = calculateStateOsat(alabamaRestaurants);
   const tennesseeOsat = calculateStateOsat(tennesseeRestaurants);
 
+  // Calculate customer-feedback Speed for each state
+  const alabamaFeedbackSpeed = calculateStateFeedbackSpeed(alabamaRestaurants);
+  const tennesseeFeedbackSpeed = calculateStateFeedbackSpeed(tennesseeRestaurants);
+
   // Calculate speed attainment for each state
   const alabamaSpeed = calculateStateSpeed(alabamaRestaurants);
   const tennesseeSpeed = calculateStateSpeed(tennesseeRestaurants);
@@ -357,6 +388,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
       xScore: alabamaXScore,
       crewScore: alabamaCrewScore,
       osat: alabamaOsat,
+      feedbackSpeed: alabamaFeedbackSpeed,
       speed: alabamaSpeed,
       weekly: alabamaWeekly,
       checkAvg: alabamaCheckAvg,
@@ -373,6 +405,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
       xScore: tennesseeXScore,
       crewScore: tennesseeCrewScore,
       osat: tennesseeOsat,
+      feedbackSpeed: tennesseeFeedbackSpeed,
       speed: tennesseeSpeed,
       weekly: tennesseeWeekly,
       checkAvg: tennesseeCheckAvg,
@@ -484,6 +517,25 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                 >
                   <ThumbsUp className="w-3 h-3" />
                   <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
+                </BadgeWithTooltip>
+              )}
+              {state.feedbackSpeed.avgRating !== undefined && (
+                <BadgeWithTooltip
+                  className={`${getFeedbackSpeedColor(state.feedbackSpeed.avgRating)} border-0 gap-1`}
+                  data-testid={`badge-feedback-speed-state-${state.abbr.toLowerCase()}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Guest-Perceived Speed</div>
+                      <div className="text-muted-foreground">{state.feedbackSpeed.avgRating.toFixed(2)} / 5 avg rating</div>
+                      <div className="text-muted-foreground">{state.feedbackSpeed.responses} survey response{state.feedbackSpeed.responses === 1 ? '' : 's'}</div>
+                      {state.feedbackSpeed.sourceMix.generic > 0 && state.feedbackSpeed.sourceMix.dt > 0 && (
+                        <div className="text-muted-foreground">DT: {state.feedbackSpeed.sourceMix.dt} · In-store: {state.feedbackSpeed.sourceMix.generic}</div>
+                      )}
+                    </div>
+                  }
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  <span className="font-medium">{state.feedbackSpeed.avgRating.toFixed(1)}</span>
                 </BadgeWithTooltip>
               )}
               {state.crewScore.count > 0 && (

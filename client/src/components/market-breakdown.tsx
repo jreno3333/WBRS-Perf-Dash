@@ -1,7 +1,7 @@
 import { useState, memo, useMemo } from "react";
 // Card/Badge imports removed - using plain divs
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt, MessageSquare } from "lucide-react";
 import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
@@ -122,6 +122,33 @@ function formatTenure(months: number): string {
   const remainingMonths = Math.round(months % 12);
   if (remainingMonths === 0) return `${years} yr`;
   return `${years}y ${remainingMonths}m`;
+}
+
+// Calculate aggregate customer-feedback Speed of Service (avg rating, weighted by responses)
+function calculateMarketFeedbackSpeed(marketRestaurants: RestaurantSales[]): { avgRating: number | undefined; responses: number; sourceMix: { dt: number; generic: number } } {
+  let weightedSum = 0;
+  let responses = 0;
+  let dtCount = 0;
+  let genCount = 0;
+  for (const r of marketRestaurants) {
+    const fs = r.feedbackSpeed;
+    if (fs && fs.responses > 0) {
+      weightedSum += fs.avgRating * fs.responses;
+      responses += fs.responses;
+      if (fs.source === 'generic') genCount += fs.responses; else dtCount += fs.responses;
+    }
+  }
+  return {
+    avgRating: responses > 0 ? weightedSum / responses : undefined,
+    responses,
+    sourceMix: { dt: dtCount, generic: genCount },
+  };
+}
+
+function getFeedbackSpeedColor(rating: number): string {
+  if (rating >= 4.5) return 'bg-green-500/10 text-green-500';
+  if (rating >= 4.0) return 'bg-amber-500/10 text-amber-500';
+  return 'bg-red-500/10 text-red-500';
 }
 
 // Calculate aggregate OSAT for a group of restaurants
@@ -248,6 +275,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
     const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant, gradingCfg);
     const crewScore = calculateMarketCrewScore(marketRestaurantIds, crewSummary);
     const osat = calculateMarketOsat(marketRestaurants);
+    const feedbackSpeed = calculateMarketFeedbackSpeed(marketRestaurants);
     const speed = calculateMarketSpeed(marketRestaurants);
     const checkAvg = calculateMarketCheckAvg(marketRestaurantIds, checkAverageByRestaurant, checkAvgTrendByRestaurant);
 
@@ -279,6 +307,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
       xScore,
       crewScore,
       osat,
+      feedbackSpeed,
       speed,
       weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance, eowForecast: weeklyEowForecast, priorFull: weeklyPriorFull, eowVariance: weeklyEowVariance },
       checkAvg,
@@ -414,15 +443,23 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                   <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
                 </BadgeWithTooltip>
               )}
-              {market.crewScore.count > 0 && (
+              {market.feedbackSpeed.avgRating !== undefined && (
                 <BadgeWithTooltip
-                  className={`${getCrewScoreColor(market.crewScore.avgScore)} border-0 gap-1`}
-                  data-testid={`badge-crew-market-${market.id}`}
-                  tooltipTitle="Crew Experience"
-                  tooltipDetail={`Avg tenure: ${formatTenure(market.crewScore.avgTenureMonths)}`}
+                  className={`${getFeedbackSpeedColor(market.feedbackSpeed.avgRating)} border-0 gap-1`}
+                  data-testid={`badge-feedback-speed-market-${market.id}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Guest-Perceived Speed</div>
+                      <div className="text-muted-foreground">{market.feedbackSpeed.avgRating.toFixed(2)} / 5 avg rating</div>
+                      <div className="text-muted-foreground">{market.feedbackSpeed.responses} survey response{market.feedbackSpeed.responses === 1 ? '' : 's'}</div>
+                      {market.feedbackSpeed.sourceMix.generic > 0 && market.feedbackSpeed.sourceMix.dt > 0 && (
+                        <div className="text-muted-foreground">DT: {market.feedbackSpeed.sourceMix.dt} · In-store: {market.feedbackSpeed.sourceMix.generic}</div>
+                      )}
+                    </div>
+                  }
                 >
-                  <GraduationCap className="w-3 h-3" />
-                  <span className="font-medium">{market.crewScore.avgScore}</span>
+                  <MessageSquare className="w-3 h-3" />
+                  <span className="font-medium">{market.feedbackSpeed.avgRating.toFixed(1)}</span>
                 </BadgeWithTooltip>
               )}
               {market.checkAvg.checkAvg > 0 && (
