@@ -62,7 +62,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "check_avg">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "osat_time" | "check_avg">("sales");
   const gradingCfg = useGradingConfig();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -507,6 +507,8 @@ export default function Dashboard() {
             return r.googleReviews != null;
           case "osat":
             return r.osat != null && r.osat.totalResponses > 0;
+          case "osat_time":
+            return r.feedbackSpeed != null && r.feedbackSpeed.responses > 0;
           case "yoy":
             return yoyBulkData?.data?.[r.restaurantId] != null;
           default:
@@ -556,6 +558,11 @@ export default function Dashboard() {
             const aOsat = a.osat?.osatPercent ?? 0;
             const bOsat = b.osat?.osatPercent ?? 0;
             return bOsat - aOsat;
+          }
+          case "osat_time": {
+            const aFS = a.feedbackSpeed && a.feedbackSpeed.responses > 0 ? a.feedbackSpeed.avgRating : -1;
+            const bFS = b.feedbackSpeed && b.feedbackSpeed.responses > 0 ? b.feedbackSpeed.avgRating : -1;
+            return bFS - aFS;
           }
           case "check_avg": {
             const aCA = checkAverageByRestaurant?.[a.restaurantId]?.checkAverage ?? 0;
@@ -915,6 +922,7 @@ export default function Dashboard() {
                           <SelectItem value="xscore">Exc Score</SelectItem>
                           <SelectItem value="google_reviews">Google Rating</SelectItem>
                           <SelectItem value="osat">OSAT</SelectItem>
+                          <SelectItem value="osat_time">OSAT Time</SelectItem>
                           <SelectItem value="check_avg">Check Avg</SelectItem>
                         </SelectContent>
                       </Select>
