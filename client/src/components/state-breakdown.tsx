@@ -173,9 +173,9 @@ function calculateStateFeedbackSpeed(stateRestaurants: RestaurantSales[]): { avg
   };
 }
 
-function getFeedbackSpeedColor(rating: number): string {
-  if (rating >= 4.5) return 'bg-green-500/10 text-green-500';
-  if (rating >= 4.0) return 'bg-amber-500/10 text-amber-500';
+function getFeedbackSpeedColor(pct: number): string {
+  if (pct >= 90) return 'bg-green-500/10 text-green-500';
+  if (pct >= 80) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
   return 'bg-red-500/10 text-red-500';
 }
 
@@ -519,9 +519,11 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                   <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
                 </BadgeWithTooltip>
               )}
-              {state.feedbackSpeed.avgRating !== undefined && (
+              {state.feedbackSpeed.avgRating !== undefined && (() => {
+                const fsPct = (state.feedbackSpeed.avgRating / 5) * 100;
+                return (
                 <BadgeWithTooltip
-                  className={`${getFeedbackSpeedColor(state.feedbackSpeed.avgRating)} border-0 gap-1`}
+                  className={`${getFeedbackSpeedColor(fsPct)} border-0 gap-1`}
                   data-testid={`badge-feedback-speed-state-${state.abbr.toLowerCase()}`}
                   tooltipContent={
                     <div>
@@ -535,9 +537,10 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                   }
                 >
                   <MessageSquare className="w-3 h-3" />
-                  <span className="font-medium">{state.feedbackSpeed.avgRating.toFixed(1)}</span>
+                  <span className="font-medium">{fsPct.toFixed(0)}%</span>
                 </BadgeWithTooltip>
-              )}
+                );
+              })()}
               {state.crewScore.count > 0 && (
                 <BadgeWithTooltip
                   className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1`}

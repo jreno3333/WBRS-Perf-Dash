@@ -145,9 +145,9 @@ function calculateMarketFeedbackSpeed(marketRestaurants: RestaurantSales[]): { a
   };
 }
 
-function getFeedbackSpeedColor(rating: number): string {
-  if (rating >= 4.5) return 'bg-green-500/10 text-green-500';
-  if (rating >= 4.0) return 'bg-amber-500/10 text-amber-500';
+function getFeedbackSpeedColor(pct: number): string {
+  if (pct >= 90) return 'bg-green-500/10 text-green-500';
+  if (pct >= 80) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
   return 'bg-red-500/10 text-red-500';
 }
 
@@ -443,9 +443,11 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                   <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
                 </BadgeWithTooltip>
               )}
-              {market.feedbackSpeed.avgRating !== undefined && (
+              {market.feedbackSpeed.avgRating !== undefined && (() => {
+                const fsPct = (market.feedbackSpeed.avgRating / 5) * 100;
+                return (
                 <BadgeWithTooltip
-                  className={`${getFeedbackSpeedColor(market.feedbackSpeed.avgRating)} border-0 gap-1`}
+                  className={`${getFeedbackSpeedColor(fsPct)} border-0 gap-1`}
                   data-testid={`badge-feedback-speed-market-${market.id}`}
                   tooltipContent={
                     <div>
@@ -459,9 +461,10 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                   }
                 >
                   <MessageSquare className="w-3 h-3" />
-                  <span className="font-medium">{market.feedbackSpeed.avgRating.toFixed(1)}</span>
+                  <span className="font-medium">{fsPct.toFixed(0)}%</span>
                 </BadgeWithTooltip>
-              )}
+                );
+              })()}
               {market.checkAvg.checkAvg > 0 && (
                 <BadgeWithTooltip
                   className="bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0 gap-1"

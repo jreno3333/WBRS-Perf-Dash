@@ -477,16 +477,20 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                 <span className="text-muted-foreground ml-1">({dailyOsatTotals.totalResponses})</span>
               </p>
             )}
-            {dailyFeedbackSpeedAvg !== null && (
-              <p
-                className={`text-xs mt-0.5 flex items-center gap-1 ${dailyFeedbackSpeedAvg >= 4.5 ? 'text-green-500' : dailyFeedbackSpeedAvg >= 4.0 ? 'text-amber-500' : 'text-red-500'}`}
-                data-testid="text-execution-feedback-speed"
-              >
-                <MessageSquare className="w-3 h-3" />
-                Speed {dailyFeedbackSpeedAvg.toFixed(1)}
-                <span className="text-muted-foreground ml-1">({dailyFeedbackSpeed.responses})</span>
-              </p>
-            )}
+            {dailyFeedbackSpeedAvg !== null && (() => {
+              const fsPct = (dailyFeedbackSpeedAvg / 5) * 100;
+              const colorCls = fsPct >= 90 ? 'text-green-500' : fsPct >= 80 ? 'text-amber-500' : 'text-red-500';
+              return (
+                <p
+                  className={`text-xs mt-0.5 flex items-center gap-1 ${colorCls}`}
+                  data-testid="text-execution-feedback-speed"
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  Speed {fsPct.toFixed(0)}%
+                  <span className="text-muted-foreground ml-1">({dailyFeedbackSpeed.responses})</span>
+                </p>
+              );
+            })()}
             {companyCheckAvg > 0 && (
               <div className="mt-1.5 pt-1.5 border-t border-border/30">
                 <div className="flex items-center gap-1">
