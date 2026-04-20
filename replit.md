@@ -77,3 +77,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Other Integrations
 - **Xenial POS**: Real-time order data via webhooks (sole source for sales data).
+
+## Operational Scripts
+
+- **Backfill Qualtrics DT/Generic Speed columns** (`scripts/backfill-osat-speed.ts`):
+  Re-runs `syncOsatData` over a wide window to repopulate `daily_osat.dt_speed_sum`/`dt_speed_count` and `generic_speed_sum`/`generic_speed_count` from historical Qualtrics responses. Used once after the speed columns were added so the new feedback-speed badges have history immediately. Re-run any time those columns need to be rebuilt.
+  - Default 90 days: `npx tsx scripts/backfill-osat-speed.ts`
+  - Custom window: `npx tsx scripts/backfill-osat-speed.ts 180`
+  - Equivalent admin endpoint: `POST /api/osat/sync-historical` with `{"daysBack": 90}`
