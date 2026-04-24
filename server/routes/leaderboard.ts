@@ -130,18 +130,19 @@ router.get("/api/leaderboard", async (req, res) => {
         // Customer-feedback speed badge: store 1682 (Cumberland Avenue) has no
         // drive-thru, so it falls back to the generic Speed of Service question.
         // All other stores use the DT Speed of Service question.
+        // Methodology matches OSAT and the Qualtrics dashboard: 5-star top-box %.
         const restaurant = restaurantMap.get(r.restaurantId);
         const useGeneric = restaurant?.unitNumber === '1682';
         const source: 'dt' | 'generic' = useGeneric ? 'generic' : 'dt';
-        const avg = useGeneric ? osat.genericSpeedAvg : osat.dtSpeedAvg;
         const responses = useGeneric ? osat.genericSpeedResponses : osat.dtSpeedResponses;
-        r.feedbackSpeed = avg !== null && responses > 0
-          ? { avgRating: avg, responses, source }
-          : { avgRating: 0, responses: 0, source };
+        const fiveStar = useGeneric ? osat.genericSpeedFiveStarCount : osat.dtSpeedFiveStarCount;
+        r.feedbackSpeed = responses > 0
+          ? { topBoxPercent: (fiveStar / responses) * 100, fiveStarCount: fiveStar, responses, source }
+          : { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source };
       } else {
         const restaurant = restaurantMap.get(r.restaurantId);
         const useGeneric = restaurant?.unitNumber === '1682';
-        r.feedbackSpeed = { avgRating: 0, responses: 0, source: useGeneric ? 'generic' : 'dt' };
+        r.feedbackSpeed = { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source: useGeneric ? 'generic' : 'dt' };
       }
     }
 

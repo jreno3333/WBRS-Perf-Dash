@@ -426,7 +426,7 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
     }
   }
   
-  const aggregated: Record<string, { totalResponses: number; fiveStarCount: number; dtSpeedSum: number; dtSpeedCount: number; genericSpeedSum: number; genericSpeedCount: number }> = {};
+  const aggregated: Record<string, { totalResponses: number; fiveStarCount: number; dtSpeedSum: number; dtSpeedCount: number; dtSpeedFiveStarCount: number; genericSpeedSum: number; genericSpeedCount: number; genericSpeedFiveStarCount: number }> = {};
   const hourlyAggregated: Record<string, { totalResponses: number; fiveStarCount: number }> = {};
   
   // Log date distribution and first record for debugging
@@ -579,7 +579,7 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
     
     const dailyKey = `${restaurant.id}|${dateStr}`;
     if (!aggregated[dailyKey]) {
-      aggregated[dailyKey] = { totalResponses: 0, fiveStarCount: 0, dtSpeedSum: 0, dtSpeedCount: 0, genericSpeedSum: 0, genericSpeedCount: 0 };
+      aggregated[dailyKey] = { totalResponses: 0, fiveStarCount: 0, dtSpeedSum: 0, dtSpeedCount: 0, dtSpeedFiveStarCount: 0, genericSpeedSum: 0, genericSpeedCount: 0, genericSpeedFiveStarCount: 0 };
     }
     aggregated[dailyKey].totalResponses++;
     if (rating === 5) {
@@ -605,11 +605,13 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
     if (dtSpeedRating !== null && dtSpeedRating !== undefined) {
       aggregated[dailyKey].dtSpeedSum += dtSpeedRating;
       aggregated[dailyKey].dtSpeedCount++;
+      if (dtSpeedRating === 5) aggregated[dailyKey].dtSpeedFiveStarCount++;
     }
     const genericSpeedRating = categoryRatings.speedOfService;
     if (genericSpeedRating !== null && genericSpeedRating !== undefined) {
       aggregated[dailyKey].genericSpeedSum += genericSpeedRating;
       aggregated[dailyKey].genericSpeedCount++;
+      if (genericSpeedRating === 5) aggregated[dailyKey].genericSpeedFiveStarCount++;
     }
     const hasLowRating = Object.values(categoryRatings).some(r => r !== null && r < 3);
     const hasAnyRating = Object.values(categoryRatings).some(r => r !== null);
@@ -661,8 +663,10 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
         osatPercent,
         dtSpeedSum: dtSpeedSumStr,
         dtSpeedCount: data.dtSpeedCount,
+        dtSpeedFiveStarCount: data.dtSpeedFiveStarCount,
         genericSpeedSum: genericSpeedSumStr,
         genericSpeedCount: data.genericSpeedCount,
+        genericSpeedFiveStarCount: data.genericSpeedFiveStarCount,
       }).onConflictDoUpdate({
         target: [dailyOsat.restaurantId, dailyOsat.date],
         set: {
@@ -671,8 +675,10 @@ export async function syncOsatData(daysBack: number = 3): Promise<{ synced: numb
           osatPercent,
           dtSpeedSum: dtSpeedSumStr,
           dtSpeedCount: data.dtSpeedCount,
+          dtSpeedFiveStarCount: data.dtSpeedFiveStarCount,
           genericSpeedSum: genericSpeedSumStr,
           genericSpeedCount: data.genericSpeedCount,
+          genericSpeedFiveStarCount: data.genericSpeedFiveStarCount,
           syncedAt: sql`now()`,
         },
       });
@@ -720,10 +726,13 @@ export interface DailyOsatSummary {
   osatPercent: number;
   totalResponses: number;
   fiveStarCount: number;
+  // Average rating (kept for any historical/reporting use)
   dtSpeedAvg: number | null;
   dtSpeedResponses: number;
+  dtSpeedFiveStarCount: number;
   genericSpeedAvg: number | null;
   genericSpeedResponses: number;
+  genericSpeedFiveStarCount: number;
 }
 
 export async function getOsatForDate(date: string): Promise<Record<string, DailyOsatSummary>> {
@@ -743,8 +752,10 @@ export async function getOsatForDate(date: string): Promise<Record<string, Daily
       fiveStarCount: record.fiveStarCount,
       dtSpeedAvg: dtCount > 0 ? dtSum / dtCount : null,
       dtSpeedResponses: dtCount,
+      dtSpeedFiveStarCount: record.dtSpeedFiveStarCount || 0,
       genericSpeedAvg: genericCount > 0 ? genericSum / genericCount : null,
       genericSpeedResponses: genericCount,
+      genericSpeedFiveStarCount: record.genericSpeedFiveStarCount || 0,
     };
   }
 

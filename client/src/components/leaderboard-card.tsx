@@ -1457,11 +1457,9 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     );
                   }
 
-                  // Convert 1-5 average to a 0-100% score so it reads like the HME badge.
-                  // Guests who skipped this question are already excluded from `responses`,
-                  // so they do not drag the average down.
-                  const rating = fs.avgRating;
-                  const pct = (rating / 5) * 100;
+                  // 5-star top-box %: matches OSAT and the Qualtrics dashboard exactly.
+                  // Only responses that gave 5★ count; skipped questions are already excluded from `responses`.
+                  const pct = fs.topBoxPercent;
                   const ratingColor = pct >= 90
                     ? "bg-green-500/10 text-green-500"
                     : pct >= 80
@@ -1477,10 +1475,9 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         <div>
                           <div className="font-medium">{sourceLabel}</div>
                           <div className="text-muted-foreground">
-                            Guest score: {pct.toFixed(0)}% ({rating.toFixed(2)} / 5.0)
+                            Guest score: {pct.toFixed(1)}% ({fs.fiveStarCount} of {fs.responses} gave 5★)
                           </div>
                           <div className="text-muted-foreground">
-                            {fs.responses} response{fs.responses === 1 ? '' : 's'} today
                             <span className="block text-[10px]">
                               (skipped questions are not counted)
                             </span>

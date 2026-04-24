@@ -560,8 +560,8 @@ export default function Dashboard() {
             return bOsat - aOsat;
           }
           case "osat_time": {
-            const aFS = a.feedbackSpeed && a.feedbackSpeed.responses > 0 ? a.feedbackSpeed.avgRating : -1;
-            const bFS = b.feedbackSpeed && b.feedbackSpeed.responses > 0 ? b.feedbackSpeed.avgRating : -1;
+            const aFS = a.feedbackSpeed && a.feedbackSpeed.responses > 0 ? a.feedbackSpeed.topBoxPercent : -1;
+            const bFS = b.feedbackSpeed && b.feedbackSpeed.responses > 0 ? b.feedbackSpeed.topBoxPercent : -1;
             return bFS - aFS;
           }
           case "check_avg": {

@@ -221,10 +221,13 @@ export interface RestaurantSales {
     totalResponses: number;
     fiveStarCount: number;
   } | null;
-  // Customer-feedback speed-of-service metric (Qualtrics survey, daily aggregate, 1-5 scale)
+  // Customer-feedback speed-of-service metric (Qualtrics survey, daily aggregate)
+  // Uses 5-star top-box methodology to match OSAT and the Qualtrics dashboard:
+  //   topBoxPercent = (fiveStarCount / responses) * 100
   feedbackSpeed?: {
-    avgRating: number; // 1.0-5.0 average rating
-    responses: number; // Number of survey responses contributing
+    topBoxPercent: number; // % of survey responses that gave 5★
+    fiveStarCount: number; // # of 5★ responses for this question
+    responses: number;     // # of survey responses contributing (skipped questions excluded)
     source: 'dt' | 'generic'; // Which Qualtrics question was used
   } | null;
 }
@@ -607,9 +610,11 @@ export const dailyOsat = pgTable("daily_osat", {
   // DT Speed of Service (Qualtrics QID1319640443_14) — drive-thru-only respondents
   dtSpeedSum: decimal("dt_speed_sum", { precision: 10, scale: 2 }).notNull().default("0"),
   dtSpeedCount: integer("dt_speed_count").notNull().default(0),
+  dtSpeedFiveStarCount: integer("dt_speed_five_star_count").notNull().default(0),
   // Generic Speed of Service (Qualtrics QID1319640443_10) — non-drive-thru respondents
   genericSpeedSum: decimal("generic_speed_sum", { precision: 10, scale: 2 }).notNull().default("0"),
   genericSpeedCount: integer("generic_speed_count").notNull().default(0),
+  genericSpeedFiveStarCount: integer("generic_speed_five_star_count").notNull().default(0),
   syncedAt: timestamp("synced_at").defaultNow(),
 }, (table) => ({
   uniqueRestaurantDate: uniqueIndex("daily_osat_restaurant_date_idx")

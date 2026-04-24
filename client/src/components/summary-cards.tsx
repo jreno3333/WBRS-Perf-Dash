@@ -94,20 +94,20 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     ? (dailyOsatTotals.fiveStarCount / dailyOsatTotals.totalResponses) * 100 
     : 0;
 
-  // Aggregate customer-feedback Speed (DT or generic depending on store)
+  // Aggregate customer-feedback Speed using 5-star top-box methodology (matches OSAT).
   const dailyFeedbackSpeed = activeRestaurants.reduce(
     (acc, r) => {
       const fs = r.feedbackSpeed;
       if (fs && fs.responses > 0) {
-        acc.weighted += fs.avgRating * fs.responses;
+        acc.fiveStar += fs.fiveStarCount;
         acc.responses += fs.responses;
       }
       return acc;
     },
-    { weighted: 0, responses: 0 }
+    { fiveStar: 0, responses: 0 }
   );
-  const dailyFeedbackSpeedAvg = dailyFeedbackSpeed.responses > 0
-    ? dailyFeedbackSpeed.weighted / dailyFeedbackSpeed.responses
+  const dailyFeedbackSpeedPct = dailyFeedbackSpeed.responses > 0
+    ? (dailyFeedbackSpeed.fiveStar / dailyFeedbackSpeed.responses) * 100
     : null;
   
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
@@ -477,8 +477,8 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                 <span className="text-muted-foreground ml-1">({dailyOsatTotals.totalResponses})</span>
               </p>
             )}
-            {dailyFeedbackSpeedAvg !== null && (() => {
-              const fsPct = (dailyFeedbackSpeedAvg / 5) * 100;
+            {dailyFeedbackSpeedPct !== null && (() => {
+              const fsPct = dailyFeedbackSpeedPct;
               const colorCls = fsPct >= 90 ? 'text-green-500' : fsPct >= 80 ? 'text-amber-500' : 'text-red-500';
               return (
                 <p

@@ -152,22 +152,23 @@ function calculateStateOsat(restaurants: RestaurantSales[]): { osatPercent: numb
   };
 }
 
-// Calculate aggregate customer-feedback Speed of Service for a state
-function calculateStateFeedbackSpeed(stateRestaurants: RestaurantSales[]): { avgRating: number | undefined; responses: number; sourceMix: { dt: number; generic: number } } {
-  let weightedSum = 0;
+// Calculate aggregate customer-feedback Speed of Service for a state using 5-star top-box methodology.
+function calculateStateFeedbackSpeed(stateRestaurants: RestaurantSales[]): { topBoxPercent: number | undefined; fiveStarCount: number; responses: number; sourceMix: { dt: number; generic: number } } {
+  let fiveStarCount = 0;
   let responses = 0;
   let dtCount = 0;
   let genCount = 0;
   for (const r of stateRestaurants) {
     const fs = r.feedbackSpeed;
     if (fs && fs.responses > 0) {
-      weightedSum += fs.avgRating * fs.responses;
+      fiveStarCount += fs.fiveStarCount;
       responses += fs.responses;
       if (fs.source === 'generic') genCount += fs.responses; else dtCount += fs.responses;
     }
   }
   return {
-    avgRating: responses > 0 ? weightedSum / responses : undefined,
+    topBoxPercent: responses > 0 ? (fiveStarCount / responses) * 100 : undefined,
+    fiveStarCount,
     responses,
     sourceMix: { dt: dtCount, generic: genCount },
   };
@@ -519,8 +520,8 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                   <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
                 </BadgeWithTooltip>
               )}
-              {state.feedbackSpeed.avgRating !== undefined && (() => {
-                const fsPct = (state.feedbackSpeed.avgRating / 5) * 100;
+              {state.feedbackSpeed.topBoxPercent !== undefined && (() => {
+                const fsPct = state.feedbackSpeed.topBoxPercent;
                 return (
                 <BadgeWithTooltip
                   className={`${getFeedbackSpeedColor(fsPct)} border-0 gap-1`}
@@ -528,8 +529,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                   tooltipContent={
                     <div>
                       <div className="font-medium">Guest-Perceived Speed</div>
-                      <div className="text-muted-foreground">{state.feedbackSpeed.avgRating.toFixed(2)} / 5 avg rating</div>
-                      <div className="text-muted-foreground">{state.feedbackSpeed.responses} survey response{state.feedbackSpeed.responses === 1 ? '' : 's'}</div>
+                      <div className="text-muted-foreground">{state.feedbackSpeed.fiveStarCount} of {state.feedbackSpeed.responses} gave 5★</div>
                       {state.feedbackSpeed.sourceMix.generic > 0 && state.feedbackSpeed.sourceMix.dt > 0 && (
                         <div className="text-muted-foreground">DT: {state.feedbackSpeed.sourceMix.dt} · In-store: {state.feedbackSpeed.sourceMix.generic}</div>
                       )}
