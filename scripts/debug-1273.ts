@@ -63,8 +63,8 @@ async function main() {
     records.push(rec);
   }
 
-  const matches = records.filter(r => String(r.s) === '1273' && String(r.d || '').trim() === '4/22/2026');
-  console.log('Store 1273 on 4/22/2026 — matching records:', matches.length);
+  const matches = records.filter(r => String(r.s) === '1273' && String(r.d || '').trim() === '4/21/2026');
+  console.log('Store 1273 on 4/21/2026 — matching records:', matches.length);
   for (const rec of matches) {
     console.log('--- ALL fields with non-empty values ---');
     for (const k of Object.keys(rec)) {
