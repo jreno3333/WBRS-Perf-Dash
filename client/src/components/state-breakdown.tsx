@@ -59,16 +59,19 @@ function getExecutionGradeScore(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): number {
-  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg, feedbackSpeedPercent, feedbackSpeedResponses);
 }
 
-function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData): { grade: string; hoursGraded: number } {
+function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData, feedbackSpeedById?: Record<string, { topBoxPercent: number; responses: number }>): { grade: string; hoursGraded: number } {
   const allScores: number[] = [];
   if (hourlyByRestaurant) {
     for (const restaurantId of restaurantIds) {
       const hours = hourlyByRestaurant[restaurantId];
       if (!hours) continue;
+      const fs = feedbackSpeedById?.[restaurantId];
       for (const hour of hours) {
         if (!hour.todaySales && !hour.lastWeekSales) continue;
         const hasComparableSales = hour.lastWeekSales > 0;
@@ -83,7 +86,7 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
         const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg);
+        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
         if (score > 0) allScores.push(score);
       }
     }
@@ -296,15 +299,23 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
     : 0;
 
   // Calculate X-Scores for each state
+  const feedbackSpeedById: Record<string, { topBoxPercent: number; responses: number }> = {};
+  for (const r of activeRestaurants) {
+    if (r.feedbackSpeed && r.feedbackSpeed.responses > 0) {
+      feedbackSpeedById[r.restaurantId] = { topBoxPercent: r.feedbackSpeed.topBoxPercent, responses: r.feedbackSpeed.responses };
+    }
+  }
   const alabamaXScore = calculateStateXScore(
     alabamaRestaurants.map(r => r.restaurantId),
     hourlyByRestaurant,
-    gradingCfg
+    gradingCfg,
+    feedbackSpeedById,
   );
   const tennesseeXScore = calculateStateXScore(
     tennesseeRestaurants.map(r => r.restaurantId),
     hourlyByRestaurant,
-    gradingCfg
+    gradingCfg,
+    feedbackSpeedById,
   );
   
   // Calculate crew scores for each state

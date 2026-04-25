@@ -74,8 +74,10 @@ function getExecutionGrade(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): { grade: string; color: string; score: number; hasGrade: boolean } {
-  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg, feedbackSpeedPercent, feedbackSpeedResponses);
   if (score === 0) return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false };
   const grade = scoreToGradeLabel(score);
   return { grade, color: sharedGetGradeColor(grade), score, hasGrade: true };
@@ -521,7 +523,8 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
               const hasValidStaffing = rawEmployeeCount >= 1;
               const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
               const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+              const fs = restaurant.feedbackSpeed;
+              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
               const hasSales = hour.todaySales && hour.todaySales > 0;
               return (
                 <div key={`grade-${hour.hour}`} className="flex-1 text-center">
@@ -577,7 +580,8 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
               const hasValidStaffing = rawEmployeeCount >= 1;
               const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
               const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+              const fs = restaurant.feedbackSpeed;
+              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
               const isHovered = hoveredHourIndex === hourIndex;
 
               return (
@@ -1170,7 +1174,8 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasValidStaffing = rawEmployeeCount >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+        const fs = restaurant.feedbackSpeed;
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
         return gradeInfo.hasGrade ? gradeInfo.score : 0;
       }).filter(score => score > 0);
 
@@ -1211,7 +1216,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
 
     return { gradedHours, hourlyGradeScores, overallScore, overallGrade, dailyBonusResult };
-  }, [allHours, localGradeCutoff, gradingCfg, yoyData, isSSS, attachmentCategories, helperRewardPoints]);
+  }, [allHours, localGradeCutoff, gradingCfg, yoyData, isSSS, attachmentCategories, helperRewardPoints, restaurant.feedbackSpeed?.topBoxPercent, restaurant.feedbackSpeed?.responses]);
 
   // Memoize daypart grades — depends on the same inputs as overall grade
   const daypartGrades = useMemo(() => DAYPARTS.map(dp => {
@@ -1233,7 +1238,8 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasValidStaffing = rawEmployeeCount >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+        const fs = restaurant.feedbackSpeed;
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
         return gradeInfo.hasGrade ? gradeInfo.score : 0;
       }).filter(s => s > 0);
 
@@ -1241,7 +1247,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     const avg = dpScores.reduce((a, b) => a + b, 0) / dpScores.length;
     const gradeResult = scoreToGrade(avg);
     return { ...dp, grade: gradeResult.grade, score: avg };
-  }).filter(dp => dp.grade !== null), [allHours, localGradeCutoff, gradingCfg]);
+  }).filter(dp => dp.grade !== null), [allHours, localGradeCutoff, gradingCfg, restaurant.feedbackSpeed?.topBoxPercent, restaurant.feedbackSpeed?.responses]);
 
   // Memoize demand curve lookup map
   const demandCurveMap = useMemo(() => {

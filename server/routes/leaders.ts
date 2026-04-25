@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { db } from "../db";
-import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
+import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales, dailyOsat } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange, getAttachmentRatesFromDetail } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyBonuses, countAttachmentCategoriesAtTarget } from "../lib/scoring";
 import { getActiveGradingConfig } from "./grading-config";
 import { getHelperRewardsForDateRange } from "./helper-rewards";
+import { deriveFeedbackSpeed } from "../lib/feedback-speed";
 
 const router = Router();
 
@@ -52,6 +53,7 @@ router.get("/api/leaders", async (req, res) => {
       salesData,
       hmeData,
       hourlyOsatData,
+      dailyOsatRows,
     ] = await Promise.all([
       db.select().from(restaurants),
       db.select().from(employees).where(
@@ -84,6 +86,9 @@ router.get("/api/leaders", async (req, res) => {
       db.select().from(osatDataTable).where(
         and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
       ),
+      db.select().from(dailyOsat).where(
+        and(gte(dailyOsat.date, startDateStr), lte(dailyOsat.date, endDateStr))
+      ),
     ]);
 
     const restaurantNameMap = new Map(allRestaurants.map(r => [r.id, r.name]));
@@ -106,6 +111,22 @@ router.get("/api/leaders", async (req, res) => {
 
     const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
     for (const o of hourlyOsatData) osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
+
+    const restaurantById = new Map(allRestaurants.map(r => [r.id, r]));
+    const feedbackSpeedByDay = new Map<string, { topBoxPercent: number; responses: number }>();
+    for (const row of dailyOsatRows) {
+      const restaurant = restaurantById.get(row.restaurantId);
+      const fs = deriveFeedbackSpeed(
+        {
+          dtSpeedResponses: row.dtSpeedCount || 0,
+          dtSpeedFiveStarCount: row.dtSpeedFiveStarCount || 0,
+          genericSpeedResponses: row.genericSpeedCount || 0,
+          genericSpeedFiveStarCount: row.genericSpeedFiveStarCount || 0,
+        },
+        restaurant?.unitNumber,
+      );
+      feedbackSpeedByDay.set(`${row.restaurantId}-${row.date}`, { topBoxPercent: fs.topBoxPercent, responses: fs.responses });
+    }
 
     // Fetch OOT hours and YoY data in parallel
     const yoyStart = new Date(startDate); yoyStart.setFullYear(yoyStart.getFullYear() - 1); yoyStart.setDate(yoyStart.getDate() - 3);
@@ -321,6 +342,7 @@ router.get("/api/leaders", async (req, res) => {
         const txnVariancePct = hasComparableTransactions
           ? ((day.txnToday - day.txnLastWeek) / day.txnLastWeek) * 100 : undefined;
 
+        const dayFs = feedbackSpeedByDay.get(`${day.restaurantId}-${dayDate}`);
         const gradeResult = computeHourlyScore({
           salesVariancePct,
           hasComparableSales,
@@ -330,6 +352,9 @@ router.get("/api/leaders", async (req, res) => {
           staffingDiff: avgStaffingDiff,
           hasValidStaffing: day.staffingDiffs.length > 0,
           osatPercent,
+          osatResponses: totalOsatResponses,
+          feedbackSpeedPercent: dayFs?.responses ? dayFs.topBoxPercent : undefined,
+          feedbackSpeedResponses: dayFs?.responses,
         }, gradingCfg);
 
         if (gradeResult.hasGrade) {

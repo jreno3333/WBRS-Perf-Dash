@@ -29,7 +29,7 @@ function getCentralDate(): Date {
   return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }, cfg?: import("@shared/schema").GradingConfigData): number {
+function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number; feedbackSpeed?: { topBoxPercent: number; responses: number } | null }, cfg?: import("@shared/schema").GradingConfigData): number {
   if (!hourlyData || hourlyData.length === 0) return -1;
 
   const cutoff = localCutoff ?? 23;
@@ -53,7 +53,8 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
       const transactionVariancePct = hasComparableTransactions
         ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
         : undefined;
-      const rawScore = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+      const fs = restaurant?.feedbackSpeed;
+      const rawScore = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions, cfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
       return rawScore > 0 ? rawScore : 0;
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;

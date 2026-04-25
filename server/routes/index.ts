@@ -107,10 +107,16 @@ export async function registerRoutes(
     try {
       const config = req.body as GradingConfigData;
       const { weights } = config;
-      if (!weights || !config.salesTiers || !config.osatTiers || !config.speedTiers || !config.transactionTiers) {
+      if (!weights || !config.salesTiers || !config.osatTiers || !config.speedTiers || !config.transactionTiers || !config.feedbackSpeedTiers) {
         return res.status(400).json({ message: "Missing required configuration fields" });
       }
-      const totalWeight = weights.sales + weights.transactions + weights.osat + weights.speed + weights.staffing;
+      const totalWeight =
+        weights.sales +
+        weights.transactions +
+        weights.osat +
+        weights.speed +
+        weights.staffing +
+        (weights.feedbackSpeed ?? 0);
       if (totalWeight !== 100) {
         return res.status(400).json({ message: `Weights must sum to 100 (currently ${totalWeight})` });
       }

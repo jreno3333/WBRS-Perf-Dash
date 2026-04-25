@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { db } from "../db";
-import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales } from "@shared/schema";
+import { employees, hourlyCrew, hourlyLabor, hourlySales, hmeTimerData, osatData as osatDataTable, restaurants, historicalDailySales, dailyOsat } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getAllHourlyPosSalesRange, getAllHourlyPosOrderCountRange, getOotHoursByDateRange } from "../xenial-webhook";
 import { getTotalRequiredStaff } from "../labor-model";
 import { computeHourlyScore, scoreToGradeLabel, computeDailyScore, computeDailyBonuses } from "../lib/scoring";
 import { getActiveGradingConfig } from "./grading-config";
 import { getHelperRewardsForDateRange } from "./helper-rewards";
+import { deriveFeedbackSpeed } from "../lib/feedback-speed";
 
 const router = Router();
 
@@ -65,6 +66,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
       salesData,
       hmeData,
       hourlyOsatData,
+      dailyOsatRows,
       allRestaurants,
       yoySalesData,
       yoyPosRows,
@@ -89,6 +91,9 @@ router.get("/api/people/leader-detail", async (req, res) => {
       ),
       db.select().from(osatDataTable).where(
         and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, endDateStr))
+      ),
+      db.select().from(dailyOsat).where(
+        and(gte(dailyOsat.date, startDateStr), lte(dailyOsat.date, endDateStr))
       ),
       db.select().from(restaurants),
       db.select().from(historicalDailySales).where(
@@ -147,6 +152,23 @@ router.get("/api/people/leader-detail", async (req, res) => {
     const osatByKey = new Map<string, typeof hourlyOsatData[0]>();
     for (const o of hourlyOsatData) {
       osatByKey.set(`${o.restaurantId}-${o.date}-${o.hour}`, o);
+    }
+
+    // Map (restaurantId-date) → daily Qualtrics feedback-speed top-box.
+    const restaurantById = new Map(allRestaurants.map(r => [r.id, r]));
+    const feedbackSpeedByDay = new Map<string, { topBoxPercent: number; responses: number }>();
+    for (const row of dailyOsatRows) {
+      const restaurant = restaurantById.get(row.restaurantId);
+      const fs = deriveFeedbackSpeed(
+        {
+          dtSpeedResponses: row.dtSpeedCount || 0,
+          dtSpeedFiveStarCount: row.dtSpeedFiveStarCount || 0,
+          genericSpeedResponses: row.genericSpeedCount || 0,
+          genericSpeedFiveStarCount: row.genericSpeedFiveStarCount || 0,
+        },
+        restaurant?.unitNumber,
+      );
+      feedbackSpeedByDay.set(`${row.restaurantId}-${row.date}`, { topBoxPercent: fs.topBoxPercent, responses: fs.responses });
     }
 
     type HourDetail = {
@@ -238,6 +260,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
 
         // Skip speed in grading when OOT (dt3) is active — lane config changes make timing unreliable
         const isOotHour = ootHours.has(`${crew.restaurantId}-${crew.date}-${crew.hour}`);
+        const dayFs = feedbackSpeedByDay.get(`${crew.restaurantId}-${crew.date}`);
         const hourlyResult = computeHourlyScore({
           salesVariancePct,
           hasComparableSales,
@@ -248,6 +271,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
           hasValidStaffing: true,
           osatPercent: hourOsatPercent,
           osatResponses: hourOsatResponses,
+          feedbackSpeedPercent: dayFs?.responses ? dayFs.topBoxPercent : undefined,
+          feedbackSpeedResponses: dayFs?.responses,
         }, gradingCfg);
         const score = hourlyResult.score;
 
@@ -363,6 +388,7 @@ router.get("/api/people/leader-detail", async (req, res) => {
       }
 
       // Compute daily grade from daily aggregates (not hourly average)
+      const dayFsDaily = feedbackSpeedByDay.get(`${dayData.restaurantId}-${dateKey}`);
       const dailyResult = computeHourlyScore({
         salesVariancePct: dailySalesVariancePct,
         hasComparableSales,
@@ -371,6 +397,8 @@ router.get("/api/people/leader-detail", async (req, res) => {
         hasValidStaffing: true,
         osatPercent,
         osatResponses,
+        feedbackSpeedPercent: dayFsDaily?.responses ? dayFsDaily.topBoxPercent : undefined,
+        feedbackSpeedResponses: dayFsDaily?.responses,
       }, gradingCfg);
 
       // YoY variance from historical_daily_sales (DOW-matched)

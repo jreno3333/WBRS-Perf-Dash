@@ -3934,7 +3934,8 @@ function GradingConfigCard() {
   };
 
   const totalWeight = activeConfig.weights.sales + activeConfig.weights.transactions +
-    activeConfig.weights.osat + activeConfig.weights.speed + activeConfig.weights.staffing;
+    activeConfig.weights.osat + activeConfig.weights.speed + activeConfig.weights.staffing +
+    (activeConfig.weights.feedbackSpeed ?? 0);
   const isValid = totalWeight === 100;
 
   const handleSave = () => {
@@ -3965,23 +3966,34 @@ function GradingConfigCard() {
               {totalWeight}%{isValid ? " ✓" : " — must be 100%"}
             </Badge>
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {(["sales", "transactions", "osat", "speed", "staffing"] as const).map((metric) => (
-              <div key={metric} className="space-y-1">
-                <Label className="text-xs capitalize">{metric === "osat" ? "OSAT" : metric}</Label>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    className="h-8 text-sm"
-                    value={activeConfig.weights[metric]}
-                    onChange={(e) => handleWeightChange(metric, Number(e.target.value))}
-                  />
-                  <span className="text-xs text-muted-foreground">%</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {(["sales", "transactions", "osat", "speed", "staffing", "feedbackSpeed"] as const).map((metric) => {
+              const labelMap: Record<string, string> = {
+                sales: "Sales",
+                transactions: "Transactions",
+                osat: "OSAT",
+                speed: "Speed (HME)",
+                staffing: "Staffing",
+                feedbackSpeed: "Feedback Speed",
+              };
+              return (
+                <div key={metric} className="space-y-1">
+                  <Label className="text-xs">{labelMap[metric]}</Label>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      className="h-8 text-sm"
+                      value={activeConfig.weights[metric] ?? 0}
+                      onChange={(e) => handleWeightChange(metric, Number(e.target.value))}
+                      data-testid={`input-grading-weight-${metric}`}
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -4008,6 +4020,11 @@ function GradingConfigCard() {
               label="Drive-Thru Speed (% attainment)"
               tiers={activeConfig.speedTiers}
               onChange={(tiers) => updateConfig({ speedTiers: tiers })}
+            />
+            <TierEditor
+              label="Customer-Feedback Speed (% top-box 5★)"
+              tiers={activeConfig.feedbackSpeedTiers}
+              onChange={(tiers) => updateConfig({ feedbackSpeedTiers: tiers })}
             />
           </div>
         </div>

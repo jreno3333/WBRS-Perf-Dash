@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db, posDb, pool } from "../db";
-import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, locationMapping } from "@shared/schema";
+import { employees, restaurants, hourlySales, hourlyLabor, hmeTimerData, osatData as osatDataTable, posOrders, dailySuppressedSales, locationMapping, dailyOsat } from "@shared/schema";
 import { eq, and, gte, lte, lt, sql } from "drizzle-orm";
 import { computeHourlyScore, scoreToGradeLabel, type HourlyScoreInput } from "../lib/scoring";
 import { getActiveGradingConfig } from "./grading-config";
+import { deriveFeedbackSpeed } from "../lib/feedback-speed";
 
 const router = Router();
 
@@ -250,7 +251,7 @@ router.get("/api/analytics/consistency", async (req, res) => {
     extendedStart.setDate(extendedStart.getDate() - 7);
     const extStartStr = extendedStart.toISOString().split("T")[0];
 
-    const [allSalesData, allLaborData, allHmeData, allOsatData, allRestaurants] = await Promise.all([
+    const [allSalesData, allLaborData, allHmeData, allOsatData, allRestaurants, allDailyOsatRows] = await Promise.all([
       db.select().from(hourlySales).where(
         sql`to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') >= ${extStartStr} AND to_char(${hourlySales.salesDate}, 'YYYY-MM-DD') <= ${todayStr}`
       ),
@@ -264,6 +265,9 @@ router.get("/api/analytics/consistency", async (req, res) => {
         and(gte(osatDataTable.date, startDateStr), lte(osatDataTable.date, todayStr))
       ),
       db.select().from(restaurants).where(eq(restaurants.isActive, true)),
+      db.select().from(dailyOsat).where(
+        and(gte(dailyOsat.date, startDateStr), lte(dailyOsat.date, todayStr))
+      ),
     ]);
 
     // Build lookups keyed by restaurantId-date-hour
@@ -290,6 +294,22 @@ router.get("/api/analytics/consistency", async (req, res) => {
           carsUnder6Min: h.carsUnder6Min || 0,
         });
       }
+    }
+
+    const restaurantById = new Map(allRestaurants.map(r => [r.id, r]));
+    const feedbackSpeedByDay = new Map<string, { topBoxPercent: number; responses: number }>();
+    for (const row of allDailyOsatRows) {
+      const restaurant = restaurantById.get(row.restaurantId);
+      const fs = deriveFeedbackSpeed(
+        {
+          dtSpeedResponses: row.dtSpeedCount || 0,
+          dtSpeedFiveStarCount: row.dtSpeedFiveStarCount || 0,
+          genericSpeedResponses: row.genericSpeedCount || 0,
+          genericSpeedFiveStarCount: row.genericSpeedFiveStarCount || 0,
+        },
+        restaurant?.unitNumber,
+      );
+      feedbackSpeedByDay.set(`${row.restaurantId}-${row.date}`, { topBoxPercent: fs.topBoxPercent, responses: fs.responses });
     }
 
     const osatByKey = new Map<string, { percent: number; responses: number }>();
@@ -366,6 +386,7 @@ router.get("/api/analytics/consistency", async (req, res) => {
           }
 
           const osat = osatByKey.get(key);
+          const dayFs = feedbackSpeedByDay.get(`${rid}-${dateStr2}`);
 
           const scoreInput: HourlyScoreInput = {
             salesVariancePct: salesVariance,
@@ -375,6 +396,8 @@ router.get("/api/analytics/consistency", async (req, res) => {
             hasValidStaffing,
             osatPercent: osat ? osat.percent : undefined,
             osatResponses: osat ? osat.responses : undefined,
+            feedbackSpeedPercent: dayFs?.responses ? dayFs.topBoxPercent : undefined,
+            feedbackSpeedResponses: dayFs?.responses,
           };
           const result = computeHourlyScore(scoreInput, gradingCfg);
 

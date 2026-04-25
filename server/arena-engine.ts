@@ -28,6 +28,8 @@ export interface HourlyMetrics {
   osatPercent: number | null;
   osatResponses: number;
   ootActive?: boolean; // When true, speed is excluded from grading (lane config change)
+  feedbackSpeedPercent?: number | null;
+  feedbackSpeedResponses?: number;
 }
 
 export function computeHourlyGradeScore(m: HourlyMetrics, gradingCfg?: GradingConfigData): number {
@@ -52,6 +54,8 @@ export function computeHourlyGradeScore(m: HourlyMetrics, gradingCfg?: GradingCo
     hasValidStaffing: true,
     osatPercent: m.osatPercent !== null && m.osatResponses > 0 ? m.osatPercent : undefined,
     osatResponses: m.osatResponses,
+    feedbackSpeedPercent: m.feedbackSpeedPercent !== null && m.feedbackSpeedPercent !== undefined && (m.feedbackSpeedResponses ?? 0) > 0 ? m.feedbackSpeedPercent : undefined,
+    feedbackSpeedResponses: m.feedbackSpeedResponses,
   }, gradingCfg);
 
   return result.score;

@@ -1,6 +1,6 @@
 import { getBaseUrl } from "./base-url";
 import { db } from "./db";
-import { emailSubscribers, emailSendLog, reportSchedules, restaurants, historicalDailySales, hourlySales, dailyWeather } from "@shared/schema";
+import { emailSubscribers, emailSendLog, reportSchedules, restaurants, historicalDailySales, hourlySales, dailyWeather, dailyOsat } from "@shared/schema";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
@@ -11,6 +11,7 @@ import { getAttachmentRatesFromDetail, getAllHourlyPosSalesRange, getAllHourlyPo
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
 import { getHelperRewardsForDate } from "./routes/helper-rewards";
+import { deriveFeedbackSpeed } from "./lib/feedback-speed";
 import { getHolidayContext, getHolidayComparisonContext } from "./holidays";
 
 // Tennessee store names - must match client/src/components/state-breakdown.tsx
@@ -430,6 +431,23 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
     // Fetch helper rewards for this date
     const helperRewardsMap = await getHelperRewardsForDate(dateStr);
 
+    // Daily Qualtrics feedback-speed top-box per restaurant
+    const dailyOsatRowsForFs = await db.select().from(dailyOsat).where(eq(dailyOsat.date, dateStr));
+    const feedbackSpeedByRestaurant = new Map<string, { topBoxPercent: number; responses: number }>();
+    for (const row of dailyOsatRowsForFs) {
+      const restaurant = restaurantMap.get(row.restaurantId);
+      const fs = deriveFeedbackSpeed(
+        {
+          dtSpeedResponses: row.dtSpeedCount || 0,
+          dtSpeedFiveStarCount: row.dtSpeedFiveStarCount || 0,
+          genericSpeedResponses: row.genericSpeedCount || 0,
+          genericSpeedFiveStarCount: row.genericSpeedFiveStarCount || 0,
+        },
+        restaurant?.unitNumber,
+      );
+      feedbackSpeedByRestaurant.set(row.restaurantId, { topBoxPercent: fs.topBoxPercent, responses: fs.responses });
+    }
+
     // Fetch YoY data
     const currentDate = new Date(dateStr);
     const priorYearDate = new Date(currentDate);
@@ -491,6 +509,7 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
 
+        const fs = feedbackSpeedByRestaurant.get(restaurant.restaurantId);
         const gradeInfo = computeHourlyScore({
           salesVariancePct,
           hasComparableSales,
@@ -500,6 +519,8 @@ export async function buildSalesSummaryHtml(dateStr: string): Promise<string | n
           osatPercent: hour.osatPercent,
           staffingDiff,
           hasValidStaffing,
+          feedbackSpeedPercent: fs?.responses ? fs.topBoxPercent : undefined,
+          feedbackSpeedResponses: fs?.responses,
         }, gradingCfg);
 
         if (gradeInfo.hasGrade) hourlyGradeScores.push(gradeInfo.score);

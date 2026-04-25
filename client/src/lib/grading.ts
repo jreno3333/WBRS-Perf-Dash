@@ -10,7 +10,7 @@
 import type { GradingConfigData, ScoringTier } from "@shared/schema";
 import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
 
-export const GRADE_WEIGHTS = { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10 } as const;
+export const GRADE_WEIGHTS = { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10, feedbackSpeed: 0 } as const;
 
 export const BONUS_CAP = 15;
 
@@ -155,6 +155,11 @@ export function scoreSpeed(attainmentPct: number, tiers?: ScoringTier[]): number
   return scoreTiers(attainmentPct, tiers || DEFAULT_GRADING_CONFIG.speedTiers, 40);
 }
 
+/** Customer-feedback speed (Qualtrics 5★ top-box %) → 0-100 score */
+export function scoreFeedbackSpeed(topBoxPct: number, tiers?: ScoringTier[]): number {
+  return scoreTiers(topBoxPct, tiers || DEFAULT_GRADING_CONFIG.feedbackSpeedTiers, 40);
+}
+
 /** Staffing diff → 0-100 score */
 export function scoreStaffing(staffingDiff: number, isSalesSurge: boolean, tolerance?: number, inScore?: number, outScore?: number): number {
   const tol = tolerance ?? DEFAULT_GRADING_CONFIG.staffingTolerance;
@@ -183,6 +188,8 @@ export function computeExecutionScore(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): number {
   const c = cfg || DEFAULT_GRADING_CONFIG;
   const w = c.weights;
@@ -205,9 +212,18 @@ export function computeExecutionScore(
     components.push({ score: scoreOsat(osatPercent, c.osatTiers), weight: w.osat });
   }
 
-  // Speed
+  // Speed (HME drive-thru attainment)
   if (speedAttainment !== undefined && speedAttainment >= 0) {
     components.push({ score: scoreSpeed(speedAttainment, c.speedTiers), weight: w.speed });
+  }
+
+  // Customer-feedback speed (Qualtrics 5★ top-box). Skipped when no responses
+  // for the day so weights renormalize across remaining components.
+  if (feedbackSpeedPercent !== undefined && (feedbackSpeedResponses ?? 0) > 0) {
+    components.push({
+      score: scoreFeedbackSpeed(feedbackSpeedPercent, c.feedbackSpeedTiers),
+      weight: w.feedbackSpeed,
+    });
   }
 
   // Staffing
@@ -218,6 +234,7 @@ export function computeExecutionScore(
 
   if (components.length === 0) return 0;
   const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
+  if (totalWeight === 0) return 0;
   return components.reduce((sum, c) => sum + c.score * c.weight, 0) / totalWeight;
 }
 
@@ -234,11 +251,14 @@ export function getExecutionGrade(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): { grade: string; color: string; score: number; hasGrade: boolean } {
   const score = computeExecutionScore(
     salesVariancePct, speedAttainment, staffingDiff,
     hasComparableSales, hasValidStaffing, osatPercent,
     transactionVariancePct, hasComparableTransactions, cfg,
+    feedbackSpeedPercent, feedbackSpeedResponses,
   );
   if (score === 0) {
     return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false };

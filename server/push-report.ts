@@ -1,6 +1,6 @@
 import { getBaseUrl } from "./base-url";
 import { db } from "./db";
-import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes, restaurants, osatCategoryIssues } from "@shared/schema";
+import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes, restaurants, osatCategoryIssues, dailyOsat } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
@@ -11,6 +11,7 @@ import { getAttachmentRatesFromDetail } from "./xenial-webhook";
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
 import { getHelperRewardsForDate } from "./routes/helper-rewards";
+import { deriveFeedbackSpeed } from "./lib/feedback-speed";
 
 // ─── Wrappers that delegate to the shared scoring module ─────────────
 function getExecutionGrade(
@@ -23,6 +24,8 @@ function getExecutionGrade(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   gradingCfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): { grade: string; score: number; hasGrade: boolean } {
   const result = computeHourlyScore({
     salesVariancePct,
@@ -33,6 +36,8 @@ function getExecutionGrade(
     osatPercent,
     staffingDiff,
     hasValidStaffing,
+    feedbackSpeedPercent,
+    feedbackSpeedResponses,
   }, gradingCfg);
   return { grade: result.grade, score: result.score, hasGrade: result.hasGrade };
 }
@@ -117,6 +122,27 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
     // Fetch helper rewards for this date
     const helperRewardsMap = await getHelperRewardsForDate(dateStr);
 
+    // Fetch daily Qualtrics feedback-speed top-box for this restaurant + date
+    let feedbackSpeed: { topBoxPercent: number; responses: number } | undefined;
+    {
+      const [doRow] = await db.select().from(dailyOsat)
+        .where(and(eq(dailyOsat.date, dateStr), eq(dailyOsat.restaurantId, restaurantId)))
+        .limit(1);
+      const [restRow] = await db.select({ unitNumber: restaurants.unitNumber }).from(restaurants).where(eq(restaurants.id, restaurantId)).limit(1);
+      if (doRow) {
+        const fs = deriveFeedbackSpeed(
+          {
+            dtSpeedResponses: doRow.dtSpeedCount || 0,
+            dtSpeedFiveStarCount: doRow.dtSpeedFiveStarCount || 0,
+            genericSpeedResponses: doRow.genericSpeedCount || 0,
+            genericSpeedFiveStarCount: doRow.genericSpeedFiveStarCount || 0,
+          },
+          restRow?.unitNumber,
+        );
+        feedbackSpeed = { topBoxPercent: fs.topBoxPercent, responses: fs.responses };
+      }
+    }
+
     const sales = restaurant.actualSales;
     const lastWeekSales = restaurant.actualLastWeekSales;
     const salesVariance = lastWeekSales > 0
@@ -183,7 +209,9 @@ export async function buildUnitReportHtml(dateStr: string, restaurantId: string)
         hour.osatPercent,
         txnVar,
         hasCompTxn,
-        gradingCfg
+        gradingCfg,
+        feedbackSpeed?.responses ? feedbackSpeed.topBoxPercent : undefined,
+        feedbackSpeed?.responses,
       );
 
       if (gradeInfo.hasGrade) {

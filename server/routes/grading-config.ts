@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db";
-import { gradingConfig, DEFAULT_GRADING_CONFIG, type GradingConfigData } from "@shared/schema";
+import { gradingConfig, DEFAULT_GRADING_CONFIG, mergeGradingConfig, type GradingConfigData } from "@shared/schema";
 import { desc } from "drizzle-orm";
 
 const router = Router();
@@ -12,7 +12,7 @@ router.get("/api/grading-config", async (_req, res) => {
     if (rows.length === 0) {
       return res.json(DEFAULT_GRADING_CONFIG);
     }
-    return res.json(rows[0].config);
+    return res.json(mergeGradingConfig(rows[0].config as Partial<GradingConfigData>));
   } catch (error) {
     console.error("[grading-config] GET error:", error);
     return res.json(DEFAULT_GRADING_CONFIG);
@@ -36,7 +36,9 @@ export async function getActiveGradingConfig(): Promise<GradingConfigData> {
   if (_cachedConfig && Date.now() < _cacheExpiry) return _cachedConfig;
   try {
     const rows = await db.select().from(gradingConfig).orderBy(desc(gradingConfig.updatedAt)).limit(1);
-    _cachedConfig = rows.length > 0 ? (rows[0].config as GradingConfigData) : DEFAULT_GRADING_CONFIG;
+    _cachedConfig = rows.length > 0
+      ? mergeGradingConfig(rows[0].config as Partial<GradingConfigData>)
+      : DEFAULT_GRADING_CONFIG;
     _cacheExpiry = Date.now() + CACHE_TTL;
     return _cachedConfig;
   } catch {
