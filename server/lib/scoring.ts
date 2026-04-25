@@ -36,6 +36,7 @@ export const BONUS_DEFINITIONS = [
   { id: "yoyGrowth", label: "Sales Growth (YoY)", points: 2, description: "Daily sales above same day last year (any amount)" },
   { id: "theCloser", label: "The Closer", points: 4, description: "Hit 4+ of 6 attachment rate targets for the day (+1 pt per category at target)" },
   { id: "helperReward", label: "Helper Reward", points: 0, description: "Bonus points for helping another unit (entered by management)" },
+  { id: "guestVoice", label: "Guest Voice 🗣️", points: 2, description: "4+ OSAT surveys received for the day" },
 ] as const;
 
 export type BonusId = typeof BONUS_DEFINITIONS[number]["id"];
@@ -347,6 +348,11 @@ export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
   // Helper Reward: bonus points for helping another unit (manually entered in settings)
   if (input.helperRewardPoints && input.helperRewardPoints > 0) {
     bonuses.push({ ...BONUS_DEFINITIONS[7], points: input.helperRewardPoints });
+  }
+
+  // Guest Voice: more than 3 OSAT surveys received for the day
+  if ((input.dailySurveyCount ?? 0) > 3) {
+    bonuses.push({ ...BONUS_DEFINITIONS[8] });
   }
 
   const totalBonus = bonuses.reduce((sum, b) => sum + b.points, 0);

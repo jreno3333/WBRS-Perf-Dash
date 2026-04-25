@@ -1546,6 +1546,16 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <span className="font-medium">🍌 {attachmentCategories.banana_pudding.attachRate.toFixed(1)}%</span>
                   </BadgeWithTooltip>
                 )}
+                {restaurant.osat && restaurant.osat.totalResponses > 3 && (
+                  <BadgeWithTooltip
+                    className="flex-shrink-0 text-xs px-1.5 gap-1 border-0 bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                    data-testid={`badge-guest-voice-${restaurant.restaurantId}`}
+                    tooltipTitle="Guest Voice 🗣️"
+                    tooltipDetail={`${restaurant.osat.totalResponses} guest surveys received today (bonus unlocks at 4+). +2 bonus points applied to today's grade.`}
+                  >
+                    <span className="font-medium">🗣️ {restaurant.osat.totalResponses}</span>
+                  </BadgeWithTooltip>
+                )}
                 {/* Revenue Port Badges */}
                 {restaurant.revenuePorts && restaurant.revenuePorts.length > 0 && (
                   <div className="hidden sm:flex items-center gap-1">
