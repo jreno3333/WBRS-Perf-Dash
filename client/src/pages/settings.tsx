@@ -3824,14 +3824,15 @@ function HelperRewardRow({ restaurantName, existingPoints, existingNote, onSave,
 
 function TierEditor({ label, tiers, onChange }: {
   label: string;
-  tiers: ScoringTier[];
+  tiers: ScoringTier[] | undefined;
   onChange: (tiers: ScoringTier[]) => void;
 }) {
+  const safeTiers = tiers ?? [];
   return (
     <div className="space-y-2">
       <Label className="text-sm font-medium">{label}</Label>
       <div className="space-y-1">
-        {tiers.map((tier, i) => (
+        {safeTiers.map((tier, i) => (
           <div key={i} className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground w-16">≥</span>
             <Input
