@@ -38,6 +38,8 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
   const scores = completedHours
     .filter(hour => hour.todaySales > 0)
     .map(hour => {
+      // Use server-pre-computed grade if available; fall back to client-side computation
+      if (hour.gradeScore !== undefined && hour.gradeHasGrade) return hour.gradeScore;
       const hasComparableSales = hour.lastWeekSales > 0;
       const salesVariancePct = hasComparableSales
         ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100

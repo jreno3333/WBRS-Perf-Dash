@@ -9,6 +9,9 @@ import { getDailyDriveThruSummary } from "../scraper/hme-api";
 import { getOsatForDate } from "../scraper/qualtrics-api";
 import { getAllHourlyPosSales } from "../xenial-webhook";
 import { getCurrentHourInTimezone } from "../utils/dates";
+import { computeHourlyScore } from "../lib/scoring";
+import { getStaffingBreakdown } from "../lib/labor-model";
+import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
 
@@ -397,11 +400,55 @@ router.get("/api/holiday-sales-comparison", async (req, res) => {
 });
 
 // Get hourly data for all restaurants (for bar charts)
+// Grades are pre-computed server-side (gradeScore/gradeHasGrade per hour) to eliminate
+// the expensive O(n×24) client-side computeExecutionScore() calls in LeaderboardCard/SummaryCards.
 router.get("/api/hourly-by-restaurant", async (req, res) => {
   try {
     const { date } = req.query;
     const targetDate = date ? new Date(date as string) : new Date();
     const hourlyData = await storage.getHourlyDataByRestaurant(targetDate);
+
+    // Fetch grading config once (5-min cached) and score every hour server-side
+    const cfg = await getActiveGradingConfig();
+    for (const hours of Object.values(hourlyData)) {
+      for (const hour of hours) {
+        if (!hour.todaySales || hour.todaySales === 0) continue;
+
+        const hasComparableSales = hour.lastWeekSales > 0;
+        const salesVariancePct = hasComparableSales
+          ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+          : 0;
+
+        const positions = (hour.positionBreakdown as Record<string, number>) || {};
+        const operatorHrs = positions['_operatorScheduled'] || 0;
+        const rawEmployeeCount = Number(hour.employeeCount) || 0;
+        const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+        const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+        const staffingDiff = actualStaff - staffing.total;
+        const hasValidStaffing = rawEmployeeCount >= 1;
+
+        const hasComparableTransactions = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+        const transactionVariancePct = hasComparableTransactions
+          ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
+          : undefined;
+
+        const result = computeHourlyScore({
+          salesVariancePct,
+          hasComparableSales,
+          transactionVariancePct,
+          hasComparableTransactions,
+          osatPercent: hour.osatPercent,
+          osatResponses: hour.osatResponses,
+          speedAttainment: hour.ootActive ? undefined : hour.speedAttainment,
+          staffingDiff,
+          hasValidStaffing,
+        }, cfg);
+
+        hour.gradeScore = result.hasGrade ? result.score : undefined;
+        hour.gradeHasGrade = result.hasGrade;
+      }
+    }
+
     res.json(hourlyData);
   } catch (error) {
     console.error("Error fetching hourly data by restaurant:", error);
