@@ -3975,7 +3975,7 @@ function GradingConfigCard() {
                 osat: "OSAT",
                 speed: "Speed (HME)",
                 staffing: "Staffing",
-                feedbackSpeed: "Feedback Speed",
+                feedbackSpeed: "OSAT Speed",
               };
               return (
                 <div key={metric} className="space-y-1">
@@ -4023,7 +4023,7 @@ function GradingConfigCard() {
               onChange={(tiers) => updateConfig({ speedTiers: tiers })}
             />
             <TierEditor
-              label="Customer-Feedback Speed (% top-box 5★)"
+              label="OSAT Speed (% top-box 5★)"
               tiers={activeConfig.feedbackSpeedTiers}
               onChange={(tiers) => updateConfig({ feedbackSpeedTiers: tiers })}
             />

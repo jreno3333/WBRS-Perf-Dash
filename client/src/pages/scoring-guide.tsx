@@ -192,7 +192,7 @@ export default function ScoringGuidePage() {
                 { name: "Transactions", weight: w.transactions, icon: "🧾" },
                 { name: "OSAT", weight: w.osat, icon: "⭐" },
                 { name: "Speed (HME)", weight: w.speed, icon: "⏱️" },
-                { name: "Feedback Speed", weight: w.feedbackSpeed ?? 0, icon: "💬" },
+                { name: "OSAT Speed", weight: w.feedbackSpeed ?? 0, icon: "⏲️" },
                 { name: "Staffing", weight: w.staffing, icon: "👥" },
               ].map(c => (
                 <div key={c.name} className="text-center p-3 rounded-lg border">
@@ -203,7 +203,7 @@ export default function ScoringGuidePage() {
               ))}
             </div>
             <p className="text-muted-foreground text-xs">
-              Guest-facing metrics (Sales + Transactions + OSAT + Feedback Speed) = <strong>{guestFacingPct + (w.feedbackSpeed ?? 0)}%</strong> of your score.
+              Guest-facing metrics (Sales + Transactions + OSAT + OSAT Speed) = <strong>{guestFacingPct + (w.feedbackSpeed ?? 0)}%</strong> of your score.
               Operational metrics (Speed + Staffing) = <strong>{operationalPct}%</strong>.
             </p>
           </CardContent>
@@ -215,14 +215,14 @@ export default function ScoringGuidePage() {
           <ScoringTable title="Transactions vs. Last Week" icon={TrendingUp} weight={w.transactions} rows={txnTable} />
           <ScoringTable title="OSAT (Guest Satisfaction)" icon={Star} weight={w.osat} rows={osatTable} />
           <ScoringTable title="Drive-Thru Speed" icon={Timer} weight={w.speed} rows={speedTable} />
-          <ScoringTable title="Customer-Feedback Speed" icon={MessageSquare} weight={w.feedbackSpeed ?? 0} rows={feedbackSpeedTable} />
+          <ScoringTable title="OSAT Speed" icon={MessageSquare} weight={w.feedbackSpeed ?? 0} rows={feedbackSpeedTable} />
         </div>
         <ScoringTable title="Staffing vs. Labor Model" icon={Users} weight={w.staffing} rows={staffingTable} />
 
         <Card className="border-none bg-muted/30">
           <CardContent className="pt-4 text-xs text-muted-foreground space-y-2">
             <p>
-              <strong>Customer-Feedback Speed (Qualtrics):</strong> 5★ top-box % of guest-survey responses to the
+              <strong>OSAT Speed (Qualtrics):</strong> 5★ top-box % of guest-survey responses to the
               "Speed of Service" question. Most stores use the <em>DT Speed of Service</em> question; store 1682
               (no drive-thru) uses the generic <em>Speed of Service</em> question instead. The same daily value
               is applied to every hour of that day. When a store has zero responses for the day, the component is
