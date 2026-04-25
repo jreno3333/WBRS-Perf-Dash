@@ -2,7 +2,7 @@ import { useState, memo } from "react";
 // Card imports removed - using plain divs for cleaner styling
 // Badge import removed - using inline styles
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt, MessageSquare } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt, Gauge } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
@@ -536,7 +536,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                     </div>
                   }
                 >
-                  <MessageSquare className="w-3 h-3" />
+                  <Gauge className="w-3 h-3" />
                   <span className="font-medium">{fsPct.toFixed(0)}%</span>
                 </BadgeWithTooltip>
                 );

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles, Trophy, Flame, Diamond, Zap, Target } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles, Trophy, Flame, Diamond, Zap, Target, Gauge } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
@@ -1451,7 +1451,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                           </div>
                         }
                       >
-                        <MessageSquare className="w-3 h-3" />
+                        <Gauge className="w-3 h-3" />
                         <span>—</span>
                       </BadgeWithTooltip>
                     );
@@ -1486,7 +1486,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                         </div>
                       }
                     >
-                      <MessageSquare className="w-3 h-3" />
+                      <Gauge className="w-3 h-3" />
                       <span>{pct.toFixed(0)}%</span>
                     </BadgeWithTooltip>
                   );

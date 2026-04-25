@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { Info, TrendingUp, TrendingDown, Receipt, MessageSquare } from "lucide-react";
+import { Info, TrendingUp, TrendingDown, Receipt, Gauge } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -485,8 +485,8 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                   className={`text-xs mt-0.5 flex items-center gap-1 ${colorCls}`}
                   data-testid="text-execution-feedback-speed"
                 >
-                  <MessageSquare className="w-3 h-3" />
-                  Speed {fsPct.toFixed(0)}%
+                  <Gauge className="w-3 h-3" />
+                  OSAT Speed {fsPct.toFixed(0)}%
                   <span className="text-muted-foreground ml-1">({dailyFeedbackSpeed.responses})</span>
                 </p>
               );
