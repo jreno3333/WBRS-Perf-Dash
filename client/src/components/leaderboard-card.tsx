@@ -89,6 +89,18 @@ function scoreToGrade(score: number): { grade: string; color: string } {
   return { grade, color: getGradeColor(grade) };
 }
 
+// Pure formatting helpers — defined at module level so they are stable references
+// and never cause memoization breaks in child components that receive them as props.
+function formatPercentage(value: number): string {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${Math.round(value)}%`;
+}
+
+function formatSignedCurrency(amount: number): string {
+  const sign = amount >= 0 ? "+" : "";
+  return `${sign}${formatCurrency(amount)}`;
+}
+
 interface CrewSummary {
   avgScore: number;
   avgCrewCount: number;
@@ -1036,17 +1048,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   const [isExpanded, setIsExpanded] = useState(false);
   const gradingCfg = useGradingConfig();
 
-  // formatCurrency is imported from @/lib/grading (module-level singleton)
-
-  const formatPercentage = (value: number) => {
-    const sign = value >= 0 ? "+" : "";
-    return `${sign}${Math.round(value)}%`;
-  };
-
-  const formatSignedCurrency = (amount: number) => {
-    const sign = amount >= 0 ? "+" : "";
-    return `${sign}${formatCurrency(amount)}`;
-  };
+  // formatCurrency, formatPercentage, formatSignedCurrency are module-level (stable references)
 
   const displayLastWeek = restaurant.actualLastWeekSales ?? restaurant.lastWeekSales;
   const comparisonSales = restaurant.completedSales ?? restaurant.actualSales;

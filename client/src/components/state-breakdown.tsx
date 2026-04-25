@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useState, memo, useMemo } from "react";
 // Card imports removed - using plain divs for cleaner styling
 // Badge import removed - using inline styles
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
@@ -243,69 +243,69 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
   const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
-  // Exclude training units from state breakdowns
-  const activeRestaurants = restaurants.filter(r => r.status !== "training");
-  const tennesseeRestaurants = activeRestaurants.filter(r => 
-    TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
-  );
-  const alabamaRestaurants = activeRestaurants.filter(r => 
-    !TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
-  );
+  // Memoize all state aggregate calculations so they only recompute when inputs change
+  const states = useMemo(() => {
+    const activeRestaurants = restaurants.filter(r => r.status !== "training");
+    const tennesseeRestaurants = activeRestaurants.filter(r =>
+      TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
+    );
+    const alabamaRestaurants = activeRestaurants.filter(r =>
+      !TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
+    );
 
-  // Use actualSales and actualLastWeekSales (all available hours) for display to match 7shifts
-  const alabamaTodaySales = alabamaRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
-  const alabamaLastWeekSales = alabamaRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-  const alabamaAheadCount = alabamaRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
-  const alabamaVariance = alabamaLastWeekSales > 0 
-    ? ((alabamaTodaySales / alabamaLastWeekSales) - 1) * 100 
-    : 0;
+    const alabamaTodaySales = alabamaRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+    const alabamaLastWeekSales = alabamaRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
+    const alabamaAheadCount = alabamaRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
+    const alabamaVariance = alabamaLastWeekSales > 0
+      ? ((alabamaTodaySales / alabamaLastWeekSales) - 1) * 100 : 0;
 
-  const tennesseeTodaySales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
-  const tennesseeLastWeekSales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-  const tennesseeAheadCount = tennesseeRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
-  const tennesseeVariance = tennesseeLastWeekSales > 0 
-    ? ((tennesseeTodaySales / tennesseeLastWeekSales) - 1) * 100 
-    : 0;
+    const tennesseeTodaySales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+    const tennesseeLastWeekSales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
+    const tennesseeAheadCount = tennesseeRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
+    const tennesseeVariance = tennesseeLastWeekSales > 0
+      ? ((tennesseeTodaySales / tennesseeLastWeekSales) - 1) * 100 : 0;
 
-  // Calculate X-Scores for each state
-  const alabamaXScore = calculateStateXScore(
-    alabamaRestaurants.map(r => r.restaurantId),
-    hourlyByRestaurant,
-    gradingCfg
-  );
-  const tennesseeXScore = calculateStateXScore(
-    tennesseeRestaurants.map(r => r.restaurantId),
-    hourlyByRestaurant,
-    gradingCfg
-  );
-  
-  // Calculate crew scores for each state
-  const alabamaCrewScore = calculateStateCrewScore(
-    alabamaRestaurants.map(r => r.restaurantId),
-    crewSummary
-  );
-  const tennesseeCrewScore = calculateStateCrewScore(
-    tennesseeRestaurants.map(r => r.restaurantId),
-    crewSummary
-  );
-  
-  // Calculate OSAT for each state
-  const alabamaOsat = calculateStateOsat(alabamaRestaurants);
-  const tennesseeOsat = calculateStateOsat(tennesseeRestaurants);
+    const alabamaIds = alabamaRestaurants.map(r => r.restaurantId);
+    const tennesseeIds = tennesseeRestaurants.map(r => r.restaurantId);
 
-  // Calculate speed attainment for each state
-  const alabamaSpeed = calculateStateSpeed(alabamaRestaurants);
-  const tennesseeSpeed = calculateStateSpeed(tennesseeRestaurants);
+    const calcWeekly = (stateRestaurants: RestaurantSales[]) => {
+      let current = 0, prior = 0, eowForecast = 0, priorFull = 0;
+      if (weeklySalesData?.restaurants) {
+        for (const r of stateRestaurants) {
+          const wk = weeklySalesData.restaurants[r.restaurantId];
+          if (wk) { current += wk.currentWeek; prior += wk.priorWeek; eowForecast += wk.eowForecast; priorFull += wk.priorWeekFull; }
+        }
+      }
+      return { current, prior, eowForecast, priorFull, variance: prior > 0 ? ((current / prior) - 1) * 100 : 0, eowVariance: priorFull > 0 ? ((eowForecast / priorFull) - 1) * 100 : 0 };
+    };
 
-  // Calculate check average for each state
-  const alabamaCheckAvg = calculateStateCheckAvg(
-    alabamaRestaurants.map(r => r.restaurantId),
-    checkAverageByRestaurant, checkAvgTrendByRestaurant
-  );
-  const tennesseeCheckAvg = calculateStateCheckAvg(
-    tennesseeRestaurants.map(r => r.restaurantId),
-    checkAverageByRestaurant, checkAvgTrendByRestaurant
-  );
+    return [
+      {
+        name: "Alabama", abbr: "AL",
+        todaySales: alabamaTodaySales, lastWeekSales: alabamaLastWeekSales,
+        variance: alabamaVariance, aheadCount: alabamaAheadCount,
+        totalCount: alabamaRestaurants.length, isAhead: alabamaVariance >= 0,
+        xScore: calculateStateXScore(alabamaIds, hourlyByRestaurant, gradingCfg),
+        crewScore: calculateStateCrewScore(alabamaIds, crewSummary),
+        osat: calculateStateOsat(alabamaRestaurants),
+        speed: calculateStateSpeed(alabamaRestaurants),
+        weekly: calcWeekly(alabamaRestaurants),
+        checkAvg: calculateStateCheckAvg(alabamaIds, checkAverageByRestaurant, checkAvgTrendByRestaurant),
+      },
+      {
+        name: "Tennessee", abbr: "TN",
+        todaySales: tennesseeTodaySales, lastWeekSales: tennesseeLastWeekSales,
+        variance: tennesseeVariance, aheadCount: tennesseeAheadCount,
+        totalCount: tennesseeRestaurants.length, isAhead: tennesseeVariance >= 0,
+        xScore: calculateStateXScore(tennesseeIds, hourlyByRestaurant, gradingCfg),
+        crewScore: calculateStateCrewScore(tennesseeIds, crewSummary),
+        osat: calculateStateOsat(tennesseeRestaurants),
+        speed: calculateStateSpeed(tennesseeRestaurants),
+        weekly: calcWeekly(tennesseeRestaurants),
+        checkAvg: calculateStateCheckAvg(tennesseeIds, checkAverageByRestaurant, checkAvgTrendByRestaurant),
+      },
+    ];
+  }, [restaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant]);
 
   const getGradeBadgeColor = (grade: string) => {
     if (grade.startsWith('A')) return 'text-green-500 bg-green-500/10 border-green-500/30';
@@ -320,64 +320,6 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
     if (score >= 50) return 'bg-amber-500/10 text-amber-500';
     return 'bg-red-500/10 text-red-500';
   };
-
-  // Calculate weekly sales by state
-  const calcWeekly = (stateRestaurants: RestaurantSales[]) => {
-    let current = 0, prior = 0, eowForecast = 0, priorFull = 0;
-    if (weeklySalesData?.restaurants) {
-      for (const r of stateRestaurants) {
-        const wk = weeklySalesData.restaurants[r.restaurantId];
-        if (wk) {
-          current += wk.currentWeek;
-          prior += wk.priorWeek;
-          eowForecast += wk.eowForecast;
-          priorFull += wk.priorWeekFull;
-        }
-      }
-    }
-    return {
-      current, prior, eowForecast, priorFull,
-      variance: prior > 0 ? ((current / prior) - 1) * 100 : 0,
-      eowVariance: priorFull > 0 ? ((eowForecast / priorFull) - 1) * 100 : 0,
-    };
-  };
-  const alabamaWeekly = calcWeekly(alabamaRestaurants);
-  const tennesseeWeekly = calcWeekly(tennesseeRestaurants);
-
-  const states = [
-    {
-      name: "Alabama",
-      abbr: "AL",
-      todaySales: alabamaTodaySales,
-      lastWeekSales: alabamaLastWeekSales,
-      variance: alabamaVariance,
-      aheadCount: alabamaAheadCount,
-      totalCount: alabamaRestaurants.length,
-      isAhead: alabamaVariance >= 0,
-      xScore: alabamaXScore,
-      crewScore: alabamaCrewScore,
-      osat: alabamaOsat,
-      speed: alabamaSpeed,
-      weekly: alabamaWeekly,
-      checkAvg: alabamaCheckAvg,
-    },
-    {
-      name: "Tennessee",
-      abbr: "TN",
-      todaySales: tennesseeTodaySales,
-      lastWeekSales: tennesseeLastWeekSales,
-      variance: tennesseeVariance,
-      aheadCount: tennesseeAheadCount,
-      totalCount: tennesseeRestaurants.length,
-      isAhead: tennesseeVariance >= 0,
-      xScore: tennesseeXScore,
-      crewScore: tennesseeCrewScore,
-      osat: tennesseeOsat,
-      speed: tennesseeSpeed,
-      weekly: tennesseeWeekly,
-      checkAvg: tennesseeCheckAvg,
-    },
-  ];
 
   const [isExpanded, setIsExpanded] = useState(false);
 
