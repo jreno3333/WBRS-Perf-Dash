@@ -48,6 +48,15 @@ export interface BonusResult {
   description: string;
 }
 
+const BONUS_BY_ID: Record<BonusId, typeof BONUS_DEFINITIONS[number]> = BONUS_DEFINITIONS.reduce((acc, def) => {
+  acc[def.id] = def;
+  return acc;
+}, {} as Record<BonusId, typeof BONUS_DEFINITIONS[number]>);
+
+function bonus(id: BonusId): typeof BONUS_DEFINITIONS[number] {
+  return BONUS_BY_ID[id];
+}
+
 // ──────────────────────────────────────────
 // Attachment rate benchmarks (for The Closer bonus)
 // ──────────────────────────────────────────
@@ -313,46 +322,46 @@ export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
 
   // Perfect OSAT: 100% with ≥5 surveys
   if (input.dailyOsatPercent !== undefined && input.dailyOsatPercent >= 100 && (input.dailySurveyCount ?? 0) >= 5) {
-    bonuses.push({ ...BONUS_DEFINITIONS[0] });
+    bonuses.push({ ...bonus("perfectOsat") });
   }
   // High-volume OSAT: ≥85% with ≥10 surveys (not additive with perfect — only if not already perfect)
   else if (input.dailyOsatPercent !== undefined && input.dailyOsatPercent >= 85 && (input.dailySurveyCount ?? 0) >= 10) {
-    bonuses.push({ ...BONUS_DEFINITIONS[1] });
+    bonuses.push({ ...bonus("highVolumeOsat") });
   }
 
   // Sales growth: ≥+5% vs last week
   if (input.dailySalesVariancePct !== undefined && input.dailySalesVariancePct >= 5) {
-    bonuses.push({ ...BONUS_DEFINITIONS[2] });
+    bonuses.push({ ...bonus("salesGrowth") });
   }
 
   // Transaction growth: ≥+5% vs last week
   if (input.dailyTransactionVariancePct !== undefined && input.dailyTransactionVariancePct >= 5) {
-    bonuses.push({ ...BONUS_DEFINITIONS[3] });
+    bonuses.push({ ...bonus("transactionGrowth") });
   }
 
   // YoY sales growth: above last year by any amount
   if (input.dailyYoySalesVariancePct !== undefined && input.dailyYoySalesVariancePct > 0) {
-    bonuses.push({ ...BONUS_DEFINITIONS[5] });
+    bonuses.push({ ...bonus("yoyGrowth") });
   }
 
   // Consistency: no hour below B (83)
   if (input.hourlyScores.length >= 4 && input.hourlyScores.every(s => s >= 83)) {
-    bonuses.push({ ...BONUS_DEFINITIONS[4] });
+    bonuses.push({ ...bonus("consistency") });
   }
 
   // The Closer: 1 bonus point per attachment category at target, requires 4+/6
   if (input.attachmentCategoriesAtTarget !== undefined && input.attachmentCategoriesAtTarget >= 4) {
-    bonuses.push({ ...BONUS_DEFINITIONS[6], points: input.attachmentCategoriesAtTarget });
+    bonuses.push({ ...bonus("theCloser"), points: input.attachmentCategoriesAtTarget });
   }
 
   // Helper Reward: bonus points for helping another unit (manually entered in settings)
   if (input.helperRewardPoints && input.helperRewardPoints > 0) {
-    bonuses.push({ ...BONUS_DEFINITIONS[7], points: input.helperRewardPoints });
+    bonuses.push({ ...bonus("helperReward"), points: input.helperRewardPoints });
   }
 
   // Guest Voice: more than 3 OSAT surveys received for the day
   if ((input.dailySurveyCount ?? 0) > 3) {
-    bonuses.push({ ...BONUS_DEFINITIONS[8] });
+    bonuses.push({ ...bonus("guestVoice") });
   }
 
   const totalBonus = bonuses.reduce((sum, b) => sum + b.points, 0);
