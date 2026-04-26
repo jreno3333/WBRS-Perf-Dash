@@ -3,7 +3,7 @@ import { Link } from "wouter";
 // Card/CardContent imports removed - using plain divs
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles, Trophy, Flame, Diamond, Zap, Target } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, MapPin, Car, Smartphone, Utensils, ShoppingBag, AlertTriangle, Ban, ChevronDown, ChevronUp, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle, Droplets, Wind, Star, GraduationCap, ThumbsUp, Receipt, MessageSquare, Send, X, StickyNote, Sparkles, Trophy, Flame, Diamond, Zap, Target, Gauge } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { DAYPARTS, getDaypart, gradeToScore as dpGradeToScore, scoreToGrade as dpScoreToGrade, getGradeColor as dpGetGradeColor } from "@/lib/dayparts";
@@ -74,8 +74,10 @@ function getExecutionGrade(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): { grade: string; color: string; score: number; hasGrade: boolean } {
-  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg, feedbackSpeedPercent, feedbackSpeedResponses);
   if (score === 0) return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false };
   const grade = scoreToGradeLabel(score);
   return { grade, color: sharedGetGradeColor(grade), score, hasGrade: true };
@@ -539,7 +541,8 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
                 const hasValidStaffing = rawEmployeeCount >= 1;
                 const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
                 const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+                const fs = restaurant.feedbackSpeed;
+                gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
               }
               return (
                 <div key={`grade-${hour.hour}`} className="flex-1 text-center">
@@ -600,7 +603,8 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
                 const hasValidStaffing = rawEmployeeCount >= 1;
                 const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
                 const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-                gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+                const fs = restaurant.feedbackSpeed;
+                gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
               }
               const isHovered = hoveredHourIndex === hourIndex;
 
@@ -1186,7 +1190,8 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasValidStaffing = rawEmployeeCount >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+        const fs = restaurant.feedbackSpeed;
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
         return gradeInfo.hasGrade ? gradeInfo.score : 0;
       }).filter(score => score > 0);
 
@@ -1227,7 +1232,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     const overallGrade = hourlyGradeScores.length > 0 ? scoreToGrade(overallScore) : null;
 
     return { gradedHours, hourlyGradeScores, overallScore, overallGrade, dailyBonusResult };
-  }, [allHours, localGradeCutoff, gradingCfg, yoyData, isSSS, attachmentCategories, helperRewardPoints]);
+  }, [allHours, localGradeCutoff, gradingCfg, yoyData, isSSS, attachmentCategories, helperRewardPoints, restaurant.feedbackSpeed?.topBoxPercent, restaurant.feedbackSpeed?.responses]);
 
   // Memoize daypart grades — depends on the same inputs as overall grade
   const daypartGrades = useMemo(() => DAYPARTS.map(dp => {
@@ -1251,7 +1256,8 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
         const hasValidStaffing = rawEmployeeCount >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+        const fs = restaurant.feedbackSpeed;
+        const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
         return gradeInfo.hasGrade ? gradeInfo.score : 0;
       }).filter(s => s > 0);
 
@@ -1259,7 +1265,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     const avg = dpScores.reduce((a, b) => a + b, 0) / dpScores.length;
     const gradeResult = scoreToGrade(avg);
     return { ...dp, grade: gradeResult.grade, score: avg };
-  }).filter(dp => dp.grade !== null), [allHours, localGradeCutoff, gradingCfg]);
+  }).filter(dp => dp.grade !== null), [allHours, localGradeCutoff, gradingCfg, restaurant.feedbackSpeed?.topBoxPercent, restaurant.feedbackSpeed?.responses]);
 
   // Memoize demand curve lookup map
   const demandCurveMap = useMemo(() => {
@@ -1448,6 +1454,67 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <span className="font-medium">{restaurant.osat.osatPercent.toFixed(0)}%</span>
                   </BadgeWithTooltip>
                 )}
+                {/* Customer-feedback Speed of Service Badge (Qualtrics survey) */}
+                {restaurant.feedbackSpeed && (() => {
+                  const fs = restaurant.feedbackSpeed;
+                  const isGeneric = fs.source === 'generic';
+                  const sourceLabel = isGeneric ? 'Speed of Service (in-store)' : 'DT Speed of Service';
+                  const questionLabel = isGeneric ? 'generic Speed of Service question' : 'DT Speed of Service question';
+                  const hasData = fs.responses > 0;
+
+                  if (!hasData) {
+                    return (
+                      <BadgeWithTooltip
+                        className="bg-muted text-muted-foreground border-0 flex-shrink-0 text-xs px-1.5 gap-1"
+                        data-testid={`badge-feedback-speed-${restaurant.restaurantId}`}
+                        tooltipContent={
+                          <div>
+                            <div className="font-medium">{sourceLabel}</div>
+                            <div className="text-muted-foreground">No survey responses today</div>
+                            <div className="text-muted-foreground">Source: {questionLabel}</div>
+                          </div>
+                        }
+                      >
+                        <Gauge className="w-3 h-3" />
+                        <span>—</span>
+                      </BadgeWithTooltip>
+                    );
+                  }
+
+                  // 5-star top-box %: matches OSAT and the Qualtrics dashboard exactly.
+                  // Only responses that gave 5★ count; skipped questions are already excluded from `responses`.
+                  const pct = fs.topBoxPercent;
+                  const ratingColor = pct >= 90
+                    ? "bg-green-500/10 text-green-500"
+                    : pct >= 80
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "bg-red-500/10 text-red-500";
+                  const isRed = pct < 80;
+
+                  return (
+                    <BadgeWithTooltip
+                      className={`${ratingColor} border-0 flex-shrink-0 text-xs px-1.5 gap-1 ${isRed ? 'animate-pulse' : ''}`}
+                      data-testid={`badge-feedback-speed-${restaurant.restaurantId}`}
+                      tooltipContent={
+                        <div>
+                          <div className="font-medium">{sourceLabel}</div>
+                          <div className="text-muted-foreground">
+                            Guest score: {pct.toFixed(1)}% ({fs.fiveStarCount} of {fs.responses} gave 5★)
+                          </div>
+                          <div className="text-muted-foreground">
+                            <span className="block text-[10px]">
+                              (skipped questions are not counted)
+                            </span>
+                          </div>
+                          <div className="text-muted-foreground">Source: {questionLabel}</div>
+                        </div>
+                      }
+                    >
+                      <Gauge className="w-3 h-3" />
+                      <span>{pct.toFixed(0)}%</span>
+                    </BadgeWithTooltip>
+                  );
+                })()}
                 {/* Drive-Thru SOS Badge */}
                 {restaurant.driveThru && (() => {
                   const carCount = restaurant.driveThru.carCount || 0;
@@ -1495,6 +1562,16 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     tooltipDetail={`Banana Pudding Shake attach rate: ${attachmentCategories.banana_pudding.attachRate.toFixed(1)}% (target: 5%). This unit is crushing the LTO!`}
                   >
                     <span className="font-medium">🍌 {attachmentCategories.banana_pudding.attachRate.toFixed(1)}%</span>
+                  </BadgeWithTooltip>
+                )}
+                {restaurant.osat && restaurant.osat.totalResponses > 3 && (
+                  <BadgeWithTooltip
+                    className="flex-shrink-0 text-xs px-1.5 gap-1 border-0 bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                    data-testid={`badge-guest-voice-${restaurant.restaurantId}`}
+                    tooltipTitle="Guest Voice 🗣️"
+                    tooltipDetail={`${restaurant.osat.totalResponses} guest surveys received today (bonus unlocks at 4+). +2 bonus points applied to today's grade.`}
+                  >
+                    <span className="font-medium">🗣️ {restaurant.osat.totalResponses}</span>
                   </BadgeWithTooltip>
                 )}
                 {/* Revenue Port Badges */}

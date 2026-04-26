@@ -1,7 +1,7 @@
 import { getBaseUrl } from "./base-url";
 import { db } from "./db";
-import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes, restaurants } from "@shared/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { emailSubscribers, emailSendLog, reportSchedules, restaurantNotes, restaurants, dailyOsat } from "@shared/schema";
+import { eq, and, sql, desc, gte, lte } from "drizzle-orm";
 import { sendDailyReportEmail } from "./email";
 import { storage } from "./storage";
 import type { HourlySalesData } from "@shared/schema";
@@ -11,6 +11,7 @@ import { getAttachmentRatesFromDetail } from "./xenial-webhook";
 import type { GradingConfigData } from "@shared/schema";
 import { getActiveGradingConfig } from "./routes/grading-config";
 import { getHelperRewardsForDate } from "./routes/helper-rewards";
+import { deriveFeedbackSpeed } from "./lib/feedback-speed";
 
 
 function getExecutionGrade(
@@ -23,6 +24,8 @@ function getExecutionGrade(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   gradingCfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): { grade: string; score: number; hasGrade: boolean } {
   const result = computeHourlyScore({
     salesVariancePct,
@@ -33,6 +36,8 @@ function getExecutionGrade(
     staffingDiff,
     hasValidStaffing,
     osatPercent,
+    feedbackSpeedPercent,
+    feedbackSpeedResponses,
   }, gradingCfg);
   return { grade: result.grade, score: result.score, hasGrade: result.hasGrade };
 }
@@ -163,7 +168,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
     const restaurantOpenDates = new Map(allRestaurants.map(r => [r.id, r.openDate]));
     const isCompStore = (rid: string) => {
       const od = restaurantOpenDates.get(rid);
-      if (!od) return true;
+      if (!od) return false;
       const open = new Date(od);
       return (Date.now() - open.getTime()) / (1000 * 60 * 60 * 24 * 30.44) > 24;
     };
@@ -176,6 +181,24 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
     // Fetch helper rewards for this date
     const helperRewardsMap = await getHelperRewardsForDate(dateStr);
+
+    // Fetch daily Qualtrics feedback-speed top-box per restaurant
+    const dailyOsatRows = await db.select().from(dailyOsat).where(eq(dailyOsat.date, dateStr));
+    const restaurantsForFs = await db.select({ id: restaurants.id, unitNumber: restaurants.unitNumber }).from(restaurants);
+    const unitNumberById = new Map(restaurantsForFs.map(r => [r.id, r.unitNumber]));
+    const feedbackSpeedByRestaurant = new Map<string, { topBoxPercent: number; responses: number }>();
+    for (const row of dailyOsatRows) {
+      const fs = deriveFeedbackSpeed(
+        {
+          dtSpeedResponses: row.dtSpeedCount || 0,
+          dtSpeedFiveStarCount: row.dtSpeedFiveStarCount || 0,
+          genericSpeedResponses: row.genericSpeedCount || 0,
+          genericSpeedFiveStarCount: row.genericSpeedFiveStarCount || 0,
+        },
+        unitNumberById.get(row.restaurantId),
+      );
+      feedbackSpeedByRestaurant.set(row.restaurantId, { topBoxPercent: fs.topBoxPercent, responses: fs.responses });
+    }
 
     const summaries: RestaurantSummary[] = [];
     let totalSales = 0;
@@ -214,6 +237,7 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
 
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+        const fs = feedbackSpeedByRestaurant.get(restaurant.restaurantId);
         const gradeInfo = getExecutionGrade(
           salesVariancePct,
           hour.ootActive ? undefined : hour.speedAttainment,
@@ -223,7 +247,9 @@ export async function buildDailyReportHtml(dateStr: string): Promise<string | nu
           hour.osatPercent,
           txnVar,
           hasCompTxn,
-          gradingCfg
+          gradingCfg,
+          fs?.responses ? fs.topBoxPercent : undefined,
+          fs?.responses,
         );
 
         if (gradeInfo.hasGrade) {

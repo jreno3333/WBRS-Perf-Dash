@@ -29,7 +29,7 @@ function getCentralDate(): Date {
   return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number }, cfg?: import("@shared/schema").GradingConfigData): number {
+function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?: number, restaurant?: { daysOpen?: number; feedbackSpeed?: { topBoxPercent: number; responses: number } | null }, cfg?: import("@shared/schema").GradingConfigData): number {
   if (!hourlyData || hourlyData.length === 0) return -1;
 
   const cutoff = localCutoff ?? 23;
@@ -55,7 +55,8 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
       const transactionVariancePct = hasComparableTransactions
         ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
         : undefined;
-      const rawScore = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+      const fs = restaurant?.feedbackSpeed;
+      const rawScore = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, transactionVariancePct, hasComparableTransactions, cfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
       return rawScore > 0 ? rawScore : 0;
     }).filter(s => s > 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : -1;
@@ -64,7 +65,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "check_avg">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "osat_time" | "check_avg">("sales");
   const gradingCfg = useGradingConfig();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -530,6 +531,8 @@ export default function Dashboard() {
             return r.googleReviews != null;
           case "osat":
             return r.osat != null && r.osat.totalResponses > 0;
+          case "osat_time":
+            return r.feedbackSpeed != null && r.feedbackSpeed.responses > 0;
           case "yoy":
             return yoyBulkData?.data?.[r.restaurantId] != null;
           default:
@@ -566,6 +569,11 @@ export default function Dashboard() {
             return (b.googleReviews?.rating ?? 0) - (a.googleReviews?.rating ?? 0);
           case "osat":
             return (b.osat?.osatPercent ?? 0) - (a.osat?.osatPercent ?? 0);
+          case "osat_time": {
+            const aFS = a.feedbackSpeed && a.feedbackSpeed.responses > 0 ? a.feedbackSpeed.topBoxPercent : -1;
+            const bFS = b.feedbackSpeed && b.feedbackSpeed.responses > 0 ? b.feedbackSpeed.topBoxPercent : -1;
+            return bFS - aFS;
+          }
           case "check_avg":
             return (checkAvgMap.get(b.restaurantId) ?? 0) - (checkAvgMap.get(a.restaurantId) ?? 0);
           case "banana_pudding":
@@ -918,6 +926,7 @@ export default function Dashboard() {
                           <SelectItem value="xscore">Exc Score</SelectItem>
                           <SelectItem value="google_reviews">Google Rating</SelectItem>
                           <SelectItem value="osat">OSAT</SelectItem>
+                          <SelectItem value="osat_time">OSAT Time</SelectItem>
                           <SelectItem value="check_avg">Check Avg</SelectItem>
                         </SelectContent>
                       </Select>

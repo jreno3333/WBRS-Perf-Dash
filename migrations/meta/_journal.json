@@ -8,6 +8,20 @@
       "when": 1769262849046,
       "tag": "0000_clever_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776019900000,
+      "tag": "0003_feature_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776019910000,
+      "tag": "0004_hourly_sales_indexes",
+      "breakpoints": true
     }
   ]
 }

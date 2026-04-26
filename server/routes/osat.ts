@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db";
-import { dailyOsat } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { dailyOsat, restaurants } from "@shared/schema";
+import { eq, and, gte, lte, asc } from "drizzle-orm";
 import { syncOsatData, getOsatForDate } from "../scraper/qualtrics-api";
 
 const router = Router();
@@ -201,6 +201,79 @@ router.get("/api/osat/category-issues/all/:date", async (req, res) => {
     return res.status(400).json({ error: "date is required" });
   }
   return handleCategoryIssuesAll(date, res);
+});
+
+// Speed-of-Service trend (DT speed for most stores; generic speed for store 1682)
+router.get("/api/osat/speed-history/:restaurantId", async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const days = Math.min(Math.max(parseInt(String(req.query.days || "30"), 10) || 30, 1), 90);
+
+    const restaurant = await db
+      .select({ unitNumber: restaurants.unitNumber, name: restaurants.name })
+      .from(restaurants)
+      .where(eq(restaurants.id, restaurantId))
+      .limit(1);
+
+    if (restaurant.length === 0) {
+      return res.status(404).json({ error: "Restaurant not found" });
+    }
+
+    const useGeneric = restaurant[0].unitNumber === "1682";
+    const source: "dt" | "generic" = useGeneric ? "generic" : "dt";
+
+    // Date range in Central Time (YYYY-MM-DD strings to match dailyOsat.date)
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" });
+    const today = new Date();
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - (days - 1));
+    const startStr = fmt.format(startDate);
+    const endStr = fmt.format(today);
+
+    const rows = await db
+      .select()
+      .from(dailyOsat)
+      .where(and(
+        eq(dailyOsat.restaurantId, restaurantId),
+        gte(dailyOsat.date, startStr),
+        lte(dailyOsat.date, endStr),
+      ))
+      .orderBy(asc(dailyOsat.date));
+
+    const byDate = new Map<string, typeof rows[number]>();
+    for (const r of rows) byDate.set(r.date, r);
+
+    const series: { date: string; avgRating: number | null; pct: number | null; responses: number }[] = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      const dateStr = fmt.format(d);
+      const row = byDate.get(dateStr);
+      if (row) {
+        const sum = parseFloat(useGeneric ? String(row.genericSpeedSum) : String(row.dtSpeedSum));
+        const count = useGeneric ? row.genericSpeedCount : row.dtSpeedCount;
+        const avg = count > 0 ? sum / count : null;
+        series.push({
+          date: dateStr,
+          avgRating: avg,
+          pct: avg !== null ? (avg / 5) * 100 : null,
+          responses: count,
+        });
+      } else {
+        series.push({ date: dateStr, avgRating: null, pct: null, responses: 0 });
+      }
+    }
+
+    res.json({
+      restaurantId,
+      source,
+      days,
+      series,
+    });
+  } catch (error) {
+    console.error("Error fetching speed history:", error);
+    res.status(500).json({ error: "Failed to fetch speed history" });
+  }
 });
 
 export default router;

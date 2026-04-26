@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
 - **Unit Management**: Settings/Admin page for managing restaurant open dates and statuses.
 - **Weighted Execution Grading System**: Grades units based on a weighted formula including Sales (35%), Speed (25%), OSAT (25%), and Staffing (15%), normalized for available data.
 - **People Tenure & Performance**: Tracks employee tenure and ranks leaders by average execution grade and average hourly sales volume during their shifts, with eligibility criteria based on hours worked and survey responses.
-- **Performance History**: Displays historical performance trends over configurable date ranges (7/14/30/60/90/180 days) with company, state, and market summaries, daily grade timelines, and detailed metrics.
+- **Performance History**: Displays historical performance trends over configurable date ranges (7/14/30/60/90/180 days) with company, state, and market summaries, daily grade timelines, and detailed metrics. Includes a unit dropdown to load a single restaurant (returns full detail with auto-expanded card) for faster load times vs loading all units.
 - **Weekly Sales Trends**: Tracks Saturday-Friday business week totals at company, state, market, and unit levels with prior week comparison (via `/api/weekly-sales` endpoint).
 - **Sales Variance**: Calculates sales variance against historical data from 7 days prior. `actualSales` is the live total (all hours including in-progress), displayed on the card. Rankings/variance use `completedSales` and `actualLastWeekSales`, both filtered to `restaurantCompletedHour` (local current hour - 1) for apples-to-apples comparison. All sales data comes exclusively from POS (`pos_orders` table); the `daily_sales` table (7shifts) is no longer used for any sales calculations or display.
 - **Same Store Sales (SSS)**: Company-level sales only count units open over 24 months, with a filter for SSS-eligible stores.
@@ -77,3 +77,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Other Integrations
 - **Xenial POS**: Real-time order data via webhooks (sole source for sales data).
+
+## Operational Scripts
+
+- **Backfill Qualtrics DT/Generic Speed columns** (`scripts/backfill-osat-speed.ts`):
+  Re-runs `syncOsatData` over a wide window to repopulate `daily_osat.dt_speed_sum`/`dt_speed_count` and `generic_speed_sum`/`generic_speed_count` from historical Qualtrics responses. Used once after the speed columns were added so the new feedback-speed badges have history immediately. Re-run any time those columns need to be rebuilt.
+  - Default 90 days: `npx tsx scripts/backfill-osat-speed.ts`
+  - Custom window: `npx tsx scripts/backfill-osat-speed.ts 180`
+  - Equivalent admin endpoint: `POST /api/osat/sync-historical` with `{"daysBack": 90}`

@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
-import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather, historicalDailySales } from "@shared/schema";
+import { hourlySales, hourlyLabor, osatData, hmeTimerData, hourlyCrew, markets, restaurantMarkets, dailyWeather, historicalDailySales, dailyOsat } from "@shared/schema";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { getStaffingBreakdown } from "../lib/labor-model";
 import { computeHourlyScore, scoreToGradeLabel, gradeToMidpoint as scoringGradeToMidpoint, computeDailyBonuses } from "../lib/scoring";
 import { getAllHourlyPosOrderCountRange, getAllHourlyPosSalesRange, getOotHoursByDateRange, getAttachmentRatesMultiDay } from "../xenial-webhook";
 import { getActiveGradingConfig } from "./grading-config";
 import { getHelperRewardsForDateRange } from "./helper-rewards";
+import { deriveFeedbackSpeed } from "../lib/feedback-speed";
 import { onPerfCacheInvalidate } from "../lib/perf-cache";
 
 const router = Router();
@@ -44,15 +45,28 @@ router.get("/api/performance-history/detail/:restaurantId", async (req, res) => 
 // Performance History endpoint - returns daily grades over a date range
 router.get("/api/performance-history", async (req, res) => {
   try {
-    const { days = "7", startDate, endDate } = req.query;
+    const { days = "7", startDate, endDate, restaurantId: filterRestaurantId } = req.query;
 
     const cacheKey = String(days);
     const cached = perfHistoryCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      let restaurants = cached.data.restaurants;
+
+      if (filterRestaurantId && filterRestaurantId !== "all") {
+        const match = restaurants.find((r: any) => r.restaurantId === filterRestaurantId);
+        restaurants = match ? [match] : [];
+        console.log(`[perf-history] Served single unit from cache (${cacheKey}, ${filterRestaurantId})`);
+        return res.json({
+          dateRange: cached.data.dateRange,
+          weekendDates: cached.data.weekendDates,
+          restaurants,
+        });
+      }
+
       const slim = {
         dateRange: cached.data.dateRange,
         weekendDates: cached.data.weekendDates,
-        restaurants: cached.data.restaurants.map((r: any) => ({
+        restaurants: restaurants.map((r: any) => ({
           restaurantId: r.restaurantId,
           restaurantName: r.restaurantName,
           state: r.state,
@@ -156,6 +170,7 @@ router.get("/api/performance-history", async (req, res) => {
       posSalesByKey,
       allCrewData,
       allWeatherData,
+      allDailyOsatData,
     ] = await Promise.all([
       db.select().from(hourlySales).where(and(gte(hourlySales.salesDate, startDateTs), lte(hourlySales.salesDate, endDateTs))),
       db.select().from(hourlyLabor).where(and(gte(hourlyLabor.date, rangeStart), lte(hourlyLabor.date, rangeEnd))),
@@ -165,6 +180,7 @@ router.get("/api/performance-history", async (req, res) => {
       getAllHourlyPosSalesRange(txnExpandedStart, txnExpandedEnd),
       db.select().from(hourlyCrew).where(and(gte(hourlyCrew.date, rangeStart), lte(hourlyCrew.date, rangeEnd))),
       db.select().from(dailyWeather).where(and(gte(dailyWeather.date, rangeStart), lte(dailyWeather.date, rangeEnd))),
+      db.select().from(dailyOsat).where(and(gte(dailyOsat.date, rangeStart), lte(dailyOsat.date, rangeEnd))),
     ]);
     console.log(`[perf-history] Batch 1 (hourly/labor/osat/hme/pos/crew/weather): ${Date.now() - t0}ms`);
 
@@ -293,6 +309,23 @@ router.get("/api/performance-history", async (req, res) => {
     };
 
     const restaurantList = allRestaurants.filter(r => getRestaurantStatus(r.openDate) !== "training");
+
+    // Daily Qualtrics feedback-speed top-box per (restaurantId, date)
+    const restaurantById = new Map(allRestaurants.map(r => [r.id, r]));
+    const feedbackSpeedByDay = new Map<string, { topBoxPercent: number; responses: number }>();
+    for (const row of allDailyOsatData) {
+      const restaurant = restaurantById.get(row.restaurantId);
+      const fs = deriveFeedbackSpeed(
+        {
+          dtSpeedResponses: row.dtSpeedCount || 0,
+          dtSpeedFiveStarCount: row.dtSpeedFiveStarCount || 0,
+          genericSpeedResponses: row.genericSpeedCount || 0,
+          genericSpeedFiveStarCount: row.genericSpeedFiveStarCount || 0,
+        },
+        restaurant?.unitNumber,
+      );
+      feedbackSpeedByDay.set(`${row.restaurantId}-${row.date}`, { topBoxPercent: fs.topBoxPercent, responses: fs.responses });
+    }
 
     // Build market lookup (restaurant.id is string, rm.restaurantId is number, market.id is string)
     const restaurantToMarket = new Map<string, { id: string; name: string }>();
@@ -583,6 +616,7 @@ router.get("/api/performance-history", async (req, res) => {
           const hourOsatPercent = (hourOsatRecord && hourOsatRecord.totalResponses > 0)
             ? hourOsatRecord.osatPercent : undefined;
 
+          const dayFs = feedbackSpeedByDay.get(`${restaurant.id}-${dateStr}`);
           const result = computeHourlyScore({
             salesVariancePct,
             hasComparableSales,
@@ -592,6 +626,9 @@ router.get("/api/performance-history", async (req, res) => {
             staffingDiff,
             hasValidStaffing,
             osatPercent: hourOsatPercent,
+            osatResponses: hourOsatRecord?.totalResponses,
+            feedbackSpeedPercent: dayFs?.responses ? dayFs.topBoxPercent : undefined,
+            feedbackSpeedResponses: dayFs?.responses,
           }, gradingCfg);
           if (result.hasGrade && result.score > 0) {
             hourlyRawScores.push(result.score);
@@ -1058,6 +1095,17 @@ router.get("/api/performance-history", async (req, res) => {
     };
 
     perfHistoryCache.set(cacheKey, { data: fullData, timestamp: Date.now() });
+
+    if (filterRestaurantId && filterRestaurantId !== "all") {
+      const match = fullData.restaurants.find((r: any) => r.restaurantId === filterRestaurantId);
+      res.json({
+        dateRange: fullData.dateRange,
+        weekendDates: fullData.weekendDates,
+        restaurants: match ? [match] : [],
+      });
+      console.log(`[perf-history] Computed & cached in ${Date.now() - t0}ms, returned single unit ${filterRestaurantId}`);
+      return;
+    }
 
     const slim = {
       dateRange: fullData.dateRange,

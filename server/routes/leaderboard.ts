@@ -129,6 +129,23 @@ router.get("/api/leaderboard", async (req, res) => {
           totalResponses: osat.totalResponses,
           fiveStarCount: osat.fiveStarCount,
         };
+
+        // Customer-feedback speed badge: store 1682 (Cumberland Avenue) has no
+        // drive-thru, so it falls back to the generic Speed of Service question.
+        // All other stores use the DT Speed of Service question.
+        // Methodology matches OSAT and the Qualtrics dashboard: 5-star top-box %.
+        const restaurant = restaurantMap.get(r.restaurantId);
+        const useGeneric = restaurant?.unitNumber === '1682';
+        const source: 'dt' | 'generic' = useGeneric ? 'generic' : 'dt';
+        const responses = useGeneric ? osat.genericSpeedResponses : osat.dtSpeedResponses;
+        const fiveStar = useGeneric ? osat.genericSpeedFiveStarCount : osat.dtSpeedFiveStarCount;
+        r.feedbackSpeed = responses > 0
+          ? { topBoxPercent: (fiveStar / responses) * 100, fiveStarCount: fiveStar, responses, source }
+          : { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source };
+      } else {
+        const restaurant = restaurantMap.get(r.restaurantId);
+        const useGeneric = restaurant?.unitNumber === '1682';
+        r.feedbackSpeed = { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source: useGeneric ? 'generic' : 'dt' };
       }
     }
 
@@ -760,16 +777,14 @@ router.get("/api/weekly-sales", async (req, res) => {
         : 23;
 
       // --- WTD: actual sales Sat through selected day ---
+      // Use ALL POS hours for today (no cutoff) to match actualSales on the daily card
       let currentWeekTotal = 0;
       for (const d of currentWeekDates) {
-        if (d === todayStr && isLiveToday) {
-          currentWeekTotal += sumDateSales(r.id, d, restaurantHourCutoff);
-        } else {
-          currentWeekTotal += sumDateSales(r.id, d);
-        }
+        currentWeekTotal += sumDateSales(r.id, d);
       }
 
       // --- Prior week (apples-to-apples mirror of WTD) ---
+      // For the matching day in prior week, cap at the same completed hour so comparison is fair
       let priorWeekTotal = 0;
       for (let i = 0; i < currentWeekDates.length; i++) {
         const d = priorWeekDates[i];

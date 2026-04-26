@@ -21,6 +21,7 @@ export const GRADE_WEIGHTS = {
   osat: 30,
   speed: 15,
   staffing: 10,
+  feedbackSpeed: 0,
 } as const;
 
 export const BONUS_CAP = 15;
@@ -35,6 +36,7 @@ export const BONUS_DEFINITIONS = [
   { id: "yoyGrowth", label: "Sales Growth (YoY)", points: 2, description: "Daily sales above same day last year (any amount)" },
   { id: "theCloser", label: "The Closer", points: 4, description: "Hit 4+ of 6 attachment rate targets for the day (+1 pt per category at target)" },
   { id: "helperReward", label: "Helper Reward", points: 0, description: "Bonus points for helping another unit (entered by management)" },
+  { id: "guestVoice", label: "Guest Voice 🗣️", points: 2, description: "4+ OSAT surveys received for the day" },
 ] as const;
 
 export type BonusId = typeof BONUS_DEFINITIONS[number]["id"];
@@ -168,6 +170,11 @@ export function scoreSpeed(attainmentPct: number, tiers?: ScoringTier[]): number
   return scoreTiers(attainmentPct, tiers || DEFAULT_GRADING_CONFIG.speedTiers, 40);
 }
 
+/** Customer-feedback speed (Qualtrics 5★ top-box %) → 0-100 score */
+export function scoreFeedbackSpeed(topBoxPct: number, tiers?: ScoringTier[]): number {
+  return scoreTiers(topBoxPct, tiers || DEFAULT_GRADING_CONFIG.feedbackSpeedTiers, 40);
+}
+
 /** Staffing diff → 0-100 score */
 export function scoreStaffing(staffingDiff: number, isSalesSurge: boolean, tolerance?: number, inScore?: number, outScore?: number): number {
   const tol = tolerance ?? DEFAULT_GRADING_CONFIG.staffingTolerance;
@@ -197,6 +204,12 @@ export interface HourlyScoreInput {
   speedAttainment?: number;
   staffingDiff: number;
   hasValidStaffing: boolean;
+  /** Customer-feedback speed daily 5★ top-box % (Qualtrics). Used per-hour
+   *  by applying the same daily value across all hours of the day. */
+  feedbackSpeedPercent?: number;
+  /** Number of Qualtrics responses contributing to feedbackSpeedPercent.
+   *  When 0 or undefined, the feedbackSpeed component is skipped. */
+  feedbackSpeedResponses?: number;
 }
 
 export interface HourlyScoreResult {
@@ -228,9 +241,22 @@ export function computeHourlyScore(input: HourlyScoreInput, cfg?: GradingConfigD
     components.push({ name: "osat", score: scoreOsat(input.osatPercent, c.osatTiers), weight: w.osat });
   }
 
-  // Speed
+  // Speed (HME drive-thru attainment)
   if (input.speedAttainment !== undefined && input.speedAttainment >= 0) {
     components.push({ name: "speed", score: scoreSpeed(input.speedAttainment, c.speedTiers), weight: w.speed });
+  }
+
+  // Customer-feedback speed (Qualtrics 5★ top-box). Skipped when no responses
+  // for the day so weights renormalize across remaining components.
+  if (
+    input.feedbackSpeedPercent !== undefined &&
+    (input.feedbackSpeedResponses ?? 0) > 0
+  ) {
+    components.push({
+      name: "feedbackSpeed",
+      score: scoreFeedbackSpeed(input.feedbackSpeedPercent, c.feedbackSpeedTiers),
+      weight: w.feedbackSpeed,
+    });
   }
 
   // Staffing
@@ -244,6 +270,9 @@ export function computeHourlyScore(input: HourlyScoreInput, cfg?: GradingConfigD
   }
 
   const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
+  if (totalWeight === 0) {
+    return { score: 0, grade: "-", hasGrade: false, components: [] };
+  }
   const score = components.reduce((sum, c) => sum + c.score * c.weight, 0) / totalWeight;
   const grade = scoreToGradeLabel(score);
 
@@ -319,6 +348,11 @@ export function computeDailyBonuses(input: DailyBonusInput): DailyBonusResult {
   // Helper Reward: bonus points for helping another unit (manually entered in settings)
   if (input.helperRewardPoints && input.helperRewardPoints > 0) {
     bonuses.push({ ...BONUS_DEFINITIONS[7], points: input.helperRewardPoints });
+  }
+
+  // Guest Voice: more than 3 OSAT surveys received for the day
+  if ((input.dailySurveyCount ?? 0) > 3) {
+    bonuses.push({ ...BONUS_DEFINITIONS[8] });
   }
 
   const totalBonus = bonuses.reduce((sum, b) => sum + b.points, 0);

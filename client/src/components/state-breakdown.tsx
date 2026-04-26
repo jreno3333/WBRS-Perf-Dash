@@ -2,7 +2,7 @@ import { useState, memo, useMemo } from "react";
 // Card imports removed - using plain divs for cleaner styling
 // Badge import removed - using inline styles
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt, Gauge } from "lucide-react";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
@@ -59,16 +59,19 @@ function getExecutionGradeScore(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): number {
-  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg, feedbackSpeedPercent, feedbackSpeedResponses);
 }
 
-function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData): { grade: string; hoursGraded: number } {
+function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData, feedbackSpeedById?: Record<string, { topBoxPercent: number; responses: number }>): { grade: string; hoursGraded: number } {
   const allScores: number[] = [];
   if (hourlyByRestaurant) {
     for (const restaurantId of restaurantIds) {
       const hours = hourlyByRestaurant[restaurantId];
       if (!hours) continue;
+      const fs = feedbackSpeedById?.[restaurantId];
       for (const hour of hours) {
         if (!hour.todaySales && !hour.lastWeekSales) continue;
         const hasComparableSales = hour.lastWeekSales > 0;
@@ -83,7 +86,7 @@ function calculateStateXScore(restaurantIds: string[], hourlyByRestaurant?: Reco
         const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg);
+        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
         if (score > 0) allScores.push(score);
       }
     }
@@ -150,6 +153,34 @@ function calculateStateOsat(restaurants: RestaurantSales[]): { osatPercent: numb
     osatPercent: totalResponses > 0 ? weightedSum / totalResponses : undefined,
     totalResponses
   };
+}
+
+// Calculate aggregate customer-feedback Speed of Service for a state using 5-star top-box methodology.
+function calculateStateFeedbackSpeed(stateRestaurants: RestaurantSales[]): { topBoxPercent: number | undefined; fiveStarCount: number; responses: number; sourceMix: { dt: number; generic: number } } {
+  let fiveStarCount = 0;
+  let responses = 0;
+  let dtCount = 0;
+  let genCount = 0;
+  for (const r of stateRestaurants) {
+    const fs = r.feedbackSpeed;
+    if (fs && fs.responses > 0) {
+      fiveStarCount += fs.fiveStarCount;
+      responses += fs.responses;
+      if (fs.source === 'generic') genCount += fs.responses; else dtCount += fs.responses;
+    }
+  }
+  return {
+    topBoxPercent: responses > 0 ? (fiveStarCount / responses) * 100 : undefined,
+    fiveStarCount,
+    responses,
+    sourceMix: { dt: dtCount, generic: genCount },
+  };
+}
+
+function getFeedbackSpeedColor(pct: number): string {
+  if (pct >= 90) return 'bg-green-500/10 text-green-500';
+  if (pct >= 80) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+  return 'bg-red-500/10 text-red-500';
 }
 
 function getOsatColor(percent: number): string {
@@ -265,18 +296,45 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
     const tennesseeVariance = tennesseeLastWeekSales > 0
       ? ((tennesseeTodaySales / tennesseeLastWeekSales) - 1) * 100 : 0;
 
+    const feedbackSpeedById: Record<string, { topBoxPercent: number; responses: number }> = {};
+    for (const r of activeRestaurants) {
+      if (r.feedbackSpeed && r.feedbackSpeed.responses > 0) {
+        feedbackSpeedById[r.restaurantId] = { topBoxPercent: r.feedbackSpeed.topBoxPercent, responses: r.feedbackSpeed.responses };
+      }
+    }
     const alabamaIds = alabamaRestaurants.map(r => r.restaurantId);
     const tennesseeIds = tennesseeRestaurants.map(r => r.restaurantId);
+    const alabamaXScore = calculateStateXScore(alabamaIds, hourlyByRestaurant, gradingCfg, feedbackSpeedById);
+    const tennesseeXScore = calculateStateXScore(tennesseeIds, hourlyByRestaurant, gradingCfg, feedbackSpeedById);
+    const alabamaCrewScore = calculateStateCrewScore(alabamaIds, crewSummary);
+    const tennesseeCrewScore = calculateStateCrewScore(tennesseeIds, crewSummary);
+    const alabamaOsat = calculateStateOsat(alabamaRestaurants);
+    const tennesseeOsat = calculateStateOsat(tennesseeRestaurants);
+    const alabamaFeedbackSpeed = calculateStateFeedbackSpeed(alabamaRestaurants);
+    const tennesseeFeedbackSpeed = calculateStateFeedbackSpeed(tennesseeRestaurants);
+    const alabamaSpeed = calculateStateSpeed(alabamaRestaurants);
+    const tennesseeSpeed = calculateStateSpeed(tennesseeRestaurants);
+    const alabamaCheckAvg = calculateStateCheckAvg(alabamaIds, checkAverageByRestaurant, checkAvgTrendByRestaurant);
+    const tennesseeCheckAvg = calculateStateCheckAvg(tennesseeIds, checkAverageByRestaurant, checkAvgTrendByRestaurant);
 
     const calcWeekly = (stateRestaurants: RestaurantSales[]) => {
       let current = 0, prior = 0, eowForecast = 0, priorFull = 0;
       if (weeklySalesData?.restaurants) {
         for (const r of stateRestaurants) {
           const wk = weeklySalesData.restaurants[r.restaurantId];
-          if (wk) { current += wk.currentWeek; prior += wk.priorWeek; eowForecast += wk.eowForecast; priorFull += wk.priorWeekFull; }
+          if (wk) {
+            current += wk.currentWeek;
+            prior += wk.priorWeek;
+            eowForecast += wk.eowForecast;
+            priorFull += wk.priorWeekFull;
+          }
         }
       }
-      return { current, prior, eowForecast, priorFull, variance: prior > 0 ? ((current / prior) - 1) * 100 : 0, eowVariance: priorFull > 0 ? ((eowForecast / priorFull) - 1) * 100 : 0 };
+      return {
+        current, prior, eowForecast, priorFull,
+        variance: prior > 0 ? ((current / prior) - 1) * 100 : 0,
+        eowVariance: priorFull > 0 ? ((eowForecast / priorFull) - 1) * 100 : 0,
+      };
     };
 
     return [
@@ -285,24 +343,26 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
         todaySales: alabamaTodaySales, lastWeekSales: alabamaLastWeekSales,
         variance: alabamaVariance, aheadCount: alabamaAheadCount,
         totalCount: alabamaRestaurants.length, isAhead: alabamaVariance >= 0,
-        xScore: calculateStateXScore(alabamaIds, hourlyByRestaurant, gradingCfg),
-        crewScore: calculateStateCrewScore(alabamaIds, crewSummary),
-        osat: calculateStateOsat(alabamaRestaurants),
-        speed: calculateStateSpeed(alabamaRestaurants),
+        xScore: alabamaXScore,
+        crewScore: alabamaCrewScore,
+        osat: alabamaOsat,
+        feedbackSpeed: alabamaFeedbackSpeed,
+        speed: alabamaSpeed,
         weekly: calcWeekly(alabamaRestaurants),
-        checkAvg: calculateStateCheckAvg(alabamaIds, checkAverageByRestaurant, checkAvgTrendByRestaurant),
+        checkAvg: alabamaCheckAvg,
       },
       {
         name: "Tennessee", abbr: "TN",
         todaySales: tennesseeTodaySales, lastWeekSales: tennesseeLastWeekSales,
         variance: tennesseeVariance, aheadCount: tennesseeAheadCount,
         totalCount: tennesseeRestaurants.length, isAhead: tennesseeVariance >= 0,
-        xScore: calculateStateXScore(tennesseeIds, hourlyByRestaurant, gradingCfg),
-        crewScore: calculateStateCrewScore(tennesseeIds, crewSummary),
-        osat: calculateStateOsat(tennesseeRestaurants),
-        speed: calculateStateSpeed(tennesseeRestaurants),
+        xScore: tennesseeXScore,
+        crewScore: tennesseeCrewScore,
+        osat: tennesseeOsat,
+        feedbackSpeed: tennesseeFeedbackSpeed,
+        speed: tennesseeSpeed,
         weekly: calcWeekly(tennesseeRestaurants),
-        checkAvg: calculateStateCheckAvg(tennesseeIds, checkAverageByRestaurant, checkAvgTrendByRestaurant),
+        checkAvg: tennesseeCheckAvg,
       },
     ];
   }, [restaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant]);
@@ -428,6 +488,27 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                   <span className="font-medium">{state.osat.osatPercent.toFixed(0)}%</span>
                 </BadgeWithTooltip>
               )}
+              {state.feedbackSpeed.topBoxPercent !== undefined && (() => {
+                const fsPct = state.feedbackSpeed.topBoxPercent;
+                return (
+                <BadgeWithTooltip
+                  className={`${getFeedbackSpeedColor(fsPct)} border-0 gap-1`}
+                  data-testid={`badge-feedback-speed-state-${state.abbr.toLowerCase()}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Guest-Perceived Speed</div>
+                      <div className="text-muted-foreground">{state.feedbackSpeed.fiveStarCount} of {state.feedbackSpeed.responses} gave 5★</div>
+                      {state.feedbackSpeed.sourceMix.generic > 0 && state.feedbackSpeed.sourceMix.dt > 0 && (
+                        <div className="text-muted-foreground">DT: {state.feedbackSpeed.sourceMix.dt} · In-store: {state.feedbackSpeed.sourceMix.generic}</div>
+                      )}
+                    </div>
+                  }
+                >
+                  <Gauge className="w-3 h-3" />
+                  <span className="font-medium">{fsPct.toFixed(0)}%</span>
+                </BadgeWithTooltip>
+                );
+              })()}
               {state.crewScore.count > 0 && (
                 <BadgeWithTooltip
                   className={`${getCrewScoreColor(state.crewScore.avgScore)} border-0 gap-1`}

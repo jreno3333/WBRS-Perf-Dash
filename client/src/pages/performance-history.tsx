@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,20 @@ import {
   Copy,
   Check,
   Printer,
+  MessageSquare,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+  Bar,
+  ComposedChart,
+} from "recharts";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DaypartGrade {
@@ -412,7 +425,7 @@ function generateRMMAgenda(restaurant: RestaurantHistory, dateRange: string[], l
       agenda += "  │ Day           │ Grade │ Sales    │ Variance │ Speed │\n";
       agenda += "  ├───────────────┼───────┼──────────┼──────────┼───────┤\n";
       weekend.perDay.forEach(day => {
-        const dayLabel = formatDate(day.day).padEnd(13);
+        const dayLabel = (day.day.match(/^\d{4}-\d{2}-\d{2}$/) ? formatDate(day.day) : day.day).padEnd(13);
         const gradeStr = day.avgGradeLabel.padEnd(3);
         const salesStr = formatCurrency(day.totalSales).padStart(8);
         const varStr = ((day.avgSalesVariance >= 0 ? "+" : "") + day.avgSalesVariance.toFixed(1) + "%").padStart(8);
@@ -866,7 +879,7 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange, weekendDat
     queryFn: async () => {
       const params = new URLSearchParams({ days: String(numDays) });
       if (endDate) params.set("date", endDate);
-      const res = await fetch(`/api/leaders?${params}`);
+      const res = await fetch(`/api/leaders?${params}`, { credentials: "include" });
       if (!res.ok) return null;
       return res.json();
     },
@@ -879,7 +892,7 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange, weekendDat
     queryFn: async () => {
       const params = new URLSearchParams();
       if (endDate) params.set("date", endDate);
-      const res = await fetch(`/api/pos/attachment-rates?${params}`);
+      const res = await fetch(`/api/pos/attachment-rates?${params}`, { credentials: "include" });
       if (!res.ok) return null;
       return res.json();
     },
@@ -890,7 +903,7 @@ function RMMAgendaDialog({ restaurant, dateRange, open, onOpenChange, weekendDat
   const { data: anniversaryData } = useQuery({
     queryKey: ["/api/analytics/anniversaries", 7],
     queryFn: async () => {
-      const res = await fetch("/api/analytics/anniversaries?days=7");
+      const res = await fetch("/api/analytics/anniversaries?days=7", { credentials: "include" });
       if (!res.ok) return null;
       return res.json();
     },
@@ -1197,6 +1210,147 @@ function WeekendScorecardSection({ weekend, restaurant }: { weekend: WeekendData
   );
 }
 
+interface SpeedHistoryPoint {
+  date: string;
+  avgRating: number | null;
+  pct: number | null;
+  responses: number;
+}
+
+interface SpeedHistoryResponse {
+  restaurantId: string;
+  source: "dt" | "generic";
+  days: number;
+  series: SpeedHistoryPoint[];
+}
+
+function FeedbackSpeedTrendCard({ restaurantId }: { restaurantId: string }) {
+  const [range, setRange] = useState<"7" | "30">("7");
+
+  const { data, isLoading } = useQuery<SpeedHistoryResponse>({
+    queryKey: ["/api/osat/speed-history", restaurantId, range],
+    queryFn: async () => {
+      const res = await fetch(`/api/osat/speed-history/${restaurantId}?days=${range}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch speed history");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const sourceLabel = data?.source === "generic" ? "Speed of Service (in-store)" : "DT Speed of Service";
+
+  const chartData = (data?.series || []).map((p) => {
+    const d = new Date(`${p.date}T12:00:00Z`);
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    return {
+      date: p.date,
+      label,
+      pct: p.pct,
+      responses: p.responses,
+    };
+  });
+
+  const totalResponses = chartData.reduce((s, p) => s + p.responses, 0);
+  const daysWithData = chartData.filter((p) => p.pct !== null);
+  const avgPct = daysWithData.length
+    ? daysWithData.reduce((s, p) => s + (p.pct || 0), 0) / daysWithData.length
+    : null;
+
+  return (
+    <Card data-testid={`card-feedback-speed-trend-${restaurantId}`}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm">{sourceLabel} Trend</CardTitle>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant={range === "7" ? "default" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => setRange("7")}
+              data-testid={`button-speed-trend-7-${restaurantId}`}
+            >
+              7d
+            </Button>
+            <Button
+              size="sm"
+              variant={range === "30" ? "default" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => setRange("30")}
+              data-testid={`button-speed-trend-30-${restaurantId}`}
+            >
+              30d
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1">
+          <span data-testid={`text-speed-trend-avg-${restaurantId}`}>
+            Avg: {avgPct !== null ? `${avgPct.toFixed(0)}%` : "—"}
+          </span>
+          <span data-testid={`text-speed-trend-responses-${restaurantId}`}>
+            {totalResponses} response{totalResponses === 1 ? "" : "s"} over {chartData.length} day{chartData.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="h-48 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+          </div>
+        ) : totalResponses === 0 ? (
+          <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+            No customer-feedback responses in this range
+          </div>
+        ) : (
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis
+                  yAxisId="left"
+                  domain={[0, 100]}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 11 }}
+                  allowDecimals={false}
+                />
+                <RechartsTooltip
+                  contentStyle={{ fontSize: 12, backgroundColor: "hsl(var(--popover))", border: "1px solid hsl(var(--border))" }}
+                  formatter={(value, name) => {
+                    const label = String(name);
+                    if (value === null || value === undefined) return ["—", label];
+                    if (label === "Score") return [`${Number(value).toFixed(0)}%`, label];
+                    return [String(value), label];
+                  }}
+                />
+                <ReferenceLine yAxisId="left" y={80} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                <Bar yAxisId="right" dataKey="responses" name="Responses" fill="hsl(var(--muted-foreground))" opacity={0.35} />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="pct"
+                  name="Score"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  connectNulls
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function RestaurantCardDetail({ restaurant, detail, isLoadingDetail, dateRange, weekendDates }: {
   restaurant: RestaurantHistory;
   detail?: RestaurantDetail;
@@ -1320,6 +1474,8 @@ function RestaurantCardDetail({ restaurant, detail, isLoadingDetail, dateRange, 
         </div>
       </div>
 
+      <FeedbackSpeedTrendCard restaurantId={r.restaurantId} />
+
       {detail.weekend && (
         <WeekendScorecardSection weekend={detail.weekend} restaurant={detail} />
       )}
@@ -1327,8 +1483,14 @@ function RestaurantCardDetail({ restaurant, detail, isLoadingDetail, dateRange, 
   );
 }
 
-function RestaurantCard({ restaurant, dateRange, weekendDates, daysParam }: { restaurant: RestaurantHistory; dateRange: string[]; weekendDates?: string[]; daysParam: string }) {
-  const [isOpen, setIsOpen] = useState(false);
+function RestaurantCard({ restaurant, dateRange, weekendDates, daysParam, autoExpand }: { restaurant: RestaurantHistory; dateRange: string[]; weekendDates?: string[]; daysParam: string; autoExpand?: boolean }) {
+  const [isOpen, setIsOpen] = useState(!!autoExpand);
+
+  useEffect(() => {
+    if (autoExpand) setIsOpen(true);
+  }, [autoExpand]);
+
+  const hasInlineDetail = !!(restaurant as any).dailyGrades;
 
   const { data: detail, isLoading: isLoadingDetail } = useQuery<RestaurantDetail>({
     queryKey: ["/api/performance-history/detail", restaurant.restaurantId, daysParam],
@@ -1337,10 +1499,11 @@ function RestaurantCard({ restaurant, dateRange, weekendDates, daysParam }: { re
       if (!res.ok) throw new Error("Failed to fetch detail");
       return res.json();
     },
-    enabled: isOpen,
+    enabled: isOpen && !hasInlineDetail,
     staleTime: 5 * 60 * 1000,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+    initialData: hasInlineDetail ? restaurant as unknown as RestaurantDetail : undefined,
   });
 
   return (
@@ -1428,14 +1591,32 @@ export default function PerformanceHistoryPage() {
   const [dateRange, setDateRange] = useState("8");
   const [selectedState, setSelectedState] = useState<string>("all");
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
+  const [selectedUnit, setSelectedUnit] = useState<string>("none");
+
+  const { data: restaurantList } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/restaurants"],
+    queryFn: async () => {
+      const res = await fetch("/api/restaurants", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch restaurants");
+      return res.json();
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams({ days: dateRange });
+    if (selectedUnit !== "none" && selectedUnit !== "all") params.set("restaurantId", selectedUnit);
+    return `/api/performance-history?${params.toString()}`;
+  }, [dateRange, selectedUnit]);
 
   const { data, isLoading, error } = useQuery<PerformanceHistoryData>({
-    queryKey: ["/api/performance-history", dateRange],
+    queryKey: ["/api/performance-history", dateRange, selectedUnit],
     queryFn: async () => {
-      const res = await fetch(`/api/performance-history?days=${dateRange}`, { credentials: "include" });
+      const res = await fetch(apiUrl, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch performance history");
       return res.json();
     },
+    enabled: selectedUnit !== "none",
   });
 
   const filteredRestaurants = useMemo(() => {
@@ -1461,6 +1642,13 @@ export default function PerformanceHistoryPage() {
     if (!data) return [];
     return Array.from(new Set(data.restaurants.map((r) => r.marketName).filter(Boolean))).sort() as string[];
   }, [data]);
+
+  const sortedUnits = useMemo(() => {
+    if (!restaurantList) return [];
+    return [...restaurantList]
+      .filter(r => !r.name.toLowerCase().includes('training') && !r.name.toLowerCase().includes('development'))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [restaurantList]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -1490,32 +1678,50 @@ export default function PerformanceHistoryPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={selectedState} onValueChange={setSelectedState}>
-                <SelectTrigger className="w-[130px]" data-testid="select-state">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  <SelectValue placeholder="State" />
+              <Select value={selectedUnit} onValueChange={(v) => { setSelectedUnit(v); if (v !== "all") { setSelectedState("all"); setSelectedMarket("all"); } }}>
+                <SelectTrigger className="w-[200px]" data-testid="select-unit">
+                  <Building2 className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Select a unit..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All States</SelectItem>
-                  {states.map((state) => (
-                    <SelectItem key={state} value={state}>{state}</SelectItem>
+                  <SelectItem value="none">Select a unit...</SelectItem>
+                  <SelectItem value="all">All Units</SelectItem>
+                  {sortedUnits.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
 
-              {markets.length > 0 && (
-                <Select value={selectedMarket} onValueChange={setSelectedMarket}>
-                  <SelectTrigger className="w-[130px]" data-testid="select-market">
-                    <Building2 className="w-4 h-4 mr-2" />
-                    <SelectValue placeholder="Market" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Markets</SelectItem>
-                    {markets.map((market) => (
-                      <SelectItem key={market} value={market}>{market}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {selectedUnit === "all" && (
+                <>
+                  <Select value={selectedState} onValueChange={setSelectedState}>
+                    <SelectTrigger className="w-[130px]" data-testid="select-state">
+                      <MapPin className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All States</SelectItem>
+                      {states.map((state) => (
+                        <SelectItem key={state} value={state}>{state}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {markets.length > 0 && (
+                    <Select value={selectedMarket} onValueChange={setSelectedMarket}>
+                      <SelectTrigger className="w-[130px]" data-testid="select-market">
+                        <MapPin className="w-4 h-4 mr-2" />
+                        <SelectValue placeholder="Market" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Markets</SelectItem>
+                        {markets.map((market) => (
+                          <SelectItem key={market} value={market}>{market}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </>
               )}
 
               <NavBar />
@@ -1525,6 +1731,18 @@ export default function PerformanceHistoryPage() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {selectedUnit === "none" && (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="text-lg font-semibold mb-2">Select a Unit</h3>
+              <p className="text-muted-foreground">
+                Choose a restaurant from the dropdown above to view its performance history, or select "All Units" to compare across locations.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {isLoading && (
           <div className="space-y-3" data-testid="skeleton-loading">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -1585,7 +1803,7 @@ export default function PerformanceHistoryPage() {
               ) : (
                 <div>
                   {filteredRestaurants.map((restaurant) => (
-                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendDates} daysParam={dateRange} />
+                    <RestaurantCard key={restaurant.restaurantId} restaurant={restaurant} dateRange={data.dateRange} weekendDates={data.weekendDates} daysParam={dateRange} autoExpand={selectedUnit !== "all"} />
                   ))}
                 </div>
               )}

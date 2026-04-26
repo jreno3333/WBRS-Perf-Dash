@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, integer, boolean, jsonb, uniqueIndex, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, integer, boolean, jsonb, uniqueIndex, index, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -89,7 +89,12 @@ export const hourlySales = pgTable("hourly_sales", {
   employeeCount: decimal("employee_count", { precision: 10, scale: 2 }),
   positionBreakdown: jsonb("position_breakdown").$type<Record<string, number>>(),
   scrapedAt: timestamp("scraped_at").defaultNow(),
-});
+}, (table) => ({
+  restaurantDateIdx: index("hourly_sales_restaurant_date_idx")
+    .on(table.restaurantId, table.salesDate),
+  salesDateIdx: index("hourly_sales_date_idx")
+    .on(table.salesDate),
+}));
 
 // Hourly labor data from 7shifts - stored separately to keep sales tables clean
 export const hourlyLabor = pgTable("hourly_labor", {
@@ -215,6 +220,15 @@ export interface RestaurantSales {
     osatPercent: number; // Percentage of 5-star responses (e.g., 85.5 = 85.5%)
     totalResponses: number;
     fiveStarCount: number;
+  } | null;
+  // Customer-feedback speed-of-service metric (Qualtrics survey, daily aggregate)
+  // Uses 5-star top-box methodology to match OSAT and the Qualtrics dashboard:
+  //   topBoxPercent = (fiveStarCount / responses) * 100
+  feedbackSpeed?: {
+    topBoxPercent: number; // % of survey responses that gave 5★
+    fiveStarCount: number; // # of 5★ responses for this question
+    responses: number;     // # of survey responses contributing (skipped questions excluded)
+    source: 'dt' | 'generic'; // Which Qualtrics question was used
   } | null;
 }
 
@@ -596,6 +610,14 @@ export const dailyOsat = pgTable("daily_osat", {
   totalResponses: integer("total_responses").notNull().default(0),
   fiveStarCount: integer("five_star_count").notNull().default(0),
   osatPercent: decimal("osat_percent", { precision: 5, scale: 2 }), // (fiveStarCount / totalResponses) * 100
+  // DT Speed of Service (Qualtrics QID1319640443_14) — drive-thru-only respondents
+  dtSpeedSum: decimal("dt_speed_sum", { precision: 10, scale: 2 }).notNull().default("0"),
+  dtSpeedCount: integer("dt_speed_count").notNull().default(0),
+  dtSpeedFiveStarCount: integer("dt_speed_five_star_count").notNull().default(0),
+  // Generic Speed of Service (Qualtrics QID1319640443_10) — non-drive-thru respondents
+  genericSpeedSum: decimal("generic_speed_sum", { precision: 10, scale: 2 }).notNull().default("0"),
+  genericSpeedCount: integer("generic_speed_count").notNull().default(0),
+  genericSpeedFiveStarCount: integer("generic_speed_five_star_count").notNull().default(0),
   syncedAt: timestamp("synced_at").defaultNow(),
 }, (table) => ({
   uniqueRestaurantDate: uniqueIndex("daily_osat_restaurant_date_idx")
@@ -937,11 +959,13 @@ export interface GradingConfigData {
     osat: number;
     speed: number;
     staffing: number;
+    feedbackSpeed: number;
   };
   salesTiers: ScoringTier[];
   transactionTiers: ScoringTier[];
   osatTiers: ScoringTier[];
   speedTiers: ScoringTier[];
+  feedbackSpeedTiers: ScoringTier[];
   staffingTolerance: number; // e.g. 1 means ±1 of target
   staffingInToleranceScore: number; // points when within tolerance (default 100)
   staffingOutToleranceScore: number; // points when outside tolerance (default 60)
@@ -978,8 +1002,13 @@ export const insertHelperRewardSchema = createInsertSchema(helperRewards).omit({
 export type InsertHelperReward = z.infer<typeof insertHelperRewardSchema>;
 export type HelperReward = typeof helperRewards.$inferSelect;
 
+export const DEFAULT_FEEDBACK_SPEED_TIERS: ScoringTier[] = [
+  { threshold: 90, points: 100 },
+  { threshold: 80, points: 70 },
+];
+
 export const DEFAULT_GRADING_CONFIG: GradingConfigData = {
-  weights: { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10 },
+  weights: { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10, feedbackSpeed: 0 },
   salesTiers: [
     { threshold: 10, points: 100 },
     { threshold: 5, points: 95 },
@@ -1004,7 +1033,36 @@ export const DEFAULT_GRADING_CONFIG: GradingConfigData = {
     { threshold: 70, points: 100 },
     { threshold: 50, points: 70 },
   ],
+  feedbackSpeedTiers: DEFAULT_FEEDBACK_SPEED_TIERS,
   staffingTolerance: 1,
   staffingInToleranceScore: 100,
   staffingOutToleranceScore: 60,
 };
+
+/**
+ * Merge a stored grading config (which may be from an older schema) with the
+ * current defaults. New fields like feedbackSpeed weight and feedbackSpeedTiers
+ * are filled in so existing rows continue to load without a migration.
+ */
+export function mergeGradingConfig(stored: Partial<GradingConfigData> | null | undefined): GradingConfigData {
+  const d = DEFAULT_GRADING_CONFIG;
+  if (!stored) return d;
+  return {
+    weights: {
+      sales: stored.weights?.sales ?? d.weights.sales,
+      transactions: stored.weights?.transactions ?? d.weights.transactions,
+      osat: stored.weights?.osat ?? d.weights.osat,
+      speed: stored.weights?.speed ?? d.weights.speed,
+      staffing: stored.weights?.staffing ?? d.weights.staffing,
+      feedbackSpeed: stored.weights?.feedbackSpeed ?? d.weights.feedbackSpeed,
+    },
+    salesTiers: stored.salesTiers ?? d.salesTiers,
+    transactionTiers: stored.transactionTiers ?? d.transactionTiers,
+    osatTiers: stored.osatTiers ?? d.osatTiers,
+    speedTiers: stored.speedTiers ?? d.speedTiers,
+    feedbackSpeedTiers: stored.feedbackSpeedTiers ?? d.feedbackSpeedTiers,
+    staffingTolerance: stored.staffingTolerance ?? d.staffingTolerance,
+    staffingInToleranceScore: stored.staffingInToleranceScore ?? d.staffingInToleranceScore,
+    staffingOutToleranceScore: stored.staffingOutToleranceScore ?? d.staffingOutToleranceScore,
+  };
+}

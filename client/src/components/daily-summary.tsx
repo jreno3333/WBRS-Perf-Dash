@@ -250,7 +250,8 @@ function analyzeUnit(
       const txnVariancePct = hasComparableTransactions
         ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
         : undefined;
-      const score = computeExecutionScore(hourVariance, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions, gradingCfg);
+      const fsForHour = restaurant.feedbackSpeed;
+      const score = computeExecutionScore(hourVariance, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVariancePct, hasComparableTransactions, gradingCfg, fsForHour?.responses ? fsForHour.topBoxPercent : undefined, fsForHour?.responses);
       if (score > 0) {
         hourlyScores.push(score);
       }
@@ -409,7 +410,8 @@ function analyzeUnit(
         const txnVar = hasCompTxn
           ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100
           : undefined;
-        const score = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg);
+        const fsForDp = restaurant.feedbackSpeed;
+        const score = computeExecutionScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fsForDp?.responses ? fsForDp.topBoxPercent : undefined, fsForDp?.responses);
         return score > 0 ? gradeToMidpoint(scoreToGradeLabel(score)) : 0;
       }).filter(s => s > 0);
 

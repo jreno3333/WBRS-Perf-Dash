@@ -1,7 +1,7 @@
 import { useState, memo, useMemo } from "react";
 // Card/Badge imports removed - using plain divs
 import { BadgeWithTooltip } from "@/components/ui/badge-tooltip";
-import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt } from "lucide-react";
+import { TrendingUp, TrendingDown, MapPin, GraduationCap, ThumbsUp, Timer, ChevronDown, ChevronUp, Receipt, Gauge } from "lucide-react";
 import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
@@ -59,16 +59,19 @@ function getExecutionGradeScore(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): number {
-  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+  return computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg, feedbackSpeedPercent, feedbackSpeedResponses);
 }
 
-function calculateMarketXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData): { grade: string; hoursGraded: number } {
+function calculateMarketXScore(restaurantIds: string[], hourlyByRestaurant?: Record<string, HourlySalesData[]>, cfg?: GradingConfigData, feedbackSpeedById?: Record<string, { topBoxPercent: number; responses: number }>): { grade: string; hoursGraded: number } {
   const allScores: number[] = [];
   if (hourlyByRestaurant) {
     for (const restaurantId of restaurantIds) {
       const hours = hourlyByRestaurant[restaurantId];
       if (!hours) continue;
+      const fs = feedbackSpeedById?.[restaurantId];
       for (const hour of hours) {
         if (!hour.todaySales && !hour.lastWeekSales) continue;
         const hasComparableSales = hour.lastWeekSales > 0;
@@ -83,7 +86,7 @@ function calculateMarketXScore(restaurantIds: string[], hourlyByRestaurant?: Rec
         const hasValidStaffing = (Number(hour.employeeCount) || 0) >= 1;
         const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
         const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg);
+        const score = getExecutionGradeScore(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, cfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
         if (score > 0) allScores.push(score);
       }
     }
@@ -122,6 +125,35 @@ function formatTenure(months: number): string {
   const remainingMonths = Math.round(months % 12);
   if (remainingMonths === 0) return `${years} yr`;
   return `${years}y ${remainingMonths}m`;
+}
+
+// Calculate aggregate customer-feedback Speed of Service using 5-star top-box methodology
+// (matches OSAT and the Qualtrics dashboard): topBox% = sum(5★)/sum(responses).
+function calculateMarketFeedbackSpeed(marketRestaurants: RestaurantSales[]): { topBoxPercent: number | undefined; fiveStarCount: number; responses: number; sourceMix: { dt: number; generic: number } } {
+  let fiveStarCount = 0;
+  let responses = 0;
+  let dtCount = 0;
+  let genCount = 0;
+  for (const r of marketRestaurants) {
+    const fs = r.feedbackSpeed;
+    if (fs && fs.responses > 0) {
+      fiveStarCount += fs.fiveStarCount;
+      responses += fs.responses;
+      if (fs.source === 'generic') genCount += fs.responses; else dtCount += fs.responses;
+    }
+  }
+  return {
+    topBoxPercent: responses > 0 ? (fiveStarCount / responses) * 100 : undefined,
+    fiveStarCount,
+    responses,
+    sourceMix: { dt: dtCount, generic: genCount },
+  };
+}
+
+function getFeedbackSpeedColor(pct: number): string {
+  if (pct >= 90) return 'bg-green-500/10 text-green-500';
+  if (pct >= 80) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+  return 'bg-red-500/10 text-red-500';
 }
 
 // Calculate aggregate OSAT for a group of restaurants
@@ -245,9 +277,16 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
     const aheadCount = marketRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
     const variance = lastWeekSales > 0 ? ((todaySales / lastWeekSales) - 1) * 100 : 0;
 
-    const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant, gradingCfg);
+    const feedbackSpeedById: Record<string, { topBoxPercent: number; responses: number }> = {};
+    for (const r of marketRestaurants) {
+      if (r.feedbackSpeed && r.feedbackSpeed.responses > 0) {
+        feedbackSpeedById[r.restaurantId] = { topBoxPercent: r.feedbackSpeed.topBoxPercent, responses: r.feedbackSpeed.responses };
+      }
+    }
+    const xScore = calculateMarketXScore(marketRestaurantIds, hourlyByRestaurant, gradingCfg, feedbackSpeedById);
     const crewScore = calculateMarketCrewScore(marketRestaurantIds, crewSummary);
     const osat = calculateMarketOsat(marketRestaurants);
+    const feedbackSpeed = calculateMarketFeedbackSpeed(marketRestaurants);
     const speed = calculateMarketSpeed(marketRestaurants);
     const checkAvg = calculateMarketCheckAvg(marketRestaurantIds, checkAverageByRestaurant, checkAvgTrendByRestaurant);
 
@@ -279,6 +318,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
       xScore,
       crewScore,
       osat,
+      feedbackSpeed,
       speed,
       weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance, eowForecast: weeklyEowForecast, priorFull: weeklyPriorFull, eowVariance: weeklyEowVariance },
       checkAvg,
@@ -414,17 +454,27 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                   <span className="font-medium">{market.osat.osatPercent.toFixed(0)}%</span>
                 </BadgeWithTooltip>
               )}
-              {market.crewScore.count > 0 && (
+              {market.feedbackSpeed.topBoxPercent !== undefined && (() => {
+                const fsPct = market.feedbackSpeed.topBoxPercent;
+                return (
                 <BadgeWithTooltip
-                  className={`${getCrewScoreColor(market.crewScore.avgScore)} border-0 gap-1`}
-                  data-testid={`badge-crew-market-${market.id}`}
-                  tooltipTitle="Crew Experience"
-                  tooltipDetail={`Avg tenure: ${formatTenure(market.crewScore.avgTenureMonths)}`}
+                  className={`${getFeedbackSpeedColor(fsPct)} border-0 gap-1`}
+                  data-testid={`badge-feedback-speed-market-${market.id}`}
+                  tooltipContent={
+                    <div>
+                      <div className="font-medium">Guest-Perceived Speed</div>
+                      <div className="text-muted-foreground">{market.feedbackSpeed.fiveStarCount} of {market.feedbackSpeed.responses} gave 5★</div>
+                      {market.feedbackSpeed.sourceMix.generic > 0 && market.feedbackSpeed.sourceMix.dt > 0 && (
+                        <div className="text-muted-foreground">DT: {market.feedbackSpeed.sourceMix.dt} · In-store: {market.feedbackSpeed.sourceMix.generic}</div>
+                      )}
+                    </div>
+                  }
                 >
-                  <GraduationCap className="w-3 h-3" />
-                  <span className="font-medium">{market.crewScore.avgScore}</span>
+                  <Gauge className="w-3 h-3" />
+                  <span className="font-medium">{fsPct.toFixed(0)}%</span>
                 </BadgeWithTooltip>
-              )}
+                );
+              })()}
               {market.checkAvg.checkAvg > 0 && (
                 <BadgeWithTooltip
                   className="bg-teal-500/10 text-teal-600 dark:text-teal-400 border-0 gap-1"

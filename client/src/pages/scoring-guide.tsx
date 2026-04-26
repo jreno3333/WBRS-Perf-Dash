@@ -3,7 +3,7 @@ import { NavBar } from "@/components/nav-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BONUS_DEFINITIONS, BONUS_CAP, scoreToGradeLabel, getGradeColor } from "@/lib/grading";
-import { BookOpen, Star, TrendingUp, Users, Timer, Award, Sparkles, ArrowLeft } from "lucide-react";
+import { BookOpen, Star, TrendingUp, Users, Timer, Award, Sparkles, ArrowLeft, MessageSquare } from "lucide-react";
 import { Link } from "wouter";
 import type { GradingConfigData, ScoringTier } from "@shared/schema";
 import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
@@ -138,6 +138,7 @@ export default function ScoringGuidePage() {
   const txnTable = buildVarianceTierRows(cfg.transactionTiers, 40);
   const osatTable = buildPercentTierRows(cfg.osatTiers, 40);
   const speedTable = buildSpeedTierRows(cfg.speedTiers, 40);
+  const feedbackSpeedTable = buildPercentTierRows(cfg.feedbackSpeedTiers, 40);
   const staffingTable = [
     { range: `Within +/-${cfg.staffingTolerance} of target`, score: cfg.staffingInToleranceScore, color: "text-green-500" },
     { range: `More than ${cfg.staffingTolerance} over/under`, score: cfg.staffingOutToleranceScore, color: "text-orange-500" },
@@ -149,7 +150,8 @@ export default function ScoringGuidePage() {
   const exOsat = 100; // 90%+
   const exSpeed = 70; // 50-70%
   const exStaffing = cfg.staffingInToleranceScore; // within tolerance
-  const exBase = (exSales * w.sales + exTxn * w.transactions + exOsat * w.osat + exSpeed * w.speed + exStaffing * w.staffing) / 100;
+  const exFs = 100; // 90%+ customer feedback 5-star top-box
+  const exBase = (exSales * w.sales + exTxn * w.transactions + exOsat * w.osat + exSpeed * w.speed + exStaffing * w.staffing + exFs * w.feedbackSpeed) / 100;
   const exBonus = 4; // sales growth + consistency
   const exFinal = Math.min(exBase + exBonus, 100);
   const exGrade = scoreToGradeLabel(exFinal);
@@ -181,15 +183,16 @@ export default function ScoringGuidePage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p>
-              Each operating hour is scored on <strong>5 components</strong>, weighted to emphasize guest-facing metrics.
+              Each operating hour is scored on <strong>6 components</strong>, weighted to emphasize guest-facing metrics.
               Your <strong>daily score</strong> is the average of all hourly scores, plus any <strong>bonus points</strong> earned for exceptional daily performance.
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
               {[
                 { name: "Sales", weight: w.sales, icon: "💰" },
                 { name: "Transactions", weight: w.transactions, icon: "🧾" },
                 { name: "OSAT", weight: w.osat, icon: "⭐" },
-                { name: "Speed", weight: w.speed, icon: "⏱️" },
+                { name: "Speed (HME)", weight: w.speed, icon: "⏱️" },
+                { name: "OSAT Speed", weight: w.feedbackSpeed ?? 0, icon: "⏲️" },
                 { name: "Staffing", weight: w.staffing, icon: "👥" },
               ].map(c => (
                 <div key={c.name} className="text-center p-3 rounded-lg border">
@@ -200,7 +203,7 @@ export default function ScoringGuidePage() {
               ))}
             </div>
             <p className="text-muted-foreground text-xs">
-              Guest-facing metrics (Sales + Transactions + OSAT) = <strong>{guestFacingPct}%</strong> of your score.
+              Guest-facing metrics (Sales + Transactions + OSAT + OSAT Speed) = <strong>{guestFacingPct + (w.feedbackSpeed ?? 0)}%</strong> of your score.
               Operational metrics (Speed + Staffing) = <strong>{operationalPct}%</strong>.
             </p>
           </CardContent>
@@ -212,8 +215,21 @@ export default function ScoringGuidePage() {
           <ScoringTable title="Transactions vs. Last Week" icon={TrendingUp} weight={w.transactions} rows={txnTable} />
           <ScoringTable title="OSAT (Guest Satisfaction)" icon={Star} weight={w.osat} rows={osatTable} />
           <ScoringTable title="Drive-Thru Speed" icon={Timer} weight={w.speed} rows={speedTable} />
+          <ScoringTable title="OSAT Speed" icon={MessageSquare} weight={w.feedbackSpeed ?? 0} rows={feedbackSpeedTable} />
         </div>
         <ScoringTable title="Staffing vs. Labor Model" icon={Users} weight={w.staffing} rows={staffingTable} />
+
+        <Card className="border-none bg-muted/30">
+          <CardContent className="pt-4 text-xs text-muted-foreground space-y-2">
+            <p>
+              <strong>OSAT Speed (Qualtrics):</strong> 5★ top-box % of guest-survey responses to the
+              "Speed of Service" question. Most stores use the <em>DT Speed of Service</em> question; store 1682
+              (no drive-thru) uses the generic <em>Speed of Service</em> question instead. The same daily value
+              is applied to every hour of that day. When a store has zero responses for the day, the component is
+              skipped and weights are renormalized across the remaining components.
+            </p>
+          </CardContent>
+        </Card>
 
         <Card className="border-none bg-muted/30">
           <CardContent className="pt-4 text-xs text-muted-foreground space-y-2">

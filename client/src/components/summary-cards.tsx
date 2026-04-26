@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { Info, TrendingUp, TrendingDown, Receipt } from "lucide-react";
+import { Info, TrendingUp, TrendingDown, Receipt, Gauge } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
@@ -52,8 +52,10 @@ function getExecutionGrade(
   transactionVariancePct?: number,
   hasComparableTransactions?: boolean,
   cfg?: GradingConfigData,
+  feedbackSpeedPercent?: number,
+  feedbackSpeedResponses?: number,
 ): { grade: string; color: string; score: number; hasGrade: boolean; components: { name: string; score: number; weight: number }[] } {
-  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg);
+  const score = computeExecutionScore(salesVariancePct, speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, osatPercent, transactionVariancePct, hasComparableTransactions, cfg, feedbackSpeedPercent, feedbackSpeedResponses);
   if (score === 0) {
     return { grade: '-', color: 'text-muted-foreground', score: 0, hasGrade: false, components: [] };
   }
@@ -93,6 +95,22 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const dailyOsatPercent = dailyOsatTotals.totalResponses > 0 
     ? (dailyOsatTotals.fiveStarCount / dailyOsatTotals.totalResponses) * 100 
     : 0;
+
+  // Aggregate customer-feedback Speed using 5-star top-box methodology (matches OSAT).
+  const dailyFeedbackSpeed = activeRestaurants.reduce(
+    (acc, r) => {
+      const fs = r.feedbackSpeed;
+      if (fs && fs.responses > 0) {
+        acc.fiveStar += fs.fiveStarCount;
+        acc.responses += fs.responses;
+      }
+      return acc;
+    },
+    { fiveStar: 0, responses: 0 }
+  );
+  const dailyFeedbackSpeedPct = dailyFeedbackSpeed.responses > 0
+    ? (dailyFeedbackSpeed.fiveStar / dailyFeedbackSpeed.responses) * 100
+    : null;
   
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
   const totalLastWeekSales = forecastEligible.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
@@ -232,10 +250,10 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
 
           const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
           const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-          // Use server-pre-computed grade if available; fall back to client-side computation
+          const fs = restaurant?.feedbackSpeed;
           const gradeScore = hour.gradeScore !== undefined && hour.gradeHasGrade
             ? hour.gradeScore
-            : getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, gradingCfg).score;
+            : getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses).score;
           const gradeInfo = { hasGrade: gradeScore > 0, score: gradeScore };
           if (gradeInfo.hasGrade) {
             if (gradeInfo.score > 0) {
@@ -465,6 +483,20 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                 <span className="text-muted-foreground ml-1">({dailyOsatTotals.totalResponses})</span>
               </p>
             )}
+            {dailyFeedbackSpeedPct !== null && (() => {
+              const fsPct = dailyFeedbackSpeedPct;
+              const colorCls = fsPct >= 90 ? 'text-green-500' : fsPct >= 80 ? 'text-amber-500' : 'text-red-500';
+              return (
+                <p
+                  className={`text-xs mt-0.5 flex items-center gap-1 ${colorCls}`}
+                  data-testid="text-execution-feedback-speed"
+                >
+                  <Gauge className="w-3 h-3" />
+                  OSAT Speed {fsPct.toFixed(0)}%
+                  <span className="text-muted-foreground ml-1">({dailyFeedbackSpeed.responses})</span>
+                </p>
+              );
+            })()}
             {companyCheckAvg > 0 && (
               <div className="mt-1.5 pt-1.5 border-t border-border/30">
                 <div className="flex items-center gap-1">
