@@ -251,7 +251,10 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
           const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
           const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
           const fs = restaurant?.feedbackSpeed;
-          const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
+          const gradeScore = hour.gradeScore !== undefined && hour.gradeHasGrade
+            ? hour.gradeScore
+            : getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : speedAtt, staffingDiff, hasComparableSales, hour.osatPercent, hasValidStaffing, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses).score;
+          const gradeInfo = { hasGrade: gradeScore > 0, score: gradeScore };
           if (gradeInfo.hasGrade) {
             if (gradeInfo.score > 0) {
               allHourlyScores.push(gradeInfo.score);

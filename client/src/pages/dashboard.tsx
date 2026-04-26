@@ -38,6 +38,8 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
   const scores = completedHours
     .filter(hour => hour.todaySales > 0)
     .map(hour => {
+      // Use server-pre-computed grade if available; fall back to client-side computation
+      if (hour.gradeScore !== undefined && hour.gradeHasGrade) return hour.gradeScore;
       const hasComparableSales = hour.lastWeekSales > 0;
       const salesVariancePct = hasComparableSales
         ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
@@ -489,6 +491,27 @@ export default function Dashboard() {
   const sortedRestaurants = useMemo(() => {
     if (!leaderboardData?.restaurants) return [];
 
+    // Pre-compute sort keys once (O(n)) so the comparator does O(1) Map lookups
+    // instead of repeated nested property chains on every comparison.
+    const wtdVarMap = new Map<string, number>();
+    if (weeklySalesData?.restaurants) {
+      for (const [id, wk] of Object.entries(weeklySalesData.restaurants)) {
+        wtdVarMap.set(id, wk.priorWeek > 0 ? ((wk.currentWeek / wk.priorWeek) - 1) * 100 : -999);
+      }
+    }
+    const bpMap = new Map<string, number>();
+    if (attachmentRatesResponse?.restaurants) {
+      for (const [id, r] of Object.entries(attachmentRatesResponse.restaurants)) {
+        bpMap.set(id, r.categories?.banana_pudding?.attachRate ?? -1);
+      }
+    }
+    const checkAvgMap = new Map<string, number>();
+    if (checkAverageByRestaurant) {
+      for (const [id, ca] of Object.entries(checkAverageByRestaurant)) {
+        checkAvgMap.set(id, ca.checkAverage ?? 0);
+      }
+    }
+
     return [...leaderboardData.restaurants]
       // First, apply market filter
       .filter((r) => {
@@ -516,7 +539,7 @@ export default function Dashboard() {
             return true;
         }
       })
-      // Then sort
+      // Then sort — all per-restaurant lookups are O(1) Map.get()
       .sort((a, b) => {
         if (a.status === "training" && b.status !== "training") return 1;
         if (a.status !== "training" && b.status === "training") return -1;
@@ -533,48 +556,28 @@ export default function Dashboard() {
             const bVariance = bLastWeek > 0 ? ((bCompleted / bLastWeek) - 1) * 100 : 0;
             return bVariance - aVariance;
           }
-          case "wtd_variance": {
-            const aWk = weeklySalesData?.restaurants?.[a.restaurantId];
-            const bWk = weeklySalesData?.restaurants?.[b.restaurantId];
-            const aWtdVar = aWk && aWk.priorWeek > 0 ? ((aWk.currentWeek / aWk.priorWeek) - 1) * 100 : -999;
-            const bWtdVar = bWk && bWk.priorWeek > 0 ? ((bWk.currentWeek / bWk.priorWeek) - 1) * 100 : -999;
-            return bWtdVar - aWtdVar;
-          }
+          case "wtd_variance":
+            return (wtdVarMap.get(b.restaurantId) ?? -999) - (wtdVarMap.get(a.restaurantId) ?? -999);
           case "dt_time": {
             const aAtt = a.driveThru ? ((a.driveThru.carsUnder6Min ?? 0) / (a.driveThru.carCount || 1)) * 100 : -1;
             const bAtt = b.driveThru ? ((b.driveThru.carsUnder6Min ?? 0) / (b.driveThru.carCount || 1)) * 100 : -1;
             return bAtt - aAtt;
           }
-          case "xscore": {
-            const aScore = xScoreMap.get(a.restaurantId) ?? -1;
-            const bScore = xScoreMap.get(b.restaurantId) ?? -1;
-            return bScore - aScore;
-          }
-          case "google_reviews": {
-            const aRating = a.googleReviews?.rating ?? 0;
-            const bRating = b.googleReviews?.rating ?? 0;
-            return bRating - aRating;
-          }
-          case "osat": {
-            const aOsat = a.osat?.osatPercent ?? 0;
-            const bOsat = b.osat?.osatPercent ?? 0;
-            return bOsat - aOsat;
-          }
+          case "xscore":
+            return (xScoreMap.get(b.restaurantId) ?? -1) - (xScoreMap.get(a.restaurantId) ?? -1);
+          case "google_reviews":
+            return (b.googleReviews?.rating ?? 0) - (a.googleReviews?.rating ?? 0);
+          case "osat":
+            return (b.osat?.osatPercent ?? 0) - (a.osat?.osatPercent ?? 0);
           case "osat_time": {
             const aFS = a.feedbackSpeed && a.feedbackSpeed.responses > 0 ? a.feedbackSpeed.topBoxPercent : -1;
             const bFS = b.feedbackSpeed && b.feedbackSpeed.responses > 0 ? b.feedbackSpeed.topBoxPercent : -1;
             return bFS - aFS;
           }
-          case "check_avg": {
-            const aCA = checkAverageByRestaurant?.[a.restaurantId]?.checkAverage ?? 0;
-            const bCA = checkAverageByRestaurant?.[b.restaurantId]?.checkAverage ?? 0;
-            return bCA - aCA;
-          }
-          case "banana_pudding": {
-            const aBP = attachmentRatesResponse?.restaurants?.[a.restaurantId]?.categories?.banana_pudding?.attachRate ?? -1;
-            const bBP = attachmentRatesResponse?.restaurants?.[b.restaurantId]?.categories?.banana_pudding?.attachRate ?? -1;
-            return bBP - aBP;
-          }
+          case "check_avg":
+            return (checkAvgMap.get(b.restaurantId) ?? 0) - (checkAvgMap.get(a.restaurantId) ?? 0);
+          case "banana_pudding":
+            return (bpMap.get(b.restaurantId) ?? -1) - (bpMap.get(a.restaurantId) ?? -1);
           case "yoy": {
             const aYoy = yoyBulkData?.data?.[a.restaurantId];
             const bYoy = yoyBulkData?.data?.[b.restaurantId];

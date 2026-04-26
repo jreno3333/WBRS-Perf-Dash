@@ -1289,24 +1289,30 @@ export const DailySummary = memo(function DailySummary({
   const [unitSort, setUnitSort] = useState<"grade" | "sales" | "name">("grade");
   const [aggregateSort, setAggregateSort] = useState<"grade" | "sales">("grade");
 
+  // Build a reverse index: restaurantId → market, so unitInsights lookup is O(1) not O(n×m)
+  const restaurantMarketIndex = useMemo(() => {
+    const index = new Map<string, { id: string; name: string }>();
+    if (markets) {
+      for (const market of markets) {
+        for (const rid of market.restaurantIds ?? []) {
+          index.set(rid, { id: market.id, name: market.name });
+        }
+      }
+    }
+    return index;
+  }, [markets]);
+
   // Analyze all units (exclude training units)
   const unitInsights = useMemo(() => {
     const activeRestaurants = restaurants.filter(r => r.status !== "training");
     return activeRestaurants.map(r => {
       const insight = analyzeUnit(r, hourlyByRestaurant?.[r.restaurantId], attachmentRatesByRestaurant?.[r.restaurantId]?.categories, gradingCfg, helperRewardsByRestaurant?.[r.restaurantId]);
-      // Add market info if available
-      if (markets) {
-        const market = markets.find(m => m.restaurantIds?.includes(r.restaurantId));
-        if (market) {
-          insight.marketId = market.id;
-          insight.marketName = market.name;
-        }
-      }
-      // Add category issues if available
+      // O(1) market lookup via pre-built index
+      const market = restaurantMarketIndex.get(r.restaurantId);
+      if (market) { insight.marketId = market.id; insight.marketName = market.name; }
       if (categoryIssuesByRestaurant[r.restaurantId]) {
         insight.categoryIssues = categoryIssuesByRestaurant[r.restaurantId];
       }
-      // Add crew experience data if available
       if (crewSummary?.[r.restaurantId]) {
         const crew = crewSummary[r.restaurantId];
         insight.crewScore = crew.avgScore;
@@ -1315,7 +1321,7 @@ export const DailySummary = memo(function DailySummary({
       }
       return insight;
     });
-  }, [restaurants, hourlyByRestaurant, markets, categoryIssuesByRestaurant, crewSummary, gradingCfg, attachmentRatesByRestaurant]);
+  }, [restaurants, hourlyByRestaurant, restaurantMarketIndex, categoryIssuesByRestaurant, crewSummary, gradingCfg, attachmentRatesByRestaurant]);
   
   // Sort unit insights based on selected sort
   const sortedUnitInsights = useMemo(() => {

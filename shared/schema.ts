@@ -259,6 +259,9 @@ export interface HourlySalesData {
   // OOT / Full Lane B active — dt3 orders present this hour (ad-hoc lane config change)
   // When true, speed measurement is excluded from grading because it is unreliable
   ootActive?: boolean;
+  // Pre-computed execution score from server (eliminates client-side O(n×24) grade computation)
+  gradeScore?: number;
+  gradeHasGrade?: boolean;
 }
 
 export interface LeaderboardData {

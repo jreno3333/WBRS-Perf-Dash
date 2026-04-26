@@ -91,6 +91,18 @@ function scoreToGrade(score: number): { grade: string; color: string } {
   return { grade, color: getGradeColor(grade) };
 }
 
+// Pure formatting helpers — defined at module level so they are stable references
+// and never cause memoization breaks in child components that receive them as props.
+function formatPercentage(value: number): string {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${Math.round(value)}%`;
+}
+
+function formatSignedCurrency(amount: number): string {
+  const sign = amount >= 0 ? "+" : "";
+  return `${sign}${formatCurrency(amount)}`;
+}
+
 interface CrewSummary {
   avgScore: number;
   avgCrewCount: number;
@@ -510,22 +522,28 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
           <div className="flex gap-0.5 mb-0.5">
             {activeHours.map((hour) => {
               const isCompleted = hour.hour <= localGradeCutoff;
-              const hasComparableSales = hour.lastWeekSales > 0;
-              const salesVariancePct = hasComparableSales
-                ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
-                : 0;
-              const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-              const positions = hour.positionBreakdown || {};
-              const operatorHrs = positions['_operatorScheduled'] || 0;
-              const rawEmployeeCount = Number(hour.employeeCount) || 0;
-              const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
-              const staffingDiff = actualStaff - staffing.total;
-              const hasValidStaffing = rawEmployeeCount >= 1;
-              const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
-              const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-              const fs = restaurant.feedbackSpeed;
-              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
               const hasSales = hour.todaySales && hour.todaySales > 0;
+              let gradeInfo: { grade: string; color: string; score: number; hasGrade: boolean };
+              if (hour.gradeScore !== undefined && hour.gradeHasGrade) {
+                const g = scoreToGradeLabel(hour.gradeScore);
+                gradeInfo = { grade: g, color: getGradeColor(g), score: hour.gradeScore, hasGrade: true };
+              } else {
+                const hasComparableSales = hour.lastWeekSales > 0;
+                const salesVariancePct = hasComparableSales
+                  ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
+                  : 0;
+                const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+                const positions = hour.positionBreakdown || {};
+                const operatorHrs = positions['_operatorScheduled'] || 0;
+                const rawEmployeeCount = Number(hour.employeeCount) || 0;
+                const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+                const staffingDiff = actualStaff - staffing.total;
+                const hasValidStaffing = rawEmployeeCount >= 1;
+                const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+                const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+                const fs = restaurant.feedbackSpeed;
+                gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
+              }
               return (
                 <div key={`grade-${hour.hour}`} className="flex-1 text-center">
                   {isCompleted && hasSales ? (
@@ -571,17 +589,23 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
                 : 0;
               const displayValue = hour.todaySales > 0 ? hour.todaySales : hour.lastWeekSales;
               const barHeightPx = Math.max(4, (displayValue / maxSales) * 48);
-              const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
-              const positions = hour.positionBreakdown || {};
-              const operatorHrs = positions['_operatorScheduled'] || 0;
-              const rawEmployeeCount = Number(hour.employeeCount) || 0;
-              const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
-              const staffingDiff = actualStaff - staffing.total;
-              const hasValidStaffing = rawEmployeeCount >= 1;
-              const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
-              const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
-              const fs = restaurant.feedbackSpeed;
-              const gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
+              let gradeInfo: { grade: string; color: string; score: number; hasGrade: boolean };
+              if (hour.gradeScore !== undefined && hour.gradeHasGrade) {
+                const g = scoreToGradeLabel(hour.gradeScore);
+                gradeInfo = { grade: g, color: getGradeColor(g), score: hour.gradeScore, hasGrade: true };
+              } else {
+                const staffing = getStaffingBreakdown(hour.hour, hour.todaySales);
+                const positions = hour.positionBreakdown || {};
+                const operatorHrs = positions['_operatorScheduled'] || 0;
+                const rawEmployeeCount = Number(hour.employeeCount) || 0;
+                const actualStaff = Math.max(0, rawEmployeeCount - operatorHrs);
+                const staffingDiff = actualStaff - staffing.total;
+                const hasValidStaffing = rawEmployeeCount >= 1;
+                const hasCompTxn = (hour.lastWeekTransactionCount ?? 0) > 0 && (hour.transactionCount ?? 0) > 0;
+                const txnVar = hasCompTxn ? ((hour.transactionCount! - hour.lastWeekTransactionCount!) / hour.lastWeekTransactionCount!) * 100 : undefined;
+                const fs = restaurant.feedbackSpeed;
+                gradeInfo = getExecutionGrade(salesVariancePct, hour.ootActive ? undefined : hour.speedAttainment, staffingDiff, hasComparableSales, hasValidStaffing, hour.osatPercent, txnVar, hasCompTxn, gradingCfg, fs?.responses ? fs.topBoxPercent : undefined, fs?.responses);
+              }
               const isHovered = hoveredHourIndex === hourIndex;
 
               return (
@@ -1040,17 +1064,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   const [isExpanded, setIsExpanded] = useState(false);
   const gradingCfg = useGradingConfig();
 
-  // formatCurrency is imported from @/lib/grading (module-level singleton)
-
-  const formatPercentage = (value: number) => {
-    const sign = value >= 0 ? "+" : "";
-    return `${sign}${Math.round(value)}%`;
-  };
-
-  const formatSignedCurrency = (amount: number) => {
-    const sign = amount >= 0 ? "+" : "";
-    return `${sign}${formatCurrency(amount)}`;
-  };
+  // formatCurrency, formatPercentage, formatSignedCurrency are module-level (stable references)
 
   const displayLastWeek = restaurant.actualLastWeekSales ?? restaurant.lastWeekSales;
   const comparisonSales = restaurant.completedSales ?? restaurant.actualSales;
@@ -1161,6 +1175,8 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
 
     const hourlyGradeScores = gradedHours
       .map(hour => {
+        // Use server-pre-computed grade if available; fall back to client-side computation
+        if (hour.gradeScore !== undefined && hour.gradeHasGrade) return hour.gradeScore;
         const hasComparableSales = hour.lastWeekSales > 0;
         const salesVariancePct = hasComparableSales
           ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
@@ -1225,6 +1241,8 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
       .filter(hour => hour.hour <= localGradeCutoff)
       .filter(hour => hour.todaySales && hour.todaySales > 0)
       .map(hour => {
+        // Use server-pre-computed grade if available; fall back to client-side computation
+        if (hour.gradeScore !== undefined && hour.gradeHasGrade) return hour.gradeScore;
         const hasComparableSales = hour.lastWeekSales > 0;
         const salesVariancePct = hasComparableSales
           ? ((hour.todaySales - hour.lastWeekSales) / hour.lastWeekSales) * 100
