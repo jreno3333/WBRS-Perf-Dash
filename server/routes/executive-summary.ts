@@ -6,7 +6,6 @@ import {
   historicalDailySales,
 } from "@shared/schema";
 import { sql, and, gte, lte, lt, eq, desc } from "drizzle-orm";
-import { getAttachmentRatesFromDetail } from "../xenial-webhook";
 import { getStaffingBreakdown } from "../lib/labor-model";
 
 const router = Router();
@@ -125,7 +124,6 @@ router.get("/api/executive-summary", async (req, res) => {
       marketRows,
       restaurantMarketRows,
       locationMappingRows,
-      attachmentRates,
       yoySalesRows,
       posDailyRows,
     ] = await Promise.all([
@@ -306,15 +304,6 @@ router.get("/api/executive-summary", async (req, res) => {
 
       // Location mapping (xenial store → restaurantId)
       db.select().from(locationMapping),
-
-      // Attachment rates (wrapped in try/catch)
-      (async () => {
-        try {
-          return await getAttachmentRatesFromDetail(endDate);
-        } catch {
-          return null;
-        }
-      })(),
 
       // YoY historical sales — same date range from prior year
       db.select({
@@ -538,30 +527,6 @@ router.get("/api/executive-summary", async (req, res) => {
       laborByRest[restId].modelHours = round1(laborByRest[restId].modelHours);
     }
 
-    // Attachment rates
-    const attachByRest: Record<string, {
-      score: number;
-      categories: Record<string, { rate: number; benchmark: number; vsTarget: number }>;
-    }> = {};
-    if (attachmentRates) {
-      for (const [restId, data] of attachmentRates.entries()) {
-        const cats: Record<string, { rate: number; benchmark: number; vsTarget: number }> = {};
-        if (data.categories) {
-          for (const [catName, catData] of Object.entries(data.categories)) {
-            cats[catName] = {
-              rate: round1(catData.attachRate),
-              benchmark: round1(catData.benchmark),
-              vsTarget: round1(catData.vsTarget),
-            };
-          }
-        }
-        attachByRest[restId] = {
-          score: round1(data.overallAttachScore),
-          categories: cats,
-        };
-      }
-    }
-
     // ------------------------------------------------------------------
     // Build per-restaurant response
     // ------------------------------------------------------------------
@@ -580,8 +545,6 @@ router.get("/api/executive-summary", async (req, res) => {
       labor: { actualHours: number; modelHours: number; variance: number; variancePct: number };
       channelMix: ChannelMixPct;
       prevChannelMix: ChannelMixPct;
-      attachmentScore: number | null;
-      attachmentCategories: Record<string, { rate: number; benchmark: number; vsTarget: number }> | null;
       yoySales: { lastYear: number; pctChange: number } | null;
     };
 
@@ -602,8 +565,6 @@ router.get("/api/executive-summary", async (req, res) => {
       const lb = laborByRest[rest.id] || { actualHours: 0, modelHours: 0 };
       const laborVariance = round1(lb.actualHours - lb.modelHours);
       const laborVariancePct = lb.modelHours > 0 ? round1(((lb.actualHours - lb.modelHours) / lb.modelHours) * 100) : 0;
-
-      const attach = attachByRest[rest.id];
 
       const restOpenDate = rest.openDate;
       const restIsComp = restOpenDate ? new Date(restOpenDate) <= new Date(new Date().setMonth(new Date().getMonth() - 24)) : true;
@@ -628,8 +589,6 @@ router.get("/api/executive-summary", async (req, res) => {
         labor: { actualHours: lb.actualHours, modelHours: lb.modelHours, variance: laborVariance, variancePct: laborVariancePct },
         channelMix: channelMixCurrent[rest.id] || { ...defaultChannel },
         prevChannelMix: channelMixPrevious[rest.id] || { ...defaultChannel },
-        attachmentScore: attach?.score ?? null,
-        attachmentCategories: attach?.categories ?? null,
         yoySales: yoySalesData,
       });
     }

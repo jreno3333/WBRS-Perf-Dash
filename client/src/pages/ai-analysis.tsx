@@ -17,7 +17,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { NavBar } from "@/components/nav-bar";
-import { scoreToGradeLabel, getGradeColor } from "@/lib/grading";
 import { Link } from "wouter";
 import {
   BarChart3,
@@ -80,8 +79,6 @@ interface Restaurant {
   labor: { actualHours: number; modelHours: number; variance: number; variancePct: number };
   channelMix: { drive_thru: number; dine_in: number; app: number; delivery_3pd: number };
   prevChannelMix: { drive_thru: number; dine_in: number; app: number; delivery_3pd: number };
-  attachmentScore: number | null;
-  attachmentCategories: Record<string, { rate: number; benchmark: number; vsTarget: number }> | null;
   yoySales: { lastYear: number; pctChange: number } | null;
 }
 
@@ -433,17 +430,6 @@ function LaborBadge({ labor }: { labor: Restaurant["labor"] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Attach score badge — uses same A-F grade color scale as rankings page
-// ---------------------------------------------------------------------------
-
-function AttachBadge({ score }: { score: number | null }) {
-  if (score == null) return <span className="text-xs text-muted-foreground">--</span>;
-  const grade = scoreToGradeLabel(score);
-  const color = getGradeColor(grade);
-  return <span className={`text-xs font-medium ${color}`}>{score.toFixed(0)}%</span>;
-}
-
-// ---------------------------------------------------------------------------
 // Sort helper
 // ---------------------------------------------------------------------------
 
@@ -457,7 +443,6 @@ type SortCol =
   | "googleRating"
   | "speedAttainment"
   | "labor"
-  | "attach"
   | "yoy";
 
 const NO_DATA = -Infinity;
@@ -482,8 +467,6 @@ function getSortValue(r: Restaurant, col: SortCol): number | string {
       return r.speedAttainment.previous > 0 ? r.speedAttainment.pctChange : NO_DATA;
     case "labor":
       return r.labor.modelHours > 0 ? r.labor.variancePct : NO_DATA;
-    case "attach":
-      return r.attachmentScore ?? NO_DATA;
     case "yoy":
       return r.yoySales?.pctChange ?? NO_DATA;
     default:
@@ -1078,9 +1061,6 @@ export default function ExecutiveSummary() {
                           <SortHeader col="labor" label="Labor" />
                         </th>
                         <th className="text-right py-2 px-2">
-                          <SortHeader col="attach" label="Attach" />
-                        </th>
-                        <th className="text-right py-2 px-2">
                           <SortHeader col="yoy" label="YoY" tooltip="Year-over-Year: compares sales from the selected period to the same days of the week one year ago. A negative % means lower sales than last year." />
                         </th>
                         <th className="w-6" />
@@ -1134,9 +1114,6 @@ export default function ExecutiveSummary() {
                                   <LaborBadge labor={r.labor} />
                                 </td>
                                 <td className="text-right py-1.5 px-2">
-                                  <AttachBadge score={r.attachmentScore} />
-                                </td>
-                                <td className="text-right py-1.5 px-2">
                                   {r.yoySales ? (
                                     <TrendArrow value={r.yoySales.pctChange} />
                                   ) : (
@@ -1147,10 +1124,10 @@ export default function ExecutiveSummary() {
                               </tr>
                               <CollapsibleContent asChild>
                                 <tr>
-                                  <td colSpan={12} className="bg-muted/20 p-0">
+                                  <td colSpan={11} className="bg-muted/20 p-0">
                                     <div className="sticky left-0 w-screen max-w-full px-4 py-3">
                                     <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{r.name}</div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                                       {/* Raw metric values */}
                                       <div>
                                         <div className="text-[10px] font-semibold uppercase text-muted-foreground mb-1.5">
@@ -1230,40 +1207,6 @@ export default function ExecutiveSummary() {
                                         </div>
                                       </div>
 
-                                      {/* Attachment categories */}
-                                      <div>
-                                        <div className="text-[10px] font-semibold uppercase text-muted-foreground mb-1.5">
-                                          Attachment Rates
-                                        </div>
-                                        {r.attachmentCategories ? (
-                                          <div className="space-y-1">
-                                            {Object.entries(r.attachmentCategories).map(
-                                              ([cat, vals]) => (
-                                                <div key={cat} className="flex justify-between">
-                                                  <span className="text-muted-foreground truncate max-w-[100px]">
-                                                    {cat}
-                                                  </span>
-                                                  <span>
-                                                    {vals.rate.toFixed(1)}%{" "}
-                                                    <span
-                                                      className={
-                                                        vals.vsTarget >= 0
-                                                          ? "text-green-500"
-                                                          : "text-red-500"
-                                                      }
-                                                    >
-                                                      ({vals.vsTarget > 0 ? "+" : ""}
-                                                      {vals.vsTarget.toFixed(1)}% vs target)
-                                                    </span>
-                                                  </span>
-                                                </div>
-                                              )
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span className="text-muted-foreground">No data</span>
-                                        )}
-                                      </div>
                                     </div>
                                     </div>
                                   </td>
@@ -1275,7 +1218,7 @@ export default function ExecutiveSummary() {
                       })}
                       {filteredRestaurants.length === 0 && (
                         <tr>
-                          <td colSpan={12} className="text-center py-8 text-muted-foreground">
+                          <td colSpan={11} className="text-center py-8 text-muted-foreground">
                             No restaurants found for selected filters.
                           </td>
                         </tr>
