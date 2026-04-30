@@ -1703,7 +1703,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                       >
                         {showEow ? formatCurrency(weeklyData.eowForecast) : "—"}
                       </td>
-                      <td className={`font-medium pl-1 pt-0.5 ${showEow && weeklyData.priorWeekFull > 0 ? (eowVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}>
+                      <td
+                        className={`font-medium pl-1 pt-0.5 ${showEow && weeklyData.priorWeekFull > 0 ? (eowVar >= 0 ? "text-green-500" : "text-red-500") : ""}`}
+                        title={showEow && weeklyData.priorWeekFull > 0 ? `vs prior full week ${formatCurrency(weeklyData.priorWeekFull)}` : undefined}
+                      >
                         {showEow && weeklyData.priorWeekFull > 0 ? formatPercentage(eowVar) : ""}
                       </td>
                     </tr>

@@ -165,6 +165,10 @@ router.get("/api/executive-summary", async (req, res) => {
         avgOsat: sql<string>`CASE WHEN SUM(${dailyOsat.totalResponses}) > 0 THEN ROUND(SUM(${dailyOsat.fiveStarCount})::numeric / SUM(${dailyOsat.totalResponses})::numeric * 100, 2) ELSE 0 END`,
         totalResponses: sql<string>`SUM(${dailyOsat.totalResponses})`,
         totalFiveStars: sql<string>`SUM(${dailyOsat.fiveStarCount})`,
+        dtSpeedResponses: sql<string>`SUM(${dailyOsat.dtSpeedCount})`,
+        dtSpeedFiveStars: sql<string>`SUM(${dailyOsat.dtSpeedFiveStarCount})`,
+        genericSpeedResponses: sql<string>`SUM(${dailyOsat.genericSpeedCount})`,
+        genericSpeedFiveStars: sql<string>`SUM(${dailyOsat.genericSpeedFiveStarCount})`,
       })
         .from(dailyOsat)
         .where(and(gte(dailyOsat.date, startDateStr), lte(dailyOsat.date, endDateStr)))
@@ -176,6 +180,10 @@ router.get("/api/executive-summary", async (req, res) => {
         avgOsat: sql<string>`CASE WHEN SUM(${dailyOsat.totalResponses}) > 0 THEN ROUND(SUM(${dailyOsat.fiveStarCount})::numeric / SUM(${dailyOsat.totalResponses})::numeric * 100, 2) ELSE 0 END`,
         totalResponses: sql<string>`SUM(${dailyOsat.totalResponses})`,
         totalFiveStars: sql<string>`SUM(${dailyOsat.fiveStarCount})`,
+        dtSpeedResponses: sql<string>`SUM(${dailyOsat.dtSpeedCount})`,
+        dtSpeedFiveStars: sql<string>`SUM(${dailyOsat.dtSpeedFiveStarCount})`,
+        genericSpeedResponses: sql<string>`SUM(${dailyOsat.genericSpeedCount})`,
+        genericSpeedFiveStars: sql<string>`SUM(${dailyOsat.genericSpeedFiveStarCount})`,
       })
         .from(dailyOsat)
         .where(and(gte(dailyOsat.date, prevStartDateStr), lte(dailyOsat.date, prevEndDateStr)))
@@ -392,6 +400,36 @@ router.get("/api/executive-summary", async (req, res) => {
       osatByRest[r.restaurantId].prevFiveStars = parseInt(r.totalFiveStars) || 0;
     }
 
+    // OSAT Speed (5-star top-box %) — uses generic speed question for store 1682,
+    // DT speed question for everyone else. Mirrors leaderboard feedbackSpeed badge.
+    const osatSpeedByRest: Record<string, MetricPair & { responses: number; prevResponses: number; fiveStars: number; prevFiveStars: number }> = {};
+    for (const r of osatCurrent) {
+      const rest = restaurantMap.get(r.restaurantId);
+      const useGeneric = rest?.unitNumber === "1682";
+      const responses = parseInt(useGeneric ? r.genericSpeedResponses : r.dtSpeedResponses) || 0;
+      const fiveStars = parseInt(useGeneric ? r.genericSpeedFiveStars : r.dtSpeedFiveStars) || 0;
+      const pct = responses > 0 ? round1((fiveStars / responses) * 100) : 0;
+      osatSpeedByRest[r.restaurantId] = {
+        current: pct,
+        previous: 0,
+        responses,
+        prevResponses: 0,
+        fiveStars,
+        prevFiveStars: 0,
+      };
+    }
+    for (const r of osatPrevious) {
+      const rest = restaurantMap.get(r.restaurantId);
+      const useGeneric = rest?.unitNumber === "1682";
+      const responses = parseInt(useGeneric ? r.genericSpeedResponses : r.dtSpeedResponses) || 0;
+      const fiveStars = parseInt(useGeneric ? r.genericSpeedFiveStars : r.dtSpeedFiveStars) || 0;
+      const pct = responses > 0 ? round1((fiveStars / responses) * 100) : 0;
+      if (!osatSpeedByRest[r.restaurantId]) osatSpeedByRest[r.restaurantId] = { current: 0, previous: 0, responses: 0, prevResponses: 0, fiveStars: 0, prevFiveStars: 0 };
+      osatSpeedByRest[r.restaurantId].previous = pct;
+      osatSpeedByRest[r.restaurantId].prevResponses = responses;
+      osatSpeedByRest[r.restaurantId].prevFiveStars = fiveStars;
+    }
+
     const googleByRest: Record<string, MetricPair> = {};
     for (const r of googleCurrent) googleByRest[r.restaurantId] = { current: parseFloat(r.avgRating) || 0, previous: 0 };
     for (const r of googlePrevious) {
@@ -536,6 +574,7 @@ router.get("/api/executive-summary", async (req, res) => {
       transactions: { current: number; previous: number; pctChange: number };
       checkAverage: { current: number; previous: number; pctChange: number };
       osat: { current: number; previous: number; pctChange: number; responses: number };
+      osatSpeed: { current: number; previous: number; pctChange: number; responses: number };
       googleRating: { current: number; previous: number; pctChange: number };
       speedAttainment: { current: number; previous: number; pctChange: number };
       labor: { actualHours: number; modelHours: number; variance: number; variancePct: number };
@@ -553,6 +592,7 @@ router.get("/api/executive-summary", async (req, res) => {
       const mkt = restaurantToMarket.get(rest.id);
       const s = salesByRest[rest.id] || { current: 0, previous: 0 };
       const o = osatByRest[rest.id] || { current: 0, previous: 0, responses: 0 };
+      const osp = osatSpeedByRest[rest.id] || { current: 0, previous: 0, responses: 0 };
       const g = googleByRest[rest.id] || { current: 0, previous: 0 };
       const sp = speedByRest[rest.id] || { current: 0, previous: 0 };
       const tx = txByRest[rest.id] || { current: 0, previous: 0 };
@@ -582,6 +622,7 @@ router.get("/api/executive-summary", async (req, res) => {
         transactions: { current: tx.current, previous: tx.previous, pctChange: pctChange(tx.current, tx.previous) },
         checkAverage: { current: checkCurrent, previous: checkPrevious, pctChange: pctChange(checkCurrent, checkPrevious) },
         osat: { current: round1(o.current), previous: round1(o.previous), pctChange: pctChange(o.current, o.previous), responses: o.responses },
+        osatSpeed: { current: round1(osp.current), previous: round1(osp.previous), pctChange: pctChange(osp.current, osp.previous), responses: osp.responses },
         googleRating: { current: round1(g.current), previous: round1(g.previous), pctChange: pctChange(g.current, g.previous) },
         speedAttainment: { current: sp.current, previous: sp.previous, pctChange: pctChange(sp.current, sp.previous) },
         labor: { actualHours: lb.actualHours, modelHours: lb.modelHours, variance: laborVariance, variancePct: laborVariancePct },
@@ -620,21 +661,30 @@ router.get("/api/executive-summary", async (req, res) => {
 
     // Response-weighted OSAT for company
     let coOsatCurFS = 0, coOsatCurR = 0, coOsatPrevFS = 0, coOsatPrevR = 0;
+    let coSpeedCurFS = 0, coSpeedCurR = 0, coSpeedPrevFS = 0, coSpeedPrevR = 0;
     for (const r of restaurantResults) {
       const o = osatByRest[r.id];
       if (o) {
         coOsatCurFS += o.fiveStars; coOsatCurR += o.responses;
         coOsatPrevFS += o.prevFiveStars; coOsatPrevR += o.prevResponses;
       }
+      const osp = osatSpeedByRest[r.id];
+      if (osp) {
+        coSpeedCurFS += osp.fiveStars; coSpeedCurR += osp.responses;
+        coSpeedPrevFS += osp.prevFiveStars; coSpeedPrevR += osp.prevResponses;
+      }
     }
     const coOsatCur = coOsatCurR > 0 ? round1(coOsatCurFS / coOsatCurR * 100) : 0;
     const coOsatPrev = coOsatPrevR > 0 ? round1(coOsatPrevFS / coOsatPrevR * 100) : 0;
+    const coOsatSpeedCur = coSpeedCurR > 0 ? round1(coSpeedCurFS / coSpeedCurR * 100) : 0;
+    const coOsatSpeedPrev = coSpeedPrevR > 0 ? round1(coSpeedPrevFS / coSpeedPrevR * 100) : 0;
 
     const companyPulse = {
       sales: companySales,
       transactions: companyTx,
       checkAverage: { current: companyCheckCur, previous: companyCheckPrev, pctChange: pctChange(companyCheckCur, companyCheckPrev) },
       osat: { current: coOsatCur, previous: coOsatPrev, pctChange: pctChange(coOsatCur, coOsatPrev) },
+      osatSpeed: { current: coOsatSpeedCur, previous: coOsatSpeedPrev, pctChange: pctChange(coOsatSpeedCur, coOsatSpeedPrev) },
       googleRating: avgMetric((r) => r.googleRating),
       speedAttainment: avgMetric((r) => r.speedAttainment),
     };
@@ -664,6 +714,14 @@ router.get("/api/executive-summary", async (req, res) => {
         alerts.push({ restaurantId: r.id, restaurant: r.name, metric: "osat", metricLabel: "OSAT", current: r.osat.current, previous: r.osat.previous, pctChange: r.osat.pctChange, severity: "high" });
       } else if (r.osat.previous > 0 && osatDelta > 5) {
         outperformers.push({ restaurantId: r.id, restaurant: r.name, metric: "osat", metricLabel: "OSAT", current: r.osat.current, previous: r.osat.previous, pctChange: r.osat.pctChange });
+      }
+
+      // OSAT Speed (5-star top-box %) — same ±10pp threshold as drive-thru speed attainment
+      const osatSpeedDelta = r.osatSpeed.current - r.osatSpeed.previous;
+      if (r.osatSpeed.previous > 0 && osatSpeedDelta < -10) {
+        alerts.push({ restaurantId: r.id, restaurant: r.name, metric: "osatSpeed", metricLabel: "OSAT Speed", current: r.osatSpeed.current, previous: r.osatSpeed.previous, pctChange: r.osatSpeed.pctChange, severity: "medium" });
+      } else if (r.osatSpeed.previous > 0 && osatSpeedDelta > 10) {
+        outperformers.push({ restaurantId: r.id, restaurant: r.name, metric: "osatSpeed", metricLabel: "OSAT Speed", current: r.osatSpeed.current, previous: r.osatSpeed.previous, pctChange: r.osatSpeed.pctChange });
       }
 
       // Google rating
@@ -812,6 +870,7 @@ router.get("/api/executive-summary", async (req, res) => {
       transactions: { current: number; previous: number; pctChange: number };
       checkAverage: { current: number; previous: number; pctChange: number };
       osat: { current: number; previous: number; pctChange: number };
+      osatSpeed: { current: number; previous: number; pctChange: number };
       googleRating: { current: number; previous: number; pctChange: number };
       speedAttainment: { current: number; previous: number; pctChange: number };
     };
@@ -852,6 +911,7 @@ router.get("/api/executive-summary", async (req, res) => {
       // Response-weighted OSAT for market: sum five-stars / sum responses
       let mktOsatCurFiveStars = 0, mktOsatCurResponses = 0;
       let mktOsatPrevFiveStars = 0, mktOsatPrevResponses = 0;
+      let mktSpeedCurFS = 0, mktSpeedCurR = 0, mktSpeedPrevFS = 0, mktSpeedPrevR = 0;
       for (const r of rests) {
         const o = osatByRest[r.id];
         if (o) {
@@ -860,9 +920,18 @@ router.get("/api/executive-summary", async (req, res) => {
           mktOsatPrevFiveStars += o.prevFiveStars;
           mktOsatPrevResponses += o.prevResponses;
         }
+        const osp = osatSpeedByRest[r.id];
+        if (osp) {
+          mktSpeedCurFS += osp.fiveStars;
+          mktSpeedCurR += osp.responses;
+          mktSpeedPrevFS += osp.prevFiveStars;
+          mktSpeedPrevR += osp.prevResponses;
+        }
       }
       const mktOsatCur = mktOsatCurResponses > 0 ? round1(mktOsatCurFiveStars / mktOsatCurResponses * 100) : 0;
       const mktOsatPrev = mktOsatPrevResponses > 0 ? round1(mktOsatPrevFiveStars / mktOsatPrevResponses * 100) : 0;
+      const mktOsatSpeedCur = mktSpeedCurR > 0 ? round1(mktSpeedCurFS / mktSpeedCurR * 100) : 0;
+      const mktOsatSpeedPrev = mktSpeedPrevR > 0 ? round1(mktSpeedPrevFS / mktSpeedPrevR * 100) : 0;
 
       marketRollups.push({
         marketId: mktId,
@@ -872,6 +941,7 @@ router.get("/api/executive-summary", async (req, res) => {
         transactions: { current: mktTxCur, previous: mktTxPrev, pctChange: pctChange(mktTxCur, mktTxPrev) },
         checkAverage: { current: mktCheckCur, previous: mktCheckPrev, pctChange: pctChange(mktCheckCur, mktCheckPrev) },
         osat: { current: mktOsatCur, previous: mktOsatPrev, pctChange: pctChange(mktOsatCur, mktOsatPrev) },
+        osatSpeed: { current: mktOsatSpeedCur, previous: mktOsatSpeedPrev, pctChange: pctChange(mktOsatSpeedCur, mktOsatSpeedPrev) },
         googleRating: mktAvg((r) => r.googleRating),
         speedAttainment: mktAvg((r) => r.speedAttainment),
       });

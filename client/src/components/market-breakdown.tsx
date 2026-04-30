@@ -409,9 +409,9 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                         <span className="text-xs text-muted-foreground">EOW:</span>
                         <span className="text-xs font-semibold text-primary">{formatCurrency(market.weekly.eowForecast)}</span>
                         {market.weekly.priorFull > 0 && (
-                          <span className={`text-xs font-medium flex items-center gap-0.5 ${market.weekly.eowVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
+                          <span className={`text-xs font-medium flex items-center gap-0.5 ${market.weekly.eowVariance >= 0 ? "text-green-500" : "text-red-500"}`} title={`vs prior full week ${formatCurrency(market.weekly.priorFull)}`}>
                             {market.weekly.eowVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                            vs LW {market.weekly.eowVariance >= 0 ? "+" : ""}{Math.round(market.weekly.eowVariance)}%
+                            vs LW full {market.weekly.eowVariance >= 0 ? "+" : ""}{Math.round(market.weekly.eowVariance)}%
                           </span>
                         )}
                       </div>

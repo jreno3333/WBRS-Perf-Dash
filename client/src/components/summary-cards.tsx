@@ -638,8 +638,8 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                   {formatCurrency(weeklyEowForecast)}
                 </span>
                 {weeklyPriorWeekFull > 0 && (
-                  <span className={`font-medium ${eowVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {eowVariance >= 0 ? "+" : ""}{Math.round(eowVariance)}%
+                  <span className={`font-medium ${eowVariance >= 0 ? "text-green-500" : "text-red-500"}`} title={`vs prior full week ${formatCurrency(weeklyPriorWeekFull)}`}>
+                    vs LW full {eowVariance >= 0 ? "+" : ""}{Math.round(eowVariance)}%
                   </span>
                 )}
               </div>

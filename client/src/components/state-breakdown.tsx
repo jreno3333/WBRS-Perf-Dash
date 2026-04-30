@@ -443,9 +443,9 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                         <span className="text-xs text-muted-foreground">EOW:</span>
                         <span className="text-xs font-semibold text-primary">{formatCurrency(state.weekly.eowForecast)}</span>
                         {state.weekly.priorFull > 0 && (
-                          <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.eowVariance >= 0 ? "text-green-500" : "text-red-500"}`}>
+                          <span className={`text-xs font-medium flex items-center gap-0.5 ${state.weekly.eowVariance >= 0 ? "text-green-500" : "text-red-500"}`} title={`vs prior full week ${formatCurrency(state.weekly.priorFull)}`}>
                             {state.weekly.eowVariance >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                            vs LW {state.weekly.eowVariance >= 0 ? "+" : ""}{Math.round(state.weekly.eowVariance)}%
+                            vs LW full {state.weekly.eowVariance >= 0 ? "+" : ""}{Math.round(state.weekly.eowVariance)}%
                           </span>
                         )}
                       </div>

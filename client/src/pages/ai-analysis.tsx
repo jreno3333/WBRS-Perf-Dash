@@ -27,6 +27,7 @@ import {
   Star,
   Globe,
   Timer,
+  Gauge,
   ArrowUpRight,
   ArrowDownRight,
   Minus,
@@ -73,6 +74,7 @@ interface Restaurant {
   transactions: MetricPair;
   checkAverage: MetricPair;
   osat: MetricPair & { responses: number };
+  osatSpeed: MetricPair & { responses: number };
   googleRating: MetricPair;
   speedAttainment: MetricPair;
   labor: { actualHours: number; modelHours: number; variance: number; variancePct: number };
@@ -124,6 +126,7 @@ interface MarketRollup {
   transactions: MetricPair;
   checkAverage: MetricPair;
   osat: MetricPair;
+  osatSpeed: MetricPair;
   googleRating: MetricPair;
   speedAttainment: MetricPair;
 }
@@ -136,6 +139,7 @@ interface ExecSummary {
     transactions: MetricPair;
     checkAverage: MetricPair;
     osat: MetricPair;
+    osatSpeed: MetricPair;
     googleRating: MetricPair;
     speedAttainment: MetricPair;
   };
@@ -169,11 +173,34 @@ function formatChange(val: number): string {
 
 function formatMetricValue(metric: string, val: number): string {
   if (metric === "sales" || metric === "checkAverage") return formatCurrency(val);
-  if (metric === "osat" || metric === "speedAttainment") return formatPct(val);
+  if (metric === "osat" || metric === "osatSpeed" || metric === "speedAttainment") return formatPct(val);
   if (metric === "googleRating") return formatRating(val);
   if (metric === "transactions") return formatNumber(val);
   return val.toFixed(1);
 }
+
+// Group an alert/outperformer metric into a high-level family for section headers.
+function metricGroup(metric: string): "feedback" | "speed" | "sales" | "labor" {
+  if (metric === "osat" || metric === "googleRating") return "feedback";
+  if (metric === "osatSpeed" || metric === "speedAttainment") return "speed";
+  if (metric === "sales" || metric === "checkAverage" || metric === "transactions") return "sales";
+  if (metric === "laborVariance") return "labor";
+  return "sales";
+}
+
+const METRIC_GROUP_ORDER: Array<"feedback" | "speed" | "sales" | "labor"> = [
+  "feedback",
+  "speed",
+  "sales",
+  "labor",
+];
+
+const METRIC_GROUP_LABELS: Record<string, string> = {
+  feedback: "Guest Feedback",
+  speed: "Speed",
+  sales: "Sales",
+  labor: "Labor",
+};
 
 // ---------------------------------------------------------------------------
 // TrendArrow
@@ -426,6 +453,7 @@ type SortCol =
   | "transactions"
   | "checkAverage"
   | "osat"
+  | "osatSpeed"
   | "googleRating"
   | "speedAttainment"
   | "labor"
@@ -446,6 +474,8 @@ function getSortValue(r: Restaurant, col: SortCol): number | string {
       return r.checkAverage.previous > 0 ? r.checkAverage.pctChange : NO_DATA;
     case "osat":
       return r.osat.previous > 0 ? r.osat.pctChange : NO_DATA;
+    case "osatSpeed":
+      return r.osatSpeed.previous > 0 ? r.osatSpeed.pctChange : NO_DATA;
     case "googleRating":
       return r.googleRating.previous > 0 ? r.googleRating.pctChange : NO_DATA;
     case "speedAttainment":
@@ -616,6 +646,7 @@ export default function ExecutiveSummary() {
     { key: "transactions" as const, label: "Transactions", icon: Hash, format: formatNumber },
     { key: "checkAverage" as const, label: "Check Average", icon: Receipt, format: formatCurrency },
     { key: "osat" as const, label: "OSAT Score", icon: Star, format: formatPct },
+    { key: "osatSpeed" as const, label: "OSAT Speed", icon: Gauge, format: formatPct },
     { key: "googleRating" as const, label: "Google Rating", icon: Globe, format: formatRating },
     { key: "speedAttainment" as const, label: "Speed of Service", icon: Timer, format: formatPct },
   ];
@@ -744,7 +775,7 @@ export default function ExecutiveSummary() {
                               </div>
                               {diff !== null && (
                                 <div className={`text-[10px] mt-0.5 ${diff > 0 ? "text-emerald-400" : diff < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                                  vs co: {diff > 0 ? "+" : ""}{diff.toFixed(1)}{key === "osat" || key === "speedAttainment" ? "pp" : key === "checkAverage" ? "" : key === "googleRating" ? "" : ""}
+                                  vs co: {diff > 0 ? "+" : ""}{diff.toFixed(1)}{key === "osat" || key === "osatSpeed" || key === "speedAttainment" ? "pp" : key === "checkAverage" ? "" : key === "googleRating" ? "" : ""}
                                 </div>
                               )}
                             </CardContent>
@@ -790,7 +821,7 @@ export default function ExecutiveSummary() {
                 <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
                   Company-Wide Pulse
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                   {kpiConfig.map(({ key, label, icon: Icon, format }) => {
                     const m = data.companyPulse[key];
                     return (
@@ -818,7 +849,7 @@ export default function ExecutiveSummary() {
             )}
 
             {/* ================================================================
-                3. ATTENTION REQUIRED
+                3. ATTENTION REQUIRED — grouped by metric family
             ================================================================ */}
             {filteredAlerts.length > 0 && (
               <section>
@@ -832,44 +863,58 @@ export default function ExecutiveSummary() {
                       </Badge>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-4 pb-3 pt-0">
-                    <CollapsibleList
-                      items={filteredAlerts}
-                      limit={5}
-                      renderItem={(a, i) => {
-                        const r = restaurantMap.get(a.restaurantId);
-                        return (
-                          <div
-                            key={`${a.restaurantId}-${a.metric}-${i}`}
-                            className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0 text-xs"
-                          >
-                            <SeverityBadge severity={a.severity} />
-                            <span className="font-medium truncate max-w-[140px]">
-                              {a.restaurant}
+                  <CardContent className="px-4 pb-3 pt-0 space-y-3">
+                    {METRIC_GROUP_ORDER.map((groupKey) => {
+                      const groupItems = filteredAlerts.filter((a) => metricGroup(a.metric) === groupKey);
+                      if (groupItems.length === 0) return null;
+                      return (
+                        <div key={groupKey} data-testid={`alerts-group-${groupKey}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              {METRIC_GROUP_LABELS[groupKey]}
                             </span>
-                            <MarketBadge name={r?.marketName ?? null} />
-                            <span className="text-muted-foreground">{a.metricLabel}</span>
-                            <span className="ml-auto tabular-nums text-muted-foreground">
-                              {formatMetricValue(a.metric, a.previous)}
+                            <span className="text-[10px] text-muted-foreground/70">
+                              ({groupItems.length})
                             </span>
-                            <span className="text-muted-foreground">&rarr;</span>
-                            <span className="tabular-nums font-medium">
-                              {formatMetricValue(a.metric, a.current)}
-                            </span>
-                            <span className="text-red-500 font-medium tabular-nums min-w-[50px] text-right">
-                              {formatChange(a.pctChange)}
-                            </span>
+                            <div className="flex-1 h-px bg-border/50" />
                           </div>
-                        );
-                      }}
-                    />
+                          <CollapsibleList
+                            items={groupItems}
+                            limit={5}
+                            renderItem={(a, i) => (
+                              <div
+                                key={`${a.restaurantId}-${a.metric}-${i}`}
+                                className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0 text-xs"
+                                data-testid={`alert-row-${a.restaurantId}-${a.metric}`}
+                              >
+                                <SeverityBadge severity={a.severity} />
+                                <span className="font-medium truncate max-w-[180px]">
+                                  {a.restaurant}
+                                </span>
+                                <span className="text-muted-foreground">{a.metricLabel}</span>
+                                <span className="ml-auto tabular-nums text-muted-foreground">
+                                  {formatMetricValue(a.metric, a.previous)}
+                                </span>
+                                <span className="text-muted-foreground">&rarr;</span>
+                                <span className="tabular-nums font-medium">
+                                  {formatMetricValue(a.metric, a.current)}
+                                </span>
+                                <span className="text-red-500 font-medium tabular-nums min-w-[50px] text-right">
+                                  {formatChange(a.pctChange)}
+                                </span>
+                              </div>
+                            )}
+                          />
+                        </div>
+                      );
+                    })}
                   </CardContent>
                 </Card>
               </section>
             )}
 
             {/* ================================================================
-                4. OUTPERFORMERS
+                4. OUTPERFORMERS — grouped by metric family
             ================================================================ */}
             {filteredOutperformers.length > 0 && (
               <section>
@@ -883,36 +928,50 @@ export default function ExecutiveSummary() {
                       </Badge>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-4 pb-3 pt-0">
-                    <CollapsibleList
-                      items={filteredOutperformers}
-                      limit={5}
-                      renderItem={(o, i) => {
-                        const r = restaurantMap.get(o.restaurantId);
-                        return (
-                          <div
-                            key={`${o.restaurantId}-${o.metric}-${i}`}
-                            className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0 text-xs"
-                          >
-                            <span className="font-medium truncate max-w-[140px]">
-                              {o.restaurant}
+                  <CardContent className="px-4 pb-3 pt-0 space-y-3">
+                    {METRIC_GROUP_ORDER.map((groupKey) => {
+                      const groupItems = filteredOutperformers.filter((o) => metricGroup(o.metric) === groupKey);
+                      if (groupItems.length === 0) return null;
+                      return (
+                        <div key={groupKey} data-testid={`outperformers-group-${groupKey}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              {METRIC_GROUP_LABELS[groupKey]}
                             </span>
-                            <MarketBadge name={r?.marketName ?? null} />
-                            <span className="text-muted-foreground">{o.metricLabel}</span>
-                            <span className="ml-auto tabular-nums text-muted-foreground">
-                              {formatMetricValue(o.metric, o.previous)}
+                            <span className="text-[10px] text-muted-foreground/70">
+                              ({groupItems.length})
                             </span>
-                            <span className="text-muted-foreground">&rarr;</span>
-                            <span className="tabular-nums font-medium">
-                              {formatMetricValue(o.metric, o.current)}
-                            </span>
-                            <span className="text-green-500 font-medium tabular-nums min-w-[50px] text-right">
-                              {formatChange(o.pctChange)}
-                            </span>
+                            <div className="flex-1 h-px bg-border/50" />
                           </div>
-                        );
-                      }}
-                    />
+                          <CollapsibleList
+                            items={groupItems}
+                            limit={5}
+                            renderItem={(o, i) => (
+                              <div
+                                key={`${o.restaurantId}-${o.metric}-${i}`}
+                                className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0 text-xs"
+                                data-testid={`outperformer-row-${o.restaurantId}-${o.metric}`}
+                              >
+                                <span className="font-medium truncate max-w-[180px]">
+                                  {o.restaurant}
+                                </span>
+                                <span className="text-muted-foreground">{o.metricLabel}</span>
+                                <span className="ml-auto tabular-nums text-muted-foreground">
+                                  {formatMetricValue(o.metric, o.previous)}
+                                </span>
+                                <span className="text-muted-foreground">&rarr;</span>
+                                <span className="tabular-nums font-medium">
+                                  {formatMetricValue(o.metric, o.current)}
+                                </span>
+                                <span className="text-green-500 font-medium tabular-nums min-w-[50px] text-right">
+                                  {formatChange(o.pctChange)}
+                                </span>
+                              </div>
+                            )}
+                          />
+                        </div>
+                      );
+                    })}
                   </CardContent>
                 </Card>
               </section>
@@ -1007,6 +1066,9 @@ export default function ExecutiveSummary() {
                           <SortHeader col="osat" label="OSAT" />
                         </th>
                         <th className="text-right py-2 px-2">
+                          <SortHeader col="osatSpeed" label="OSAT Spd" tooltip="OSAT Speed: 5-star top-box % on the speed-of-service question (drive-thru, or generic for store 1682)." />
+                        </th>
+                        <th className="text-right py-2 px-2">
                           <SortHeader col="googleRating" label="Google" />
                         </th>
                         <th className="text-right py-2 px-2">
@@ -1060,6 +1122,9 @@ export default function ExecutiveSummary() {
                                   <TrendArrow value={r.osat.pctChange} />
                                 </td>
                                 <td className="text-right py-1.5 px-2">
+                                  <TrendArrow value={r.osatSpeed.pctChange} />
+                                </td>
+                                <td className="text-right py-1.5 px-2">
                                   <TrendArrow value={r.googleRating.pctChange} />
                                 </td>
                                 <td className="text-right py-1.5 px-2">
@@ -1082,7 +1147,7 @@ export default function ExecutiveSummary() {
                               </tr>
                               <CollapsibleContent asChild>
                                 <tr>
-                                  <td colSpan={11} className="bg-muted/20 p-0">
+                                  <td colSpan={12} className="bg-muted/20 p-0">
                                     <div className="sticky left-0 w-screen max-w-full px-4 py-3">
                                     <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{r.name}</div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
@@ -1098,6 +1163,7 @@ export default function ExecutiveSummary() {
                                               ["Transactions", r.transactions, formatNumber],
                                               ["Check Avg", r.checkAverage, formatCurrency],
                                               ["OSAT", r.osat, formatPct],
+                                              ["OSAT Speed", r.osatSpeed, formatPct],
                                               ["Google", r.googleRating, formatRating],
                                               ["Speed", r.speedAttainment, formatPct],
                                             ] as [string, MetricPair, (v: number) => string][]
@@ -1209,7 +1275,7 @@ export default function ExecutiveSummary() {
                       })}
                       {filteredRestaurants.length === 0 && (
                         <tr>
-                          <td colSpan={10} className="text-center py-8 text-muted-foreground">
+                          <td colSpan={12} className="text-center py-8 text-muted-foreground">
                             No restaurants found for selected filters.
                           </td>
                         </tr>
