@@ -1425,9 +1425,400 @@ export default function ExecutiveSummary() {
                 </CardContent>
               </Card>
             </section>
+
+            {/* ================================================================
+                9. SURVEY CAPTURE & OSAT BY DAY/DAYPART (anti-gaming)
+            ================================================================ */}
+            <SurveyCaptureSection days={days} />
           </>
         )}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Survey Capture & OSAT by day/daypart
+// ---------------------------------------------------------------------------
+
+type SurveyCaptureBucket = {
+  responses: number;
+  transactions: number;
+  surveysPer1000: number | null;
+  osatPct: number | null;
+};
+
+type SurveyCaptureResp = {
+  dateRange: { start: string; end: string; days: number };
+  thresholds: { healthyMin: number; warningMin: number };
+  company: SurveyCaptureBucket;
+  byDayOfWeek: (SurveyCaptureBucket & { dow: number; label: string })[];
+  byDaypart: (SurveyCaptureBucket & {
+    id: string;
+    label: string;
+    shortLabel: string;
+    startHour: number;
+    endHour: number;
+  })[];
+  byRestaurant: (SurveyCaptureBucket & {
+    id: string;
+    name: string;
+    unitNumber: string | null;
+    marketId: string | null;
+    marketName: string | null;
+  })[];
+};
+
+function captureColor(rate: number | null, healthyMin: number, warningMin: number): string {
+  if (rate === null) return "text-muted-foreground";
+  if (rate >= healthyMin) return "text-green-600 dark:text-green-400";
+  if (rate >= warningMin) return "text-amber-600 dark:text-amber-400";
+  return "text-red-600 dark:text-red-400";
+}
+
+function captureBg(rate: number | null, healthyMin: number, warningMin: number): string {
+  if (rate === null) return "bg-muted/30";
+  if (rate >= healthyMin) return "bg-green-500/10";
+  if (rate >= warningMin) return "bg-amber-500/10";
+  return "bg-red-500/15";
+}
+
+function fmtRate(rate: number | null): string {
+  if (rate === null) return "—";
+  return rate.toFixed(2);
+}
+
+function fmtPct(pct: number | null): string {
+  if (pct === null) return "—";
+  return `${pct.toFixed(1)}%`;
+}
+
+function fmtInt(n: number): string {
+  return n.toLocaleString();
+}
+
+function SurveyCaptureSection({ days }: { days: number }) {
+  const { data, isLoading } = useQuery<SurveyCaptureResp>({
+    queryKey: ["/api/executive-summary/survey-capture", days],
+    queryFn: async () => {
+      const res = await fetch(`/api/executive-summary/survey-capture?days=${days}`);
+      if (!res.ok) throw new Error("Failed to fetch survey capture");
+      return res.json();
+    },
+  });
+
+  const [sortKey, setSortKey] = useState<"capture" | "osat" | "txns" | "name">("capture");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const sortedRestaurants = useMemo(() => {
+    if (!data) return [];
+    const arr = [...data.byRestaurant];
+    arr.sort((a, b) => {
+      const get = (r: typeof arr[0]) => {
+        if (sortKey === "name") return r.name.toLowerCase();
+        if (sortKey === "txns") return r.transactions;
+        if (sortKey === "osat") return r.osatPct ?? -1;
+        return r.surveysPer1000 ?? -1;
+      };
+      const va = get(a);
+      const vb = get(b);
+      if (typeof va === "string" && typeof vb === "string") {
+        return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+      }
+      return sortDir === "asc"
+        ? (va as number) - (vb as number)
+        : (vb as number) - (va as number);
+    });
+    return arr;
+  }, [data, sortKey, sortDir]);
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "name" ? "asc" : key === "capture" ? "asc" : "desc");
+    }
+  }
+
+  if (isLoading || !data) {
+    return (
+      <section data-testid="section-survey-capture">
+        <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
+          Survey Capture & OSAT by Day / Daypart
+        </h2>
+        <Card>
+          <CardContent className="p-4 text-xs text-muted-foreground">
+            Loading survey capture analysis…
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
+  const { company, byDayOfWeek, byDaypart, thresholds } = data;
+  const flagged = sortedRestaurants.filter(
+    (r) => r.surveysPer1000 !== null && r.surveysPer1000 < thresholds.warningMin && r.transactions >= 200,
+  );
+
+  return (
+    <section data-testid="section-survey-capture">
+      <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
+        Survey Capture & OSAT by Day / Daypart
+      </h2>
+
+      {/* Company-level summary */}
+      <Card className="mb-3">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div>
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <Info className="h-3 w-3" />
+                Detects units that may not be asking guests to take the survey.
+                Industry-healthy capture is ≥{thresholds.healthyMin} surveys per 1,000 transactions.
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border p-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Surveys / 1,000 Txns
+              </div>
+              <div
+                className={`text-2xl font-semibold tabular-nums ${captureColor(company.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                data-testid="text-company-capture-rate"
+              >
+                {fmtRate(company.surveysPer1000)}
+              </div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                OSAT (5-star %)
+              </div>
+              <div className="text-2xl font-semibold tabular-nums" data-testid="text-company-osat">
+                {fmtPct(company.osatPct)}
+              </div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Total Surveys
+              </div>
+              <div className="text-2xl font-semibold tabular-nums" data-testid="text-company-responses">
+                {fmtInt(company.responses)}
+              </div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Total Transactions
+              </div>
+              <div className="text-2xl font-semibold tabular-nums" data-testid="text-company-txns">
+                {fmtInt(company.transactions)}
+              </div>
+            </div>
+          </div>
+
+          {flagged.length > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs">
+              <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold text-red-600 dark:text-red-400">
+                  {flagged.length} unit{flagged.length === 1 ? "" : "s"} below {thresholds.warningMin}/1,000
+                </span>
+                <span className="text-muted-foreground"> — possible survey-ask gaming. Review highlighted rows below.</span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Day of Week + Daypart grids */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+        {/* Day of Week */}
+        <Card>
+          <CardHeader className="p-3 pb-2">
+            <CardTitle className="text-sm">By Day of Week</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-muted-foreground border-b">
+                    <th className="text-left py-1.5 px-2 font-medium">Day</th>
+                    <th className="text-right py-1.5 px-2 font-medium">Txns</th>
+                    <th className="text-right py-1.5 px-2 font-medium">Surveys</th>
+                    <th className="text-right py-1.5 px-2 font-medium">/1k</th>
+                    <th className="text-right py-1.5 px-2 font-medium">OSAT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byDayOfWeek.map((d) => (
+                    <tr
+                      key={d.dow}
+                      className={`border-b last:border-0 ${captureBg(d.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                      data-testid={`row-dow-${d.dow}`}
+                    >
+                      <td className="py-1.5 px-2 font-medium">{d.label}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(d.transactions)}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(d.responses)}</td>
+                      <td
+                        className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(d.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                      >
+                        {fmtRate(d.surveysPer1000)}
+                      </td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{fmtPct(d.osatPct)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Daypart */}
+        <Card>
+          <CardHeader className="p-3 pb-2">
+            <CardTitle className="text-sm">By Daypart</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-muted-foreground border-b">
+                    <th className="text-left py-1.5 px-2 font-medium">Daypart</th>
+                    <th className="text-right py-1.5 px-2 font-medium">Txns</th>
+                    <th className="text-right py-1.5 px-2 font-medium">Surveys</th>
+                    <th className="text-right py-1.5 px-2 font-medium">/1k</th>
+                    <th className="text-right py-1.5 px-2 font-medium">OSAT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byDaypart.map((dp) => (
+                    <tr
+                      key={dp.id}
+                      className={`border-b last:border-0 ${captureBg(dp.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                      data-testid={`row-daypart-${dp.id}`}
+                    >
+                      <td className="py-1.5 px-2">
+                        <div className="font-medium">{dp.label}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {dp.startHour}–{dp.endHour + 1}h
+                        </div>
+                      </td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(dp.transactions)}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(dp.responses)}</td>
+                      <td
+                        className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(dp.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                      >
+                        {fmtRate(dp.surveysPer1000)}
+                      </td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{fmtPct(dp.osatPct)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Per-restaurant breakdown */}
+      <Card>
+        <CardHeader className="p-3 pb-2">
+          <CardTitle className="text-sm flex items-center justify-between">
+            <span>By Restaurant</span>
+            <span className="text-[10px] font-normal text-muted-foreground">
+              Sorted by capture rate (lowest first) — gaming risk at top
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-3 pt-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-muted-foreground border-b">
+                  <th className="text-left py-1.5 px-2 font-medium">
+                    <button
+                      onClick={() => toggleSort("name")}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      data-testid="button-sort-name"
+                    >
+                      Unit <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </th>
+                  <th className="text-left py-1.5 px-2 font-medium">Market</th>
+                  <th className="text-right py-1.5 px-2 font-medium">
+                    <button
+                      onClick={() => toggleSort("txns")}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      data-testid="button-sort-txns"
+                    >
+                      Txns <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </th>
+                  <th className="text-right py-1.5 px-2 font-medium">Surveys</th>
+                  <th className="text-right py-1.5 px-2 font-medium">
+                    <button
+                      onClick={() => toggleSort("capture")}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      data-testid="button-sort-capture"
+                    >
+                      /1,000 <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </th>
+                  <th className="text-right py-1.5 px-2 font-medium">
+                    <button
+                      onClick={() => toggleSort("osat")}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      data-testid="button-sort-osat"
+                    >
+                      OSAT <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRestaurants.map((r) => (
+                  <tr
+                    key={r.id}
+                    className={`border-b last:border-0 ${captureBg(r.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                    data-testid={`row-survey-capture-${r.id}`}
+                  >
+                    <td className="py-1.5 px-2">
+                      <div className="font-medium">
+                        {r.unitNumber ? `#${r.unitNumber} ` : ""}
+                        {r.name}
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-2 text-muted-foreground">{r.marketName ?? "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(r.transactions)}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(r.responses)}</td>
+                    <td
+                      className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(r.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                    >
+                      {fmtRate(r.surveysPer1000)}
+                      {r.surveysPer1000 !== null &&
+                        r.surveysPer1000 < thresholds.warningMin &&
+                        r.transactions >= 200 && (
+                          <Badge variant="destructive" className="ml-1.5 text-[9px] py-0 px-1.5 h-4">
+                            LOW
+                          </Badge>
+                        )}
+                    </td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{fmtPct(r.osatPct)}</td>
+                  </tr>
+                ))}
+                {sortedRestaurants.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-4 text-center text-muted-foreground">
+                      No data in selected window
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
   );
 }

@@ -24,6 +24,7 @@ import pollsRouter from "./polls";
 import pushReportRouter, { registerPublicShareRoute } from "./push-report";
 import aiAnalysisRouter from "./ai-analysis";
 import executiveSummaryRouter from "./executive-summary";
+import surveyCaptureRouter from "./survey-capture";
 import gradingConfigRouter from "./grading-config";
 import helperRewardsRouter from "./helper-rewards";
 
@@ -93,6 +94,7 @@ export async function registerRoutes(
   app.use(pushReportRouter);
   app.use(aiAnalysisRouter);
   app.use(executiveSummaryRouter);
+  app.use(surveyCaptureRouter);
   app.use(gradingConfigRouter);
   app.use(helperRewardsRouter);
 
