@@ -246,9 +246,12 @@ router.get("/api/executive-summary/survey-capture", async (req, res) => {
     res.json({
       dateRange: { start: startDateStr, end: endDateStr, days: numDays },
       thresholds: {
-        // Industry rule of thumb: ~5 surveys per 1000 transactions is healthy for QSR
-        healthyMin: 5,
-        warningMin: 3,
+        // QSR benchmarks (Whataburger Qualtrics target range): typical receipt-based
+        // survey programs land at 15–25/1,000 transactions; 30+/1,000 is strong (active
+        // cashier callouts / coupon offers); under 10/1,000 is a cashier-prompting issue.
+        excellentMin: 30,
+        healthyMin: 15,
+        warningMin: 10,
       },
       company: {
         responses: company.responses,

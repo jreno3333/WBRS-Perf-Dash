@@ -1450,7 +1450,7 @@ type SurveyCaptureBucket = {
 
 type SurveyCaptureResp = {
   dateRange: { start: string; end: string; days: number };
-  thresholds: { healthyMin: number; warningMin: number };
+  thresholds: { excellentMin: number; healthyMin: number; warningMin: number };
   company: SurveyCaptureBucket;
   byDayOfWeek: (SurveyCaptureBucket & { dow: number; label: string })[];
   byDaypart: (SurveyCaptureBucket & {
@@ -1469,15 +1469,17 @@ type SurveyCaptureResp = {
   })[];
 };
 
-function captureColor(rate: number | null, healthyMin: number, warningMin: number): string {
+function captureColor(rate: number | null, excellentMin: number, healthyMin: number, warningMin: number): string {
   if (rate === null) return "text-muted-foreground";
+  if (rate >= excellentMin) return "text-emerald-600 dark:text-emerald-400";
   if (rate >= healthyMin) return "text-green-600 dark:text-green-400";
   if (rate >= warningMin) return "text-amber-600 dark:text-amber-400";
   return "text-red-600 dark:text-red-400";
 }
 
-function captureBg(rate: number | null, healthyMin: number, warningMin: number): string {
+function captureBg(rate: number | null, excellentMin: number, healthyMin: number, warningMin: number): string {
   if (rate === null) return "bg-muted/30";
+  if (rate >= excellentMin) return "bg-emerald-500/15";
   if (rate >= healthyMin) return "bg-green-500/10";
   if (rate >= warningMin) return "bg-amber-500/10";
   return "bg-red-500/15";
@@ -1575,7 +1577,11 @@ function SurveyCaptureSection({ days }: { days: number }) {
               <div className="text-xs text-muted-foreground flex items-center gap-1">
                 <Info className="h-3 w-3" />
                 Detects units that may not be asking guests to take the survey.
-                Industry-healthy capture is ≥{thresholds.healthyMin} surveys per 1,000 transactions.
+                QSR benchmarks: <span className="text-red-600 dark:text-red-400 font-medium">&lt;{thresholds.warningMin}</span> low ·
+                {" "}<span className="text-amber-600 dark:text-amber-400 font-medium">{thresholds.warningMin}–{thresholds.healthyMin}</span> warning ·
+                {" "}<span className="text-green-600 dark:text-green-400 font-medium">{thresholds.healthyMin}–{thresholds.excellentMin}</span> healthy ·
+                {" "}<span className="text-emerald-600 dark:text-emerald-400 font-medium">{thresholds.excellentMin}+</span> strong
+                {" "}(per 1,000 transactions).
               </div>
             </div>
           </div>
@@ -1585,7 +1591,7 @@ function SurveyCaptureSection({ days }: { days: number }) {
                 Surveys / 1,000 Txns
               </div>
               <div
-                className={`text-2xl font-semibold tabular-nums ${captureColor(company.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                className={`text-2xl font-semibold tabular-nums ${captureColor(company.surveysPer1000, thresholds.excellentMin, thresholds.healthyMin, thresholds.warningMin)}`}
                 data-testid="text-company-capture-rate"
               >
                 {fmtRate(company.surveysPer1000)}
@@ -1654,14 +1660,14 @@ function SurveyCaptureSection({ days }: { days: number }) {
                   {byDayOfWeek.map((d) => (
                     <tr
                       key={d.dow}
-                      className={`border-b last:border-0 ${captureBg(d.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                      className={`border-b last:border-0 ${captureBg(d.surveysPer1000, thresholds.excellentMin, thresholds.healthyMin, thresholds.warningMin)}`}
                       data-testid={`row-dow-${d.dow}`}
                     >
                       <td className="py-1.5 px-2 font-medium">{d.label}</td>
                       <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(d.transactions)}</td>
                       <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(d.responses)}</td>
                       <td
-                        className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(d.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                        className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(d.surveysPer1000, thresholds.excellentMin, thresholds.healthyMin, thresholds.warningMin)}`}
                       >
                         {fmtRate(d.surveysPer1000)}
                       </td>
@@ -1695,7 +1701,7 @@ function SurveyCaptureSection({ days }: { days: number }) {
                   {byDaypart.map((dp) => (
                     <tr
                       key={dp.id}
-                      className={`border-b last:border-0 ${captureBg(dp.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                      className={`border-b last:border-0 ${captureBg(dp.surveysPer1000, thresholds.excellentMin, thresholds.healthyMin, thresholds.warningMin)}`}
                       data-testid={`row-daypart-${dp.id}`}
                     >
                       <td className="py-1.5 px-2">
@@ -1707,7 +1713,7 @@ function SurveyCaptureSection({ days }: { days: number }) {
                       <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(dp.transactions)}</td>
                       <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(dp.responses)}</td>
                       <td
-                        className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(dp.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                        className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(dp.surveysPer1000, thresholds.excellentMin, thresholds.healthyMin, thresholds.warningMin)}`}
                       >
                         {fmtRate(dp.surveysPer1000)}
                       </td>
@@ -1780,7 +1786,7 @@ function SurveyCaptureSection({ days }: { days: number }) {
                 {sortedRestaurants.map((r) => (
                   <tr
                     key={r.id}
-                    className={`border-b last:border-0 ${captureBg(r.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                    className={`border-b last:border-0 ${captureBg(r.surveysPer1000, thresholds.excellentMin, thresholds.healthyMin, thresholds.warningMin)}`}
                     data-testid={`row-survey-capture-${r.id}`}
                   >
                     <td className="py-1.5 px-2">
@@ -1793,7 +1799,7 @@ function SurveyCaptureSection({ days }: { days: number }) {
                     <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(r.transactions)}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums">{fmtInt(r.responses)}</td>
                     <td
-                      className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(r.surveysPer1000, thresholds.healthyMin, thresholds.warningMin)}`}
+                      className={`py-1.5 px-2 text-right tabular-nums font-semibold ${captureColor(r.surveysPer1000, thresholds.excellentMin, thresholds.healthyMin, thresholds.warningMin)}`}
                     >
                       {fmtRate(r.surveysPer1000)}
                       {r.surveysPer1000 !== null &&
