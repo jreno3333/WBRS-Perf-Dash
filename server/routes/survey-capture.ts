@@ -103,6 +103,34 @@ router.get("/api/executive-summary/survey-capture", async (req, res) => {
       if (name) restaurantToMarket.set(a.restaurantId, { id: a.marketId, name });
     }
 
+    // Restaurant timezone lookup for proper local-time bucketing.
+    // OSAT data is stored in Central with Eastern shifted -1h (see qualtrics-api.ts).
+    // POS hours are pulled in Central via SQL above. For Eastern restaurants we shift
+    // both back +1h so daypart / day-of-week reflect the guest's actual local time.
+    const restaurantTz = new Map<string, string>();
+    for (const r of restaurantList) restaurantTz.set(r.id, r.timezone || "America/Chicago");
+
+    const toLocalDateHour = (restaurantId: string, dateStr: string, centralHour: number): { date: string; hour: number } => {
+      const tz = restaurantTz.get(restaurantId);
+      if (tz !== "America/New_York") {
+        return { date: dateStr, hour: centralHour };
+      }
+      // Eastern: add 1 hour; roll date forward if we cross midnight.
+      let hour = centralHour + 1;
+      let date = dateStr;
+      if (hour >= 24) {
+        hour = 0;
+        const [y, m, d] = dateStr.split("-").map(Number);
+        const next = new Date(Date.UTC(y, m - 1, d, 12));
+        next.setUTCDate(next.getUTCDate() + 1);
+        const yy = next.getUTCFullYear();
+        const mm = String(next.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(next.getUTCDate()).padStart(2, "0");
+        date = `${yy}-${mm}-${dd}`;
+      }
+      return { date, hour };
+    };
+
     // ------------------------------------------------------------------
     // Aggregation buckets
     // ------------------------------------------------------------------
@@ -120,8 +148,9 @@ router.get("/api/executive-summary/survey-capture", async (req, res) => {
       const fiveStars = row.fiveStarCount || 0;
       if (responses === 0) continue;
 
-      const dow = dowFromDateStr(row.date);
-      const dpId = daypartIdForHour(row.hour);
+      const local = toLocalDateHour(row.restaurantId, row.date, row.hour);
+      const dow = dowFromDateStr(local.date);
+      const dpId = daypartIdForHour(local.hour);
 
       company.responses += responses;
       company.fiveStars += fiveStars;
@@ -146,9 +175,9 @@ router.get("/api/executive-summary/survey-capture", async (req, res) => {
       const txns = parseInt(row.orderCount as any) || 0;
       if (txns === 0) continue;
 
-      const hour = Number(row.hour) || 0;
-      const dow = dowFromDateStr(row.date);
-      const dpId = daypartIdForHour(hour);
+      const local = toLocalDateHour(restId, row.date, Number(row.hour) || 0);
+      const dow = dowFromDateStr(local.date);
+      const dpId = daypartIdForHour(local.hour);
 
       company.transactions += txns;
 
