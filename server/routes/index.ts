@@ -34,13 +34,32 @@ import { users, gradingConfig as gradingConfigTable, DEFAULT_GRADING_CONFIG, typ
 import { eq } from "drizzle-orm";
 import { invalidateGradingCache } from "./grading-config";
 
+// Tiny per-user TTL cache so the dashboard's ~16 parallel API calls don't
+// each do a SELECT on the users table. Deactivation propagates within 30s.
+const userActiveCache = new Map<string, { active: boolean; expiresAt: number }>();
+const USER_ACTIVE_TTL_MS = 30_000;
+
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session?.userId) {
     return res.status(401).json({ message: "Not authenticated" });
   }
-  const [user] = await db.select({ isActive: users.isActive }).from(users).where(eq(users.id, req.session.userId)).limit(1);
-  if (!user || !user.isActive) {
-    req.session.destroy(() => {});
+  const userId = req.session.userId;
+  const now = Date.now();
+  let cached = userActiveCache.get(userId);
+  if (!cached || cached.expiresAt <= now) {
+    const [user] = await db
+      .select({ isActive: users.isActive })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    cached = { active: !!user && !!user.isActive, expiresAt: now + USER_ACTIVE_TTL_MS };
+    userActiveCache.set(userId, cached);
+  }
+  if (!cached.active) {
+    userActiveCache.delete(userId);
+    req.session.destroy((err) => {
+      if (err) console.error("[auth] Session destroy error:", err);
+    });
     return res.status(401).json({ message: "Account deactivated" });
   }
   return next();

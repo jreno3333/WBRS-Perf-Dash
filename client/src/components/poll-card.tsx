@@ -6,6 +6,7 @@ import { BarChart3, Check, Vote } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { PollWithResults } from "@shared/schema";
+import { usePageVisible } from "@/hooks/use-page-visible";
 
 function PollItem({ poll }: { poll: PollWithResults }) {
   const [selectedOption, setSelectedOption] = useState<string | null>(poll.userVotedOptionId || null);
@@ -98,9 +99,10 @@ function PollItem({ poll }: { poll: PollWithResults }) {
 }
 
 export function PollCard() {
+  const isVisible = usePageVisible();
   const { data } = useQuery<{ polls: PollWithResults[] }>({
     queryKey: ["/api/polls/active"],
-    refetchInterval: 60 * 1000, // Refresh every minute
+    refetchInterval: isVisible ? 60 * 1000 : false,
   });
 
   const activePolls = data?.polls || [];

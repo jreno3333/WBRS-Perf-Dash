@@ -1,5 +1,5 @@
 import { APP_VERSION } from "@/lib/version";
-import { useState, useMemo, useCallback, useRef } from "react";
+import { lazy, Suspense, useState, useMemo, useCallback, useRef } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,7 +12,12 @@ import { SummaryCards } from "@/components/summary-cards";
 import { LeaderboardSkeleton } from "@/components/leaderboard-skeleton";
 import { StateBreakdown } from "@/components/state-breakdown";
 import { MarketBreakdown } from "@/components/market-breakdown";
-import { AnalyticsPanel } from "@/components/analytics-panel";
+// AnalyticsPanel is collapsed by default and pulls its own queries — defer
+// its bundle so initial dashboard paint doesn't pay for code the user may
+// never expand.
+const AnalyticsPanel = lazy(() =>
+  import("@/components/analytics-panel").then((m) => ({ default: m.AnalyticsPanel })),
+);
 import { BannerTicker } from "@/components/banner-ticker";
 import { PollCard } from "@/components/poll-card";
 import { format } from "date-fns";
@@ -20,6 +25,7 @@ import type { LeaderboardData, HourlySalesData, MarketWithRestaurants } from "@s
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { computeExecutionScore, formatCurrency } from "@/lib/grading";
 import { useGradingConfig } from "@/hooks/use-grading-config";
+import { usePageVisible } from "@/hooks/use-page-visible";
 
 // Get current date in Central timezone (business day)
 function getCentralDate(): Date {
@@ -71,11 +77,15 @@ export default function Dashboard() {
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const centralToday = getCentralDate();
   const isToday = format(centralToday, "yyyy-MM-dd") === dateStr;
+  const isVisible = usePageVisible();
 
-  // Auto-refresh every 5 minutes for live sales data when viewing today
-  const refetchInterval = isToday ? 5 * 60 * 1000 : false;
+  // Auto-refresh every 5 minutes for live sales data when viewing today.
+  // Skip polling when the tab is backgrounded — refetchOnWindowFocus picks
+  // up any staleness on return, and we save N×stores of API calls per minute.
+  const shouldPoll = isToday && isVisible;
+  const refetchInterval = shouldPoll ? 5 * 60 * 1000 : false;
   // Slower refresh (15 min) for data that changes less frequently (crew, trends, check avg)
-  const slowRefetchInterval = isToday ? 15 * 60 * 1000 : false;
+  const slowRefetchInterval = shouldPoll ? 15 * 60 * 1000 : false;
 
   const secondaryStaleTime = isToday ? 4 * 60 * 1000 : Infinity;
   const slowStaleTime = isToday ? 14 * 60 * 1000 : Infinity;
@@ -887,8 +897,10 @@ export default function Dashboard() {
               />
             )}
 
-            {/* Analytics Panel */}
-            <AnalyticsPanel dateStr={dateStr} isToday={isToday} checkAverageByRestaurant={checkAverageByRestaurant} />
+            {/* Analytics Panel — lazy: doesn't render until its chunk loads */}
+            <Suspense fallback={null}>
+              <AnalyticsPanel dateStr={dateStr} isToday={isToday} checkAverageByRestaurant={checkAverageByRestaurant} />
+            </Suspense>
 
             {/* Restaurant Rankings */}
             <div className="space-y-3">

@@ -18,8 +18,9 @@ import { format, differenceInDays, isFuture, parseISO, formatDistanceToNow } fro
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Restaurant, MarketWithRestaurants, TickerMessage, PollWithResults, GradingConfigData, ScoringTier } from "@shared/schema";
-import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
+import type { Restaurant, MarketWithRestaurants, TickerMessage, PollWithResults } from "@shared/schema";
+import type { GradingConfigData, ScoringTier } from "@shared/grading-config";
+import { DEFAULT_GRADING_CONFIG } from "@shared/grading-config";
 
 const REVENUE_PORTS = [
   { id: "dine_in", label: "Dine In", icon: Utensils, color: "bg-emerald-500" },
