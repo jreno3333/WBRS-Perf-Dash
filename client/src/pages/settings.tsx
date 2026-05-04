@@ -2920,10 +2920,27 @@ function SalesPlanUploadCard() {
     queryKey: ["/api/sales-plan/summary"],
   });
 
+  const { data: coverage } = useQuery<{
+    quarterStart: string;
+    throughDate: string;
+    missing: Array<{
+      restaurantId: string;
+      name: string;
+      unitNumber: string | null;
+      missingCount: number;
+      firstMissing: string | null;
+      lastMissing: string | null;
+      totalExpected: number;
+    }>;
+  }>({
+    queryKey: ["/api/sales-plan/coverage"],
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async () => apiRequest("DELETE", "/api/sales-plan"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-plan/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-plan/coverage"] });
       setUploadResult(null);
       toast({ title: "Sales plan cleared", description: "All sales plan data has been deleted." });
     },
@@ -2961,6 +2978,7 @@ function SalesPlanUploadCard() {
       const result = await response.json();
       setUploadResult(result);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-plan/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-plan/coverage"] });
       toast({
         title: "Upload complete",
         description: `${result.inserted} plan records imported across ${result.sheetsProcessed?.length ?? 0} units.`,
@@ -2997,6 +3015,12 @@ function SalesPlanUploadCard() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {coverage && coverage.missing.length > 0 && (
+                <Badge variant="destructive" data-testid="badge-sales-plan-missing">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  {coverage.missing.length} {coverage.missing.length === 1 ? "unit" : "units"} missing days
+                </Badge>
+              )}
               {summary && summary.totalRecords > 0 && (
                 <Badge variant="secondary" data-testid="badge-sales-plan-count">
                   {summary.totalRecords.toLocaleString()} records
@@ -3009,6 +3033,68 @@ function SalesPlanUploadCard() {
         <CollapsibleContent>
           <CardContent>
             <div className="space-y-4">
+              {coverage && coverage.missing.length > 0 && (
+                <div
+                  className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2"
+                  data-testid="banner-sales-plan-coverage"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">
+                        {coverage.missing.length} {coverage.missing.length === 1 ? "unit is" : "units are"} missing plan rows for the current quarter
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Quarter window: {formatDate(coverage.quarterStart)} – {formatDate(coverage.throughDate)}.
+                        Upload an updated sheet below to fill the gaps.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        document.querySelector('[data-testid="label-sales-plan-upload"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }}
+                      data-testid="button-sales-plan-coverage-jump"
+                    >
+                      Go to upload
+                    </Button>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto rounded border border-border/50 bg-background/40">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th className="text-left px-2 py-1 font-medium">Unit</th>
+                          <th className="text-right px-2 py-1 font-medium">Missing days</th>
+                          <th className="text-left px-2 py-1 font-medium">First gap</th>
+                          <th className="text-left px-2 py-1 font-medium">Last gap</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {coverage.missing.map(m => (
+                          <tr
+                            key={m.restaurantId}
+                            className="border-t border-border/40"
+                            data-testid={`row-coverage-missing-${m.restaurantId}`}
+                          >
+                            <td className="px-2 py-1">
+                              {m.unitNumber ? <span className="font-mono">{m.unitNumber}</span> : null}
+                              {m.unitNumber ? " · " : ""}
+                              {m.name}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {m.missingCount} / {m.totalExpected}
+                            </td>
+                            <td className="px-2 py-1">{m.firstMissing ? formatDate(m.firstMissing) : "—"}</td>
+                            <td className="px-2 py-1">{m.lastMissing ? formatDate(m.lastMissing) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {summary && summary.totalRecords > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="text-center p-3 rounded-lg border">

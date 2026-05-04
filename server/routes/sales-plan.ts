@@ -359,6 +359,88 @@ router.get("/api/sales-plan/qtd", async (req, res) => {
   }
 });
 
+// Coverage check: which active units are missing plan rows for any day from
+// the current fiscal quarter start through today (Central). Used to warn
+// admins that an upload didn't cover the full quarter window.
+router.get("/api/sales-plan/coverage", async (req, res) => {
+  try {
+    const realToday = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const todayStr = req.query.date ? String(req.query.date) : realToday;
+    const quarterStart = getQuarterStart(todayStr);
+    const throughDate = todayStr;
+
+    if (throughDate < quarterStart) {
+      return res.json({ quarterStart, throughDate, missing: [] });
+    }
+
+    // Build the full set of expected dates in the window.
+    const expectedDates: string[] = [];
+    for (let ms = fcToUtc(quarterStart); ms <= fcToUtc(throughDate); ms += FC_MS_PER_DAY) {
+      expectedDates.push(fcFmt(ms));
+    }
+
+    // Active units (skip training units whose open date is in the future).
+    const allRestaurants = await db.select({
+      id: restaurants.id,
+      name: restaurants.name,
+      unitNumber: restaurants.unitNumber,
+      isActive: restaurants.isActive,
+      openDate: restaurants.openDate,
+    }).from(restaurants);
+
+    const eligible = allRestaurants.filter(r => {
+      if (!r.isActive) return false;
+      if (r.openDate && String(r.openDate) > throughDate) return false;
+      return true;
+    });
+
+    // Existing plan dates per restaurant in the window.
+    const planRows = await db.select({
+      restaurantId: salesPlanDaily.restaurantId,
+      date: salesPlanDaily.date,
+    })
+      .from(salesPlanDaily)
+      .where(and(
+        gte(salesPlanDaily.date, quarterStart),
+        lte(salesPlanDaily.date, throughDate),
+      ));
+
+    const haveByRestaurant = new Map<string, Set<string>>();
+    for (const r of planRows) {
+      let set = haveByRestaurant.get(r.restaurantId);
+      if (!set) { set = new Set(); haveByRestaurant.set(r.restaurantId, set); }
+      set.add(r.date);
+    }
+
+    const missing = eligible
+      .map(r => {
+        const have = haveByRestaurant.get(r.id) ?? new Set<string>();
+        // Restrict the expected window to days on/after the unit's open date.
+        const startForUnit = r.openDate && String(r.openDate) > quarterStart
+          ? String(r.openDate)
+          : quarterStart;
+        const expected = expectedDates.filter(d => d >= startForUnit);
+        const missingDates = expected.filter(d => !have.has(d));
+        return {
+          restaurantId: r.id,
+          name: r.name,
+          unitNumber: r.unitNumber,
+          missingCount: missingDates.length,
+          firstMissing: missingDates[0] ?? null,
+          lastMissing: missingDates[missingDates.length - 1] ?? null,
+          totalExpected: expected.length,
+        };
+      })
+      .filter(r => r.missingCount > 0)
+      .sort((a, b) => b.missingCount - a.missingCount);
+
+    res.json({ quarterStart, throughDate, missing });
+  } catch (error: any) {
+    console.error("[sales-plan] coverage error:", error);
+    res.status(500).json({ error: "Failed to fetch sales plan coverage", details: error?.message });
+  }
+});
+
 router.delete("/api/sales-plan", async (_req, res) => {
   try {
     await db.delete(salesPlanDaily);
