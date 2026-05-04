@@ -1,8 +1,9 @@
 import { Router } from "express";
 import * as XLSX from "xlsx";
 import { db } from "../db";
-import { salesPlanDaily, restaurants, hourlySales } from "@shared/schema";
+import { salesPlanDaily, restaurants } from "@shared/schema";
 import { sql, and, gte, lte, eq } from "drizzle-orm";
+import { getAllHourlyPosSalesRange } from "../xenial-webhook";
 
 // Fiscal calendar (mirrors client/src/lib/fiscal-calendar.ts).
 // Anchor: FY2026 P1 = Saturday Oct 4, 2025; periods follow 4-4-5 weeks per quarter.
@@ -301,18 +302,10 @@ router.get("/api/sales-plan/qtd", async (req, res) => {
       ))
       .groupBy(salesPlanDaily.restaurantId);
 
-    // Actual totals from hourly_sales (POS rollup), bucketed by Central calendar day.
-    const actualRows = await db.select({
-      restaurantId: hourlySales.restaurantId,
-      bucketDate: sql<string>`(${hourlySales.salesDate} AT TIME ZONE 'America/Chicago')::date`,
-      total: sql<string>`SUM(${hourlySales.actualSales})`,
-    })
-      .from(hourlySales)
-      .where(and(
-        gte(hourlySales.salesDate, new Date(`${quarterStart}T00:00:00Z`)),
-        lte(hourlySales.salesDate, new Date(`${throughDate}T23:59:59Z`)),
-      ))
-      .groupBy(hourlySales.restaurantId, sql`(${hourlySales.salesDate} AT TIME ZONE 'America/Chicago')::date`);
+    // Actual totals from POS (pos_orders), bucketed in each restaurant's local
+    // timezone via the shared POS aggregation helper. Same source of truth as
+    // the leaderboard's POS-driven sales numbers.
+    const posMap = await getAllHourlyPosSalesRange(quarterStart, throughDate);
 
     const result: Record<string, { plannedSales: number; actualSales: number }> = {};
     for (const r of planRows) {
@@ -321,13 +314,19 @@ router.get("/api/sales-plan/qtd", async (req, res) => {
         actualSales: 0,
       };
     }
-    for (const r of actualRows) {
-      const ds = String(r.bucketDate).slice(0, 10);
-      if (ds < quarterStart || ds > throughDate) continue;
-      const entry = result[r.restaurantId] ?? { plannedSales: 0, actualSales: 0 };
-      entry.actualSales += parseFloat(r.total ?? "0") || 0;
-      result[r.restaurantId] = entry;
-    }
+    posMap.forEach((sales, key) => {
+      // Key shape: `${restaurantId}-${localDate YYYY-MM-DD}-${hour}`
+      // restaurantId is a UUID (contains dashes), so parse from the right:
+      // the 10-char date sits immediately before the final dash + hour.
+      const lastDash = key.lastIndexOf("-");
+      if (lastDash < 11) return;
+      const localDate = key.slice(lastDash - 10, lastDash);
+      const restaurantId = key.slice(0, lastDash - 11);
+      if (localDate < quarterStart || localDate > throughDate) return;
+      const entry = result[restaurantId] ?? { plannedSales: 0, actualSales: 0 };
+      entry.actualSales += Number(sales) || 0;
+      result[restaurantId] = entry;
+    });
     for (const id of Object.keys(result)) {
       result[id].actualSales = Math.round(result[id].actualSales);
     }
