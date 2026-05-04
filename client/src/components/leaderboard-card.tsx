@@ -1773,8 +1773,12 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                       >
                         {formatPercentage(planQtdVar)}
                       </td>
-                      <td className="pl-2 pt-0.5 text-muted-foreground">—</td>
-                      <td />
+                      <td
+                        className="pl-2 pt-0.5 text-[9px] uppercase tracking-wider text-muted-foreground text-left whitespace-nowrap"
+                        colSpan={2}
+                      >
+                        ← Plan
+                      </td>
                     </tr>
                   )}
                 </tbody>
