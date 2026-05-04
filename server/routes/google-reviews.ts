@@ -44,6 +44,7 @@ router.post("/api/google-reviews/sync", async (req, res) => {
       message: "Google reviews sync completed",
       success: result.success,
       failed: result.failed,
+      errors: result.errors,
     });
   } catch (error: any) {
     console.error("Error syncing Google reviews:", error);

@@ -18,56 +18,67 @@ interface GooglePlacesResponse {
   };
 }
 
-export async function fetchGoogleReviews(placeId: string): Promise<{ rating: number; reviewCount: number } | null> {
+export type FetchGoogleReviewsResult =
+  | { ok: true; rating: number; reviewCount: number }
+  | { ok: false; error: string };
+
+export async function fetchGoogleReviews(placeId: string): Promise<FetchGoogleReviewsResult> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  
+
   if (!apiKey) {
-    console.log("[Google Places] API key not configured");
-    return null;
+    return { ok: false, error: "GOOGLE_PLACES_API_KEY not configured" };
   }
-  
+
   try {
     const url = `https://places.googleapis.com/v1/places/${placeId}?fields=rating,userRatingCount,displayName&key=${apiKey}`;
-    
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[Google Places] API error for ${placeId}: ${response.status} - ${errorText}`);
-      return null;
+      // Try to extract a human-readable message from the Google error payload
+      let msg = `HTTP ${response.status}`;
+      try {
+        const parsed = JSON.parse(errorText);
+        if (parsed?.error?.message) msg = parsed.error.message;
+      } catch {
+        if (errorText) msg = errorText.slice(0, 300);
+      }
+      return { ok: false, error: msg };
     }
-    
+
     const data: GooglePlacesResponse = await response.json();
-    
+
     if (data.rating === undefined) {
-      console.log(`[Google Places] No rating data for place ${placeId}`);
-      return null;
+      return { ok: false, error: "No rating data returned for this place" };
     }
-    
+
     return {
+      ok: true,
       rating: data.rating,
       reviewCount: data.userRatingCount || 0,
     };
   } catch (error) {
     console.error(`[Google Places] Error fetching reviews for ${placeId}:`, error);
-    return null;
+    return { ok: false, error: error instanceof Error ? error.message : "Unknown fetch error" };
   }
 }
 
-export async function syncGoogleReviewsForRestaurant(restaurantId: string, placeId: string): Promise<boolean> {
+export async function syncGoogleReviewsForRestaurant(restaurantId: string, placeId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const reviews = await fetchGoogleReviews(placeId);
-  
-  if (!reviews) {
-    return false;
+
+  if (!reviews.ok) {
+    return reviews;
   }
-  
+
   const today = new Date().toISOString().split('T')[0];
-  
+
   try {
     await db.insert(dailyGoogleReviews)
       .values({
@@ -85,38 +96,41 @@ export async function syncGoogleReviewsForRestaurant(restaurantId: string, place
           lastSyncedAt: sql`NOW()`,
         },
       });
-    
+
     console.log(`[Google Reviews] Synced ${restaurantId}: ${reviews.rating} stars (${reviews.reviewCount} reviews)`);
-    return true;
+    return { ok: true };
   } catch (error) {
     console.error(`[Google Reviews] Error saving reviews for ${restaurantId}:`, error);
-    return false;
+    return { ok: false, error: error instanceof Error ? error.message : "DB write failed" };
   }
 }
 
-export async function syncAllGoogleReviews(): Promise<{ success: number; failed: number }> {
+export async function syncAllGoogleReviews(): Promise<{ success: number; failed: number; errors: string[] }> {
   const allRestaurants = await db.select().from(restaurants).where(eq(restaurants.isActive, true));
-  
+
   let success = 0;
   let failed = 0;
-  
+  const errors: string[] = [];
+
   for (const restaurant of allRestaurants) {
     if (!restaurant.googlePlaceId) {
       continue;
     }
-    
+
     const result = await syncGoogleReviewsForRestaurant(restaurant.id, restaurant.googlePlaceId);
-    if (result) {
+    if (result.ok) {
       success++;
     } else {
       failed++;
+      // Collect unique error messages so the UI can surface the real reason
+      if (!errors.includes(result.error)) errors.push(result.error);
     }
-    
+
     await new Promise(resolve => setTimeout(resolve, 200));
   }
-  
+
   console.log(`[Google Reviews] Sync complete: ${success} success, ${failed} failed`);
-  return { success, failed };
+  return { success, failed, errors };
 }
 
 export async function markEndOfDaySnapshots(): Promise<number> {

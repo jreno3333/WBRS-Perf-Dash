@@ -627,19 +627,31 @@ function GoogleReviewsCard({
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/google/sync");
+      const response = await apiRequest("POST", "/api/google-reviews/sync", {});
+      return response.json() as Promise<{ message: string; success: number; failed: number; errors?: string[] }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
-      toast({
-        title: "Google Reviews synced",
-        description: "Review data has been updated for all restaurants.",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/google-reviews/status"] });
+      if (data.failed > 0 && data.success === 0) {
+        toast({
+          title: "Sync failed",
+          description: data.errors?.[0] || `${data.failed} restaurants failed to sync.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Google Reviews synced",
+          description: data.failed > 0
+            ? `Updated ${data.success} restaurants. ${data.failed} failed: ${data.errors?.[0] || "see logs"}`
+            : `Updated ${data.success} restaurants.`,
+        });
+      }
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Sync failed",
-        description: "Make sure GOOGLE_PLACES_API_KEY is configured.",
+        description: error instanceof Error ? error.message : "Unable to reach the sync endpoint.",
         variant: "destructive",
       });
     },
@@ -1087,16 +1099,17 @@ function GoogleReviewsSyncCard() {
   const syncMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/google-reviews/sync", {});
-      return response.json() as Promise<{ message: string; success: number; failed: number }>;
+      return response.json() as Promise<{ message: string; success: number; failed: number; errors?: string[] }>;
     },
     onSuccess: (data) => {
       setLastSyncResult(data.success > 0 ? "success" : "warning");
+      const firstErr = data.errors?.[0];
       toast({
-        title: data.success > 0 ? "Google Reviews Synced" : "Sync Completed - No Data",
-        description: data.success > 0 
-          ? `Successfully synced ${data.success} restaurants.${data.failed > 0 ? ` (${data.failed} failed)` : ""}`
-          : data.failed > 0 
-            ? `No data synced. ${data.failed} restaurants failed.`
+        title: data.success > 0 ? "Google Reviews Synced" : "Sync Failed",
+        description: data.success > 0
+          ? `Successfully synced ${data.success} restaurants.${data.failed > 0 ? ` (${data.failed} failed: ${firstErr || "see logs"})` : ""}`
+          : data.failed > 0
+            ? firstErr || `No data synced. ${data.failed} restaurants failed.`
             : "No restaurants configured with Place IDs.",
         variant: data.success > 0 ? "default" : "destructive",
       });
