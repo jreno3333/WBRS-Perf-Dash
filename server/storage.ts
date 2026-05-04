@@ -399,6 +399,8 @@ export class DatabaseStorage {
         projectedLaborPercent: Math.round(projectedLaborPercent * 10) / 10,
         laborTarget,
         willHitLaborTarget,
+        dayPlanLaborPct,
+        wtdPlanLaborPct,
         status: unitStatus.status,
         daysOpen: unitStatus.daysOpen,
         openDate: restaurant.openDate && !isNaN(new Date(restaurant.openDate).getTime()) ? new Date(restaurant.openDate).toISOString() : null,

@@ -1017,7 +1017,15 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
               const wtdLaborPct = weeklyData && weeklyData.currentWeek > 0 && weeklyData.wtdLaborCost
                 ? (weeklyData.wtdLaborCost / weeklyData.currentWeek) * 100
                 : 0;
-              const laborTarget = restaurant.laborTarget || 25;
+              const overrideTarget = restaurant.laborTarget || 25;
+              // Prefer the sales-plan target for the day/week. Fall back to
+              // the per-unit override (or 25%) when no plan row exists.
+              const dayTarget = restaurant.dayPlanLaborPct ?? overrideTarget;
+              const wtdTarget = restaurant.wtdPlanLaborPct ?? overrideTarget;
+              const dayTargetSource = restaurant.dayPlanLaborPct != null ? 'plan' : 'default';
+              const wtdTargetSource = restaurant.wtdPlanLaborPct != null ? 'plan' : 'default';
+              const dayTargetLabel = `${dayTargetSource === 'plan' ? 'Plan' : 'Default'} target ${dayTarget.toFixed(1)}%`;
+              const wtdTargetLabel = `${wtdTargetSource === 'plan' ? 'Plan' : 'Default'} target ${wtdTarget.toFixed(1)}%`;
 
               return (
                 <div className="mt-2 flex justify-between items-center text-xs">
@@ -1028,13 +1036,21 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
                     {totals.totalLaborDollars > 0 && (
                       <span className="text-muted-foreground">
                         LC%{' '}
-                        <span className={`font-medium ${dayLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
+                        <span
+                          className={`font-medium ${dayLaborPct <= dayTarget ? "text-green-500" : "text-red-500"}`}
+                          title={dayTargetLabel}
+                          data-testid={`text-lc-day-${restaurant.restaurantId}`}
+                        >
                           Day {dayLaborPct.toFixed(1)}%
                         </span>
                         {wtdLaborPct > 0 && (
                           <>
                             {' '}
-                            <span className={`font-medium ${wtdLaborPct <= laborTarget ? "text-green-500" : "text-red-500"}`}>
+                            <span
+                              className={`font-medium ${wtdLaborPct <= wtdTarget ? "text-green-500" : "text-red-500"}`}
+                              title={wtdTargetLabel}
+                              data-testid={`text-lc-wtd-${restaurant.restaurantId}`}
+                            >
                               WTD {wtdLaborPct.toFixed(1)}%
                             </span>
                           </>
