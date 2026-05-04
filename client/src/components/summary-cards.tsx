@@ -5,6 +5,7 @@ import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 import { useGradingConfig } from "@/hooks/use-grading-config";
+import { getFiscalPosition } from "@/lib/fiscal-calendar";
 import type { GradingConfigData } from "@shared/schema";
 
 interface WeeklySalesData {
@@ -606,7 +607,38 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
 
       {/* Total Sales Today */}
       <div data-testid="card-summary-sales" className="rounded-xl border border-border/60 bg-card p-3 sm:p-4">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+        {(() => {
+          const fp = getFiscalPosition();
+          const periodEndShort = new Date(fp.periodEnd + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+          const quarterEndShort = new Date(fp.quarterEnd + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+          return (
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Sales</p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-none"
+                    data-testid="badge-fiscal-ticker"
+                    aria-label="Fiscal calendar info"
+                  >
+                    Q{fp.quarter}·P{fp.period} · Wk {fp.weekInPeriod}/{fp.weeksInPeriod} · {fp.weeksLeftInQuarter}w left in Q{fp.quarter}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="top" className="w-auto max-w-[260px] p-2.5 text-xs space-y-1.5" data-testid="popover-fiscal-ticker">
+                  <div className="font-semibold text-sm">FY{fp.fiscalYear} · Q{fp.quarter} · Period {fp.period}</div>
+                  <div className="text-muted-foreground">
+                    <div>Period: <span className="text-foreground tabular-nums">{fp.periodStart}</span> → <span className="text-foreground tabular-nums">{fp.periodEnd}</span> <span className="opacity-70">({fp.weeksInPeriod}w)</span></div>
+                    <div>Quarter: <span className="text-foreground tabular-nums">{fp.quarterStart}</span> → <span className="text-foreground tabular-nums">{fp.quarterEnd}</span></div>
+                  </div>
+                  <div className="pt-1 border-t border-border/40 space-y-0.5 tabular-nums">
+                    <div>{fp.weeksLeftInPeriod}w / {fp.daysLeftInPeriod}d left in P{fp.period} <span className="text-muted-foreground">(ends {periodEndShort})</span></div>
+                    <div>{fp.weeksLeftInQuarter}w / {fp.daysLeftInQuarter}d left in Q{fp.quarter} <span className="text-muted-foreground">(ends {quarterEndShort})</span></div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          );
+        })()}
         <div className="flex items-baseline gap-2 mt-1">
           <p className="text-2xl font-bold tabular-nums" data-testid="text-total-sales">
             {formatCurrency(totalTodaySales)}
