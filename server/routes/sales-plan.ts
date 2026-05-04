@@ -1,9 +1,8 @@
 import { Router } from "express";
 import * as XLSX from "xlsx";
-import { db } from "../db";
-import { salesPlanDaily, restaurants } from "@shared/schema";
-import { sql, and, gte, lte, eq } from "drizzle-orm";
-import { getAllHourlyPosSalesRange } from "../xenial-webhook";
+import { db, posDb } from "../db";
+import { salesPlanDaily, restaurants, posOrders, locationMapping } from "@shared/schema";
+import { sql, and, gte, lt, lte, eq } from "drizzle-orm";
 
 // Fiscal calendar (mirrors client/src/lib/fiscal-calendar.ts).
 // Anchor: FY2026 P1 = Saturday Oct 4, 2025; periods follow 4-4-5 weeks per quarter.
@@ -302,10 +301,36 @@ router.get("/api/sales-plan/qtd", async (req, res) => {
       ))
       .groupBy(salesPlanDaily.restaurantId);
 
-    // Actual totals from POS (pos_orders), bucketed in each restaurant's local
-    // timezone via the shared POS aggregation helper. Same source of truth as
-    // the leaderboard's POS-driven sales numbers.
-    const posMap = await getAllHourlyPosSalesRange(quarterStart, throughDate);
+    // Actual totals from POS (pos_orders), bucketed by **Central** calendar
+    // day so the window aligns with `sales_plan_daily.date` upload semantics.
+    // Pad the businessDate filter by ±1 day to capture orders whose UTC
+    // timestamp lands outside the Central day boundary, then filter exactly
+    // on the Central-bucketed date.
+    const paddedStart = new Date(`${quarterStart}T00:00:00Z`);
+    paddedStart.setUTCDate(paddedStart.getUTCDate() - 1);
+    const paddedEnd = new Date(`${throughDate}T23:59:59Z`);
+    paddedEnd.setUTCDate(paddedEnd.getUTCDate() + 2);
+
+    const centralDateExpr = sql<string>`to_char((${posOrders.orderClosedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD')`;
+    const posRows = await posDb.select({
+      storeNumber: posOrders.storeNumber,
+      centralDate: centralDateExpr,
+      total: sql<string>`SUM(${posOrders.orderTotal}::numeric)`,
+    })
+      .from(posOrders)
+      .where(and(
+        gte(posOrders.businessDate, paddedStart),
+        lt(posOrders.businessDate, paddedEnd),
+      ))
+      .groupBy(posOrders.storeNumber, centralDateExpr);
+
+    // Map Xenial store numbers → restaurant ids (location_mapping lives in main db).
+    const mappingRows = await db.select({
+      xenialStoreNumber: locationMapping.xenialStoreNumber,
+      restaurantId: locationMapping.restaurantId,
+    }).from(locationMapping);
+    const storeToRestaurant = new Map<string, string>();
+    for (const m of mappingRows) storeToRestaurant.set(m.xenialStoreNumber, m.restaurantId);
 
     const result: Record<string, { plannedSales: number; actualSales: number }> = {};
     for (const r of planRows) {
@@ -314,19 +339,15 @@ router.get("/api/sales-plan/qtd", async (req, res) => {
         actualSales: 0,
       };
     }
-    posMap.forEach((sales, key) => {
-      // Key shape: `${restaurantId}-${localDate YYYY-MM-DD}-${hour}`
-      // restaurantId is a UUID (contains dashes), so parse from the right:
-      // the 10-char date sits immediately before the final dash + hour.
-      const lastDash = key.lastIndexOf("-");
-      if (lastDash < 11) return;
-      const localDate = key.slice(lastDash - 10, lastDash);
-      const restaurantId = key.slice(0, lastDash - 11);
-      if (localDate < quarterStart || localDate > throughDate) return;
+    for (const r of posRows) {
+      const cd = String(r.centralDate);
+      if (cd < quarterStart || cd > throughDate) continue;
+      const restaurantId = storeToRestaurant.get(r.storeNumber);
+      if (!restaurantId) continue;
       const entry = result[restaurantId] ?? { plannedSales: 0, actualSales: 0 };
-      entry.actualSales += Number(sales) || 0;
+      entry.actualSales += parseFloat(r.total ?? "0") || 0;
       result[restaurantId] = entry;
-    });
+    }
     for (const id of Object.keys(result)) {
       result[id].actualSales = Math.round(result[id].actualSales);
     }
