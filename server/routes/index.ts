@@ -17,6 +17,7 @@ import marketsRouter from "./markets";
 import performanceHistoryRouter from "./performance-history";
 import leadersRouter from "./leaders";
 import historicalSalesRouter from "./historical-sales";
+import salesPlanRouter from "./sales-plan";
 import analyticsRouter from "./analytics";
 import notesRouter from "./notes";
 import tickerRouter from "./ticker";
@@ -87,6 +88,7 @@ export async function registerRoutes(
   app.use(performanceHistoryRouter);
   app.use(leadersRouter);
   app.use(historicalSalesRouter);
+  app.use(salesPlanRouter);
   app.use(analyticsRouter);
   app.use(notesRouter);
   app.use(tickerRouter);

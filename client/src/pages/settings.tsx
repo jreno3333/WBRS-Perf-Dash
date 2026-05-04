@@ -414,6 +414,8 @@ export default function SettingsPage() {
 
           <HistoricalSalesUploadCard />
 
+          <SalesPlanUploadCard />
+
           <TickerMessagesCard />
 
           <MilestoneConfigCard />
@@ -2888,6 +2890,233 @@ function SalesSummaryReportCard() {
                 )}
               </div>
             )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function SalesPlanUploadCard() {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [sourceLabel, setSourceLabel] = useState("");
+  const [uploadResult, setUploadResult] = useState<{
+    inserted: number;
+    skipped: number;
+    totalRows: number;
+    sheetsProcessed: Array<{ sheet: string; unitNumber: string; rows: number }>;
+    unmatchedStores: string[];
+  } | null>(null);
+
+  const { data: summary } = useQuery<{
+    totalRecords: number;
+    minDate: string | null;
+    maxDate: string | null;
+    storeCount: number;
+    sources: string[];
+  }>({
+    queryKey: ["/api/sales-plan/summary"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => apiRequest("DELETE", "/api/sales-plan"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-plan/summary"] });
+      setUploadResult(null);
+      toast({ title: "Sales plan cleared", description: "All sales plan data has been deleted." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete sales plan data.", variant: "destructive" });
+    },
+  });
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".xlsx") && !lower.endsWith(".xls")) {
+      toast({ title: "Invalid file", description: "Please upload an .xlsx file.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const buf = await file.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk) as unknown as number[]);
+      }
+      const fileBase64 = btoa(binary);
+
+      const response = await apiRequest("POST", "/api/sales-plan/upload", {
+        fileBase64,
+        fileName: file.name,
+        sourceLabel: sourceLabel.trim() || undefined,
+      });
+      const result = await response.json();
+      setUploadResult(result);
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-plan/summary"] });
+      toast({
+        title: "Upload complete",
+        description: `${result.inserted} plan records imported across ${result.sheetsProcessed?.length ?? 0} units.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Upload failed",
+        description: error?.message || "Failed to upload sales plan file.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "N/A";
+    try { return format(parseISO(dateStr), "MMM d, yyyy"); } catch { return dateStr; }
+  };
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 space-y-0" data-testid="trigger-sales-plan">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Sales Plan (Forecast)
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Upload a daily sales plan workbook (.xlsx). One sheet per unit, columns: location_code, business_date, net_sales, paper_cost_pct, variable_labor_pct.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {summary && summary.totalRecords > 0 && (
+                <Badge variant="secondary" data-testid="badge-sales-plan-count">
+                  {summary.totalRecords.toLocaleString()} records
+                </Badge>
+              )}
+              <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent>
+            <div className="space-y-4">
+              {summary && summary.totalRecords > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-2xl font-bold" data-testid="text-sales-plan-records">{summary.totalRecords.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">Records</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-2xl font-bold" data-testid="text-sales-plan-stores">{summary.storeCount}</div>
+                    <div className="text-xs text-muted-foreground">Units</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-sm font-semibold" data-testid="text-sales-plan-from">{formatDate(summary.minDate)}</div>
+                    <div className="text-xs text-muted-foreground">From</div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg border">
+                    <div className="text-sm font-semibold" data-testid="text-sales-plan-to">{formatDate(summary.maxDate)}</div>
+                    <div className="text-xs text-muted-foreground">To</div>
+                  </div>
+                </div>
+              )}
+
+              {summary && summary.sources && summary.sources.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Sources loaded: {summary.sources.join(", ")}
+                </div>
+              )}
+
+              <div className="grid sm:grid-cols-[1fr_auto] gap-3 items-end">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground" htmlFor="sales-plan-label">
+                    Source label (optional, e.g. "Q3 2026")
+                  </label>
+                  <Input
+                    id="sales-plan-label"
+                    value={sourceLabel}
+                    onChange={(e) => setSourceLabel(e.target.value)}
+                    placeholder="Q3 2026"
+                    disabled={uploading}
+                    data-testid="input-sales-plan-label"
+                  />
+                </div>
+                <label className="cursor-pointer" data-testid="label-sales-plan-upload">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                    data-testid="input-sales-plan-upload"
+                  />
+                  <Button asChild disabled={uploading} data-testid="button-upload-sales-plan">
+                    <span>
+                      {uploading ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileUp className="h-4 w-4 mr-2" />
+                      )}
+                      {uploading ? "Uploading..." : "Upload Plan"}
+                    </span>
+                  </Button>
+                </label>
+              </div>
+
+              {summary && summary.totalRecords > 0 && (
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm("Delete all sales plan data? This cannot be undone.")) {
+                        deleteMutation.mutate();
+                      }
+                    }}
+                    disabled={deleteMutation.isPending}
+                    data-testid="button-delete-sales-plan"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear All Plan Data
+                  </Button>
+                </div>
+              )}
+
+              {uploadResult && (
+                <div className="p-3 rounded-lg border bg-muted/30 space-y-2" data-testid="div-sales-plan-upload-result">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm font-medium">Upload Results</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {uploadResult.inserted} records imported from {uploadResult.totalRows} total rows
+                    {uploadResult.skipped > 0 && ` (${uploadResult.skipped} skipped)`}
+                    {uploadResult.sheetsProcessed?.length ? ` across ${uploadResult.sheetsProcessed.length} sheets` : ""}
+                  </div>
+                  {uploadResult.unmatchedStores.length > 0 && (
+                    <div className="text-sm">
+                      <span className="text-amber-500 font-medium">Unmatched units:</span>{" "}
+                      <span className="text-muted-foreground">{uploadResult.unmatchedStores.join(", ")}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>Each sheet name should be the unit number (e.g. <code className="bg-muted px-1 rounded">1237</code>).</p>
+                <p>Columns expected: <code className="bg-muted px-1 rounded">location_code, business_date, gross_sales, comps_discounts, net_sales, paper_cost_pct, variable_labor_pct</code></p>
+                <p>Dates may be Excel serial numbers, ISO (YYYY-MM-DD), or M/D/YYYY. Existing dates are overwritten by the latest upload.</p>
+              </div>
+            </div>
           </CardContent>
         </CollapsibleContent>
       </Card>

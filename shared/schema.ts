@@ -797,6 +797,31 @@ export const insertHistoricalDailySalesSchema = createInsertSchema(historicalDai
 export type InsertHistoricalDailySales = z.infer<typeof insertHistoricalDailySalesSchema>;
 export type HistoricalDailySales = typeof historicalDailySales.$inferSelect;
 
+// Daily sales plan / forecast - uploaded via xlsx for variance vs plan tracking
+export const salesPlanDaily = pgTable("sales_plan_daily", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD
+  plannedNetSales: decimal("planned_net_sales", { precision: 12, scale: 2 }).notNull(),
+  plannedGrossSales: decimal("planned_gross_sales", { precision: 12, scale: 2 }),
+  plannedComps: decimal("planned_comps", { precision: 12, scale: 2 }),
+  plannedPaperCostPct: decimal("planned_paper_cost_pct", { precision: 6, scale: 4 }),
+  plannedVariableLaborPct: decimal("planned_variable_labor_pct", { precision: 6, scale: 4 }),
+  sourceLabel: text("source_label"), // e.g. "Q3 2026"
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+}, (table) => ({
+  uniqueRestaurantDate: uniqueIndex("sales_plan_daily_restaurant_date_idx")
+    .on(table.restaurantId, table.date),
+}));
+
+export const insertSalesPlanDailySchema = createInsertSchema(salesPlanDaily).omit({
+  id: true,
+  uploadedAt: true,
+});
+
+export type InsertSalesPlanDaily = z.infer<typeof insertSalesPlanDailySchema>;
+export type SalesPlanDaily = typeof salesPlanDaily.$inferSelect;
+
 // ─── Restaurant Notes (attached to ranking cards, flow to AI summaries) ──────
 
 export const restaurantNotes = pgTable("restaurant_notes", {
