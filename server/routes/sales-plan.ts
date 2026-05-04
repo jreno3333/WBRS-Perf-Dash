@@ -1,8 +1,44 @@
 import { Router } from "express";
 import * as XLSX from "xlsx";
 import { db } from "../db";
-import { salesPlanDaily, restaurants } from "@shared/schema";
+import { salesPlanDaily, restaurants, hourlySales } from "@shared/schema";
 import { sql, and, gte, lte, eq } from "drizzle-orm";
+
+// Fiscal calendar (mirrors client/src/lib/fiscal-calendar.ts).
+// Anchor: FY2026 P1 = Saturday Oct 4, 2025; periods follow 4-4-5 weeks per quarter.
+const FC_ANCHOR_UTC_MS = Date.UTC(2025, 9, 4);
+const FC_PERIOD_WEEKS = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5];
+const FC_WEEKS_PER_FY = FC_PERIOD_WEEKS.reduce((a, b) => a + b, 0);
+const FC_MS_PER_DAY = 86400000;
+
+function fcToUtc(dateStr: string): number {
+  const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+function fcFmt(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+function getQuarterStart(dateStr: string): string {
+  const todayMs = fcToUtc(dateStr);
+  const daysSince = Math.floor((todayMs - FC_ANCHOR_UTC_MS) / FC_MS_PER_DAY);
+  let fyOffset = Math.floor(daysSince / (FC_WEEKS_PER_FY * 7));
+  let weeksIntoFy = Math.floor((daysSince - fyOffset * FC_WEEKS_PER_FY * 7) / 7);
+  while (weeksIntoFy < 0) { weeksIntoFy += FC_WEEKS_PER_FY; fyOffset -= 1; }
+  let consumed = 0;
+  let periodIdx = 0;
+  for (let i = 0; i < FC_PERIOD_WEEKS.length; i++) {
+    if (weeksIntoFy < consumed + FC_PERIOD_WEEKS[i]) { periodIdx = i; break; }
+    consumed += FC_PERIOD_WEEKS[i];
+  }
+  const quarter = Math.floor(periodIdx / 3);
+  const weeksBeforeQuarter = FC_PERIOD_WEEKS.slice(0, quarter * 3).reduce((a, b) => a + b, 0);
+  const fyStartMs = FC_ANCHOR_UTC_MS + fyOffset * FC_WEEKS_PER_FY * 7 * FC_MS_PER_DAY;
+  return fcFmt(fyStartMs + weeksBeforeQuarter * 7 * FC_MS_PER_DAY);
+}
+function previousDay(dateStr: string): string {
+  return fcFmt(fcToUtc(dateStr) - FC_MS_PER_DAY);
+}
 
 const router = Router();
 
@@ -236,6 +272,70 @@ router.get("/api/sales-plan", async (req, res) => {
   } catch (error: any) {
     console.error("[sales-plan] query error:", error);
     res.status(500).json({ error: "Failed to fetch sales plan" });
+  }
+});
+
+// Quarter-to-date plan vs actual per restaurant. Window: current fiscal quarter
+// start through the previous Central day (today excluded so we compare full days).
+router.get("/api/sales-plan/qtd", async (req, res) => {
+  try {
+    const realToday = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    const todayStr = req.query.date ? String(req.query.date) : realToday;
+    const quarterStart = getQuarterStart(todayStr);
+    const throughDate = previousDay(todayStr);
+
+    // No completed days yet (e.g. on the first Saturday of a quarter) — return empty.
+    if (throughDate < quarterStart) {
+      return res.json({ quarterStart, throughDate, restaurants: {} });
+    }
+
+    // Plan totals from sales_plan_daily.
+    const planRows = await db.select({
+      restaurantId: salesPlanDaily.restaurantId,
+      total: sql<string>`SUM(${salesPlanDaily.plannedNetSales})`,
+    })
+      .from(salesPlanDaily)
+      .where(and(
+        gte(salesPlanDaily.date, quarterStart),
+        lte(salesPlanDaily.date, throughDate),
+      ))
+      .groupBy(salesPlanDaily.restaurantId);
+
+    // Actual totals from hourly_sales (POS rollup), bucketed by Central calendar day.
+    const actualRows = await db.select({
+      restaurantId: hourlySales.restaurantId,
+      bucketDate: sql<string>`(${hourlySales.salesDate} AT TIME ZONE 'America/Chicago')::date`,
+      total: sql<string>`SUM(${hourlySales.actualSales})`,
+    })
+      .from(hourlySales)
+      .where(and(
+        gte(hourlySales.salesDate, new Date(`${quarterStart}T00:00:00Z`)),
+        lte(hourlySales.salesDate, new Date(`${throughDate}T23:59:59Z`)),
+      ))
+      .groupBy(hourlySales.restaurantId, sql`(${hourlySales.salesDate} AT TIME ZONE 'America/Chicago')::date`);
+
+    const result: Record<string, { plannedSales: number; actualSales: number }> = {};
+    for (const r of planRows) {
+      result[r.restaurantId] = {
+        plannedSales: Math.round(parseFloat(r.total ?? "0") || 0),
+        actualSales: 0,
+      };
+    }
+    for (const r of actualRows) {
+      const ds = String(r.bucketDate).slice(0, 10);
+      if (ds < quarterStart || ds > throughDate) continue;
+      const entry = result[r.restaurantId] ?? { plannedSales: 0, actualSales: 0 };
+      entry.actualSales += parseFloat(r.total ?? "0") || 0;
+      result[r.restaurantId] = entry;
+    }
+    for (const id of Object.keys(result)) {
+      result[id].actualSales = Math.round(result[id].actualSales);
+    }
+
+    res.json({ quarterStart, throughDate, restaurants: result });
+  } catch (error: any) {
+    console.error("[sales-plan] qtd error:", error);
+    res.status(500).json({ error: "Failed to fetch QTD plan variance", details: error?.message });
   }
 });
 

@@ -333,17 +333,15 @@ export default function Dashboard() {
     staleTime: slowStaleTime,
   });
 
-  interface TwoWeekTrendData {
-    trailingStart: string;
-    trailingEnd: string;
-    priorStart: string;
-    priorEnd: string;
-    restaurants: Record<string, { trailing: number; prior: number }>;
+  interface PlanQtdData {
+    quarterStart: string;
+    throughDate: string;
+    restaurants: Record<string, { plannedSales: number; actualSales: number }>;
   }
-  const { data: twoWeekTrendData } = useQuery<TwoWeekTrendData>({
-    queryKey: ["/api/two-week-trend", dateStr],
+  const { data: planQtdData } = useQuery<PlanQtdData>({
+    queryKey: ["/api/sales-plan/qtd", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/two-week-trend?date=${dateStr}`, { credentials: "include" });
+      const res = await fetch(`/api/sales-plan/qtd?date=${dateStr}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -974,7 +972,8 @@ export default function Dashboard() {
                           attachmentCategories={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.categories}
                           overallAttachScore={attachmentRatesResponse?.restaurants?.[restaurant.restaurantId]?.overallAttachScore}
                           helperRewardPoints={helperRewardsByRestaurant?.[restaurant.restaurantId]}
-                          twoWeekTrend={twoWeekTrendData?.restaurants?.[restaurant.restaurantId]}
+                          planQtd={planQtdData?.restaurants?.[restaurant.restaurantId]}
+                          planQtdRange={planQtdData ? { quarterStart: planQtdData.quarterStart, throughDate: planQtdData.throughDate } : undefined}
                         />
                       </div>
                     );

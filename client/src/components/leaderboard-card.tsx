@@ -182,12 +182,13 @@ interface LeaderboardCardProps {
   attachmentCategories?: Record<string, { attachRate: number }>;
   overallAttachScore?: number;
   helperRewardPoints?: number;
-  twoWeekTrend?: TwoWeekTrendData;
+  planQtd?: PlanQtdData;
+  planQtdRange?: { quarterStart: string; throughDate: string };
 }
 
-interface TwoWeekTrendData {
-  trailing: number;
-  prior: number;
+interface PlanQtdData {
+  plannedSales: number;
+  actualSales: number;
 }
 
 function formatTenure(months: number): string {
@@ -1060,7 +1061,7 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
   );
 });
 
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints, twoWeekTrend }: LeaderboardCardProps) {
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints, planQtd, planQtdRange }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const gradingCfg = useGradingConfig();
 
@@ -1115,14 +1116,21 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
     : 0;
   const showEow = !!(weeklyData && weeklyData.eowForecast > weeklyData.currentWeek);
 
-  // 2-week trend variances
-  const twoWkVar = twoWeekTrend && twoWeekTrend.prior > 0
-    ? ((twoWeekTrend.trailing / twoWeekTrend.prior) - 1) * 100
+  // QTD vs Plan variance (quarter-to-date through the previous full day)
+  const planQtdVar = planQtd && planQtd.plannedSales > 0
+    ? ((planQtd.actualSales / planQtd.plannedSales) - 1) * 100
     : 0;
-  const twoWkDollar = twoWeekTrend
-    ? twoWeekTrend.trailing - twoWeekTrend.prior
+  const planQtdDollar = planQtd
+    ? planQtd.actualSales - planQtd.plannedSales
     : 0;
-  const showTwoWk = !!(twoWeekTrend && twoWeekTrend.trailing > 0);
+  const showPlanQtd = !!(planQtd && planQtd.plannedSales > 0);
+  const planQtdRangeLabel = planQtdRange
+    ? (() => {
+        const fmt = (iso: string) =>
+          new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+        return `${fmt(planQtdRange.quarterStart)} – ${fmt(planQtdRange.throughDate)}`;
+      })()
+    : "";
 
   // Show all 24 hours individually (no Early Bird combining since we have full POS data)
   // Generate all 24 hours, filling in zeros for missing hours
@@ -1743,24 +1751,27 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                       </tr>
                     </>
                   )}
-                  {/* 2-Week Trend row */}
-                  {showTwoWk && (
-                    <tr>
-                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">2WK</td>
+                  {/* QTD vs Plan row */}
+                  {showPlanQtd && (
+                    <tr title={`${planQtdRangeLabel} · ${planQtdDollar >= 0 ? "+" : ""}${formatCurrency(planQtdDollar)} vs plan`}>
+                      <td className="text-left text-[10px] text-muted-foreground font-medium pr-1.5 pt-0.5 whitespace-nowrap">QTD</td>
                       <td
                         className="font-semibold pl-1 pt-0.5"
-                        data-testid={`text-two-week-sales-${restaurant.restaurantId}`}
+                        data-testid={`text-plan-qtd-actual-${restaurant.restaurantId}`}
                       >
-                        {formatCurrency(twoWeekTrend!.trailing)}
-                      </td>
-                      <td className="text-muted-foreground pl-1 pt-0.5">
-                        {twoWeekTrend!.prior > 0 ? formatCurrency(twoWeekTrend!.prior) : ""}
+                        {formatCurrency(planQtd!.actualSales)}
                       </td>
                       <td
-                        className={`font-medium pl-1 pt-0.5 ${twoWkVar >= 0 ? "text-green-500" : "text-red-500"}`}
-                        data-testid={`badge-two-week-var-${restaurant.restaurantId}`}
+                        className="text-muted-foreground pl-1 pt-0.5"
+                        data-testid={`text-plan-qtd-plan-${restaurant.restaurantId}`}
                       >
-                        {twoWeekTrend!.prior > 0 ? formatPercentage(twoWkVar) : ""}
+                        {formatCurrency(planQtd!.plannedSales)}
+                      </td>
+                      <td
+                        className={`font-medium pl-1 pt-0.5 ${planQtdVar >= 0 ? "text-green-500" : "text-red-500"}`}
+                        data-testid={`badge-plan-qtd-var-${restaurant.restaurantId}`}
+                      >
+                        {formatPercentage(planQtdVar)}
                       </td>
                       <td className="pl-2 pt-0.5 text-muted-foreground">—</td>
                       <td />
