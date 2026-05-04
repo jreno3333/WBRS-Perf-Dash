@@ -467,22 +467,40 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                     <span className="text-xs text-muted-foreground">LC%</span>
                     {market.labor.dayLaborPct !== null && (
-                      <span
-                        className={`text-xs font-medium ${market.labor.dayLaborPct <= market.labor.dayTarget ? "text-green-500" : "text-red-500"}`}
-                        title={laborTargetTooltip(market.labor.dayTarget, market.labor.dayTargetSource, market.labor.dayTargetCoverage)}
-                        data-testid={`text-lc-day-market-${market.id}`}
-                      >
-                        Day {market.labor.dayLaborPct.toFixed(1)}%
-                      </span>
+                      <>
+                        <span
+                          className={`text-xs font-medium ${market.labor.dayLaborPct <= market.labor.dayTarget ? "text-green-500" : "text-red-500"}`}
+                          title={laborTargetTooltip(market.labor.dayTarget, market.labor.dayTargetSource, market.labor.dayTargetCoverage)}
+                          data-testid={`text-lc-day-market-${market.id}`}
+                        >
+                          Day {market.labor.dayLaborPct.toFixed(1)}%
+                        </span>
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title={laborTargetTooltip(market.labor.dayTarget, market.labor.dayTargetSource, market.labor.dayTargetCoverage)}
+                          data-testid={`text-lc-day-target-market-${market.id}`}
+                        >
+                          / {market.labor.dayTarget.toFixed(1)}% target
+                        </span>
+                      </>
                     )}
                     {market.labor.wtdLaborPct !== null && (
-                      <span
-                        className={`text-xs font-medium ${market.labor.wtdLaborPct <= market.labor.wtdTarget ? "text-green-500" : "text-red-500"}`}
-                        title={laborTargetTooltip(market.labor.wtdTarget, market.labor.wtdTargetSource, market.labor.wtdTargetCoverage)}
-                        data-testid={`text-lc-wtd-market-${market.id}`}
-                      >
-                        WTD {market.labor.wtdLaborPct.toFixed(1)}%
-                      </span>
+                      <>
+                        <span
+                          className={`text-xs font-medium ${market.labor.wtdLaborPct <= market.labor.wtdTarget ? "text-green-500" : "text-red-500"}`}
+                          title={laborTargetTooltip(market.labor.wtdTarget, market.labor.wtdTargetSource, market.labor.wtdTargetCoverage)}
+                          data-testid={`text-lc-wtd-market-${market.id}`}
+                        >
+                          WTD {market.labor.wtdLaborPct.toFixed(1)}%
+                        </span>
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title={laborTargetTooltip(market.labor.wtdTarget, market.labor.wtdTargetSource, market.labor.wtdTargetCoverage)}
+                          data-testid={`text-lc-wtd-target-market-${market.id}`}
+                        >
+                          / {market.labor.wtdTarget.toFixed(1)}% target
+                        </span>
+                      </>
                     )}
                   </div>
                 )}

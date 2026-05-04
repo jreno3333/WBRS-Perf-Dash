@@ -737,22 +737,40 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
             <div className="flex items-center gap-1.5 text-xs flex-wrap">
               <span className="text-muted-foreground">LC%</span>
               {companyLabor.dayLaborPct !== null && (
-                <span
-                  className={`font-medium tabular-nums ${companyLabor.dayLaborPct <= companyLabor.dayTarget ? "text-green-500" : "text-red-500"}`}
-                  title={laborTargetTooltip(companyLabor.dayTarget, companyLabor.dayTargetSource, companyLabor.dayTargetCoverage)}
-                  data-testid="text-lc-day-company"
-                >
-                  Day {companyLabor.dayLaborPct.toFixed(1)}%
-                </span>
+                <>
+                  <span
+                    className={`font-medium tabular-nums ${companyLabor.dayLaborPct <= companyLabor.dayTarget ? "text-green-500" : "text-red-500"}`}
+                    title={laborTargetTooltip(companyLabor.dayTarget, companyLabor.dayTargetSource, companyLabor.dayTargetCoverage)}
+                    data-testid="text-lc-day-company"
+                  >
+                    Day {companyLabor.dayLaborPct.toFixed(1)}%
+                  </span>
+                  <span
+                    className="text-muted-foreground tabular-nums"
+                    title={laborTargetTooltip(companyLabor.dayTarget, companyLabor.dayTargetSource, companyLabor.dayTargetCoverage)}
+                    data-testid="text-lc-day-target-company"
+                  >
+                    / {companyLabor.dayTarget.toFixed(1)}% target
+                  </span>
+                </>
               )}
               {companyLabor.wtdLaborPct !== null && (
-                <span
-                  className={`font-medium tabular-nums ${companyLabor.wtdLaborPct <= companyLabor.wtdTarget ? "text-green-500" : "text-red-500"}`}
-                  title={laborTargetTooltip(companyLabor.wtdTarget, companyLabor.wtdTargetSource, companyLabor.wtdTargetCoverage)}
-                  data-testid="text-lc-wtd-company"
-                >
-                  WTD {companyLabor.wtdLaborPct.toFixed(1)}%
-                </span>
+                <>
+                  <span
+                    className={`font-medium tabular-nums ${companyLabor.wtdLaborPct <= companyLabor.wtdTarget ? "text-green-500" : "text-red-500"}`}
+                    title={laborTargetTooltip(companyLabor.wtdTarget, companyLabor.wtdTargetSource, companyLabor.wtdTargetCoverage)}
+                    data-testid="text-lc-wtd-company"
+                  >
+                    WTD {companyLabor.wtdLaborPct.toFixed(1)}%
+                  </span>
+                  <span
+                    className="text-muted-foreground tabular-nums"
+                    title={laborTargetTooltip(companyLabor.wtdTarget, companyLabor.wtdTargetSource, companyLabor.wtdTargetCoverage)}
+                    data-testid="text-lc-wtd-target-company"
+                  >
+                    / {companyLabor.wtdTarget.toFixed(1)}% target
+                  </span>
+                </>
               )}
             </div>
           </div>

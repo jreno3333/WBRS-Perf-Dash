@@ -506,22 +506,40 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                     <span className="text-xs text-muted-foreground">LC%</span>
                     {state.labor.dayLaborPct !== null && (
-                      <span
-                        className={`text-xs font-medium ${state.labor.dayLaborPct <= state.labor.dayTarget ? "text-green-500" : "text-red-500"}`}
-                        title={laborTargetTooltip(state.labor.dayTarget, state.labor.dayTargetSource, state.labor.dayTargetCoverage)}
-                        data-testid={`text-lc-day-state-${state.abbr.toLowerCase()}`}
-                      >
-                        Day {state.labor.dayLaborPct.toFixed(1)}%
-                      </span>
+                      <>
+                        <span
+                          className={`text-xs font-medium ${state.labor.dayLaborPct <= state.labor.dayTarget ? "text-green-500" : "text-red-500"}`}
+                          title={laborTargetTooltip(state.labor.dayTarget, state.labor.dayTargetSource, state.labor.dayTargetCoverage)}
+                          data-testid={`text-lc-day-state-${state.abbr.toLowerCase()}`}
+                        >
+                          Day {state.labor.dayLaborPct.toFixed(1)}%
+                        </span>
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title={laborTargetTooltip(state.labor.dayTarget, state.labor.dayTargetSource, state.labor.dayTargetCoverage)}
+                          data-testid={`text-lc-day-target-state-${state.abbr.toLowerCase()}`}
+                        >
+                          / {state.labor.dayTarget.toFixed(1)}% target
+                        </span>
+                      </>
                     )}
                     {state.labor.wtdLaborPct !== null && (
-                      <span
-                        className={`text-xs font-medium ${state.labor.wtdLaborPct <= state.labor.wtdTarget ? "text-green-500" : "text-red-500"}`}
-                        title={laborTargetTooltip(state.labor.wtdTarget, state.labor.wtdTargetSource, state.labor.wtdTargetCoverage)}
-                        data-testid={`text-lc-wtd-state-${state.abbr.toLowerCase()}`}
-                      >
-                        WTD {state.labor.wtdLaborPct.toFixed(1)}%
-                      </span>
+                      <>
+                        <span
+                          className={`text-xs font-medium ${state.labor.wtdLaborPct <= state.labor.wtdTarget ? "text-green-500" : "text-red-500"}`}
+                          title={laborTargetTooltip(state.labor.wtdTarget, state.labor.wtdTargetSource, state.labor.wtdTargetCoverage)}
+                          data-testid={`text-lc-wtd-state-${state.abbr.toLowerCase()}`}
+                        >
+                          WTD {state.labor.wtdLaborPct.toFixed(1)}%
+                        </span>
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title={laborTargetTooltip(state.labor.wtdTarget, state.labor.wtdTargetSource, state.labor.wtdTargetCoverage)}
+                          data-testid={`text-lc-wtd-target-state-${state.abbr.toLowerCase()}`}
+                        >
+                          / {state.labor.wtdTarget.toFixed(1)}% target
+                        </span>
+                      </>
                     )}
                   </div>
                 )}
