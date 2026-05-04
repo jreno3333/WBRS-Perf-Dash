@@ -188,8 +188,13 @@ export interface RestaurantSales {
   projectedLaborCost?: number; // Total scheduled labor for the day
   projectedEndOfDaySales?: number; // Actual + forecasted remaining sales
   projectedLaborPercent?: number; // Projected labor % at end of day
-  laborTarget?: number; // Target labor % (default 25%)
+  laborTarget?: number; // Per-unit override target labor % (default 25%)
   willHitLaborTarget?: boolean; // Whether projected to hit target
+  // Sales-plan-derived labor targets. When present, the leaderboard card uses
+  // these instead of `laborTarget` so each unit is graded against its real
+  // budget for the day / week-to-date instead of a flat 25%.
+  dayPlanLaborPct?: number | null; // Plan labor % for the selected date (e.g. 23.5)
+  wtdPlanLaborPct?: number | null; // Sales-weighted plan labor % across Sat→selected day
   // Unit status fields
   status?: "training" | "new" | "established"; // Based on openDate
   daysOpen?: number; // Days since open date (for NEW UNIT countdown)

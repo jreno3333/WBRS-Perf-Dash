@@ -15,6 +15,7 @@ import {
   scraperRuns,
   posOrders,
   historicalDailySales,
+  salesPlanDaily,
 } from "@shared/schema";
 import { db, posDb } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
@@ -121,12 +122,66 @@ export class DatabaseStorage {
     const lastWeekStart = new Date(`${lastWeekStr}T00:00:00.000Z`);
     const lastWeekEnd = new Date(`${lastWeekStr}T23:59:59.999Z`);
 
-    const [allHourlySales, allHourlyLabor, posHourlySales, posLastWeekHourlySales] = await Promise.all([
+    // Compute Sat→selected-day window for WTD plan-labor lookup. Saturday is
+    // the start of our business week (Sat→Fri). UTC math is safe here because
+    // selectedDateStr is a calendar date string.
+    const [sdY, sdM, sdD] = selectedDateStr.split('-').map(Number);
+    const selectedUtc = new Date(Date.UTC(sdY, sdM - 1, sdD));
+    const daysSinceSat = (selectedUtc.getUTCDay() + 1) % 7; // Sat=0, Sun=1, ..., Fri=6
+    const weekStartUtc = new Date(selectedUtc);
+    weekStartUtc.setUTCDate(weekStartUtc.getUTCDate() - daysSinceSat);
+    const weekStartStr = `${weekStartUtc.getUTCFullYear()}-${String(weekStartUtc.getUTCMonth() + 1).padStart(2, '0')}-${String(weekStartUtc.getUTCDate()).padStart(2, '0')}`;
+
+    const [allHourlySales, allHourlyLabor, posHourlySales, posLastWeekHourlySales, planRowsThisWeek] = await Promise.all([
       db.select().from(hourlySales).where(and(gte(hourlySales.salesDate, lastWeekStart), lte(hourlySales.salesDate, selectedDateEnd))),
       db.select().from(hourlyLabor).where(eq(hourlyLabor.date, selectedDateStr)),
       getAllHourlyPosSales(selectedDate),
       getAllHourlyPosSales(lastWeek),
+      db.select({
+        restaurantId: salesPlanDaily.restaurantId,
+        date: salesPlanDaily.date,
+        plannedNetSales: salesPlanDaily.plannedNetSales,
+        plannedVariableLaborPct: salesPlanDaily.plannedVariableLaborPct,
+      }).from(salesPlanDaily).where(and(
+        gte(salesPlanDaily.date, weekStartStr),
+        lte(salesPlanDaily.date, selectedDateStr),
+      )),
     ]);
+
+    // Build per-restaurant plan-labor targets:
+    //   dayPlanLaborPct: today's plannedVariableLaborPct (×100 → percent)
+    //   wtdPlanLaborPct: weighted avg by plannedNetSales across Sat→selected day,
+    //                    falling back to a simple mean when no sales weights exist.
+    type PlanAccum = { dayPct: number | null; weightedSum: number; weightSum: number; sumPct: number; count: number };
+    const planByRestaurant = new Map<string, PlanAccum>();
+    for (const row of planRowsThisWeek) {
+      const pct = row.plannedVariableLaborPct != null ? parseFloat(row.plannedVariableLaborPct as string) * 100 : null;
+      if (pct == null || !isFinite(pct)) continue;
+      let acc = planByRestaurant.get(row.restaurantId);
+      if (!acc) {
+        acc = { dayPct: null, weightedSum: 0, weightSum: 0, sumPct: 0, count: 0 };
+        planByRestaurant.set(row.restaurantId, acc);
+      }
+      if (row.date === selectedDateStr) acc.dayPct = pct;
+      const weight = parseFloat((row.plannedNetSales as string) || '0') || 0;
+      if (weight > 0) {
+        acc.weightedSum += pct * weight;
+        acc.weightSum += weight;
+      }
+      acc.sumPct += pct;
+      acc.count += 1;
+    }
+    const getPlanTargets = (restaurantId: string): { dayPlanLaborPct: number | null; wtdPlanLaborPct: number | null } => {
+      const acc = planByRestaurant.get(restaurantId);
+      if (!acc) return { dayPlanLaborPct: null, wtdPlanLaborPct: null };
+      const wtd = acc.weightSum > 0
+        ? acc.weightedSum / acc.weightSum
+        : (acc.count > 0 ? acc.sumPct / acc.count : null);
+      return {
+        dayPlanLaborPct: acc.dayPct != null ? Math.round(acc.dayPct * 10) / 10 : null,
+        wtdPlanLaborPct: wtd != null ? Math.round(wtd * 10) / 10 : null,
+      };
+    };
 
     const laborByKey = new Map<string, HourlyLabor>();
     allHourlyLabor.forEach(l => {
@@ -314,7 +369,12 @@ export class DatabaseStorage {
         : 0;
 
       const laborTarget = parseFloat(restaurant.laborTarget || '25');
-      const willHitLaborTarget = projectedLaborPercent <= laborTarget;
+      const { dayPlanLaborPct, wtdPlanLaborPct } = getPlanTargets(restaurant.id);
+      // Prefer the plan target for the willHitLaborTarget projection so this
+      // matches the threshold the leaderboard card displays. Falls back to the
+      // per-unit override / 25% default when no plan row exists.
+      const effectiveDayTarget = dayPlanLaborPct ?? laborTarget;
+      const willHitLaborTarget = projectedLaborPercent <= effectiveDayTarget;
 
       const unitStatus = getRestaurantStatus(restaurant.openDate);
 
