@@ -2,6 +2,15 @@ import { db } from "./db";
 import { restaurants, dailyGoogleReviews } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 
+// All other daily_* tables (daily_osat, hme_timer_data, hourly_labor, etc.) key
+// their `date` column in Central time. The exec summary / dashboard queries also
+// build their date ranges in Central time. We must write the same way here so a
+// sync that runs after 6 PM Central (= midnight UTC) doesn't file today's row
+// under tomorrow's date and disappear from the dashboard.
+function todayCentral(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+}
+
 interface GooglePlaceDetails {
   rating?: number;
   userRatingCount?: number;
@@ -77,7 +86,7 @@ export async function syncGoogleReviewsForRestaurant(restaurantId: string, place
     return reviews;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayCentral();
 
   try {
     await db.insert(dailyGoogleReviews)
@@ -134,7 +143,7 @@ export async function syncAllGoogleReviews(): Promise<{ success: number; failed:
 }
 
 export async function markEndOfDaySnapshots(): Promise<number> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayCentral();
   
   const result = await db.update(dailyGoogleReviews)
     .set({ isFinalSnapshot: true })
@@ -145,7 +154,7 @@ export async function markEndOfDaySnapshots(): Promise<number> {
 }
 
 export async function getGoogleReviewsForRestaurant(restaurantId: string, date?: string): Promise<{ rating: number; reviewCount: number } | null> {
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || todayCentral();
   
   const result = await db.select()
     .from(dailyGoogleReviews)
@@ -166,12 +175,13 @@ export async function getGoogleReviewsForRestaurant(restaurantId: string, date?:
 }
 
 export async function getGoogleReviewsForAllRestaurants(date?: string): Promise<Map<string, { rating: number; reviewCount: number; newReviewsToday: number }>> {
-  const targetDate = date || new Date().toISOString().split('T')[0];
-  
-  // Get yesterday's date for comparison
-  const yesterday = new Date(targetDate);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const targetDate = date || todayCentral();
+
+  // Get yesterday's date for comparison (string math to stay in Central, no UTC drift)
+  const [yy, mm, dd] = targetDate.split("-").map(Number);
+  const anchor = new Date(Date.UTC(yy, mm - 1, dd, 12));
+  anchor.setUTCDate(anchor.getUTCDate() - 1);
+  const yesterdayStr = `${anchor.getUTCFullYear()}-${String(anchor.getUTCMonth() + 1).padStart(2, "0")}-${String(anchor.getUTCDate()).padStart(2, "0")}`;
   
   // Get today's reviews
   const todayResults = await db.select()
