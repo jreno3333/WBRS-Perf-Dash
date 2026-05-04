@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { BONUS_DEFINITIONS, BONUS_CAP, scoreToGradeLabel, getGradeColor } from "@/lib/grading";
 import { BookOpen, Star, TrendingUp, Users, Timer, Award, Sparkles, ArrowLeft, MessageSquare } from "lucide-react";
 import { Link } from "wouter";
-import type { GradingConfigData, ScoringTier } from "@shared/schema";
-import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
+import type { GradingConfigData, ScoringTier } from "@shared/grading-config";
+import { DEFAULT_GRADING_CONFIG } from "@shared/grading-config";
 
 const gradeScale = [
   { label: "A+", min: 97, max: 100, color: "bg-green-500" },

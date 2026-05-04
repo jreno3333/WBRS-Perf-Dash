@@ -134,7 +134,9 @@ router.get("/api/auth/me", async (req, res) => {
   if (req.session?.userId) {
     const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
     if (!user || !user.isActive) {
-      req.session.destroy(() => {});
+      req.session.destroy((err) => {
+        if (err) console.error("[auth] Session destroy error:", err);
+      });
       return res.json({ authenticated: false });
     }
     return res.json({

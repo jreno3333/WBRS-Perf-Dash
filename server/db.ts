@@ -38,14 +38,26 @@ if (!mainDatabaseUrl) {
   );
 }
 
+// Pool sizing: the leaderboard endpoint fans out to ~6 parallel queries and
+// the dashboard fires ~16 endpoints in parallel on first paint, so the pg
+// default of 10 connections gets contended. Bump to 20 with a connection
+// timeout so a stuck pool surfaces fast instead of hanging the request.
+const POOL_OPTIONS = {
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+} as const;
+
 // Main pool/db - for restaurants, sales, labor, and all app tables
-export const pool = new Pool({ connectionString: mainDatabaseUrl });
+export const pool = new Pool({ connectionString: mainDatabaseUrl, ...POOL_OPTIONS });
 export const db = drizzle(pool, { schema });
 
 // POS pool/db - for pos_orders table (shared between apps)
 // Only create separate pool if XPOSSHARED is different from main DB
 const posDbIsSeparate = xposSharedDbUrl && xposSharedDbUrl !== mainDatabaseUrl;
-export const posPool = posDbIsSeparate ? new Pool({ connectionString: posDatabaseUrl }) : pool;
+export const posPool = posDbIsSeparate
+  ? new Pool({ connectionString: posDatabaseUrl, ...POOL_OPTIONS })
+  : pool;
 export const posDb = posDbIsSeparate ? drizzle(posPool, { schema }) : db;
 
 console.log(`[db] POS DB separate: ${posDbIsSeparate ? 'yes' : 'no (same as main)'}`);

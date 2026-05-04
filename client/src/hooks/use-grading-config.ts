@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import type { GradingConfigData } from "@shared/schema";
-import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
+import type { GradingConfigData } from "@shared/grading-config";
+import { DEFAULT_GRADING_CONFIG } from "@shared/grading-config";
 
 /**
  * Shared hook to fetch the active grading configuration.

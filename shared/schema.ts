@@ -982,30 +982,17 @@ export type InsertReportShareToken = z.infer<typeof insertReportShareTokenSchema
 export type ReportShareToken = typeof reportShareTokens.$inferSelect;
 
 // ─── Grading Configuration (configurable scoring weights, thresholds, tolerances) ───
+// Pure types/defaults live in ./grading-config so the client can import them
+// without pulling in drizzle. Re-exported here for backward compatibility with
+// server code that imports everything from @shared/schema.
+export type { ScoringTier, GradingConfigData } from "./grading-config";
+export {
+  DEFAULT_FEEDBACK_SPEED_TIERS,
+  DEFAULT_GRADING_CONFIG,
+  mergeGradingConfig,
+} from "./grading-config";
 
-export interface ScoringTier {
-  threshold: number;
-  points: number;
-}
-
-export interface GradingConfigData {
-  weights: {
-    sales: number;
-    transactions: number;
-    osat: number;
-    speed: number;
-    staffing: number;
-    feedbackSpeed: number;
-  };
-  salesTiers: ScoringTier[];
-  transactionTiers: ScoringTier[];
-  osatTiers: ScoringTier[];
-  speedTiers: ScoringTier[];
-  feedbackSpeedTiers: ScoringTier[];
-  staffingTolerance: number; // e.g. 1 means ±1 of target
-  staffingInToleranceScore: number; // points when within tolerance (default 100)
-  staffingOutToleranceScore: number; // points when outside tolerance (default 60)
-}
+import type { GradingConfigData } from "./grading-config";
 
 export const gradingConfig = pgTable("grading_config", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1038,67 +1025,6 @@ export const insertHelperRewardSchema = createInsertSchema(helperRewards).omit({
 export type InsertHelperReward = z.infer<typeof insertHelperRewardSchema>;
 export type HelperReward = typeof helperRewards.$inferSelect;
 
-export const DEFAULT_FEEDBACK_SPEED_TIERS: ScoringTier[] = [
-  { threshold: 90, points: 100 },
-  { threshold: 80, points: 70 },
-];
-
-export const DEFAULT_GRADING_CONFIG: GradingConfigData = {
-  weights: { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10, feedbackSpeed: 0 },
-  salesTiers: [
-    { threshold: 10, points: 100 },
-    { threshold: 5, points: 95 },
-    { threshold: 0, points: 90 },
-    { threshold: -5, points: 80 },
-    { threshold: -10, points: 60 },
-  ],
-  transactionTiers: [
-    { threshold: 10, points: 100 },
-    { threshold: 5, points: 95 },
-    { threshold: 0, points: 90 },
-    { threshold: -5, points: 80 },
-    { threshold: -10, points: 60 },
-  ],
-  osatTiers: [
-    { threshold: 90, points: 100 },
-    { threshold: 85, points: 90 },
-    { threshold: 80, points: 70 },
-    { threshold: 75, points: 50 },
-  ],
-  speedTiers: [
-    { threshold: 70, points: 100 },
-    { threshold: 50, points: 70 },
-  ],
-  feedbackSpeedTiers: DEFAULT_FEEDBACK_SPEED_TIERS,
-  staffingTolerance: 1,
-  staffingInToleranceScore: 100,
-  staffingOutToleranceScore: 60,
-};
-
-/**
- * Merge a stored grading config (which may be from an older schema) with the
- * current defaults. New fields like feedbackSpeed weight and feedbackSpeedTiers
- * are filled in so existing rows continue to load without a migration.
- */
-export function mergeGradingConfig(stored: Partial<GradingConfigData> | null | undefined): GradingConfigData {
-  const d = DEFAULT_GRADING_CONFIG;
-  if (!stored) return d;
-  return {
-    weights: {
-      sales: stored.weights?.sales ?? d.weights.sales,
-      transactions: stored.weights?.transactions ?? d.weights.transactions,
-      osat: stored.weights?.osat ?? d.weights.osat,
-      speed: stored.weights?.speed ?? d.weights.speed,
-      staffing: stored.weights?.staffing ?? d.weights.staffing,
-      feedbackSpeed: stored.weights?.feedbackSpeed ?? d.weights.feedbackSpeed,
-    },
-    salesTiers: stored.salesTiers ?? d.salesTiers,
-    transactionTiers: stored.transactionTiers ?? d.transactionTiers,
-    osatTiers: stored.osatTiers ?? d.osatTiers,
-    speedTiers: stored.speedTiers ?? d.speedTiers,
-    feedbackSpeedTiers: stored.feedbackSpeedTiers ?? d.feedbackSpeedTiers,
-    staffingTolerance: stored.staffingTolerance ?? d.staffingTolerance,
-    staffingInToleranceScore: stored.staffingInToleranceScore ?? d.staffingInToleranceScore,
-    staffingOutToleranceScore: stored.staffingOutToleranceScore ?? d.staffingOutToleranceScore,
-  };
-}
+// DEFAULT_FEEDBACK_SPEED_TIERS, DEFAULT_GRADING_CONFIG, and mergeGradingConfig
+// now live in ./grading-config (re-exported above) — they don't depend on
+// drizzle and the client can import them without bundling table schemas.

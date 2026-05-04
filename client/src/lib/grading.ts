@@ -7,8 +7,8 @@
  * WEIGHTS: Configurable via grading_config (defaults below).
  */
 
-import type { GradingConfigData, ScoringTier } from "@shared/schema";
-import { DEFAULT_GRADING_CONFIG } from "@shared/schema";
+import type { GradingConfigData, ScoringTier } from "@shared/grading-config";
+import { DEFAULT_GRADING_CONFIG } from "@shared/grading-config";
 
 export const GRADE_WEIGHTS = { sales: 30, transactions: 15, osat: 30, speed: 15, staffing: 10, feedbackSpeed: 0 } as const;
 

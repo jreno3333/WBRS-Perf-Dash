@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Megaphone, Trophy, Zap, Star, X, ChevronDown } from "lucide-react";
 import type { TickerMessage } from "@shared/schema";
+import { usePageVisible } from "@/hooks/use-page-visible";
 
 const priorityConfig = {
   urgent: { icon: Zap, bgClass: "bg-red-500/10 border-red-500/30", textClass: "text-red-400", iconClass: "text-red-400" },
@@ -111,23 +112,24 @@ function AllMessages({ messages, onClose }: { messages: TickerMessage[]; onClose
 }
 
 export function BannerTicker() {
+  const isVisible = usePageVisible();
   const { data } = useQuery<{ messages: TickerMessage[] }>({
     queryKey: ["/api/ticker/messages"],
-    refetchInterval: 30 * 1000,
+    refetchInterval: isVisible ? 30 * 1000 : false,
   });
 
   const messages = data?.messages || [];
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
-  // Cycle through messages — paused while expanded
+  // Cycle through messages — paused while expanded or tab is hidden.
   useEffect(() => {
-    if (messages.length <= 1 || expanded) return;
+    if (messages.length <= 1 || expanded || !isVisible) return;
     const interval = setInterval(() => {
       setCurrentIndex(prev => (prev + 1) % messages.length);
     }, 10000);
     return () => clearInterval(interval);
-  }, [messages.length, expanded]);
+  }, [messages.length, expanded, isVisible]);
 
   // Reset index if messages change
   useEffect(() => {

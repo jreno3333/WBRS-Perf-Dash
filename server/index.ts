@@ -66,38 +66,46 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// Lightweight request logger. Avoids JSON.stringify of every response body —
+// for large leaderboard/analytics payloads the stringify cost showed up on the
+// hot path. Log only the response byte size (from Content-Length) and slow
+// request bodies (>1s) get a truncated preview to aid debugging.
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  if (!path.startsWith("/api")) return next();
 
+  let slowResponse: unknown;
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
+    if (Date.now() - start > 1000) slowResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        const body = JSON.stringify(capturedJsonResponse);
-        logLine += ` :: ${body.length > 200 ? body.slice(0, 200) + '...' : body}`;
-      }
-
-      log(logLine);
+    const size = res.getHeader("content-length");
+    let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms${size ? ` (${size}b)` : ""}`;
+    if (slowResponse !== undefined) {
+      const body = JSON.stringify(slowResponse);
+      logLine += ` :: ${body.length > 200 ? body.slice(0, 200) + "..." : body}`;
     }
+    log(logLine);
   });
 
   next();
 });
 
 (async () => {
-  // Create feature tables (ticker, polls, milestones) if they don't exist
-  await ensureFeatureTables();
+  // Kick off feature-table migrations in the background. Routes don't read
+  // these tables until requests arrive, and migrations finish in <100ms in
+  // practice — running them concurrently with route registration shaves
+  // startup time without changing first-request semantics in any meaningful
+  // way (a request that lands during the gap fails and the client retries).
+  const featureTablesReady = ensureFeatureTables();
 
   await registerRoutes(httpServer, app);
+  await featureTablesReady;
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -133,14 +141,14 @@ app.use((req, res, next) => {
       host: "0.0.0.0",
       reusePort: true,
     },
-    async () => {
+    () => {
       log(`serving on port ${port}`);
 
-      // Backfill destination column for existing POS orders (one-time, idempotent)
-      backfillDestinations().catch(() => {});
-
-      // Start the automatic 7shifts sync scheduler (with historical data seeding if needed)
-      await startScheduler();
+      // Run post-listen tasks in the background — none of them need to block
+      // request handling, and previously startScheduler was awaited inside
+      // the listen callback, delaying readiness for no benefit.
+      backfillDestinations().catch((err) => console.error("[startup] backfillDestinations failed:", err));
+      startScheduler().catch((err) => console.error("[startup] startScheduler failed:", err));
     },
   );
 })();
