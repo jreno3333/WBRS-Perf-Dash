@@ -7,6 +7,7 @@ import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
 import { useGradingConfig } from "@/hooks/use-grading-config";
+import { computeGroupLaborMetrics, computeGroupLaborTarget, laborTargetTooltip } from "@/lib/labor-rollup";
 import type { GradingConfigData } from "@shared/schema";
 
 interface CrewSummary {
@@ -339,6 +340,12 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
       };
     };
 
+    const calcLabor = (stateRestaurants: RestaurantSales[]) => {
+      const target = computeGroupLaborTarget(stateRestaurants);
+      const metrics = computeGroupLaborMetrics(stateRestaurants, hourlyByRestaurant, weeklySalesData);
+      return { ...target, ...metrics };
+    };
+
     const calcPlanQtd = (stateRestaurants: RestaurantSales[]) => {
       let actual = 0, planned = 0;
       if (planQtdByRestaurant) {
@@ -371,6 +378,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
         weekly: calcWeekly(alabamaRestaurants),
         checkAvg: alabamaCheckAvg,
         planQtd: calcPlanQtd(alabamaRestaurants),
+        labor: calcLabor(alabamaRestaurants),
       },
       {
         name: "Tennessee", abbr: "TN",
@@ -385,6 +393,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
         weekly: calcWeekly(tennesseeRestaurants),
         checkAvg: tennesseeCheckAvg,
         planQtd: calcPlanQtd(tennesseeRestaurants),
+        labor: calcLabor(tennesseeRestaurants),
       },
     ];
   }, [restaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, planQtdByRestaurant]);
@@ -491,6 +500,29 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                     <span className={`text-xs font-medium ${state.planQtd.variance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`text-plan-qtd-var-state-${state.abbr.toLowerCase()}`}>
                       {state.planQtd.variance >= 0 ? "+" : ""}{state.planQtd.variance.toFixed(1)}%
                     </span>
+                  </div>
+                )}
+                {(state.labor.dayLaborPct !== null || state.labor.wtdLaborPct !== null) && (
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-xs text-muted-foreground">LC%</span>
+                    {state.labor.dayLaborPct !== null && (
+                      <span
+                        className={`text-xs font-medium ${state.labor.dayLaborPct <= state.labor.dayTarget ? "text-green-500" : "text-red-500"}`}
+                        title={laborTargetTooltip(state.labor.dayTarget, state.labor.dayTargetSource, state.labor.dayTargetCoverage)}
+                        data-testid={`text-lc-day-state-${state.abbr.toLowerCase()}`}
+                      >
+                        Day {state.labor.dayLaborPct.toFixed(1)}%
+                      </span>
+                    )}
+                    {state.labor.wtdLaborPct !== null && (
+                      <span
+                        className={`text-xs font-medium ${state.labor.wtdLaborPct <= state.labor.wtdTarget ? "text-green-500" : "text-red-500"}`}
+                        title={laborTargetTooltip(state.labor.wtdTarget, state.labor.wtdTargetSource, state.labor.wtdTargetCoverage)}
+                        data-testid={`text-lc-wtd-state-${state.abbr.toLowerCase()}`}
+                      >
+                        WTD {state.labor.wtdLaborPct.toFixed(1)}%
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

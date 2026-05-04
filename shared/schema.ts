@@ -195,6 +195,12 @@ export interface RestaurantSales {
   // budget for the day / week-to-date instead of a flat 25%.
   dayPlanLaborPct?: number | null; // Plan labor % for the selected date (e.g. 23.5)
   wtdPlanLaborPct?: number | null; // Sales-weighted plan labor % across Sat→selected day
+  // Planned net sales matching the windows above. Used as weights when the
+  // company / state / market roll-ups blend per-unit plan labor targets so
+  // the high-level cards score against the same plan-derived target as the
+  // unit cards.
+  dayPlanNetSales?: number | null; // Planned net sales for the selected date
+  wtdPlanNetSales?: number | null; // Planned net sales summed Sat→selected day
   // Unit status fields
   status?: "training" | "new" | "established"; // Based on openDate
   daysOpen?: number; // Days since open date (for NEW UNIT countdown)

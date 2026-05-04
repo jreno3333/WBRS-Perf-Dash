@@ -152,18 +152,28 @@ export class DatabaseStorage {
     //   dayPlanLaborPct: today's plannedVariableLaborPct (×100 → percent)
     //   wtdPlanLaborPct: weighted avg by plannedNetSales across Sat→selected day,
     //                    falling back to a simple mean when no sales weights exist.
-    type PlanAccum = { dayPct: number | null; weightedSum: number; weightSum: number; sumPct: number; count: number };
+    type PlanAccum = {
+      dayPct: number | null;
+      dayNetSales: number | null;
+      weightedSum: number;
+      weightSum: number;
+      sumPct: number;
+      count: number;
+    };
     const planByRestaurant = new Map<string, PlanAccum>();
     for (const row of planRowsThisWeek) {
       const pct = row.plannedVariableLaborPct != null ? parseFloat(row.plannedVariableLaborPct as string) * 100 : null;
       if (pct == null || !isFinite(pct)) continue;
       let acc = planByRestaurant.get(row.restaurantId);
       if (!acc) {
-        acc = { dayPct: null, weightedSum: 0, weightSum: 0, sumPct: 0, count: 0 };
+        acc = { dayPct: null, dayNetSales: null, weightedSum: 0, weightSum: 0, sumPct: 0, count: 0 };
         planByRestaurant.set(row.restaurantId, acc);
       }
-      if (row.date === selectedDateStr) acc.dayPct = pct;
       const weight = parseFloat((row.plannedNetSales as string) || '0') || 0;
+      if (row.date === selectedDateStr) {
+        acc.dayPct = pct;
+        acc.dayNetSales = weight > 0 ? weight : null;
+      }
       if (weight > 0) {
         acc.weightedSum += pct * weight;
         acc.weightSum += weight;
@@ -171,15 +181,29 @@ export class DatabaseStorage {
       acc.sumPct += pct;
       acc.count += 1;
     }
-    const getPlanTargets = (restaurantId: string): { dayPlanLaborPct: number | null; wtdPlanLaborPct: number | null } => {
+    const getPlanTargets = (restaurantId: string): {
+      dayPlanLaborPct: number | null;
+      wtdPlanLaborPct: number | null;
+      dayPlanNetSales: number | null;
+      wtdPlanNetSales: number | null;
+    } => {
       const acc = planByRestaurant.get(restaurantId);
-      if (!acc) return { dayPlanLaborPct: null, wtdPlanLaborPct: null };
+      if (!acc) {
+        return {
+          dayPlanLaborPct: null,
+          wtdPlanLaborPct: null,
+          dayPlanNetSales: null,
+          wtdPlanNetSales: null,
+        };
+      }
       const wtd = acc.weightSum > 0
         ? acc.weightedSum / acc.weightSum
         : (acc.count > 0 ? acc.sumPct / acc.count : null);
       return {
         dayPlanLaborPct: acc.dayPct != null ? Math.round(acc.dayPct * 10) / 10 : null,
         wtdPlanLaborPct: wtd != null ? Math.round(wtd * 10) / 10 : null,
+        dayPlanNetSales: acc.dayNetSales != null ? Math.round(acc.dayNetSales * 100) / 100 : null,
+        wtdPlanNetSales: acc.weightSum > 0 ? Math.round(acc.weightSum * 100) / 100 : null,
       };
     };
 
@@ -369,7 +393,7 @@ export class DatabaseStorage {
         : 0;
 
       const laborTarget = parseFloat(restaurant.laborTarget || '25');
-      const { dayPlanLaborPct, wtdPlanLaborPct } = getPlanTargets(restaurant.id);
+      const { dayPlanLaborPct, wtdPlanLaborPct, dayPlanNetSales, wtdPlanNetSales } = getPlanTargets(restaurant.id);
       // Prefer the plan target for the willHitLaborTarget projection so this
       // matches the threshold the leaderboard card displays. Falls back to the
       // per-unit override / 25% default when no plan row exists.
@@ -401,6 +425,8 @@ export class DatabaseStorage {
         willHitLaborTarget,
         dayPlanLaborPct,
         wtdPlanLaborPct,
+        dayPlanNetSales,
+        wtdPlanNetSales,
         status: unitStatus.status,
         daysOpen: unitStatus.daysOpen,
         openDate: restaurant.openDate && !isNaN(new Date(restaurant.openDate).getTime()) ? new Date(restaurant.openDate).toISOString() : null,

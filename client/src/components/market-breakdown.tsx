@@ -6,6 +6,7 @@ import type { RestaurantSales, HourlySalesData, MarketWithRestaurants } from "@s
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel } from "@/lib/grading";
 import { useGradingConfig } from "@/hooks/use-grading-config";
+import { computeGroupLaborMetrics, computeGroupLaborTarget, laborTargetTooltip } from "@/lib/labor-rollup";
 import type { GradingConfigData } from "@shared/schema";
 
 interface CrewSummary {
@@ -324,6 +325,10 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
       show: planQtdPlanned > 0,
     };
 
+    const laborTarget = computeGroupLaborTarget(marketRestaurants);
+    const laborMetrics = computeGroupLaborMetrics(marketRestaurants, hourlyByRestaurant, weeklySalesData);
+    const labor = { ...laborTarget, ...laborMetrics };
+
     return {
       id: market.id,
       name: market.name,
@@ -342,6 +347,7 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
       weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance, eowForecast: weeklyEowForecast, priorFull: weeklyPriorFull, eowVariance: weeklyEowVariance },
       checkAvg,
       planQtd,
+      labor,
     };
   }).filter(m => m.totalCount > 0), [markets, activeRestaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, planQtdByRestaurant]);
 
@@ -455,6 +461,29 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                     <span className={`text-xs font-medium ${market.planQtd.variance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`text-plan-qtd-var-market-${market.id}`}>
                       {market.planQtd.variance >= 0 ? "+" : ""}{market.planQtd.variance.toFixed(1)}%
                     </span>
+                  </div>
+                )}
+                {(market.labor.dayLaborPct !== null || market.labor.wtdLaborPct !== null) && (
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-xs text-muted-foreground">LC%</span>
+                    {market.labor.dayLaborPct !== null && (
+                      <span
+                        className={`text-xs font-medium ${market.labor.dayLaborPct <= market.labor.dayTarget ? "text-green-500" : "text-red-500"}`}
+                        title={laborTargetTooltip(market.labor.dayTarget, market.labor.dayTargetSource, market.labor.dayTargetCoverage)}
+                        data-testid={`text-lc-day-market-${market.id}`}
+                      >
+                        Day {market.labor.dayLaborPct.toFixed(1)}%
+                      </span>
+                    )}
+                    {market.labor.wtdLaborPct !== null && (
+                      <span
+                        className={`text-xs font-medium ${market.labor.wtdLaborPct <= market.labor.wtdTarget ? "text-green-500" : "text-red-500"}`}
+                        title={laborTargetTooltip(market.labor.wtdTarget, market.labor.wtdTargetSource, market.labor.wtdTargetCoverage)}
+                        data-testid={`text-lc-wtd-market-${market.id}`}
+                      >
+                        WTD {market.labor.wtdLaborPct.toFixed(1)}%
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

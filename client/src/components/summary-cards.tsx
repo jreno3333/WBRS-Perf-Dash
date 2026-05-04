@@ -5,6 +5,7 @@ import type { RestaurantSales, HourlySalesData } from "@shared/schema";
 import { getStaffingBreakdown } from "@/lib/labor-model";
 import { formatCurrency, computeExecutionScore, scoreToGradeLabel, getGradeColor, getGradeBgColor, GRADE_WEIGHTS, computeDailyBonuses, BONUS_CAP, countAttachmentCategoriesAtTarget } from "@/lib/grading";
 import { useGradingConfig } from "@/hooks/use-grading-config";
+import { computeGroupLaborMetrics, computeGroupLaborTarget, laborTargetTooltip } from "@/lib/labor-rollup";
 import { getFiscalPosition } from "@/lib/fiscal-calendar";
 import type { GradingConfigData } from "@shared/schema";
 
@@ -152,6 +153,15 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const eowVariance = weeklyPriorWeekFull > 0
     ? ((weeklyEowForecast / weeklyPriorWeekFull) - 1) * 100
     : 0;
+
+  // Company-wide labor LC% rolled up using the same plan-based target the
+  // unit cards use. Falls back to 25% when no plan rows exist for the day /
+  // week-to-date so the rollup matches the per-unit default behaviour.
+  const companyLabor = useMemo(() => {
+    const target = computeGroupLaborTarget(activeRestaurants);
+    const metrics = computeGroupLaborMetrics(activeRestaurants, hourlyByRestaurant, weeklySalesData);
+    return { ...target, ...metrics };
+  }, [activeRestaurants, hourlyByRestaurant, weeklySalesData]);
 
   // QTD plan vs actual roll-up across active restaurants.
   let planQtdActualTotal = 0;
@@ -719,6 +729,31 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
               <span className={`font-medium ${planQtdVariance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid="text-plan-qtd-variance-total">
                 {planQtdVariance >= 0 ? "+" : ""}{planQtdVariance.toFixed(1)}%
               </span>
+            </div>
+          </div>
+        )}
+        {(companyLabor.dayLaborPct !== null || companyLabor.wtdLaborPct !== null) && (
+          <div className="mt-0.5 space-y-0.5">
+            <div className="flex items-center gap-1.5 text-xs flex-wrap">
+              <span className="text-muted-foreground">LC%</span>
+              {companyLabor.dayLaborPct !== null && (
+                <span
+                  className={`font-medium tabular-nums ${companyLabor.dayLaborPct <= companyLabor.dayTarget ? "text-green-500" : "text-red-500"}`}
+                  title={laborTargetTooltip(companyLabor.dayTarget, companyLabor.dayTargetSource, companyLabor.dayTargetCoverage)}
+                  data-testid="text-lc-day-company"
+                >
+                  Day {companyLabor.dayLaborPct.toFixed(1)}%
+                </span>
+              )}
+              {companyLabor.wtdLaborPct !== null && (
+                <span
+                  className={`font-medium tabular-nums ${companyLabor.wtdLaborPct <= companyLabor.wtdTarget ? "text-green-500" : "text-red-500"}`}
+                  title={laborTargetTooltip(companyLabor.wtdTarget, companyLabor.wtdTargetSource, companyLabor.wtdTargetCoverage)}
+                  data-testid="text-lc-wtd-company"
+                >
+                  WTD {companyLabor.wtdLaborPct.toFixed(1)}%
+                </span>
+              )}
             </div>
           </div>
         )}
