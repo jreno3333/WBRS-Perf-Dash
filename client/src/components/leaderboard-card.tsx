@@ -1026,6 +1026,8 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
               const wtdTargetSource = restaurant.wtdPlanLaborPct != null ? 'plan' : 'default';
               const dayTargetLabel = `${dayTargetSource === 'plan' ? 'Plan' : 'Default'} target ${dayTarget.toFixed(1)}%`;
               const wtdTargetLabel = `${wtdTargetSource === 'plan' ? 'Plan' : 'Default'} target ${wtdTarget.toFixed(1)}%`;
+              const dayTargetInline = `${dayTarget.toFixed(1)}%`;
+              const wtdTargetInline = `${wtdTarget.toFixed(1)}%`;
 
               return (
                 <div className="mt-2 flex justify-between items-center text-xs">
@@ -1043,6 +1045,12 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
                         >
                           Day {dayLaborPct.toFixed(1)}%
                         </span>
+                        <span
+                          className="text-muted-foreground"
+                          data-testid={`text-lc-day-target-${restaurant.restaurantId}`}
+                        >
+                          {' / '}{dayTargetInline} target
+                        </span>
                         {wtdLaborPct > 0 && (
                           <>
                             {' '}
@@ -1052,6 +1060,12 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
                               data-testid={`text-lc-wtd-${restaurant.restaurantId}`}
                             >
                               WTD {wtdLaborPct.toFixed(1)}%
+                            </span>
+                            <span
+                              className="text-muted-foreground"
+                              data-testid={`text-lc-wtd-target-${restaurant.restaurantId}`}
+                            >
+                              {' / '}{wtdTargetInline} target
                             </span>
                           </>
                         )}
