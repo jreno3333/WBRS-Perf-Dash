@@ -853,13 +853,24 @@ export default function Dashboard() {
               checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
               attachmentRatesByRestaurant={attachmentRatesResponse?.restaurants}
               helperRewardsByRestaurant={helperRewardsByRestaurant}
+              planQtdByRestaurant={planQtdData?.restaurants}
+              planQtdRange={planQtdData ? { quarterStart: planQtdData.quarterStart, throughDate: planQtdData.throughDate } : undefined}
             />
 
             {/* Quick Poll */}
             <PollCard />
 
             {/* State Breakdown */}
-            <StateBreakdown restaurants={leaderboardData.restaurants} hourlyByRestaurant={hourlyByRestaurant} crewSummary={crewSummary} weeklySalesData={weeklySalesData} checkAverageByRestaurant={checkAverageByRestaurant} checkAvgTrendByRestaurant={checkAvgTrendByRestaurant} />
+            <StateBreakdown
+              restaurants={leaderboardData.restaurants}
+              hourlyByRestaurant={hourlyByRestaurant}
+              crewSummary={crewSummary}
+              weeklySalesData={weeklySalesData}
+              checkAverageByRestaurant={checkAverageByRestaurant}
+              checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
+              planQtdByRestaurant={planQtdData?.restaurants}
+              planQtdRange={planQtdData ? { quarterStart: planQtdData.quarterStart, throughDate: planQtdData.throughDate } : undefined}
+            />
 
             {/* Market Breakdown - Only shown if markets exist */}
             {markets && markets.length > 0 && (
@@ -871,6 +882,8 @@ export default function Dashboard() {
                 weeklySalesData={weeklySalesData}
                 checkAverageByRestaurant={checkAverageByRestaurant}
                 checkAvgTrendByRestaurant={checkAvgTrendByRestaurant}
+                planQtdByRestaurant={planQtdData?.restaurants}
+                planQtdRange={planQtdData ? { quarterStart: planQtdData.quarterStart, throughDate: planQtdData.throughDate } : undefined}
               />
             )}
 

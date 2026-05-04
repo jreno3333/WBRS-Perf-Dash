@@ -41,6 +41,8 @@ interface SummaryCardsProps {
   checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
   attachmentRatesByRestaurant?: Record<string, { categories: Record<string, { attachRate: number }> }>;
   helperRewardsByRestaurant?: Record<string, number>;
+  planQtdByRestaurant?: Record<string, { plannedSales: number; actualSales: number }>;
+  planQtdRange?: { quarterStart: string; throughDate: string };
 }
 
 function getExecutionGrade(
@@ -64,7 +66,7 @@ function getExecutionGrade(
   return { grade, color: getGradeColor(grade), score, hasGrade: true, components: [] };
 }
 
-export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, attachmentRatesByRestaurant, helperRewardsByRestaurant }: SummaryCardsProps) {
+export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdated, hourlyByRestaurant, yoyData, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, attachmentRatesByRestaurant, helperRewardsByRestaurant, planQtdByRestaurant, planQtdRange }: SummaryCardsProps) {
   const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
@@ -150,6 +152,32 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   const eowVariance = weeklyPriorWeekFull > 0
     ? ((weeklyEowForecast / weeklyPriorWeekFull) - 1) * 100
     : 0;
+
+  // QTD plan vs actual roll-up across active restaurants.
+  let planQtdActualTotal = 0;
+  let planQtdPlannedTotal = 0;
+  if (planQtdByRestaurant) {
+    for (const r of activeRestaurants) {
+      const q = planQtdByRestaurant[r.restaurantId];
+      if (q) {
+        planQtdActualTotal += q.actualSales;
+        planQtdPlannedTotal += q.plannedSales;
+      }
+    }
+  }
+  const planQtdVariance = planQtdPlannedTotal > 0
+    ? ((planQtdActualTotal / planQtdPlannedTotal) - 1) * 100
+    : 0;
+  const showPlanQtd = planQtdPlannedTotal > 0;
+  const planQtdRangeLabel = planQtdRange
+    ? (() => {
+        const fmt = (s: string) => {
+          const [y, m, d] = s.split("-").map(Number);
+          return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        };
+        return `${fmt(planQtdRange.quarterStart)} – ${fmt(planQtdRange.throughDate)}`;
+      })()
+    : "";
 
   // Memoize the O(n×24) grade computation — only reruns when hourly data or config changes
   const {
@@ -676,6 +704,22 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
                 )}
               </div>
             )}
+          </div>
+        )}
+        {showPlanQtd && (
+          <div className={`${weeklySalesData && weeklyCurrentTotal > 0 ? "mt-0.5" : "mt-2 pt-2 border-t border-border/40"} space-y-0.5`}>
+            <div className="flex items-center gap-1.5 text-xs flex-wrap" title={planQtdRangeLabel}>
+              <span className="text-muted-foreground">QTD</span>
+              <span className="font-semibold tabular-nums" data-testid="text-plan-qtd-actual-total">
+                {formatCurrency(planQtdActualTotal)}
+              </span>
+              <span className="text-muted-foreground tabular-nums" data-testid="text-plan-qtd-plan-total">
+                / plan {formatCurrency(planQtdPlannedTotal)}
+              </span>
+              <span className={`font-medium ${planQtdVariance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid="text-plan-qtd-variance-total">
+                {planQtdVariance >= 0 ? "+" : ""}{planQtdVariance.toFixed(1)}%
+              </span>
+            </div>
           </div>
         )}
       </div>

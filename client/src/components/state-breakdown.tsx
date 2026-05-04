@@ -45,6 +45,8 @@ interface StateBreakdownProps {
   weeklySalesData?: WeeklySalesData;
   checkAverageByRestaurant?: Record<string, CheckAverageData>;
   checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
+  planQtdByRestaurant?: Record<string, { plannedSales: number; actualSales: number }>;
+  planQtdRange?: { quarterStart: string; throughDate: string };
 }
 
 const scoreToGrade = scoreToGradeLabel;
@@ -270,7 +272,7 @@ function calculateStateSpeed(stateRestaurants: RestaurantSales[]): { speedAttain
   };
 }
 
-export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: StateBreakdownProps) {
+export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, planQtdByRestaurant, planQtdRange }: StateBreakdownProps) {
   const gradingCfg = useGradingConfig();
   // formatCurrency is imported from @/lib/grading (module-level singleton)
 
@@ -337,6 +339,24 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
       };
     };
 
+    const calcPlanQtd = (stateRestaurants: RestaurantSales[]) => {
+      let actual = 0, planned = 0;
+      if (planQtdByRestaurant) {
+        for (const r of stateRestaurants) {
+          const q = planQtdByRestaurant[r.restaurantId];
+          if (q) {
+            actual += q.actualSales;
+            planned += q.plannedSales;
+          }
+        }
+      }
+      return {
+        actual, planned,
+        variance: planned > 0 ? ((actual / planned) - 1) * 100 : 0,
+        show: planned > 0,
+      };
+    };
+
     return [
       {
         name: "Alabama", abbr: "AL",
@@ -350,6 +370,7 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
         speed: alabamaSpeed,
         weekly: calcWeekly(alabamaRestaurants),
         checkAvg: alabamaCheckAvg,
+        planQtd: calcPlanQtd(alabamaRestaurants),
       },
       {
         name: "Tennessee", abbr: "TN",
@@ -363,9 +384,19 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
         speed: tennesseeSpeed,
         weekly: calcWeekly(tennesseeRestaurants),
         checkAvg: tennesseeCheckAvg,
+        planQtd: calcPlanQtd(tennesseeRestaurants),
       },
     ];
-  }, [restaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant]);
+  }, [restaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, planQtdByRestaurant]);
+
+  const planQtdRangeLabel = useMemo(() => {
+    if (!planQtdRange) return "";
+    const fmt = (s: string) => {
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    };
+    return `${fmt(planQtdRange.quarterStart)} – ${fmt(planQtdRange.throughDate)}`;
+  }, [planQtdRange]);
 
   const getGradeBadgeColor = (grade: string) => {
     if (grade.startsWith('A')) return 'text-green-500 bg-green-500/10 border-green-500/30';
@@ -451,6 +482,16 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
                       </div>
                     )}
                   </>
+                )}
+                {state.planQtd.show && (
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap" title={planQtdRangeLabel}>
+                    <span className="text-xs text-muted-foreground">QTD:</span>
+                    <span className="text-xs font-semibold" data-testid={`text-plan-qtd-state-${state.abbr.toLowerCase()}`}>{formatCurrency(state.planQtd.actual)}</span>
+                    <span className="text-xs text-muted-foreground" data-testid={`text-plan-qtd-plan-state-${state.abbr.toLowerCase()}`}>/ plan {formatCurrency(state.planQtd.planned)}</span>
+                    <span className={`text-xs font-medium ${state.planQtd.variance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`text-plan-qtd-var-state-${state.abbr.toLowerCase()}`}>
+                      {state.planQtd.variance >= 0 ? "+" : ""}{state.planQtd.variance.toFixed(1)}%
+                    </span>
+                  </div>
                 )}
               </div>
               <div className="text-right shrink-0">

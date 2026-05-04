@@ -45,6 +45,8 @@ interface MarketBreakdownProps {
   weeklySalesData?: WeeklySalesData;
   checkAverageByRestaurant?: Record<string, CheckAverageData>;
   checkAvgTrendByRestaurant?: Record<string, CheckAvgTrendData>;
+  planQtdByRestaurant?: Record<string, { plannedSales: number; actualSales: number }>;
+  planQtdRange?: { quarterStart: string; throughDate: string };
 }
 
 const scoreToGrade = scoreToGradeLabel;
@@ -262,7 +264,7 @@ function calculateMarketSpeed(marketRestaurants: RestaurantSales[]): { speedAtta
   };
 }
 
-export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant }: MarketBreakdownProps) {
+export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, markets, hourlyByRestaurant, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, planQtdByRestaurant, planQtdRange }: MarketBreakdownProps) {
   const gradingCfg = useGradingConfig();
   const activeRestaurants = useMemo(() => restaurants.filter(r => r.status !== "training"), [restaurants]);
 
@@ -305,6 +307,23 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
     const weeklyVariance = weeklyPrior > 0 ? ((weeklyCurrent / weeklyPrior) - 1) * 100 : 0;
     const weeklyEowVariance = weeklyPriorFull > 0 ? ((weeklyEowForecast / weeklyPriorFull) - 1) * 100 : 0;
 
+    let planQtdActual = 0, planQtdPlanned = 0;
+    if (planQtdByRestaurant) {
+      for (const r of marketRestaurants) {
+        const q = planQtdByRestaurant[r.restaurantId];
+        if (q) {
+          planQtdActual += q.actualSales;
+          planQtdPlanned += q.plannedSales;
+        }
+      }
+    }
+    const planQtd = {
+      actual: planQtdActual,
+      planned: planQtdPlanned,
+      variance: planQtdPlanned > 0 ? ((planQtdActual / planQtdPlanned) - 1) * 100 : 0,
+      show: planQtdPlanned > 0,
+    };
+
     return {
       id: market.id,
       name: market.name,
@@ -322,8 +341,18 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
       speed,
       weekly: { current: weeklyCurrent, prior: weeklyPrior, variance: weeklyVariance, eowForecast: weeklyEowForecast, priorFull: weeklyPriorFull, eowVariance: weeklyEowVariance },
       checkAvg,
+      planQtd,
     };
-  }).filter(m => m.totalCount > 0), [markets, activeRestaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant]);
+  }).filter(m => m.totalCount > 0), [markets, activeRestaurants, hourlyByRestaurant, gradingCfg, crewSummary, weeklySalesData, checkAverageByRestaurant, checkAvgTrendByRestaurant, planQtdByRestaurant]);
+
+  const planQtdRangeLabel = useMemo(() => {
+    if (!planQtdRange) return "";
+    const fmt = (s: string) => {
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    };
+    return `${fmt(planQtdRange.quarterStart)} – ${fmt(planQtdRange.throughDate)}`;
+  }, [planQtdRange]);
 
   const getGradeBadgeColor = (grade: string) => {
     if (grade.startsWith('A')) return 'text-green-500 bg-green-500/20 border-green-500/50';
@@ -417,6 +446,16 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
                       </div>
                     )}
                   </>
+                )}
+                {market.planQtd.show && (
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap" title={planQtdRangeLabel}>
+                    <span className="text-xs text-muted-foreground">QTD:</span>
+                    <span className="text-xs font-semibold" data-testid={`text-plan-qtd-market-${market.id}`}>{formatCurrency(market.planQtd.actual)}</span>
+                    <span className="text-xs text-muted-foreground" data-testid={`text-plan-qtd-plan-market-${market.id}`}>/ plan {formatCurrency(market.planQtd.planned)}</span>
+                    <span className={`text-xs font-medium ${market.planQtd.variance >= 0 ? "text-green-500" : "text-red-500"}`} data-testid={`text-plan-qtd-var-market-${market.id}`}>
+                      {market.planQtd.variance >= 0 ? "+" : ""}{market.planQtd.variance.toFixed(1)}%
+                    </span>
+                  </div>
                 )}
               </div>
               <div className="text-right shrink-0">
