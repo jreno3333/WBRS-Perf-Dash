@@ -65,7 +65,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "google_reviews" | "osat" | "osat_time" | "check_avg">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "plan_qtd" | "osat" | "osat_time" | "check_avg">("sales");
   const gradingCfg = useGradingConfig();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -497,6 +497,12 @@ export default function Dashboard() {
         wtdVarMap.set(id, wk.priorWeek > 0 ? ((wk.currentWeek / wk.priorWeek) - 1) * 100 : -999);
       }
     }
+    const planQtdVarMap = new Map<string, number>();
+    if (planQtdData?.restaurants) {
+      for (const [id, q] of Object.entries(planQtdData.restaurants)) {
+        planQtdVarMap.set(id, q.plannedSales > 0 ? ((q.actualSales / q.plannedSales) - 1) * 100 : -999);
+      }
+    }
     const bpMap = new Map<string, number>();
     if (attachmentRatesResponse?.restaurants) {
       for (const [id, r] of Object.entries(attachmentRatesResponse.restaurants)) {
@@ -525,8 +531,8 @@ export default function Dashboard() {
             return hasMissingManager(r.restaurantId);
           case "dt_time":
             return r.driveThru != null;
-          case "google_reviews":
-            return r.googleReviews != null;
+          case "plan_qtd":
+            return planQtdVarMap.get(r.restaurantId) !== undefined && planQtdVarMap.get(r.restaurantId) !== -999;
           case "osat":
             return r.osat != null && r.osat.totalResponses > 0;
           case "osat_time":
@@ -563,8 +569,8 @@ export default function Dashboard() {
           }
           case "xscore":
             return (xScoreMap.get(b.restaurantId) ?? -1) - (xScoreMap.get(a.restaurantId) ?? -1);
-          case "google_reviews":
-            return (b.googleReviews?.rating ?? 0) - (a.googleReviews?.rating ?? 0);
+          case "plan_qtd":
+            return (planQtdVarMap.get(b.restaurantId) ?? -999) - (planQtdVarMap.get(a.restaurantId) ?? -999);
           case "osat":
             return (b.osat?.osatPercent ?? 0) - (a.osat?.osatPercent ?? 0);
           case "osat_time": {
@@ -590,7 +596,7 @@ export default function Dashboard() {
         }
       })
       .map((r, i) => ({ ...r, rank: i + 1 }));
-  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap, checkAverageByRestaurant, attachmentRatesResponse]);
+  }, [leaderboardData?.restaurants, selectedMarketRestaurantIds, sortBy, hasMissingManager, yoyBulkData?.data, weeklySalesData?.restaurants, hourlyByRestaurant, xScoreMap, checkAverageByRestaurant, attachmentRatesResponse, planQtdData]);
 
   // Virtual scrolling: only mount cards that are near the viewport.
   // With 100+ units this cuts initial mount cost from O(n) to O(viewport/cardHeight).
@@ -922,7 +928,7 @@ export default function Dashboard() {
                           <SelectItem value="missing_manager">Missing Mgr</SelectItem>
                           <SelectItem value="dt_time">DT Time</SelectItem>
                           <SelectItem value="xscore">Exc Score</SelectItem>
-                          <SelectItem value="google_reviews">Google Rating</SelectItem>
+                          <SelectItem value="plan_qtd">QTD vs Plan</SelectItem>
                           <SelectItem value="osat">OSAT</SelectItem>
                           <SelectItem value="osat_time">OSAT Time</SelectItem>
                           <SelectItem value="check_avg">Check Avg</SelectItem>
