@@ -1602,6 +1602,16 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     <span className="font-medium">🍌 {attachmentCategories.banana_pudding.attachRate.toFixed(1)}%</span>
                   </BadgeWithTooltip>
                 )}
+                {attachmentCategories?.kids_meal && attachmentCategories.kids_meal.attachRate >= 5 && (
+                  <BadgeWithTooltip
+                    className="flex-shrink-0 text-xs px-1.5 gap-1 border-0 bg-pink-400/20 text-pink-700 dark:text-pink-300"
+                    data-testid={`badge-kids-meal-${restaurant.restaurantId}`}
+                    tooltipTitle="Kids Meal Crown 🧒"
+                    tooltipDetail={`Kids Meal attach rate: ${attachmentCategories.kids_meal.attachRate.toFixed(1)}% (target: 5 per 100 transactions). This unit is winning with families!`}
+                  >
+                    <span className="font-medium">🧒 {attachmentCategories.kids_meal.attachRate.toFixed(1)}%</span>
+                  </BadgeWithTooltip>
+                )}
                 {restaurant.osat && restaurant.osat.totalResponses > 3 && (
                   <BadgeWithTooltip
                     className="flex-shrink-0 text-xs px-1.5 gap-1 border-0 bg-blue-500/15 text-blue-700 dark:text-blue-300"

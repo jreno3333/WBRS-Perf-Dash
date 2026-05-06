@@ -1062,6 +1062,19 @@ const ATTACHMENT_CATEGORIES: Record<string, AttachmentCategory> = {
       /\bBAN\s+PUDDNG\b/i,
     ],
   },
+  kids_meal: {
+    namePatterns: [
+      /\bKIDS?\s*MEAL\b/i,
+      /\bKIDS?\s*ML\b/i,
+      /\bKID\s*MEAL\b/i,
+    ],
+    majorCategoryPatterns: [
+      /\bKIDS?\s*MEAL/i,
+    ],
+    minorCategoryPatterns: [
+      /\bKIDS?\s*MEAL/i,
+    ],
+  },
   whatasize: {
     namePatterns: [
       /\bWHATASIZE\b/i,
@@ -1100,6 +1113,7 @@ const ATTACHMENT_BENCHMARKS: Record<string, { min: number; max: number; benchmar
   dipping_sauces: { min: 15, max: 50, benchmark: SCORING_BENCHMARKS.dipping_sauces },
   shakes_malts: { min: 5, max: 30, benchmark: SCORING_BENCHMARKS.shakes_malts },
   banana_pudding: { min: 1, max: 15, benchmark: 5 },
+  kids_meal: { min: 1, max: 15, benchmark: 5 },
   whatasize: { min: 10, max: 45, benchmark: SCORING_BENCHMARKS.whatasize },
 };
 
@@ -1110,6 +1124,7 @@ const ATTACHMENT_LABELS: Record<string, string> = {
   dipping_sauces: 'Dipping Sauces',
   shakes_malts: 'Shakes & Malts',
   banana_pudding: 'Banana Pudding',
+  kids_meal: 'Kids Meal',
   whatasize: 'Whatasize',
 };
 
@@ -1299,7 +1314,7 @@ export async function getAttachmentRatesFromDetail(targetDate: Date): Promise<Ma
   }>();
 
   const categories = Object.keys(ATTACHMENT_CATEGORIES);
-  const PROMO_CATEGORIES = new Set(['banana_pudding']);
+  const PROMO_CATEGORIES = new Set(['banana_pudding', 'kids_meal']);
   const coreCategories = categories.filter(c => !PROMO_CATEGORIES.has(c));
 
   for (const order of orders) {
@@ -1565,7 +1580,7 @@ export async function getAttachmentRatesMultiDay(dates: string[]): Promise<Map<s
   }
 
   const categories = Object.keys(ATTACHMENT_CATEGORIES);
-  const PROMO_CATS = new Set(['banana_pudding']);
+  const PROMO_CATS = new Set(['banana_pudding', 'kids_meal']);
   const coreCats = categories.filter(c => !PROMO_CATS.has(c));
   const restaurantData = new Map<string, { totalOrders: number; totalSales: number; categoryHits: Record<string, number> }>();
 

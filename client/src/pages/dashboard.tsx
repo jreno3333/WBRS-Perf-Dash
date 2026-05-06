@@ -71,7 +71,7 @@ function calculateXScore(hourlyData: HourlySalesData[] | undefined, localCutoff?
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(getCentralDate());
   const [selectedMarket, setSelectedMarket] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "missing_manager" | "dt_time" | "xscore" | "plan_qtd" | "osat" | "osat_time" | "check_avg">("sales");
+  const [sortBy, setSortBy] = useState<"sales" | "variance" | "wtd_variance" | "yoy" | "banana_pudding" | "kids_meal" | "missing_manager" | "dt_time" | "xscore" | "plan_qtd" | "osat" | "osat_time" | "check_avg">("sales");
   const gradingCfg = useGradingConfig();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -514,9 +514,11 @@ export default function Dashboard() {
       }
     }
     const bpMap = new Map<string, number>();
+    const kidsMealMap = new Map<string, number>();
     if (attachmentRatesResponse?.restaurants) {
       for (const [id, r] of Object.entries(attachmentRatesResponse.restaurants)) {
         bpMap.set(id, r.categories?.banana_pudding?.attachRate ?? -1);
+        kidsMealMap.set(id, r.categories?.kids_meal?.attachRate ?? -1);
       }
     }
     const checkAvgMap = new Map<string, number>();
@@ -592,6 +594,8 @@ export default function Dashboard() {
             return (checkAvgMap.get(b.restaurantId) ?? 0) - (checkAvgMap.get(a.restaurantId) ?? 0);
           case "banana_pudding":
             return (bpMap.get(b.restaurantId) ?? -1) - (bpMap.get(a.restaurantId) ?? -1);
+          case "kids_meal":
+            return (kidsMealMap.get(b.restaurantId) ?? -1) - (kidsMealMap.get(a.restaurantId) ?? -1);
           case "yoy": {
             const aYoy = yoyBulkData?.data?.[a.restaurantId];
             const bYoy = yoyBulkData?.data?.[b.restaurantId];
@@ -950,6 +954,7 @@ export default function Dashboard() {
                           <SelectItem value="wtd_variance">% vs LW WTD</SelectItem>
                           <SelectItem value="yoy">% vs LY</SelectItem>
                           <SelectItem value="banana_pudding">🍌 BP Shake</SelectItem>
+                          <SelectItem value="kids_meal">🧒 Kids Meal</SelectItem>
                           <SelectItem value="missing_manager">Missing Mgr</SelectItem>
                           <SelectItem value="dt_time">DT Time</SelectItem>
                           <SelectItem value="xscore">Exc Score</SelectItem>
