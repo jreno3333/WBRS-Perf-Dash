@@ -174,7 +174,7 @@ export default function Dashboard() {
   const { data: checkAvgTrendResponse } = useQuery<{ date: string; days: number; restaurants: Record<string, CheckAverageTrendData> }>({
     queryKey: ["/api/pos/check-average-trend", dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/pos/check-average-trend?date=${dateStr}&days=7`);
+      const res = await fetch(`/api/pos/check-average-trend?date=${dateStr}&days=8`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },

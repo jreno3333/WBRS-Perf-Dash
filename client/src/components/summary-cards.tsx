@@ -428,9 +428,11 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
       total7dSales += d.sales;
     }
     companyAvg7d = total7dOrders > 0 ? total7dSales / total7dOrders : 0;
-    // Simple trend: compare company today vs 7d avg (2% threshold)
-    if (companyCheckAvg > 0 && companyAvg7d > 0) {
-      const pctChange = ((companyCheckAvg - companyAvg7d) / companyAvg7d) * 100;
+    // Trend: compare today's company check avg vs same weekday last week (2% threshold).
+    // companyDailyAvgs is sorted oldest→newest; with days=8 the oldest entry is today-7.
+    const sameDayLastWeek = companyDailyAvgs[0];
+    if (companyCheckAvg > 0 && sameDayLastWeek && sameDayLastWeek.avg > 0) {
+      const pctChange = ((companyCheckAvg - sameDayLastWeek.avg) / sameDayLastWeek.avg) * 100;
       if (pctChange > 2) companyTrend = 'up';
       else if (pctChange < -2) companyTrend = 'down';
     }
