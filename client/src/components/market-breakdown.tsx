@@ -275,10 +275,12 @@ export const MarketBreakdown = memo(function MarketBreakdown({ restaurants, mark
     const marketIdSet = new Set(marketRestaurantIds);
     const marketRestaurants = activeRestaurants.filter(r => marketIdSet.has(r.restaurantId));
 
+    // Display today's live total, but compare on COMPLETED-hour window (matches LW)
     const todaySales = marketRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+    const completedSales = marketRestaurants.reduce((sum, r) => sum + (r.completedSales ?? r.actualSales), 0);
     const lastWeekSales = marketRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-    const aheadCount = marketRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
-    const variance = lastWeekSales > 0 ? ((todaySales / lastWeekSales) - 1) * 100 : 0;
+    const aheadCount = marketRestaurants.filter(r => (r.completedSales ?? r.actualSales) >= r.actualLastWeekSales).length;
+    const variance = lastWeekSales > 0 ? ((completedSales / lastWeekSales) - 1) * 100 : 0;
 
     const feedbackSpeedById: Record<string, { topBoxPercent: number; responses: number }> = {};
     for (const r of marketRestaurants) {

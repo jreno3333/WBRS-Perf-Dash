@@ -287,17 +287,20 @@ export const StateBreakdown = memo(function StateBreakdown({ restaurants, hourly
       !TENNESSEE_STORES.some(name => r.restaurantName.includes(name.split(" - ")[1]))
     );
 
+    // Display today's live total, but compare on COMPLETED-hour window (matches LW)
     const alabamaTodaySales = alabamaRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+    const alabamaCompletedSales = alabamaRestaurants.reduce((sum, r) => sum + (r.completedSales ?? r.actualSales), 0);
     const alabamaLastWeekSales = alabamaRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-    const alabamaAheadCount = alabamaRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
+    const alabamaAheadCount = alabamaRestaurants.filter(r => (r.completedSales ?? r.actualSales) >= r.actualLastWeekSales).length;
     const alabamaVariance = alabamaLastWeekSales > 0
-      ? ((alabamaTodaySales / alabamaLastWeekSales) - 1) * 100 : 0;
+      ? ((alabamaCompletedSales / alabamaLastWeekSales) - 1) * 100 : 0;
 
     const tennesseeTodaySales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+    const tennesseeCompletedSales = tennesseeRestaurants.reduce((sum, r) => sum + (r.completedSales ?? r.actualSales), 0);
     const tennesseeLastWeekSales = tennesseeRestaurants.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
-    const tennesseeAheadCount = tennesseeRestaurants.filter(r => r.actualSales >= r.actualLastWeekSales).length;
+    const tennesseeAheadCount = tennesseeRestaurants.filter(r => (r.completedSales ?? r.actualSales) >= r.actualLastWeekSales).length;
     const tennesseeVariance = tennesseeLastWeekSales > 0
-      ? ((tennesseeTodaySales / tennesseeLastWeekSales) - 1) * 100 : 0;
+      ? ((tennesseeCompletedSales / tennesseeLastWeekSales) - 1) * 100 : 0;
 
     const feedbackSpeedById: Record<string, { topBoxPercent: number; responses: number }> = {};
     for (const r of activeRestaurants) {

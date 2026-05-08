@@ -117,6 +117,10 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
     : null;
   
   const totalTodaySales = activeRestaurants.reduce((sum, r) => sum + r.actualSales, 0);
+  // Apples-to-apples comparison total: today's COMPLETED-hour sales matched against
+  // LW's COMPLETED-hour sales. Prevents the in-progress hour from being counted on
+  // the today side while LW excludes it (which inflates variance for Eastern-tz units).
+  const totalCompletedSales = forecastEligible.reduce((sum, r) => sum + (r.completedSales ?? r.actualSales), 0);
   const totalLastWeekSales = forecastEligible.reduce((sum, r) => sum + r.actualLastWeekSales, 0);
   const totalForecastSales = forecastEligible.reduce((sum, r) => sum + r.forecastSales, 0);
   
@@ -125,11 +129,11 @@ export const SummaryCards = memo(function SummaryCards({ restaurants, lastUpdate
   }, 0);
   const aheadOfPaceCount = forecastEligible.filter((r) => r.isAheadOfPace).length;
   
-  // Calculate variance vs last week
+  // Calculate variance vs last week (apples-to-apples completed-window)
   const lwVariance = totalLastWeekSales > 0 
-    ? ((totalTodaySales / totalLastWeekSales) - 1) * 100 
+    ? ((totalCompletedSales / totalLastWeekSales) - 1) * 100 
     : 0;
-  const lwDollarDiff = totalTodaySales - totalLastWeekSales;
+  const lwDollarDiff = totalCompletedSales - totalLastWeekSales;
 
   let weeklyCurrentTotal = 0;
   let weeklyPriorTotal = 0;

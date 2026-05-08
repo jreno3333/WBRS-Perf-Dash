@@ -1102,8 +1102,13 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
   const paceVariance = displayLastWeek > 0 
     ? ((comparisonSales / displayLastWeek) - 1) * 100 
     : 0;
+  // Apples-to-apples: compare today's COMPLETED-hour sales to LW's COMPLETED-hour sales
+  // (both windows end at restaurantCompletedHour = local current hour - 1). Using
+  // `actualSales` here would include today's in-progress hour while LW excludes it,
+  // which artificially inflates variance (especially for Eastern-tz stores whose
+  // in-progress hour is typically a higher-volume one in Central-clock snapshots).
   const displayDayVariance = displayLastWeek > 0
-    ? ((restaurant.actualSales / displayLastWeek) - 1) * 100
+    ? ((comparisonSales / displayLastWeek) - 1) * 100
     : 0;
 
 
