@@ -4642,7 +4642,7 @@ function ApiKeysCard() {
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
       const res = await apiRequest("POST", "/api/admin/api-keys", { name });
-      return res as { id: string; name: string; prefix: string; plaintext: string; createdAt: string };
+      return (await res.json()) as { id: string; name: string; prefix: string; plaintext: string; createdAt: string };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys"] });
