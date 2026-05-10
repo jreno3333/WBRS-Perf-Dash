@@ -20,6 +20,13 @@ export function invalidatePerfHistoryCache() {
   perfHistoryCache.clear();
 }
 
+export function getPerfHistoryCached(days: number): { data: any; stale: boolean } | null {
+  const key = String(days);
+  const cached = perfHistoryCache.get(key);
+  if (!cached) return null;
+  return { data: cached.data, stale: Date.now() - cached.timestamp >= CACHE_TTL };
+}
+
 onPerfCacheInvalidate(() => perfHistoryCache.clear());
 
 router.get("/api/performance-history/detail/:restaurantId", async (req, res) => {

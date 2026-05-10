@@ -15,144 +15,149 @@ import { getActiveGradingConfig } from "./grading-config";
 
 const router = Router();
 
+export async function buildLeaderboardResponse(date?: string) {
+  let targetDate: Date;
+  if (date) {
+    const parts = date.split('-');
+    targetDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+  } else {
+    targetDate = new Date();
+  }
+  const leaderboard = await storage.getLeaderboard(targetDate);
+
+  const restaurantList = await storage.getRestaurants();
+  const restaurantMap = new Map(restaurantList.map(r => [r.id, r]));
+
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const targetDateStr = date ? date : todayStr;
+
+  const today = new Date(todayStr + 'T12:00:00');
+  const target = new Date(targetDateStr + 'T12:00:00');
+  const daysDiff = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+  const useHistoricalWeather = daysDiff >= 3;
+
+  const restaurantsWithWeather = [...leaderboard.restaurants];
+
+  const dateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+
+  const { getGoogleReviewsForAllRestaurants } = await import("../google-places");
+
+  const weatherPromise = Promise.all(
+    restaurantsWithWeather.map(async (r) => {
+      const restaurant = restaurantMap.get(r.restaurantId);
+      if (restaurant?.latitude && restaurant?.longitude) {
+        if (useHistoricalWeather) {
+          return await fetchHistoricalWeather(
+            parseFloat(String(restaurant.latitude)),
+            parseFloat(String(restaurant.longitude)),
+            targetDateStr
+          );
+        } else {
+          return await fetchWeather(
+            parseFloat(String(restaurant.latitude)),
+            parseFloat(String(restaurant.longitude))
+          );
+        }
+      }
+      return null;
+    })
+  );
+
+  console.log('[HME] Fetching drive-thru summary for date:', dateStr);
+  const [weatherSettled, hmeSettled, googleSettled, osatSettled] = await Promise.allSettled([
+    weatherPromise,
+    getDailyDriveThruSummary(dateStr),
+    getGoogleReviewsForAllRestaurants(targetDateStr),
+    getOsatForDate(targetDateStr),
+  ]);
+  const weatherResults = weatherSettled.status === 'fulfilled' ? weatherSettled.value : restaurantsWithWeather.map(() => null);
+  const hmeSummary = hmeSettled.status === 'fulfilled' ? hmeSettled.value : new Map();
+  const googleReviews = googleSettled.status === 'fulfilled' ? googleSettled.value : new Map();
+  const osatDataMap = osatSettled.status === 'fulfilled' ? osatSettled.value : new Map();
+  if (weatherSettled.status === 'rejected') console.error('[Leaderboard] Weather fetch failed:', weatherSettled.reason?.message || weatherSettled.reason);
+  if (hmeSettled.status === 'rejected') console.error('[Leaderboard] HME fetch failed:', hmeSettled.reason?.message || hmeSettled.reason);
+  if (googleSettled.status === 'rejected') console.error('[Leaderboard] Google Reviews fetch failed:', googleSettled.reason?.message || googleSettled.reason);
+  if (osatSettled.status === 'rejected') console.error('[Leaderboard] OSAT fetch failed:', osatSettled.reason?.message || osatSettled.reason);
+  console.log('[HME] Got summary for', hmeSummary.size, 'restaurants');
+
+  for (let i = 0; i < restaurantsWithWeather.length; i++) {
+    const r = restaurantsWithWeather[i];
+    const weather = weatherResults[i];
+    if (weather) {
+      if (useHistoricalWeather) {
+        const hw = weather as HistoricalWeather;
+        r.weather = {
+          temp: hw.avgTemp,
+          highTemp: hw.highTemp,
+          lowTemp: hw.lowTemp,
+          condition: hw.condition,
+          humidity: 0,
+          windSpeed: 0,
+        };
+      } else {
+        r.weather = weather as CurrentWeather;
+      }
+    }
+
+    const hmeData = hmeSummary.get(r.restaurantId);
+    if (hmeData) {
+      r.driveThru = {
+        carCount: hmeData.carCount,
+        avgTotalTime: hmeData.avgTotalTime,
+        avgServiceTime: hmeData.avgServiceTime,
+        speedAttainment: hmeData.speedAttainment,
+        carsUnder6Min: hmeData.carsUnder6Min,
+      };
+    }
+
+    const reviews = googleReviews.get(r.restaurantId);
+    if (reviews) {
+      r.googleReviews = {
+        rating: reviews.rating,
+        reviewCount: reviews.reviewCount,
+        newReviewsToday: reviews.newReviewsToday,
+      };
+    }
+
+    const osat = osatDataMap[r.restaurantId];
+    if (osat) {
+      r.osat = {
+        osatPercent: osat.osatPercent,
+        totalResponses: osat.totalResponses,
+        fiveStarCount: osat.fiveStarCount,
+      };
+
+      // Customer-feedback speed badge: store 1682 (Cumberland Avenue) has no
+      // drive-thru, so it falls back to the generic Speed of Service question.
+      // All other stores use the DT Speed of Service question.
+      // Methodology matches OSAT and the Qualtrics dashboard: 5-star top-box %.
+      const restaurant = restaurantMap.get(r.restaurantId);
+      const useGeneric = restaurant?.unitNumber === '1682';
+      const source: 'dt' | 'generic' = useGeneric ? 'generic' : 'dt';
+      const responses = useGeneric ? osat.genericSpeedResponses : osat.dtSpeedResponses;
+      const fiveStar = useGeneric ? osat.genericSpeedFiveStarCount : osat.dtSpeedFiveStarCount;
+      r.feedbackSpeed = responses > 0
+        ? { topBoxPercent: (fiveStar / responses) * 100, fiveStarCount: fiveStar, responses, source }
+        : { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source };
+    } else {
+      const restaurant = restaurantMap.get(r.restaurantId);
+      const useGeneric = restaurant?.unitNumber === '1682';
+      r.feedbackSpeed = { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source: useGeneric ? 'generic' : 'dt' };
+    }
+  }
+
+  return {
+    ...leaderboard,
+    restaurants: restaurantsWithWeather,
+  };
+}
+
 // Get leaderboard data
 router.get("/api/leaderboard", async (req, res) => {
   try {
     const { date } = req.query;
-    let targetDate: Date;
-    if (date) {
-      const parts = (date as string).split('-');
-      targetDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
-    } else {
-      targetDate = new Date();
-    }
-    const leaderboard = await storage.getLeaderboard(targetDate);
-
-    const restaurantList = await storage.getRestaurants();
-    const restaurantMap = new Map(restaurantList.map(r => [r.id, r]));
-
-    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-    const targetDateStr = date ? (date as string) : todayStr;
-
-    const today = new Date(todayStr + 'T12:00:00');
-    const target = new Date(targetDateStr + 'T12:00:00');
-    const daysDiff = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
-    const useHistoricalWeather = daysDiff >= 3;
-
-    const restaurantsWithWeather = [...leaderboard.restaurants];
-
-    const dateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-
-    const { getGoogleReviewsForAllRestaurants } = await import("../google-places");
-
-    const weatherPromise = Promise.all(
-      restaurantsWithWeather.map(async (r) => {
-        const restaurant = restaurantMap.get(r.restaurantId);
-        if (restaurant?.latitude && restaurant?.longitude) {
-          if (useHistoricalWeather) {
-            return await fetchHistoricalWeather(
-              parseFloat(String(restaurant.latitude)),
-              parseFloat(String(restaurant.longitude)),
-              targetDateStr
-            );
-          } else {
-            return await fetchWeather(
-              parseFloat(String(restaurant.latitude)),
-              parseFloat(String(restaurant.longitude))
-            );
-          }
-        }
-        return null;
-      })
-    );
-
-    console.log('[HME] Fetching drive-thru summary for date:', dateStr);
-    const [weatherSettled, hmeSettled, googleSettled, osatSettled] = await Promise.allSettled([
-      weatherPromise,
-      getDailyDriveThruSummary(dateStr),
-      getGoogleReviewsForAllRestaurants(targetDateStr),
-      getOsatForDate(targetDateStr),
-    ]);
-    const weatherResults = weatherSettled.status === 'fulfilled' ? weatherSettled.value : restaurantsWithWeather.map(() => null);
-    const hmeSummary = hmeSettled.status === 'fulfilled' ? hmeSettled.value : new Map();
-    const googleReviews = googleSettled.status === 'fulfilled' ? googleSettled.value : new Map();
-    const osatDataMap = osatSettled.status === 'fulfilled' ? osatSettled.value : new Map();
-    if (weatherSettled.status === 'rejected') console.error('[Leaderboard] Weather fetch failed:', weatherSettled.reason?.message || weatherSettled.reason);
-    if (hmeSettled.status === 'rejected') console.error('[Leaderboard] HME fetch failed:', hmeSettled.reason?.message || hmeSettled.reason);
-    if (googleSettled.status === 'rejected') console.error('[Leaderboard] Google Reviews fetch failed:', googleSettled.reason?.message || googleSettled.reason);
-    if (osatSettled.status === 'rejected') console.error('[Leaderboard] OSAT fetch failed:', osatSettled.reason?.message || osatSettled.reason);
-    console.log('[HME] Got summary for', hmeSummary.size, 'restaurants');
-
-    for (let i = 0; i < restaurantsWithWeather.length; i++) {
-      const r = restaurantsWithWeather[i];
-      const weather = weatherResults[i];
-      if (weather) {
-        if (useHistoricalWeather) {
-          const hw = weather as HistoricalWeather;
-          r.weather = {
-            temp: hw.avgTemp,
-            highTemp: hw.highTemp,
-            lowTemp: hw.lowTemp,
-            condition: hw.condition,
-            humidity: 0,
-            windSpeed: 0,
-          };
-        } else {
-          r.weather = weather as CurrentWeather;
-        }
-      }
-
-      const hmeData = hmeSummary.get(r.restaurantId);
-      if (hmeData) {
-        r.driveThru = {
-          carCount: hmeData.carCount,
-          avgTotalTime: hmeData.avgTotalTime,
-          avgServiceTime: hmeData.avgServiceTime,
-          speedAttainment: hmeData.speedAttainment,
-          carsUnder6Min: hmeData.carsUnder6Min,
-        };
-      }
-
-      const reviews = googleReviews.get(r.restaurantId);
-      if (reviews) {
-        r.googleReviews = {
-          rating: reviews.rating,
-          reviewCount: reviews.reviewCount,
-          newReviewsToday: reviews.newReviewsToday,
-        };
-      }
-
-      const osat = osatDataMap[r.restaurantId];
-      if (osat) {
-        r.osat = {
-          osatPercent: osat.osatPercent,
-          totalResponses: osat.totalResponses,
-          fiveStarCount: osat.fiveStarCount,
-        };
-
-        // Customer-feedback speed badge: store 1682 (Cumberland Avenue) has no
-        // drive-thru, so it falls back to the generic Speed of Service question.
-        // All other stores use the DT Speed of Service question.
-        // Methodology matches OSAT and the Qualtrics dashboard: 5-star top-box %.
-        const restaurant = restaurantMap.get(r.restaurantId);
-        const useGeneric = restaurant?.unitNumber === '1682';
-        const source: 'dt' | 'generic' = useGeneric ? 'generic' : 'dt';
-        const responses = useGeneric ? osat.genericSpeedResponses : osat.dtSpeedResponses;
-        const fiveStar = useGeneric ? osat.genericSpeedFiveStarCount : osat.dtSpeedFiveStarCount;
-        r.feedbackSpeed = responses > 0
-          ? { topBoxPercent: (fiveStar / responses) * 100, fiveStarCount: fiveStar, responses, source }
-          : { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source };
-      } else {
-        const restaurant = restaurantMap.get(r.restaurantId);
-        const useGeneric = restaurant?.unitNumber === '1682';
-        r.feedbackSpeed = { topBoxPercent: 0, fiveStarCount: 0, responses: 0, source: useGeneric ? 'generic' : 'dt' };
-      }
-    }
-
-    res.json({
-      ...leaderboard,
-      restaurants: restaurantsWithWeather,
-    });
+    const result = await buildLeaderboardResponse(date as string | undefined);
+    res.json(result);
   } catch (error) {
     console.error("Error fetching leaderboard:", error);
     res.status(500).json({

@@ -54,19 +54,17 @@ function mean(values: number[]): number {
 }
 
 // ---------------------------------------------------------------------------
-// Endpoint
+// Core builder — shared by the browser route and the external /api/v1/ route
 // ---------------------------------------------------------------------------
 
-router.get("/api/executive-summary", async (req, res) => {
-  try {
-    const { days = "7", date } = req.query;
-    const numDays = Math.min(parseInt(days as string) || 7, 90);
+export async function buildExecutiveSummary(params: { days?: number; date?: string }) {
+  const numDays = Math.min(params.days || 7, 90);
 
     // Date range computation — anchored in America/Chicago
     // Default end date is YESTERDAY so we compare complete days only
     let endDate: Date;
-    if (date) {
-      endDate = new Date(date as string + "T12:00:00Z");
+    if (params.date) {
+      endDate = new Date(params.date + "T12:00:00Z");
     } else {
       endDate = new Date();
       const todayStr = endDate.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
@@ -906,10 +904,7 @@ router.get("/api/executive-summary", async (req, res) => {
       });
     }
 
-    // ------------------------------------------------------------------
-    // Send response
-    // ------------------------------------------------------------------
-    res.json({
+    return {
       dateRange: { start: startDateStr, end: endDateStr, days: numDays },
       previousPeriod: { start: prevStartDateStr, end: prevEndDateStr },
       companyPulse,
@@ -918,7 +913,21 @@ router.get("/api/executive-summary", async (req, res) => {
       outperformers,
       anomalies,
       marketRollups,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint
+// ---------------------------------------------------------------------------
+
+router.get("/api/executive-summary", async (req, res) => {
+  try {
+    const { days = "7", date } = req.query;
+    const result = await buildExecutiveSummary({
+      days: parseInt(days as string) || 7,
+      date: date as string | undefined,
     });
+    res.json(result);
   } catch (error) {
     console.error("Error in executive summary:", error);
     res.status(500).json({ error: "Failed to generate executive summary" });
