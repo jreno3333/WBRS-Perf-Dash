@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp, Users, Shield, ShieldOff, Megaphone, BarChart3, Zap, Vote, Award } from "lucide-react";
+import { Settings, CalendarIcon, Save, Home, X, Car, Smartphone, Utensils, ShoppingBag, Timer, RefreshCw, CheckCircle, AlertCircle, Receipt, Clock, Database, Star, ExternalLink, Plus, Trash2, MapPin, Pencil, ThumbsUp, History, Eye, Send, ChevronDown, Upload, FileUp, Users, Shield, ShieldOff, Megaphone, BarChart3, Zap, Vote, Award, Key, Copy, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { NavBar } from "@/components/nav-bar";
 import { format, differenceInDays, isFuture, parseISO, formatDistanceToNow } from "date-fns";
@@ -428,6 +429,8 @@ export default function SettingsPage() {
           <HelperRewardsCard />
 
           <UserManagementCard />
+
+          <ApiKeysCard />
         </div>
       </main>
     </div>
@@ -4603,5 +4606,259 @@ function UserRow({ user, onToggleStatus, onChangeRole, isPending, isCurrentUser 
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// API Keys Card
+// ---------------------------------------------------------------------------
+
+interface ApiKeyRecord {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdBy: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  status: "active" | "revoked";
+}
+
+function ApiKeysCard() {
+  const { toast } = useToast();
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyPlaintext, setNewKeyPlaintext] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const { data: authData } = useQuery<{ authenticated: boolean; role?: string }>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const { data: apiKeyList, isLoading } = useQuery<ApiKeyRecord[]>({
+    queryKey: ["/api/admin/api-keys"],
+    enabled: authData?.role === "admin",
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/admin/api-keys", { name });
+      return res as { id: string; name: string; prefix: string; plaintext: string; createdAt: string };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys"] });
+      setNewKeyName("");
+      setNewKeyPlaintext(data.plaintext);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to create API key.", variant: "destructive" });
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/admin/api-keys/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys"] });
+      toast({ title: "Key revoked", description: "The API key has been revoked and is no longer valid." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to revoke key.", variant: "destructive" });
+    },
+  });
+
+  const handleCopy = () => {
+    if (!newKeyPlaintext) return;
+    navigator.clipboard.writeText(newKeyPlaintext).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (authData?.role !== "admin") return null;
+
+  const activeKeys = (apiKeyList || []).filter(k => k.status === "active");
+  const revokedKeys = (apiKeyList || []).filter(k => k.status === "revoked");
+
+  return (
+    <>
+      <Collapsible defaultOpen={false}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="h-5 w-5" />
+                  API Keys
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Manage bearer tokens for external systems (BI tools, integrations) to read dashboard data via <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/v1/</code>.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {apiKeyList && <Badge variant="secondary">{activeKeys.length} active</Badge>}
+                <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="space-y-6">
+
+              {/* Create new key */}
+              <div>
+                <h3 className="text-sm font-medium mb-3">Create New Key</h3>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Label (e.g. Tableau BI, Internal Script)"
+                    value={newKeyName}
+                    onChange={(e) => setNewKeyName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newKeyName.trim()) {
+                        createMutation.mutate(newKeyName.trim());
+                      }
+                    }}
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={() => createMutation.mutate(newKeyName.trim())}
+                    disabled={!newKeyName.trim() || createMutation.isPending}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {createMutation.isPending ? "Creating..." : "Create"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  The full key is shown once at creation — copy it immediately and store it securely.
+                </p>
+              </div>
+
+              {/* Active keys */}
+              {isLoading ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">Loading keys...</div>
+              ) : (
+                <>
+                  {activeKeys.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground mb-3">Active Keys ({activeKeys.length})</h3>
+                      <div className="grid gap-2">
+                        {activeKeys.map(key => (
+                          <div key={key.id} className="flex items-center justify-between gap-4 p-3 rounded-lg border bg-card">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm">{key.name}</span>
+                                <code className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{key.keyPrefix}…</code>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+                                <span>Created {format(new Date(key.createdAt), "MMM d, yyyy")}</span>
+                                {key.lastUsedAt ? (
+                                  <span>Last used {formatDistanceToNow(new Date(key.lastUsedAt), { addSuffix: true })}</span>
+                                ) : (
+                                  <span>Never used</span>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive shrink-0"
+                              onClick={() => {
+                                if (confirm(`Revoke key "${key.name}"? This cannot be undone.`)) {
+                                  revokeMutation.mutate(key.id);
+                                }
+                              }}
+                              disabled={revokeMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Revoke
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeKeys.length === 0 && !isLoading && (
+                    <div className="text-center py-6 text-muted-foreground text-sm">
+                      No active API keys. Create one above to get started.
+                    </div>
+                  )}
+
+                  {revokedKeys.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground mb-3">Revoked Keys ({revokedKeys.length})</h3>
+                      <div className="grid gap-2">
+                        {revokedKeys.map(key => (
+                          <div key={key.id} className="flex items-center justify-between gap-4 p-3 rounded-lg border bg-muted/50 opacity-60">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm line-through">{key.name}</span>
+                                <code className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{key.keyPrefix}…</code>
+                                <Badge variant="secondary" className="text-xs shrink-0">Revoked</Badge>
+                              </div>
+                              {key.revokedAt && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Revoked {format(new Date(key.revokedAt), "MMM d, yyyy")}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Usage instructions */}
+                  <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+                    <h3 className="text-sm font-medium">Usage</h3>
+                    <p className="text-xs text-muted-foreground">Pass the key as a Bearer token in any HTTP request:</p>
+                    <code className="block text-xs bg-background border rounded p-2 font-mono break-all">
+                      Authorization: Bearer &lt;your-api-key&gt;
+                    </code>
+                    <div className="text-xs text-muted-foreground space-y-1 pt-1">
+                      <p><code className="bg-background border rounded px-1">GET /api/v1/snapshot</code> — all metrics in one call (recommended for polling)</p>
+                      <p><code className="bg-background border rounded px-1">GET /api/v1/leaderboard</code> — live ranked sales + OSAT + drive-thru</p>
+                      <p><code className="bg-background border rounded px-1">GET /api/v1/executive-summary?days=7</code> — KPI summary with period comparisons</p>
+                      <p><code className="bg-background border rounded px-1">GET /api/v1/performance-history?days=7</code> — daily execution grades</p>
+                      <p><code className="bg-background border rounded px-1">GET /api/v1/restaurants</code> — restaurant metadata</p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      {/* New key reveal dialog */}
+      <Dialog open={!!newKeyPlaintext} onOpenChange={(open) => { if (!open) { setNewKeyPlaintext(null); setCopied(false); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              API Key Created
+            </DialogTitle>
+            <DialogDescription>
+              Copy this key now — it will not be shown again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <code className="flex-1 block text-xs bg-muted border rounded p-3 font-mono break-all select-all">
+                {newKeyPlaintext}
+              </code>
+              <Button variant="outline" size="icon" onClick={handleCopy} className="shrink-0 self-start mt-0">
+                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Store this key in a secure location (e.g. environment variable). Anyone with this key can read all dashboard data.
+            </p>
+            <Button className="w-full" onClick={() => { setNewKeyPlaintext(null); setCopied(false); }}>
+              Done — I've copied it
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
