@@ -1028,3 +1028,18 @@ export type HelperReward = typeof helperRewards.$inferSelect;
 // DEFAULT_FEEDBACK_SPEED_TIERS, DEFAULT_GRADING_CONFIG, and mergeGradingConfig
 // now live in ./grading-config (re-exported above) — they don't depend on
 // drizzle and the client can import them without bundling table schemas.
+
+// API keys — machine-to-machine auth for external consumers (BI tools, integrations)
+// Raw key is never stored; only the SHA-256 hash is persisted.
+export const apiKeys = pgTable("api_keys", {
+  id:          varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name:        text("name").notNull(),
+  keyHash:     text("key_hash").notNull().unique(),
+  keyPrefix:   text("key_prefix").notNull(),
+  createdBy:   text("created_by"),
+  lastUsedAt:  timestamp("last_used_at"),
+  revokedAt:   timestamp("revoked_at"),
+  createdAt:   timestamp("created_at").defaultNow(),
+});
+
+export type ApiKey = typeof apiKeys.$inferSelect;

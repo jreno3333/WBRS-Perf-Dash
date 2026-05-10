@@ -28,6 +28,7 @@ import executiveSummaryRouter from "./executive-summary";
 import surveyCaptureRouter from "./survey-capture";
 import gradingConfigRouter from "./grading-config";
 import helperRewardsRouter from "./helper-rewards";
+import externalApiRouter, { adminApiKeysRouter } from "./external-api";
 
 import { db } from "../db";
 import { users, gradingConfig as gradingConfigTable, DEFAULT_GRADING_CONFIG, type GradingConfigData } from "@shared/schema";
@@ -84,6 +85,7 @@ export async function registerRoutes(
       "/api/db-status",
       "/api/xenial/",
       "/api/push-report/shared/",
+      "/api/v1/",  // external API — uses its own apiKeyAuth middleware
     ];
     const fullPath = req.originalUrl.split('?')[0];
     if (openPaths.some(p => fullPath.startsWith(p))) {
@@ -118,6 +120,8 @@ export async function registerRoutes(
   app.use(surveyCaptureRouter);
   app.use(gradingConfigRouter);
   app.use(helperRewardsRouter);
+  app.use(adminApiKeysRouter);  // admin key management (session auth enforced inside)
+  app.use(externalApiRouter);   // /api/v1/* external API (api-key auth enforced inside)
 
   // Diagnostic: verify server has latest code
   app.get("/api/grading-config/ping", (_req: Request, res: Response) => {
