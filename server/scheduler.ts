@@ -549,6 +549,24 @@ async function syncYesterdayIfNeeded() {
       } catch (empError) {
         log(`Daily employee sync error: ${empError instanceof Error ? empError.message : 'Unknown error'}`);
       }
+
+      // Daily training platform sync (after employee roster, so external→internal map is fresh)
+      try {
+        const { syncTrainingPlatform, isTrainingApiConfigured } = await import("./scraper/training-api");
+        if (isTrainingApiConfigured()) {
+          const trainingResult = await syncTrainingPlatform();
+          if (trainingResult.success) {
+            const r = trainingResult.recordsSynced;
+            log(`Daily training sync: ${r.courses} courses, ${r.modules} modules, ${r.courseProgress} course-progress, ${r.moduleProgress} module-progress, ${r.certifications} certs (${trainingResult.unmappedExternalIds.length} unmapped)`);
+          } else {
+            log(`Daily training sync failed: ${trainingResult.error}`);
+          }
+        } else {
+          log("Daily training sync skipped: TRAINING_API_BASE_URL or TRAINING_API_KEY not configured");
+        }
+      } catch (trainingError) {
+        log(`Daily training sync error: ${trainingError instanceof Error ? trainingError.message : 'Unknown error'}`);
+      }
       
       lastYesterdaySync = todayCentral;
     } catch (error) {

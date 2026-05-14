@@ -6,6 +6,18 @@ import {
   type InsertDailyWeather,
   type DailyWeather,
   type HourlyLabor,
+  type InsertTrainingCourse,
+  type TrainingCourse,
+  type InsertTrainingModule,
+  type TrainingModule,
+  type InsertTrainingEmployeeProgress,
+  type TrainingEmployeeProgress,
+  type InsertTrainingModuleProgress,
+  type TrainingModuleProgress,
+  type InsertTrainingCertification,
+  type TrainingCertification,
+  type InsertTrainingSyncStatus,
+  type TrainingSyncStatus,
   restaurants,
   dailyWeather,
   hourlySales,
@@ -16,6 +28,13 @@ import {
   posOrders,
   historicalDailySales,
   salesPlanDaily,
+  employees,
+  trainingCourses,
+  trainingModules,
+  trainingEmployeeProgress,
+  trainingModuleProgress,
+  trainingCertifications,
+  trainingSyncStatus,
 } from "@shared/schema";
 import { db, posDb } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
@@ -935,6 +954,158 @@ export class DatabaseStorage {
       .select()
       .from(dailyWeather)
       .where(eq(dailyWeather.date, date));
+  }
+
+  // ─── Training Platform Sync (Phase 1) ────────────────────────────────────
+
+  async upsertTrainingCourse(data: InsertTrainingCourse): Promise<void> {
+    await db
+      .insert(trainingCourses)
+      .values(data)
+      .onConflictDoUpdate({
+        target: trainingCourses.externalCourseId,
+        set: {
+          title: data.title,
+          category: data.category ?? null,
+          totalModules: data.totalModules ?? null,
+          syncedAt: new Date(),
+        },
+      });
+  }
+
+  async upsertTrainingModule(data: InsertTrainingModule): Promise<void> {
+    await db
+      .insert(trainingModules)
+      .values(data)
+      .onConflictDoUpdate({
+        target: trainingModules.externalModuleId,
+        set: {
+          externalCourseId: data.externalCourseId,
+          title: data.title,
+          category: data.category ?? null,
+          defaultDueDays: data.defaultDueDays ?? null,
+          syncedAt: new Date(),
+        },
+      });
+  }
+
+  async upsertTrainingEmployeeProgress(data: InsertTrainingEmployeeProgress): Promise<void> {
+    await db
+      .insert(trainingEmployeeProgress)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [trainingEmployeeProgress.employeeId, trainingEmployeeProgress.externalCourseId],
+        set: {
+          externalEmployeeId: data.externalEmployeeId,
+          percentComplete: data.percentComplete,
+          score: data.score ?? null,
+          status: data.status ?? null,
+          dueDate: data.dueDate ?? null,
+          completedAt: data.completedAt ?? null,
+          syncedAt: new Date(),
+        },
+      });
+  }
+
+  async upsertTrainingModuleProgress(data: InsertTrainingModuleProgress): Promise<void> {
+    await db
+      .insert(trainingModuleProgress)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [trainingModuleProgress.employeeId, trainingModuleProgress.externalModuleId],
+        set: {
+          externalEmployeeId: data.externalEmployeeId,
+          status: data.status,
+          dueDate: data.dueDate ?? null,
+          score: data.score ?? null,
+          completedAt: data.completedAt ?? null,
+          syncedAt: new Date(),
+        },
+      });
+  }
+
+  async upsertTrainingCertification(data: InsertTrainingCertification): Promise<void> {
+    await db
+      .insert(trainingCertifications)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [trainingCertifications.employeeId, trainingCertifications.certificationKey],
+        set: {
+          externalEmployeeId: data.externalEmployeeId,
+          name: data.name,
+          earnedAt: data.earnedAt ?? null,
+          expiresAt: data.expiresAt ?? null,
+          syncedAt: new Date(),
+        },
+      });
+  }
+
+  async recordTrainingSyncStatus(data: InsertTrainingSyncStatus): Promise<void> {
+    await db.insert(trainingSyncStatus).values(data);
+  }
+
+  async getTrainingSyncStatus(): Promise<TrainingSyncStatus | null> {
+    const [row] = await db
+      .select()
+      .from(trainingSyncStatus)
+      .orderBy(desc(trainingSyncStatus.ranAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getTrainingProgressByEmployee(employeeId: string): Promise<{
+    courses: TrainingEmployeeProgress[];
+    modules: TrainingModuleProgress[];
+    certifications: TrainingCertification[];
+  }> {
+    const [courses, modules, certifications] = await Promise.all([
+      db.select().from(trainingEmployeeProgress).where(eq(trainingEmployeeProgress.employeeId, employeeId)),
+      db.select().from(trainingModuleProgress).where(eq(trainingModuleProgress.employeeId, employeeId)),
+      db.select().from(trainingCertifications).where(eq(trainingCertifications.employeeId, employeeId)),
+    ]);
+    return { courses, modules, certifications };
+  }
+
+  async getCertificationsByEmployee(employeeId: string): Promise<TrainingCertification[]> {
+    return db.select().from(trainingCertifications).where(eq(trainingCertifications.employeeId, employeeId));
+  }
+
+  async getTrainingRollupByRestaurant(restaurantId: string): Promise<{
+    employeeCount: number;
+    avgPercentComplete: number;
+    completedCourses: number;
+    overdueCourses: number;
+  }> {
+    // Aggregate all course-progress rows for employees mapped to this restaurant
+    const rows = await db
+      .select({
+        percentComplete: trainingEmployeeProgress.percentComplete,
+        status: trainingEmployeeProgress.status,
+        employeeId: trainingEmployeeProgress.employeeId,
+      })
+      .from(trainingEmployeeProgress)
+      .innerJoin(employees, eq(employees.id, trainingEmployeeProgress.employeeId))
+      .where(eq(employees.restaurantId, restaurantId));
+
+    if (rows.length === 0) {
+      return { employeeCount: 0, avgPercentComplete: 0, completedCourses: 0, overdueCourses: 0 };
+    }
+    const empSet = new Set<string>();
+    let sumPct = 0;
+    let completed = 0;
+    let overdue = 0;
+    for (const r of rows) {
+      empSet.add(r.employeeId);
+      sumPct += parseFloat(r.percentComplete || "0");
+      if (r.status === "completed") completed++;
+      if (r.status === "overdue") overdue++;
+    }
+    return {
+      employeeCount: empSet.size,
+      avgPercentComplete: Math.round((sumPct / rows.length) * 100) / 100,
+      completedCourses: completed,
+      overdueCourses: overdue,
+    };
   }
 }
 

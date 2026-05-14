@@ -81,6 +81,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Other Integrations
 - **Xenial POS**: Real-time order data via webhooks (sole source for sales data).
+- **Training Platform (in-house LMS)**: Read-only sync of courses, modules, per-employee course/module progress, and certifications (e.g. 5-Star Floor Management). Auth uses `Authorization: Bearer <TRAINING_API_KEY>` against `TRAINING_API_BASE_URL` (both env vars). Employees are matched by the training platform's `externalId` (== our `employees.sevenShiftsUserId`); unmapped IDs are recorded in `training_sync_status.unmappedExternalIds`. Sync runs once per day inside the post-midnight resync window (`server/scheduler.ts` → `syncYesterdayIfNeeded`). Admin endpoints (require admin role): `POST /api/training/sync` (manual trigger; returns 502 when the underlying sync reports failure) and `GET /api/training/sync-status` (last run, counts, unmapped IDs, configured?). **Sync semantics: upsert-only — records that disappear upstream are NOT pruned locally.** Tombstone/prune logic is deferred to a later phase. Phase 1 is backend-only — no UI changes.
 
 ## Operational Scripts
 

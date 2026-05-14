@@ -1043,3 +1043,130 @@ export const apiKeys = pgTable("api_keys", {
 });
 
 export type ApiKey = typeof apiKeys.$inferSelect;
+
+// ─── Training Platform Sync (Phase 1) ───────────────────────────────────────
+// External LMS data: courses, modules, per-employee progress, certifications.
+// Employees are matched via training_*.externalEmployeeId == employees.sevenShiftsUserId (stringified).
+
+export const trainingCourses = pgTable("training_courses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  externalCourseId: text("external_course_id").notNull().unique(),
+  title: text("title").notNull(),
+  category: text("category"),                      // quality | service | speed | hospitality | ...
+  totalModules: integer("total_modules"),
+  syncedAt: timestamp("synced_at").defaultNow(),
+});
+
+export const insertTrainingCourseSchema = createInsertSchema(trainingCourses).omit({
+  id: true,
+  syncedAt: true,
+});
+export type InsertTrainingCourse = z.infer<typeof insertTrainingCourseSchema>;
+export type TrainingCourse = typeof trainingCourses.$inferSelect;
+
+export const trainingModules = pgTable("training_modules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  externalModuleId: text("external_module_id").notNull().unique(),
+  externalCourseId: text("external_course_id").notNull(),
+  title: text("title").notNull(),
+  category: text("category"),
+  defaultDueDays: integer("default_due_days"),
+  syncedAt: timestamp("synced_at").defaultNow(),
+});
+
+export const insertTrainingModuleSchema = createInsertSchema(trainingModules).omit({
+  id: true,
+  syncedAt: true,
+});
+export type InsertTrainingModule = z.infer<typeof insertTrainingModuleSchema>;
+export type TrainingModule = typeof trainingModules.$inferSelect;
+
+export const trainingEmployeeProgress = pgTable("training_employee_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull(),    // FK → employees.id
+  externalEmployeeId: text("external_employee_id").notNull(),
+  externalCourseId: text("external_course_id").notNull(),
+  percentComplete: decimal("percent_complete", { precision: 5, scale: 2 }).notNull().default("0"),
+  score: decimal("score", { precision: 5, scale: 2 }),
+  status: text("status"),                          // not_started | in_progress | completed | overdue
+  dueDate: text("due_date"),                       // YYYY-MM-DD
+  completedAt: timestamp("completed_at"),
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueEmployeeCourse: uniqueIndex("training_emp_course_idx")
+    .on(table.employeeId, table.externalCourseId),
+}));
+
+export const insertTrainingEmployeeProgressSchema = createInsertSchema(trainingEmployeeProgress).omit({
+  id: true,
+  syncedAt: true,
+});
+export type InsertTrainingEmployeeProgress = z.infer<typeof insertTrainingEmployeeProgressSchema>;
+export type TrainingEmployeeProgress = typeof trainingEmployeeProgress.$inferSelect;
+
+export const trainingModuleProgress = pgTable("training_module_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull(),
+  externalEmployeeId: text("external_employee_id").notNull(),
+  externalModuleId: text("external_module_id").notNull(),
+  status: text("status").notNull(),
+  dueDate: text("due_date"),
+  score: decimal("score", { precision: 5, scale: 2 }),
+  completedAt: timestamp("completed_at"),
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueEmployeeModule: uniqueIndex("training_emp_module_idx")
+    .on(table.employeeId, table.externalModuleId),
+}));
+
+export const insertTrainingModuleProgressSchema = createInsertSchema(trainingModuleProgress).omit({
+  id: true,
+  syncedAt: true,
+});
+export type InsertTrainingModuleProgress = z.infer<typeof insertTrainingModuleProgressSchema>;
+export type TrainingModuleProgress = typeof trainingModuleProgress.$inferSelect;
+
+export const trainingCertifications = pgTable("training_certifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull(),
+  externalEmployeeId: text("external_employee_id").notNull(),
+  certificationKey: text("certification_key").notNull(), // e.g. "5_star_floor_management"
+  name: text("name").notNull(),                          // e.g. "5-Star Floor Management"
+  earnedAt: timestamp("earned_at"),
+  expiresAt: timestamp("expires_at"),
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => ({
+  uniqueEmployeeCert: uniqueIndex("training_emp_cert_idx")
+    .on(table.employeeId, table.certificationKey),
+}));
+
+export const insertTrainingCertificationSchema = createInsertSchema(trainingCertifications).omit({
+  id: true,
+  syncedAt: true,
+});
+export type InsertTrainingCertification = z.infer<typeof insertTrainingCertificationSchema>;
+export type TrainingCertification = typeof trainingCertifications.$inferSelect;
+
+// Single-row sync status / audit log for the training sync job.
+export const trainingSyncStatus = pgTable("training_sync_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull(),                // success | error | skipped
+  durationMs: integer("duration_ms").notNull().default(0),
+  recordsSynced: jsonb("records_synced").$type<{
+    courses: number;
+    modules: number;
+    courseProgress: number;
+    moduleProgress: number;
+    certifications: number;
+  }>().notNull(),
+  unmappedExternalIds: text("unmapped_external_ids").array().notNull().default(sql`ARRAY[]::text[]`),
+  errorMessage: text("error_message"),
+  ranAt: timestamp("ran_at").defaultNow(),
+});
+
+export const insertTrainingSyncStatusSchema = createInsertSchema(trainingSyncStatus).omit({
+  id: true,
+  ranAt: true,
+});
+export type InsertTrainingSyncStatus = z.infer<typeof insertTrainingSyncStatusSchema>;
+export type TrainingSyncStatus = typeof trainingSyncStatus.$inferSelect;
