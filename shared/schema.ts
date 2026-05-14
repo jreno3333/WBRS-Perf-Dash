@@ -374,6 +374,7 @@ export type DailyWeather = typeof dailyWeather.$inferSelect;
 export const employees = pgTable("employees", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sevenShiftsUserId: integer("seven_shifts_user_id").notNull().unique(),
+  punchId: text("punch_id"), // 7shifts punch_id (string); used to join with LMS training data
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   hireDate: date("hire_date"), // Can be null if not set in 7shifts

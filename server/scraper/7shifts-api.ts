@@ -117,6 +117,7 @@ interface SevenShiftsUser {
   hire_date: string | null; // YYYY-MM-DD format or null
   invited: string | null; // ISO timestamp when invited to 7shifts (fallback for hire_date)
   type: string; // employee, manager, asst_manager, employer
+  punch_id?: number | string | null; // numeric clock-in PIN; matches LMS punchId
 }
 
 interface UsersResponse {
@@ -1514,8 +1515,10 @@ export async function syncEmployees(): Promise<{ success: boolean; count: number
         if (invitedAt) withInvitedAtCount++;
         
         // Upsert employee record
+        const punchIdStr = user.punch_id != null ? String(user.punch_id) : null;
         await db.insert(employees).values({
           sevenShiftsUserId: user.id,
+          punchId: punchIdStr,
           firstName: user.first_name,
           lastName: user.last_name,
           hireDate: user.hire_date || null,
@@ -1526,6 +1529,7 @@ export async function syncEmployees(): Promise<{ success: boolean; count: number
         }).onConflictDoUpdate({
           target: employees.sevenShiftsUserId,
           set: {
+            punchId: punchIdStr,
             firstName: user.first_name,
             lastName: user.last_name,
             hireDate: user.hire_date || null,

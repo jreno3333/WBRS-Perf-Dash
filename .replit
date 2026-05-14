@@ -54,6 +54,7 @@ integrations = ["javascript_database:1.0.0"]
 WORKSTREAM_API_TOKEN = "gvK_0RnzCIXhddu-mhbdSAcimWlLIWoYyB0OAmIZ2yI"
 RESEND_API_KEY = "re_9smnVHLk_G2vxtyE7JFoUCoqxr27eaPEy"
 RESEND_FROM_EMAIL = "MWB Dashboard <system@wbrssystem.com>"
+TRAINING_API_BASE_URL = "https://mwblearning.wbrssystem.com/api/external"
 
 [postMerge]
 path = "scripts/post-merge.sh"
