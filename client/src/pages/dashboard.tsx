@@ -145,6 +145,28 @@ export default function Dashboard() {
   });
   const hourlyCrewByRestaurant = hourlyCrewResponse?.data;
 
+  // Training rollup per unit (read-only display)
+  interface TrainingRollupItem {
+    employeeCount: number;
+    employeesWithProgress: number;
+    avgPercentComplete: number;
+    completedCourses: number;
+    overdueCourses: number;
+    certifiedShiftPlusCount: number;
+    certifiedShiftPlusTotal: number;
+  }
+  const { data: trainingUnitsResponse } = useQuery<{ rollups: Record<string, TrainingRollupItem> }>({
+    queryKey: ["/api/training/units"],
+    queryFn: async () => {
+      const res = await fetch(`/api/training/units`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval: slowRefetchInterval,
+    staleTime: slowStaleTime,
+  });
+  const trainingRollupByRestaurant = trainingUnitsResponse?.rollups;
+
   // Fetch check average data from POS
   interface CheckAverageData {
     totalOrders: number;
@@ -1010,6 +1032,7 @@ export default function Dashboard() {
                           helperRewardPoints={helperRewardsByRestaurant?.[restaurant.restaurantId]}
                           planQtd={planQtdData?.restaurants?.[restaurant.restaurantId]}
                           planQtdRange={planQtdData ? { quarterStart: planQtdData.quarterStart, throughDate: planQtdData.throughDate } : undefined}
+                          trainingRollup={trainingRollupByRestaurant?.[restaurant.restaurantId]}
                         />
                       </div>
                     );

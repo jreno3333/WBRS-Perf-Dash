@@ -37,7 +37,7 @@ import {
   trainingSyncStatus,
 } from "@shared/schema";
 import { db, posDb } from "./db";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { getPosSalesByRestaurant, getAllHourlyPosSales, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant } from "./xenial-webhook";
 import { getHourlyOsatForDate } from "./scraper/qualtrics-api";
 import { getCurrentHourInTimezone, getTodayInTimezone, getNormalizedHourCutoff } from "./utils/dates";
@@ -1068,6 +1068,302 @@ export class DatabaseStorage {
 
   async getCertificationsByEmployee(employeeId: string): Promise<TrainingCertification[]> {
     return db.select().from(trainingCertifications).where(eq(trainingCertifications.employeeId, employeeId));
+  }
+
+  async getTrainingSummariesForEmployees(employeeIds: string[]): Promise<Map<string, {
+    percentComplete: number;
+    totalCourses: number;
+    completedCourses: number;
+    inProgressCourses: number;
+    overdueCourses: number;
+    outstandingCourses: { externalCourseId: string; title: string; category: string | null; percentComplete: number; status: string | null; dueDate: string | null }[];
+    completedByCategory: Record<string, { completed: number; total: number; avgScore: number | null }>;
+    certifications: { key: string; name: string; earnedAt: Date | null; expiresAt: Date | null }[];
+  }>> {
+    interface OutstandingCourse {
+      externalCourseId: string;
+      title: string;
+      category: string | null;
+      percentComplete: number;
+      status: string | null;
+      dueDate: string | null;
+    }
+    interface CategoryBucket {
+      completed: number;
+      total: number;
+      avgScore: number | null;
+      _scoreSum: number;
+      _scoreCount: number;
+    }
+    interface TrainingSummary {
+      percentComplete: number;
+      totalCourses: number;
+      completedCourses: number;
+      inProgressCourses: number;
+      overdueCourses: number;
+      outstandingCourses: OutstandingCourse[];
+      completedByCategory: Record<string, CategoryBucket>;
+      certifications: { key: string; name: string; earnedAt: Date | null; expiresAt: Date | null }[];
+    }
+    const out = new Map<string, TrainingSummary>();
+    if (employeeIds.length === 0) return out;
+
+    const courseRows = await db
+      .select({
+        employeeId: trainingEmployeeProgress.employeeId,
+        externalCourseId: trainingEmployeeProgress.externalCourseId,
+        percentComplete: trainingEmployeeProgress.percentComplete,
+        status: trainingEmployeeProgress.status,
+        dueDate: trainingEmployeeProgress.dueDate,
+        score: trainingEmployeeProgress.score,
+        title: trainingCourses.title,
+        category: trainingCourses.category,
+      })
+      .from(trainingEmployeeProgress)
+      .leftJoin(trainingCourses, eq(trainingCourses.externalCourseId, trainingEmployeeProgress.externalCourseId))
+      .where(inArray(trainingEmployeeProgress.employeeId, employeeIds));
+
+    const certRows = await db
+      .select()
+      .from(trainingCertifications)
+      .where(inArray(trainingCertifications.employeeId, employeeIds));
+
+    for (const empId of employeeIds) {
+      out.set(empId, {
+        percentComplete: 0,
+        totalCourses: 0,
+        completedCourses: 0,
+        inProgressCourses: 0,
+        overdueCourses: 0,
+        outstandingCourses: [],
+        completedByCategory: {},
+        certifications: [],
+      });
+    }
+
+    for (const r of courseRows) {
+      const s = out.get(r.employeeId);
+      if (!s) continue;
+      const pct = parseFloat(r.percentComplete || "0");
+      s.totalCourses++;
+      if (r.status === "completed") s.completedCourses++;
+      else if (r.status === "overdue") s.overdueCourses++;
+      else if (r.status === "in_progress") s.inProgressCourses++;
+      if (r.status !== "completed") {
+        s.outstandingCourses.push({
+          externalCourseId: r.externalCourseId,
+          title: r.title || r.externalCourseId,
+          category: r.category,
+          percentComplete: pct,
+          status: r.status,
+          dueDate: r.dueDate,
+        });
+      }
+      const cat = (r.category || "uncategorized").toLowerCase();
+      const bucket: CategoryBucket = s.completedByCategory[cat] || { completed: 0, total: 0, avgScore: null, _scoreSum: 0, _scoreCount: 0 };
+      bucket.total++;
+      if (r.status === "completed") bucket.completed++;
+      const sc = r.score ? parseFloat(r.score) : null;
+      if (sc !== null) {
+        bucket._scoreSum += sc;
+        bucket._scoreCount += 1;
+      }
+      s.completedByCategory[cat] = bucket;
+    }
+
+    for (const r of certRows) {
+      const s = out.get(r.employeeId);
+      if (!s) continue;
+      s.certifications.push({
+        key: r.certificationKey,
+        name: r.name,
+        earnedAt: r.earnedAt,
+        expiresAt: r.expiresAt,
+      });
+    }
+
+    out.forEach((s) => {
+      if (s.totalCourses > 0) {
+        const sum = s.outstandingCourses.reduce((a, c) => a + c.percentComplete, 0)
+          + s.completedCourses * 100;
+        s.percentComplete = Math.round((sum / s.totalCourses) * 10) / 10;
+      }
+      // Sort outstanding: overdue first, then by due date asc, then by percent asc
+      s.outstandingCourses.sort((a, b) => {
+        const ao = a.status === "overdue" ? 0 : 1;
+        const bo = b.status === "overdue" ? 0 : 1;
+        if (ao !== bo) return ao - bo;
+        if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+        if (a.dueDate) return -1;
+        if (b.dueDate) return 1;
+        return a.percentComplete - b.percentComplete;
+      });
+      for (const k of Object.keys(s.completedByCategory)) {
+        const b = s.completedByCategory[k];
+        b.avgScore = b._scoreCount > 0 ? Math.round((b._scoreSum / b._scoreCount) * 10) / 10 : null;
+      }
+    });
+
+    return out as unknown as Map<string, {
+      percentComplete: number;
+      totalCourses: number;
+      completedCourses: number;
+      inProgressCourses: number;
+      overdueCourses: number;
+      outstandingCourses: { externalCourseId: string; title: string; category: string | null; percentComplete: number; status: string | null; dueDate: string | null }[];
+      completedByCategory: Record<string, { completed: number; total: number; avgScore: number | null }>;
+      certifications: { key: string; name: string; earnedAt: Date | null; expiresAt: Date | null }[];
+    }>;
+  }
+
+  async getTrainingRollupsAll(): Promise<Map<string, {
+    employeeCount: number;
+    employeesWithProgress: number;
+    avgPercentComplete: number;
+    completedCourses: number;
+    overdueCourses: number;
+    certifiedShiftPlusCount: number;
+    certifiedShiftPlusTotal: number;
+  }>> {
+    interface RollupAccumulator {
+      employeeCount: number;
+      employeesWithProgress: number;
+      avgPercentComplete: number;
+      completedCourses: number;
+      overdueCourses: number;
+      certifiedShiftPlusCount: number;
+      certifiedShiftPlusTotal: number;
+      _sumPct: number;
+      _rowCount: number;
+      _empWithRows: Set<string>;
+      _certifiedEmps: Set<string>;
+    }
+    const out = new Map<string, RollupAccumulator>();
+
+    // Pull all employees with their restaurant + position so we can identify
+    // shift supervisors and managers per unit.
+    const empRows = await db
+      .select({
+        id: employees.id,
+        restaurantId: employees.restaurantId,
+        position: employees.position,
+      })
+      .from(employees);
+
+    const empById = new Map<string, { restaurantId: string | null; isShiftPlus: boolean }>();
+    for (const e of empRows) {
+      const pos = (e.position || "").toLowerCase();
+      const isShiftPlus = pos.includes("manager") || pos.includes("supervisor");
+      empById.set(e.id, { restaurantId: e.restaurantId, isShiftPlus });
+      if (!e.restaurantId) continue;
+      const cur = out.get(e.restaurantId) || {
+        employeeCount: 0,
+        employeesWithProgress: 0,
+        avgPercentComplete: 0,
+        completedCourses: 0,
+        overdueCourses: 0,
+        certifiedShiftPlusCount: 0,
+        certifiedShiftPlusTotal: 0,
+        _sumPct: 0,
+        _rowCount: 0,
+        _empWithRows: new Set<string>(),
+        _certifiedEmps: new Set<string>(),
+      };
+      cur.employeeCount++;
+      if (isShiftPlus) cur.certifiedShiftPlusTotal++;
+      out.set(e.restaurantId, cur);
+    }
+
+    const progressRows = await db
+      .select({
+        employeeId: trainingEmployeeProgress.employeeId,
+        percentComplete: trainingEmployeeProgress.percentComplete,
+        status: trainingEmployeeProgress.status,
+      })
+      .from(trainingEmployeeProgress);
+
+    for (const r of progressRows) {
+      const e = empById.get(r.employeeId);
+      if (!e || !e.restaurantId) continue;
+      const cur = out.get(e.restaurantId);
+      if (!cur) continue;
+      cur._rowCount++;
+      cur._sumPct += parseFloat(r.percentComplete || "0");
+      cur._empWithRows.add(r.employeeId);
+      if (r.status === "completed") cur.completedCourses++;
+      if (r.status === "overdue") cur.overdueCourses++;
+    }
+
+    const certRows = await db
+      .select({
+        employeeId: trainingCertifications.employeeId,
+        key: trainingCertifications.certificationKey,
+      })
+      .from(trainingCertifications)
+      .where(eq(trainingCertifications.certificationKey, "5_star_floor_management"));
+
+    for (const r of certRows) {
+      const e = empById.get(r.employeeId);
+      if (!e || !e.restaurantId || !e.isShiftPlus) continue;
+      const cur = out.get(e.restaurantId);
+      if (!cur) continue;
+      cur._certifiedEmps.add(r.employeeId);
+    }
+
+    const final = new Map<string, {
+      employeeCount: number;
+      employeesWithProgress: number;
+      avgPercentComplete: number;
+      completedCourses: number;
+      overdueCourses: number;
+      certifiedShiftPlusCount: number;
+      certifiedShiftPlusTotal: number;
+    }>();
+    out.forEach((cur, rid) => {
+      final.set(rid, {
+        employeeCount: cur.employeeCount,
+        employeesWithProgress: cur._empWithRows.size,
+        avgPercentComplete: cur._rowCount > 0
+          ? Math.round((cur._sumPct / cur._rowCount) * 10) / 10
+          : 0,
+        completedCourses: cur.completedCourses,
+        overdueCourses: cur.overdueCourses,
+        certifiedShiftPlusCount: cur._certifiedEmps.size,
+        certifiedShiftPlusTotal: cur.certifiedShiftPlusTotal,
+      });
+    });
+
+    return final;
+  }
+
+  async getEmployeeById(employeeId: string): Promise<{ id: string; firstName: string | null; lastName: string | null; position: string | null; type: string | null; restaurantId: string | null } | null> {
+    const rows = await db
+      .select({
+        id: employees.id,
+        firstName: employees.firstName,
+        lastName: employees.lastName,
+        position: employees.position,
+        type: employees.type,
+        restaurantId: employees.restaurantId,
+      })
+      .from(employees)
+      .where(eq(employees.id, employeeId))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async getEmployeesByRestaurant(restaurantId: string): Promise<{ id: string; firstName: string | null; lastName: string | null; position: string | null; type: string | null }[]> {
+    const rows = await db
+      .select({
+        id: employees.id,
+        firstName: employees.firstName,
+        lastName: employees.lastName,
+        position: employees.position,
+        type: employees.type,
+      })
+      .from(employees)
+      .where(eq(employees.restaurantId, restaurantId));
+    return rows;
   }
 
   async getTrainingRollupByRestaurant(restaurantId: string): Promise<{

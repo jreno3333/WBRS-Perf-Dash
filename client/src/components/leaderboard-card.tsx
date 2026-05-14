@@ -184,6 +184,17 @@ interface LeaderboardCardProps {
   helperRewardPoints?: number;
   planQtd?: PlanQtdData;
   planQtdRange?: { quarterStart: string; throughDate: string };
+  trainingRollup?: TrainingRollup;
+}
+
+export interface TrainingRollup {
+  employeeCount: number;
+  employeesWithProgress: number;
+  avgPercentComplete: number;
+  completedCourses: number;
+  overdueCourses: number;
+  certifiedShiftPlusCount: number;
+  certifiedShiftPlusTotal: number;
 }
 
 interface PlanQtdData {
@@ -1091,7 +1102,7 @@ const ExpandedCardContent = memo(function ExpandedCardContent({
   );
 });
 
-export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints, planQtd, planQtdRange }: LeaderboardCardProps) {
+export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourlyData, crewSummary, hourlyCrewData, checkAverage, checkAvgTrend, consistencyScore, demandCurveHours, destinationsByHour, isToday = true, yoyData, weeklyData, notes, dateStr, onNoteAdded, attachmentCategories, overallAttachScore, helperRewardPoints, planQtd, planQtdRange, trainingRollup }: LeaderboardCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const gradingCfg = useGradingConfig();
 
@@ -1594,6 +1605,46 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                     >
                       <Car className="w-3 h-3" />
                       <span>{attainment}%</span>
+                    </BadgeWithTooltip>
+                  );
+                })()}
+                {trainingRollup && trainingRollup.employeesWithProgress > 0 && (() => {
+                  const pct = trainingRollup.avgPercentComplete;
+                  const color = pct >= 90
+                    ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                    : pct >= 70
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "bg-red-500/10 text-red-500";
+                  return (
+                    <BadgeWithTooltip
+                      className={`flex-shrink-0 text-xs px-1.5 gap-1 ${color} border-0`}
+                      data-testid={`badge-training-rollup-${restaurant.restaurantId}`}
+                      tooltipContent={
+                        <div className="space-y-0.5">
+                          <div className="font-semibold">Training Rollup</div>
+                          <div className="text-muted-foreground">
+                            Avg complete: <span className="font-medium text-foreground">{pct.toFixed(1)}%</span>
+                          </div>
+                          <div className="text-muted-foreground">
+                            Employees w/ progress: {trainingRollup.employeesWithProgress} / {trainingRollup.employeeCount}
+                          </div>
+                          <div className="text-muted-foreground">
+                            Completed courses: {trainingRollup.completedCourses}
+                          </div>
+                          <div className={trainingRollup.overdueCourses > 0 ? "text-red-500 font-medium" : "text-muted-foreground"}>
+                            Overdue: {trainingRollup.overdueCourses}
+                          </div>
+                          <div className="text-muted-foreground">
+                            5-Star Floor Mgmt: {trainingRollup.certifiedShiftPlusCount} / {trainingRollup.certifiedShiftPlusTotal} shift+ leaders
+                          </div>
+                        </div>
+                      }
+                    >
+                      <GraduationCap className="w-3 h-3" />
+                      <span className="font-medium">{pct.toFixed(0)}%</span>
+                      {trainingRollup.overdueCourses > 0 && (
+                        <span className="text-red-500 font-bold">·{trainingRollup.overdueCourses}!</span>
+                      )}
                     </BadgeWithTooltip>
                   );
                 })()}

@@ -111,6 +111,81 @@ export default function LeadersPage() {
     },
   });
 
+  // Bulk training summary for every leader id displayed on this page.
+  interface TrainingSummary {
+    percentComplete: number;
+    totalCourses: number;
+    completedCourses: number;
+    overdueCourses: number;
+    outstandingCourses: { externalCourseId: string; title: string; category: string | null; percentComplete: number; status: string | null; dueDate: string | null }[];
+    certifications: { key: string; name: string; earnedAt: string | null }[];
+  }
+  type LeaderRow = { employeeId: string; position?: string | null };
+  const isShiftPlusPosition = (position: string | null | undefined): boolean => {
+    const p = (position || "").toLowerCase();
+    return p.includes("manager") || p.includes("supervisor");
+  };
+  const allEmployeeIds = (() => {
+    const ids = new Set<string>();
+    if (data) {
+      data.top10.forEach((l) => l.employeeId && ids.add(l.employeeId));
+      data.storeEntries.forEach((s) => s.leaders.forEach((l) => l.employeeId && ids.add(l.employeeId)));
+    }
+    return Array.from(ids);
+  })();
+  const idsKey = allEmployeeIds.join(",");
+  const { data: trainingBulk } = useQuery<{ summaries: Record<string, TrainingSummary> }>({
+    queryKey: ["/api/training/employees-bulk", idsKey],
+    queryFn: async () => {
+      const res = await fetch("/api/training/employees-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ employeeIds: allEmployeeIds }),
+      });
+      if (!res.ok) throw new Error("Failed to fetch training");
+      return res.json();
+    },
+    enabled: allEmployeeIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const trainingByEmployee = trainingBulk?.summaries || {};
+
+  function trainingColor(pct: number): string {
+    if (pct >= 90) return "text-green-500";
+    if (pct >= 70) return "text-amber-500";
+    return "text-red-500";
+  }
+  function renderTrainingCell(leader: LeaderRow, _compact: boolean) {
+    const t = trainingByEmployee[leader.employeeId];
+    if (!t || t.totalCourses === 0) {
+      return <span className="text-muted-foreground">--</span>;
+    }
+    const pct = t.percentComplete;
+    const certs = t.certifications || [];
+    const eligibleFiveStar = isShiftPlusPosition(leader.position);
+    const has5Star = eligibleFiveStar && certs.some((c) => c.key === "5_star_floor_management");
+    const tipId = `tooltip-training-${leader.employeeId}`;
+    const visibleCerts = certs.filter(
+      (c) => c.key !== "5_star_floor_management" || eligibleFiveStar,
+    );
+    const certsLine = visibleCerts.length > 0
+      ? `\nCerts: ${visibleCerts.map((c) => c.name).join(', ')}`
+      : '';
+    const fiveStarSuffix = eligibleFiveStar && !has5Star ? ' · 5-Star Floor Mgmt: not earned' : '';
+    return (
+      <span
+        className={`${trainingColor(pct)} font-medium inline-flex items-center gap-0.5`}
+        title={`${pct.toFixed(0)}% complete · ${t.completedCourses}/${t.totalCourses} courses${t.overdueCourses > 0 ? ` · ${t.overdueCourses} overdue` : ''}${fiveStarSuffix}${certsLine}${t.outstandingCourses.length > 0 ? `\nOutstanding: ${t.outstandingCourses.slice(0, 5).map((c) => `${c.title} (${c.percentComplete.toFixed(0)}%)`).join(', ')}` : ''}`}
+        data-testid={tipId}
+      >
+        {pct.toFixed(0)}%
+        {t.overdueCourses > 0 && <span className="text-red-500 font-bold">!</span>}
+        {has5Star && <span className="text-purple-500" title="5-Star Floor Mgmt">★</span>}
+      </span>
+    );
+  }
+
   const goToPreviousDay = () => {
     const prev = new Date(selectedDate);
     prev.setDate(prev.getDate() - 1);
@@ -264,6 +339,7 @@ export default function LeadersPage() {
                   <span className="w-11 text-right">SOS</span>
                   <span className="w-11 text-right">OSAT</span>
                   <span className="w-8 text-right">SRV</span>
+                  <span className="w-12 text-right">TRN</span>
                 </div>
 
                 {data.top10.length === 0 ? (
@@ -303,6 +379,9 @@ export default function LeadersPage() {
                       <span className="w-8 text-right text-[11px] text-muted-foreground">
                         {leader.surveyCount || "--"}
                       </span>
+                      <span className="w-12 text-right text-xs">
+                        {renderTrainingCell(leader, false)}
+                      </span>
                     </div>
                   ))
                 )}
@@ -328,6 +407,7 @@ export default function LeadersPage() {
                     <span className="w-10 text-right">SOS</span>
                     <span className="w-10 text-right">OSAT</span>
                     <span className="w-7 text-right">SRV</span>
+                    <span className="w-10 text-right">TRN</span>
                     <span className="w-10 text-right">CO.#</span>
                   </div>
 
@@ -358,6 +438,9 @@ export default function LeadersPage() {
                       </span>
                       <span className="w-7 text-right text-[10px] text-muted-foreground">
                         {leader.surveyCount || "--"}
+                      </span>
+                      <span className="w-10 text-right text-[10px]">
+                        {renderTrainingCell(leader, true)}
                       </span>
                       <span className="w-10 text-right text-[10px] text-muted-foreground">
                         {leader.companyRankDisplay || "--"}

@@ -221,6 +221,31 @@ export default function CrewExperiencePage() {
     },
     enabled: !!selectedLeader,
   });
+
+  interface TrainingDetail {
+    employeeId: string;
+    position: string | null;
+    isShiftPlus: boolean;
+    fiveStarEligible: boolean;
+    hasFiveStarFloor: boolean;
+    percentComplete: number;
+    totalCourses: number;
+    completedCourses: number;
+    inProgressCourses: number;
+    overdueCourses: number;
+    outstandingCourses: { externalCourseId: string; title: string; category: string | null; percentComplete: number; status: string | null; dueDate: string | null }[];
+    completedByCategory: Record<string, { completed: number; total: number; avgScore: number | null }>;
+    certifications: { key: string; name: string; earnedAt: string | null; expiresAt: string | null }[];
+  }
+  const { data: trainingDetail, isLoading: trainingDetailLoading } = useQuery<TrainingDetail>({
+    queryKey: ["/api/training/employee", selectedLeader?.employeeId],
+    queryFn: async () => {
+      const res = await fetch(`/api/training/employee/${selectedLeader!.employeeId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch training detail");
+      return res.json();
+    },
+    enabled: !!selectedLeader,
+  });
   
   const toggleRestaurant = (id: string) => {
     setExpandedRestaurants(prev => {
@@ -975,6 +1000,138 @@ export default function CrewExperiencePage() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              <div data-testid="leader-training-section">
+                <h3 className="text-sm font-semibold mb-3">Training</h3>
+                {trainingDetailLoading ? (
+                  <div className="h-16 animate-pulse bg-muted rounded-lg" />
+                ) : trainingDetail && trainingDetail.totalCourses > 0 ? (
+                  <div className="space-y-3">
+                    {(() => {
+                      const pct = trainingDetail.percentComplete;
+                      const color = pct >= 90 ? "bg-green-500" : pct >= 70 ? "bg-amber-500" : "bg-red-500";
+                      return (
+                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                          <Badge className={`${color} text-white text-sm`} data-testid={`text-training-pct-${trainingDetail.employeeId}`}>
+                            {pct.toFixed(0)}%
+                          </Badge>
+                          <div className="text-xs text-muted-foreground flex-1">
+                            <div>{trainingDetail.completedCourses} of {trainingDetail.totalCourses} completed</div>
+                            {trainingDetail.overdueCourses > 0 && (
+                              <div className="text-red-500 font-medium">{trainingDetail.overdueCourses} overdue</div>
+                            )}
+                          </div>
+                          {(() => {
+                            const otherCerts = trainingDetail.certifications.filter(
+                              (c) => c.key !== "5_star_floor_management",
+                            );
+                            const showFiveStar = trainingDetail.fiveStarEligible;
+                            if (!showFiveStar && otherCerts.length === 0) return null;
+                            return (
+                              <div className="flex flex-wrap gap-1 justify-end" data-testid={`certs-${trainingDetail.employeeId}`}>
+                                {showFiveStar && (
+                                  trainingDetail.hasFiveStarFloor ? (
+                                    <Badge
+                                      className="bg-purple-500/10 text-purple-600 dark:text-purple-300 border-0 text-[10px]"
+                                      data-testid={`badge-cert-${trainingDetail.employeeId}-5_star_floor_management`}
+                                    >
+                                      <Award className="w-3 h-3 mr-1" />
+                                      5-Star Floor Mgmt
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] text-muted-foreground border-dashed"
+                                      data-testid={`badge-cert-missing-${trainingDetail.employeeId}-5_star_floor_management`}
+                                    >
+                                      <Award className="w-3 h-3 mr-1 opacity-50" />
+                                      5-Star Floor Mgmt — not earned
+                                    </Badge>
+                                  )
+                                )}
+                                {otherCerts.map((c) => (
+                                  <Badge
+                                    key={c.key}
+                                    className="bg-purple-500/10 text-purple-600 dark:text-purple-300 border-0 text-[10px]"
+                                    data-testid={`badge-cert-${trainingDetail.employeeId}-${c.key}`}
+                                  >
+                                    <Award className="w-3 h-3 mr-1" />
+                                    {c.name}
+                                  </Badge>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })()}
+
+                    {Object.keys(trainingDetail.completedByCategory).length > 0 && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(trainingDetail.completedByCategory).map(([cat, b]) => {
+                          const ratio = b.total > 0 ? (b.completed / b.total) * 100 : 0;
+                          const color = ratio >= 90 ? "text-green-600" : ratio >= 70 ? "text-amber-600" : "text-red-500";
+                          return (
+                            <div
+                              key={cat}
+                              className="p-2 rounded-md bg-muted/30 text-xs"
+                              data-testid={`training-cat-${cat}`}
+                            >
+                              <div className="font-medium capitalize">{cat}</div>
+                              <div className="flex items-center justify-between mt-0.5">
+                                <span className="text-muted-foreground">{b.completed} / {b.total}</span>
+                                <span className={`font-semibold ${color}`}>{ratio.toFixed(0)}%</span>
+                              </div>
+                              {b.avgScore !== null && (
+                                <div className="text-[10px] text-muted-foreground mt-0.5">avg score {b.avgScore}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {trainingDetail.outstandingCourses.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">Outstanding courses</div>
+                        <div className="space-y-1">
+                          {trainingDetail.outstandingCourses.slice(0, 12).map((c) => (
+                            <div
+                              key={c.externalCourseId}
+                              className="flex items-center justify-between p-2 rounded-md bg-muted/30 text-xs"
+                              data-testid={`outstanding-course-${c.externalCourseId}`}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium truncate">{c.title}</div>
+                                <div className="text-muted-foreground text-[10px]">
+                                  {c.category || 'general'}
+                                  {c.dueDate && (
+                                    <span className={c.status === 'overdue' ? 'text-red-500 font-medium ml-1' : 'ml-1'}>
+                                      {c.status === 'overdue' ? 'overdue ' : 'due '}{c.dueDate}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className={`ml-2 font-semibold ${c.status === 'overdue' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                {c.percentComplete.toFixed(0)}%
+                              </span>
+                            </div>
+                          ))}
+                          {trainingDetail.outstandingCourses.length > 12 && (
+                            <div className="text-[10px] text-muted-foreground text-center">
+                              +{trainingDetail.outstandingCourses.length - 12} more
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No training data synced for this employee yet.
+                  </p>
+                )}
               </div>
             </div>
           ) : null}
