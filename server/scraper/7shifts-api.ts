@@ -353,6 +353,7 @@ export class SevenShiftsAPI {
               hire_date: user.hire_date,
               invited: user.invited, // Fallback for hire_date
               type: user.type,
+              punch_id: user.punch_id ?? null,
             });
           }
         }

@@ -37,7 +37,7 @@ import {
   trainingSyncStatus,
 } from "@shared/schema";
 import { db, posDb } from "./db";
-import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
+import { eq, ne, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { getPosSalesByRestaurant, getAllHourlyPosSales, getCheckAverageByRestaurant, getDestinationBreakdownByRestaurant } from "./xenial-webhook";
 import { getHourlyOsatForDate } from "./scraper/qualtrics-api";
 import { getCurrentHourInTimezone, getTodayInTimezone, getNormalizedHourCutoff } from "./utils/dates";
@@ -1121,7 +1121,10 @@ export class DatabaseStorage {
       })
       .from(trainingEmployeeProgress)
       .leftJoin(trainingCourses, eq(trainingCourses.externalCourseId, trainingEmployeeProgress.externalCourseId))
-      .where(inArray(trainingEmployeeProgress.employeeId, employeeIds));
+      .where(and(
+        inArray(trainingEmployeeProgress.employeeId, employeeIds),
+        ne(trainingEmployeeProgress.externalCourseId, "_overall"),
+      ));
 
     const certRows = await db
       .select()
@@ -1280,7 +1283,8 @@ export class DatabaseStorage {
         percentComplete: trainingEmployeeProgress.percentComplete,
         status: trainingEmployeeProgress.status,
       })
-      .from(trainingEmployeeProgress);
+      .from(trainingEmployeeProgress)
+      .where(ne(trainingEmployeeProgress.externalCourseId, "_overall"));
 
     for (const r of progressRows) {
       const e = empById.get(r.employeeId);
