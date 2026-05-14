@@ -1227,6 +1227,7 @@ export class DatabaseStorage {
     overdueCourses: number;
     certifiedShiftPlusCount: number;
     certifiedShiftPlusTotal: number;
+    restartQuizPassed: number;
   }>> {
     interface RollupAccumulator {
       employeeCount: number;
@@ -1236,10 +1237,12 @@ export class DatabaseStorage {
       overdueCourses: number;
       certifiedShiftPlusCount: number;
       certifiedShiftPlusTotal: number;
+      restartQuizPassed: number;
       _sumPct: number;
       _rowCount: number;
       _empWithRows: Set<string>;
       _certifiedEmps: Set<string>;
+      _restartEmps: Set<string>;
     }
     const out = new Map<string, RollupAccumulator>();
 
@@ -1267,10 +1270,12 @@ export class DatabaseStorage {
         overdueCourses: 0,
         certifiedShiftPlusCount: 0,
         certifiedShiftPlusTotal: 0,
+        restartQuizPassed: 0,
         _sumPct: 0,
         _rowCount: 0,
         _empWithRows: new Set<string>(),
         _certifiedEmps: new Set<string>(),
+        _restartEmps: new Set<string>(),
       };
       cur.employeeCount++;
       if (isShiftPlus) cur.certifiedShiftPlusTotal++;
@@ -1302,16 +1307,21 @@ export class DatabaseStorage {
       .select({
         employeeId: trainingCertifications.employeeId,
         key: trainingCertifications.certificationKey,
+        earnedAt: trainingCertifications.earnedAt,
       })
-      .from(trainingCertifications)
-      .where(eq(trainingCertifications.certificationKey, "5_star_floor_management"));
+      .from(trainingCertifications);
 
     for (const r of certRows) {
       const e = empById.get(r.employeeId);
-      if (!e || !e.restaurantId || !e.isShiftPlus) continue;
+      if (!e || !e.restaurantId) continue;
       const cur = out.get(e.restaurantId);
       if (!cur) continue;
-      cur._certifiedEmps.add(r.employeeId);
+      if (r.key === "5_star_floor_management" && e.isShiftPlus) {
+        cur._certifiedEmps.add(r.employeeId);
+      } else if (r.key.startsWith("train_restart:") && r.earnedAt) {
+        // earnedAt set ⇒ passed (training-api writes it only on tr.passed)
+        cur._restartEmps.add(r.employeeId);
+      }
     }
 
     const final = new Map<string, {
@@ -1322,6 +1332,7 @@ export class DatabaseStorage {
       overdueCourses: number;
       certifiedShiftPlusCount: number;
       certifiedShiftPlusTotal: number;
+      restartQuizPassed: number;
     }>();
     out.forEach((cur, rid) => {
       final.set(rid, {
@@ -1334,6 +1345,7 @@ export class DatabaseStorage {
         overdueCourses: cur.overdueCourses,
         certifiedShiftPlusCount: cur._certifiedEmps.size,
         certifiedShiftPlusTotal: cur.certifiedShiftPlusTotal,
+        restartQuizPassed: cur._restartEmps.size,
       });
     });
 

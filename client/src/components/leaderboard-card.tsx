@@ -195,6 +195,7 @@ export interface TrainingRollup {
   overdueCourses: number;
   certifiedShiftPlusCount: number;
   certifiedShiftPlusTotal: number;
+  restartQuizPassed?: number;
 }
 
 interface PlanQtdData {
@@ -1637,6 +1638,11 @@ export const LeaderboardCard = memo(function LeaderboardCard({ restaurant, hourl
                           <div className="text-muted-foreground">
                             5-Star Floor Mgmt: {trainingRollup.certifiedShiftPlusCount} / {trainingRollup.certifiedShiftPlusTotal} shift+ leaders
                           </div>
+                          {(trainingRollup.restartQuizPassed ?? 0) > 0 && (
+                            <div className="text-muted-foreground">
+                              TrainSmart Restart Quiz passed: <span className="font-medium text-foreground">{trainingRollup.restartQuizPassed}</span>
+                            </div>
+                          )}
                         </div>
                       }
                     >
