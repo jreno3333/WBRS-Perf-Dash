@@ -191,6 +191,9 @@ async function runScheduledSync() {
     // Milestone auto-detection (hourly)
     await runMilestoneCheckIfNeeded();
 
+    // Training platform sync (every 3 hours)
+    await syncTrainingIfNeeded();
+
     
   } catch (error) {
     log(`Sync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -199,6 +202,8 @@ async function runScheduledSync() {
 
 // Track last yesterday resync to avoid doing it too frequently
 let lastYesterdaySync: string | null = null;
+let lastTrainingSyncMs: number = 0;
+const TRAINING_SYNC_INTERVAL_MS = 3 * 60 * 60 * 1000; // every 3 hours
 let lastWeatherSave: string | null = null;
 let lastDailyReportSend: string | null = null;
 let lastLeaderReportSend: string | null = null;
@@ -572,6 +577,29 @@ async function syncYesterdayIfNeeded() {
     } catch (error) {
       log(`Yesterday resync error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+}
+
+async function syncTrainingIfNeeded() {
+  const now = Date.now();
+  if (now - lastTrainingSyncMs < TRAINING_SYNC_INTERVAL_MS) return;
+  try {
+    const { syncTrainingPlatform, isTrainingApiConfigured } = await import("./scraper/training-api");
+    if (!isTrainingApiConfigured()) {
+      lastTrainingSyncMs = now; // avoid log spam every 5 min when unconfigured
+      return;
+    }
+    const result = await syncTrainingPlatform();
+    if (result.success) {
+      const r = result.recordsSynced;
+      log(`Training sync (3h): ${r.courseProgress} employees, ${r.courses} position rows, ${r.certifications} certs (${result.unmappedExternalIds.length} unmapped)`);
+    } else {
+      log(`Training sync (3h) failed: ${result.error}`);
+    }
+    lastTrainingSyncMs = now;
+  } catch (err) {
+    log(`Training sync (3h) error: ${err instanceof Error ? err.message : 'Unknown'}`);
+    lastTrainingSyncMs = now; // back off until next interval
   }
 }
 
