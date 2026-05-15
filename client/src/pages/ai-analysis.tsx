@@ -1,4 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +47,7 @@ import {
   TrendingDown,
   Users,
   Info,
+  Printer,
 } from "lucide-react";
 import {
   BarChart,
@@ -485,6 +492,26 @@ export default function ExecutiveSummary() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
+  const [printMode, setPrintMode] = useState<"top-bottom" | "all-units" | null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
+
+  useEffect(() => {
+    if (!printMode) return;
+    document.body.classList.add("printing-exec-summary");
+    const handleAfter = () => {
+      setPrintMode(null);
+      document.body.classList.remove("printing-exec-summary");
+    };
+    window.addEventListener("afterprint", handleAfter);
+    const t = window.setTimeout(() => {
+      window.print();
+    }, 150);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("afterprint", handleAfter);
+      document.body.classList.remove("printing-exec-summary");
+    };
+  }, [printMode]);
 
   const { data, isLoading } = useQuery<ExecSummary>({
     queryKey: ["/api/executive-summary", days],
@@ -713,6 +740,55 @@ export default function ExecutiveSummary() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Print PDF button */}
+            <Popover open={printOpen} onOpenChange={setPrintOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  disabled={!data}
+                  data-testid="button-print-pdf"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Print PDF
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-2">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 pb-1">
+                  Choose report
+                </div>
+                <button
+                  type="button"
+                  className="w-full text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors"
+                  onClick={() => {
+                    setPrintOpen(false);
+                    setPrintMode("top-bottom");
+                  }}
+                  data-testid="button-print-top-bottom"
+                >
+                  <div className="font-medium">Top &amp; Bottom Performers</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    KPI summary, critical alerts, outperformers
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className="w-full text-left text-xs px-2 py-2 rounded hover:bg-muted transition-colors"
+                  onClick={() => {
+                    setPrintOpen(false);
+                    setPrintMode("all-units");
+                  }}
+                  data-testid="button-print-all-units"
+                >
+                  <div className="font-medium">All Units (current sort)</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    KPI summary + full grid in current order
+                  </div>
+                </button>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
@@ -1432,6 +1508,267 @@ export default function ExecutiveSummary() {
             <SurveyCaptureSection days={days} />
           </>
         )}
+      </div>
+
+      {printMode && data && createPortal(
+        <PrintReport
+          mode={printMode}
+          data={data}
+          days={days}
+          marketFilter={marketFilter}
+          marketName={selectedMarketRollup?.marketName ?? null}
+          alerts={filteredAlerts}
+          outperformers={filteredOutperformers}
+          restaurants={filteredRestaurants}
+          sortColumn={sortColumn}
+          sortDirection={sortDirection}
+        />,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Print Report (visible only when window.print() is called)
+// ---------------------------------------------------------------------------
+
+const SORT_LABELS: Record<SortCol, string> = {
+  name: "Name",
+  sales: "Sales %",
+  transactions: "Transactions %",
+  checkAverage: "Check Avg %",
+  osat: "OSAT %",
+  osatSpeed: "OSAT Speed %",
+  googleRating: "Google %",
+  speedAttainment: "Speed %",
+  labor: "Labor Variance",
+  yoy: "YoY %",
+};
+
+function PrintReport({
+  mode,
+  data,
+  days,
+  marketFilter,
+  marketName,
+  alerts,
+  outperformers,
+  restaurants,
+  sortColumn,
+  sortDirection,
+}: {
+  mode: "top-bottom" | "all-units";
+  data: ExecSummary;
+  days: number;
+  marketFilter: string | null;
+  marketName: string | null;
+  alerts: Alert[];
+  outperformers: Outperformer[];
+  restaurants: Restaurant[];
+  sortColumn: SortCol;
+  sortDirection: "asc" | "desc";
+}) {
+  const generated = new Date().toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const marketLabel = marketFilter ? marketName ?? "Filtered Market" : "All Markets";
+  const timeFrameLabel = `Last ${days} days (${data.dateRange.start} – ${data.dateRange.end})`;
+
+  const kpiConfig = [
+    { key: "sales" as const, label: "Total Sales", format: formatCurrency },
+    { key: "transactions" as const, label: "Transactions", format: formatNumber },
+    { key: "checkAverage" as const, label: "Check Avg", format: formatCurrency },
+    { key: "osat" as const, label: "OSAT", format: formatPct },
+    { key: "osatSpeed" as const, label: "OSAT Speed", format: formatPct },
+    { key: "googleRating" as const, label: "Google", format: formatRating },
+    { key: "speedAttainment" as const, label: "Speed", format: formatPct },
+  ];
+
+  return (
+    <div id="exec-print-area" className="exec-print-area" data-testid="exec-print-area">
+      {/* Header */}
+      <div className="print-header">
+        <h1>MWB Unit Ticker — Executive Summary</h1>
+        <div className="print-meta">
+          <div>
+            <strong>Report:</strong>{" "}
+            {mode === "top-bottom" ? "Top & Bottom Performers" : "All Units (current sort)"}
+          </div>
+          <div>
+            <strong>Time frame:</strong> {timeFrameLabel}
+          </div>
+          <div>
+            <strong>Market filter:</strong> {marketLabel}
+          </div>
+          {mode === "all-units" && (
+            <div>
+              <strong>Sorted by:</strong> {SORT_LABELS[sortColumn]} ({sortDirection === "asc" ? "ascending" : "descending"})
+            </div>
+          )}
+          <div>
+            <strong>Generated:</strong> {generated}
+          </div>
+        </div>
+      </div>
+
+      {/* Company Pulse */}
+      <section className="print-section">
+        <h2>Company Pulse</h2>
+        <table className="print-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th className="num">Current</th>
+              <th className="num">Previous</th>
+              <th className="num">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {kpiConfig.map(({ key, label, format }) => {
+              const m = data.companyPulse[key];
+              return (
+                <tr key={key}>
+                  <td>{label}</td>
+                  <td className="num">{format(m.current)}</td>
+                  <td className="num">{format(m.previous)}</td>
+                  <td className="num">{formatChange(m.pctChange)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+
+      {mode === "top-bottom" && (
+        <>
+          <section className="print-section page-break">
+            <h2>Critical Alerts — Declining Trends ({alerts.length})</h2>
+            {alerts.length === 0 ? (
+              <p className="muted">No alerts in this period.</p>
+            ) : (
+              <table className="print-table">
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Restaurant</th>
+                    <th>Metric</th>
+                    <th className="num">Previous</th>
+                    <th className="num">Current</th>
+                    <th className="num">Change</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alerts.map((a, i) => (
+                    <tr key={`${a.restaurantId}-${a.metric}-${i}`}>
+                      <td className="cap">{a.severity}</td>
+                      <td>{a.restaurant}</td>
+                      <td>{a.metricLabel}</td>
+                      <td className="num">{formatMetricValue(a.metric, a.previous)}</td>
+                      <td className="num">{formatMetricValue(a.metric, a.current)}</td>
+                      <td className="num neg">{formatChange(a.pctChange)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+
+          <section className="print-section page-break">
+            <h2>Outperformers — Rising Stars ({outperformers.length})</h2>
+            {outperformers.length === 0 ? (
+              <p className="muted">No outperformers in this period.</p>
+            ) : (
+              <table className="print-table">
+                <thead>
+                  <tr>
+                    <th>Restaurant</th>
+                    <th>Metric</th>
+                    <th className="num">Previous</th>
+                    <th className="num">Current</th>
+                    <th className="num">Change</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outperformers.map((o, i) => (
+                    <tr key={`${o.restaurantId}-${o.metric}-${i}`}>
+                      <td>{o.restaurant}</td>
+                      <td>{o.metricLabel}</td>
+                      <td className="num">{formatMetricValue(o.metric, o.previous)}</td>
+                      <td className="num">{formatMetricValue(o.metric, o.current)}</td>
+                      <td className="num pos">{formatChange(o.pctChange)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        </>
+      )}
+
+      {mode === "all-units" && (
+        <section className="print-section page-break">
+          <h2>Restaurant Performance ({restaurants.length} units)</h2>
+          <table className="print-table compact">
+            <thead>
+              <tr>
+                <th>Restaurant</th>
+                <th>Market</th>
+                <th className="num">Sales %</th>
+                <th className="num">Txn %</th>
+                <th className="num">Check %</th>
+                <th className="num">OSAT %</th>
+                <th className="num">OSAT Spd %</th>
+                <th className="num">Google %</th>
+                <th className="num">Speed %</th>
+                <th className="num">Labor Var</th>
+                <th className="num">YoY %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {restaurants.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.name}</td>
+                  <td>{r.marketName ?? "—"}</td>
+                  <td className={`num ${r.sales.pctChange >= 0 ? "pos" : "neg"}`}>
+                    {r.sales.previous > 0 ? formatChange(r.sales.pctChange) : "—"}
+                  </td>
+                  <td className={`num ${r.transactions.pctChange >= 0 ? "pos" : "neg"}`}>
+                    {r.transactions.previous > 0 ? formatChange(r.transactions.pctChange) : "—"}
+                  </td>
+                  <td className={`num ${r.checkAverage.pctChange >= 0 ? "pos" : "neg"}`}>
+                    {r.checkAverage.previous > 0 ? formatChange(r.checkAverage.pctChange) : "—"}
+                  </td>
+                  <td className={`num ${r.osat.pctChange >= 0 ? "pos" : "neg"}`}>
+                    {r.osat.previous > 0 ? formatChange(r.osat.pctChange) : "—"}
+                  </td>
+                  <td className={`num ${r.osatSpeed.pctChange >= 0 ? "pos" : "neg"}`}>
+                    {r.osatSpeed.previous > 0 ? formatChange(r.osatSpeed.pctChange) : "—"}
+                  </td>
+                  <td className={`num ${r.googleRating.pctChange >= 0 ? "pos" : "neg"}`}>
+                    {r.googleRating.previous > 0 ? formatChange(r.googleRating.pctChange) : "—"}
+                  </td>
+                  <td className={`num ${r.speedAttainment.pctChange >= 0 ? "pos" : "neg"}`}>
+                    {r.speedAttainment.previous > 0 ? formatChange(r.speedAttainment.pctChange) : "—"}
+                  </td>
+                  <td className={`num ${r.labor.modelHours > 0 && r.labor.variancePct <= 0 ? "pos" : r.labor.modelHours > 0 ? "neg" : ""}`}>
+                    {r.labor.modelHours > 0
+                      ? `${r.labor.variancePct > 0 ? "+" : ""}${r.labor.variancePct.toFixed(0)}%`
+                      : "—"}
+                  </td>
+                  <td className={`num ${(r.yoySales?.pctChange ?? 0) >= 0 ? "pos" : "neg"}`}>
+                    {r.yoySales ? formatChange(r.yoySales.pctChange) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      <div className="print-footer">
+        MWB Unit Ticker • Executive Summary • {generated}
       </div>
     </div>
   );

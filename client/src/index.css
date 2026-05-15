@@ -286,3 +286,134 @@
   height: 16px;
   fill: white;
 }
+
+/* ---------------------------------------------------------------------------
+   Executive Summary — Print to PDF
+--------------------------------------------------------------------------- */
+.exec-print-area {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+
+  body.printing-exec-summary > *:not(.exec-print-area) {
+    display: none !important;
+  }
+
+  body.printing-exec-summary .exec-print-area {
+    display: block !important;
+    position: static !important;
+    color: #000 !important;
+    background: #fff !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.35;
+  }
+
+  .exec-print-area * {
+    color: #000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .exec-print-area .print-header {
+    border-bottom: 2px solid #000;
+    padding-bottom: 8px;
+    margin-bottom: 14px;
+  }
+
+  .exec-print-area .print-header h1 {
+    font-size: 18pt;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+  }
+
+  .exec-print-area .print-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 16px;
+    font-size: 9pt;
+  }
+
+  .exec-print-area .print-section {
+    margin-bottom: 16px;
+  }
+
+  .exec-print-area .print-section h2 {
+    font-size: 12pt;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #999;
+  }
+
+  .exec-print-area .print-section.page-break {
+    page-break-before: always;
+  }
+
+  .exec-print-area .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+
+  .exec-print-area .print-table.compact {
+    font-size: 8pt;
+  }
+
+  .exec-print-area .print-table th,
+  .exec-print-area .print-table td {
+    border: 1px solid #bbb;
+    padding: 4px 6px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .exec-print-area .print-table th {
+    background: #eee !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-weight: 600;
+  }
+
+  .exec-print-area .print-table td.num,
+  .exec-print-area .print-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .exec-print-area .print-table tr {
+    page-break-inside: avoid;
+  }
+
+  .exec-print-area .print-table .pos {
+    color: #057a30 !important;
+  }
+
+  .exec-print-area .print-table .neg {
+    color: #b00020 !important;
+  }
+
+  .exec-print-area .print-table .cap {
+    text-transform: capitalize;
+  }
+
+  .exec-print-area .muted {
+    color: #555 !important;
+    font-style: italic;
+    font-size: 9pt;
+  }
+
+  .exec-print-area .print-footer {
+    margin-top: 16px;
+    padding-top: 6px;
+    border-top: 1px solid #999;
+    font-size: 8pt;
+    text-align: center;
+    color: #555 !important;
+  }
+}
