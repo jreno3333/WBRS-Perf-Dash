@@ -155,6 +155,7 @@ export default function Dashboard() {
     certifiedShiftPlusCount: number;
     certifiedShiftPlusTotal: number;
     restartQuizPassed?: number;
+    restartQuizTaken?: number;
   }
   const { data: trainingUnitsResponse } = useQuery<{ rollups: Record<string, TrainingRollupItem> }>({
     queryKey: ["/api/training/units"],

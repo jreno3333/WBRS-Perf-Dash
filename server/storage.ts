@@ -1228,6 +1228,7 @@ export class DatabaseStorage {
     certifiedShiftPlusCount: number;
     certifiedShiftPlusTotal: number;
     restartQuizPassed: number;
+    restartQuizTaken: number;
   }>> {
     interface RollupAccumulator {
       employeeCount: number;
@@ -1238,11 +1239,13 @@ export class DatabaseStorage {
       certifiedShiftPlusCount: number;
       certifiedShiftPlusTotal: number;
       restartQuizPassed: number;
+      restartQuizTaken: number;
       _sumPct: number;
       _rowCount: number;
       _empWithRows: Set<string>;
       _certifiedEmps: Set<string>;
       _restartEmps: Set<string>;
+      _restartTakenEmps: Set<string>;
     }
     const out = new Map<string, RollupAccumulator>();
 
@@ -1271,11 +1274,13 @@ export class DatabaseStorage {
         certifiedShiftPlusCount: 0,
         certifiedShiftPlusTotal: 0,
         restartQuizPassed: 0,
+        restartQuizTaken: 0,
         _sumPct: 0,
         _rowCount: 0,
         _empWithRows: new Set<string>(),
         _certifiedEmps: new Set<string>(),
         _restartEmps: new Set<string>(),
+        _restartTakenEmps: new Set<string>(),
       };
       cur.employeeCount++;
       if (isShiftPlus) cur.certifiedShiftPlusTotal++;
@@ -1318,9 +1323,10 @@ export class DatabaseStorage {
       if (!cur) continue;
       if (r.key === "5_star_floor_management" && e.isShiftPlus) {
         cur._certifiedEmps.add(r.employeeId);
-      } else if (r.key.startsWith("train_restart:") && r.earnedAt) {
-        // earnedAt set ⇒ passed (training-api writes it only on tr.passed)
-        cur._restartEmps.add(r.employeeId);
+      } else if (r.key.startsWith("train_restart:")) {
+        // Any row = quiz attempted; earnedAt set ⇒ passed
+        cur._restartTakenEmps.add(r.employeeId);
+        if (r.earnedAt) cur._restartEmps.add(r.employeeId);
       }
     }
 
@@ -1333,6 +1339,7 @@ export class DatabaseStorage {
       certifiedShiftPlusCount: number;
       certifiedShiftPlusTotal: number;
       restartQuizPassed: number;
+      restartQuizTaken: number;
     }>();
     out.forEach((cur, rid) => {
       final.set(rid, {
@@ -1346,6 +1353,7 @@ export class DatabaseStorage {
         certifiedShiftPlusCount: cur._certifiedEmps.size,
         certifiedShiftPlusTotal: cur.certifiedShiftPlusTotal,
         restartQuizPassed: cur._restartEmps.size,
+        restartQuizTaken: cur._restartTakenEmps.size,
       });
     });
 
