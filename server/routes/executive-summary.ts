@@ -36,7 +36,7 @@ function destChannelExpr() {
     WHEN LOWER(${posOrders.orderSource}) IN ('in', 'dine-in', 'kiosk', 'cat', 'pho') OR LOWER(${posOrders.orderSource}) LIKE '%dine%' THEN 'dine_in'
     WHEN LOWER(${posOrders.orderSource}) IN ('dt3', 'out') THEN 'dt3_outside'
     WHEN LOWER(${posOrders.orderSource}) IN ('dt1', 'dt2', 'drive-thru', 'drive_thru') THEN 'drive_thru'
-    WHEN LOWER(${posOrders.orderSource}) = 'pos' THEN 'drive_thru'
+    WHEN LOWER(${posOrders.orderSource}) = 'pos' THEN 'pos'
     ELSE COALESCE(LOWER(${posOrders.orderSource}), 'unknown')
   END`;
 }
@@ -488,8 +488,18 @@ export async function buildExecutiveSummary(params: { days?: number; date?: stri
           result[restId] = { drive_thru: 0, dine_in: 0, app: 0, delivery_3pd: 0 };
           continue;
         }
-        const driveThru = ((channels["drive_thru"] || 0) + (channels["dt3_outside"] || 0)) / total * 100;
-        const dineIn = (channels["dine_in"] || 0) / total * 100;
+        // 'pos' = front-counter ticket. On DT-equipped stores the DT register
+        // often rings as 'pos', so we fold pos→drive_thru only when the unit
+        // actually has true DT-tagged orders in the period; otherwise these are
+        // counter/dine-in tickets.
+        const trueDt = (channels["drive_thru"] || 0) + (channels["dt3_outside"] || 0);
+        const posCount = channels["pos"] || 0;
+        const hasDriveThru = trueDt > 0;
+        const dtCount = trueDt + (hasDriveThru ? posCount : 0);
+        const dineInCount = (channels["dine_in"] || 0) + (hasDriveThru ? 0 : posCount);
+
+        const driveThru = dtCount / total * 100;
+        const dineIn = dineInCount / total * 100;
         const app = (channels["app"] || 0) / total * 100;
         const delivery3pd = ((channels["3pd"] || 0) + (channels["delivery"] || 0)) / total * 100;
         result[restId] = {
